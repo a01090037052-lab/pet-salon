@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>펫살롱 사용 가이드</title>
+  <title>펫살롱 사용 가이드 v3.0</title>
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; }
     html { font-size: 15px; scroll-behavior: smooth; }
@@ -98,7 +98,7 @@
       background: #1E293B; color: #E2E8F0; padding: 14px;
       border-radius: 10px; font-family: 'SF Mono', monospace;
       font-size: 0.8rem; overflow-x: auto; margin-bottom: 14px;
-      line-height: 1.8;
+      line-height: 1.8; word-break: break-all;
     }
 
     /* Steps */
@@ -120,7 +120,7 @@
     /* Badge */
     .badge {
       display: inline-block; padding: 2px 8px; border-radius: 12px;
-      font-size: 0.72rem; font-weight: 700;
+      font-size: 0.72rem; font-weight: 700; margin-left: 4px;
     }
     .badge-new { background: #D1FAE5; color: #065F46; }
     .badge-important { background: #FEE2E2; color: #991B1B; }
@@ -158,47 +158,48 @@
 <body>
 
 <div class="header">
-  <h1>&#x2702; 펫살롱 사용 가이드</h1>
-  <p>v2.0 | 2026년 3월</p>
+  <h1>✂ 펫살롱 사용 가이드</h1>
+  <p>v3.0 | 2026년 3월</p>
 </div>
 
 <!-- 목차 -->
 <div class="toc">
-  <div class="toc-title">&#x1F4D6; 목차</div>
+  <div class="toc-title">📖 목차</div>
   <a href="#start"><span class="num">1</span> 시작하기</a>
   <a href="#setup"><span class="num">2</span> 초기 설정</a>
-  <a href="#daily"><span class="num">3</span> 일일 사용법</a>
-  <a href="#features"><span class="num">4</span> 주요 기능</a>
-  <a href="#backup"><span class="num">5</span> 백업 & 데이터 관리</a>
-  <a href="#caution"><span class="num">6</span> 주의사항</a>
-  <a href="#upgrade"><span class="num">7</span> 업그레이드</a>
-  <a href="#trouble"><span class="num">8</span> 문제 해결</a>
-  <a href="#tips"><span class="num">9</span> 실무 팁</a>
-  <a href="#faq"><span class="num">10</span> FAQ</a>
+  <a href="#first-time"><span class="num">3</span> 처음 사용하는 사람을 위한 가이드</a>
+  <a href="#daily"><span class="num">4</span> 일일 사용법</a>
+  <a href="#features"><span class="num">5</span> v3.0 주요 기능</a>
+  <a href="#backup"><span class="num">6</span> 백업 & 데이터 관리</a>
+  <a href="#caution"><span class="num">7</span> 주의사항</a>
+  <a href="#upgrade"><span class="num">8</span> 업그레이드</a>
+  <a href="#trouble"><span class="num">9</span> 문제 해결</a>
+  <a href="#tips"><span class="num">10</span> 실무 팁</a>
+  <a href="#faq"><span class="num">11</span> FAQ</a>
 </div>
 
 <!-- 1. 시작하기 -->
 <div class="section" id="start">
-  <div class="section-header">&#x1F680; 시작하기</div>
+  <div class="section-header">🚀 시작하기</div>
   <div class="section-body">
     <div class="alert alert-success">
-      <span class="alert-icon">&#x2714;</span>
+      <span class="alert-icon">✓</span>
       <div>앱 주소만 기억하세요. 설치할 것 없이 바로 사용 가능합니다.</div>
     </div>
 
     <h3>앱 접속</h3>
     <div class="code">https://a01090037052-lab.github.io/pet-salon/</div>
 
-    <h3>홈 화면에 추가 (필수!)</h3>
+    <h3>홈 화면에 추가 (필수!) <span class="badge badge-important">중요</span></h3>
     <div class="alert alert-warning">
-      <span class="alert-icon">&#x26A0;</span>
-      <div>홈 화면에 추가하지 않으면 Safari가 2주 후 데이터를 삭제할 수 있습니다!</div>
+      <span class="alert-icon">⚠</span>
+      <div>홈 화면에 추가하지 않으면 Safari가 데이터를 자동 삭제할 수 있습니다!</div>
     </div>
 
     <div class="steps">
       <div class="step">
         <div class="step-num">1</div>
-        <div class="step-content"><strong>iPhone</strong>: Safari에서 접속 → 하단 공유 버튼<br><strong>Android</strong>: Chrome에서 접속 → 메뉴(&#x22EE;)</div>
+        <div class="step-content"><strong>iPhone</strong>: Safari에서 접속 → 하단 공유 버튼<br><strong>Android</strong>: Chrome에서 접속 → 메뉴(⋮)</div>
       </div>
       <div class="step">
         <div class="step-num">2</div>
@@ -214,57 +215,124 @@
 
 <!-- 2. 초기 설정 -->
 <div class="section" id="setup">
-  <div class="section-header">&#x2699; 초기 설정</div>
+  <div class="section-header">⚙ 초기 설정</div>
   <div class="section-body">
-    <p>처음 사용할 때 아래 순서대로 진행하세요.</p>
+    <p>처음 사용할 때 아래 순서대로 진행하세요. (약 15분)</p>
 
     <div class="steps">
       <div class="step">
         <div class="step-num">1</div>
-        <div class="step-content"><strong>매장 정보 입력</strong><br>설정 > 매장명, 연락처, 주소, 재방문 알림 기준일</div>
+        <div class="step-content"><strong>매장 정보 입력</strong><br>더보기 > 설정 > 매장 관리 탭 > 매장명, 연락처, 주소</div>
       </div>
       <div class="step">
         <div class="step-num">2</div>
-        <div class="step-content"><strong>알림 설정</strong> <span class="badge badge-new">NEW</span><br>설정 > 예약 알림 활성화 + 알림 시간 선택</div>
+        <div class="step-content"><strong>미용사 등록</strong> <span class="badge badge-new">개선됨</span><br>설정 > 매장 관리 > 미용사 관리 > 3~5명 등록</div>
       </div>
       <div class="step">
         <div class="step-num">3</div>
-        <div class="step-content"><strong>미용사 등록</strong><br>설정 > 미용사 관리 > 이름 추가 후 저장</div>
+        <div class="step-content"><strong>휴무일 설정</strong> <span class="badge badge-new">NEW</span><br>설정 > 매장 관리 > 휴무일 설정</div>
       </div>
       <div class="step">
         <div class="step-num">4</div>
-        <div class="step-content"><strong>서비스 메뉴 등록</strong><br>서비스 메뉴 > "기본 서비스 자동 등록" 클릭</div>
+        <div class="step-content"><strong>알림 설정</strong> <span class="badge badge-new">개선됨</span><br>설정 > 알림·메시지 > 예약 알림 활성화 + 시간 선택</div>
       </div>
       <div class="step">
         <div class="step-num">5</div>
-        <div class="step-content"><strong>첫 고객 + 반려견 등록</strong><br>고객 관리 > + 새 고객 > 저장 후 반려견 등록 + 사진 업로드</div>
+        <div class="step-content"><strong>메시지 템플릿</strong> <span class="badge badge-new">NEW</span><br>설정 > 알림·메시지 > 4종 메시지 템플릿 확인</div>
+      </div>
+      <div class="step">
+        <div class="step-num">6</div>
+        <div class="step-content"><strong>서비스 메뉴 등록</strong><br>더보기 > 서비스 메뉴 > "기본 서비스 자동 등록"</div>
+      </div>
+      <div class="step">
+        <div class="step-num">7</div>
+        <div class="step-content"><strong>마케팅 설정</strong> <span class="badge badge-new">NEW</span><br>설정 > 마케팅 > 포인트/스탐프/프로모션 (선택)</div>
+      </div>
+      <div class="step">
+        <div class="step-num">8</div>
+        <div class="step-content"><strong>첫 고객 + 반려견 등록</strong><br>고객 > + 새 고객 > 저장 후 반려견 추가 + 사진</div>
       </div>
     </div>
   </div>
 </div>
 
-<!-- 3. 일일 사용법 -->
-<div class="section" id="daily">
-  <div class="section-header">&#x1F4C5; 일일 사용법</div>
+<!-- 3. 처음 사용하는 사람을 위한 가이드 -->
+<div class="section" id="first-time">
+  <div class="section-header">👥 처음 사용하는 사람을 위한 가이드</div>
   <div class="section-body">
+    <div class="alert alert-success">
+      <span class="alert-icon">✓</span>
+      <div><strong>데이터는 절대 섞이지 않습니다!</strong> 같은 URL을 사용해도 각자 기기의 브라우저에 독립 저장됩니다.</div>
+    </div>
 
-    <h3>&#x1F305; 아침 - 하루 시작</h3>
+    <h3>상대방에게 공유하는 법</h3>
     <ol>
-      <li>대시보드에서 <strong>오늘 예약</strong> 확인</li>
-      <li><strong>이번 주 매출</strong> 차트 확인</li>
-      <li><strong>재방문 알림</strong> 있으면 고객에게 연락</li>
-      <li>백업 알림 있으면 백업하기</li>
+      <li>앱 URL 공유: <strong>https://a01090037052-lab.github.io/pet-salon/</strong></li>
+      <li>상대방이 접속하면 바로 사용 가능</li>
+      <li>각자 초기 설정만 하면 끝!</li>
     </ol>
 
-    <h3>&#x1F4DE; 전화 예약 받을 때</h3>
+    <h3>상대방을 위한 빠른 시작 (10분)</h3>
+
     <div class="steps">
       <div class="step">
         <div class="step-num">1</div>
-        <div class="step-content">예약 관리 > <strong>+ 새 예약</strong></div>
+        <div class="step-content"><strong>앱 접속 & 홈화면 추가 (2분)</strong><br>URL 접속 → 공유 → 홈 화면에 추가</div>
       </div>
       <div class="step">
         <div class="step-num">2</div>
-        <div class="step-content">고객 이름/전화번호로 <strong>검색</strong> <span class="badge badge-new">NEW</span></div>
+        <div class="step-content"><strong>필수 설정 (5분)</strong><br>더보기 > 설정 > 매장명/연락처/미용사 3명 입력</div>
+      </div>
+      <div class="step">
+        <div class="step-num">3</div>
+        <div class="step-content"><strong>기본 서비스 등록 (1분)</strong><br>더보기 > 서비스 메뉴 > "기본 서비스 자동 등록"</div>
+      </div>
+      <div class="step">
+        <div class="step-num">4</div>
+        <div class="step-content"><strong>첫 데이터 입력 (2분)</strong><br>고객 탭 > 새 고객 > 저장 > 반려견 추가</div>
+      </div>
+    </div>
+
+    <h3>자주 묻는 질문</h3>
+
+    <p><strong>Q. 내 데이터가 다른 사람에게 보이나요?</strong><br>
+    A. 아니요! 각자 기기에만 저장되고 완전히 독립적입니다.</p>
+
+    <p><strong>Q. 여러 사람이 동시에 쓸 수 있나요?</strong><br>
+    A. GitHub Pages 모드: 각자 자신의 기기에서만. PC 서버 모드: 같은 WiFi에서 3~4명 동시 사용 가능.</p>
+
+    <p><strong>Q. 비용이 드나요?</strong><br>
+    A. 완전 무료입니다. 지금도, 앞으로도.</p>
+
+    <p><strong>Q. 언제 데이터가 삭제되나요?</strong><br>
+    A. 본인이 삭제하지 않으면 영구 보관됩니다. 정기 백업만 해두세요.</p>
+  </div>
+</div>
+
+<!-- 4. 일일 사용법 -->
+<div class="section" id="daily">
+  <div class="section-header">📅 일일 사용법</div>
+  <div class="section-body">
+
+    <h3>🌅 아침 - 하루 시작</h3>
+    <ol>
+      <li><strong>대시보드</strong> 탭 > 오늘 예약 확인</li>
+      <li>백업 알림이 있으면 "백업하기" 클릭</li>
+      <li><strong>이번 주 매출</strong> 차트 확인</li>
+      <li><strong>재방문 알림</strong> 고객에게 "문자" 또는 "전화" 버튼</li>
+      <li><strong>생일 알림</strong> 있으면 축하 문자 전송</li>
+      <li><strong>미수금 현황</strong> 확인 > "결제 처리" 버튼</li>
+    </ol>
+
+    <h3>📞 전화 예약 받을 때</h3>
+    <div class="steps">
+      <div class="step">
+        <div class="step-num">1</div>
+        <div class="step-content">예약 > <strong>+ 새 예약</strong></div>
+      </div>
+      <div class="step">
+        <div class="step-num">2</div>
+        <div class="step-content">고객 이름/전화번호로 <strong>검색 선택</strong> <span class="badge badge-new">실시간 검색</span></div>
       </div>
       <div class="step">
         <div class="step-num">3</div>
@@ -272,158 +340,205 @@
       </div>
       <div class="step">
         <div class="step-num">4</div>
-        <div class="step-content">필요 시 <strong>"미용 기록도 함께 등록"</strong> 체크 <span class="badge badge-new">NEW</span></div>
+        <div class="step-content"><strong>예상 소요시간</strong> 입력 (30분~3시간) <span class="badge badge-new">NEW</span></div>
       </div>
       <div class="step">
         <div class="step-num">5</div>
-        <div class="step-content"><strong>저장</strong></div>
+        <div class="step-content">필요시 <strong>"미용 기록도 함께 등록"</strong> 체크</div>
+      </div>
+      <div class="step">
+        <div class="step-num">6</div>
+        <div class="step-content"><strong>저장</strong> > 예약 확인 문자 발송 옵션</div>
       </div>
     </div>
 
-    <h3>&#x2702; 미용 완료 후</h3>
-    <p><strong>방법 A (빠름)</strong>: 예약 목록에서 <strong>기록</strong> 버튼 클릭 → 자동 입력</p>
-    <p><strong>방법 B</strong>: 미용 기록 > + 새 기록 > 고객 검색 후 작성</p>
+    <h3>✂ 미용 완료 후</h3>
+    <p><strong>방법 A (빠름)</strong>: 대시보드 또는 예약 목록에서 <strong>기록</strong> 버튼 클릭</p>
+    <p><strong>방법 B</strong>: 기록 > + 새 기록 > 고객 검색 후 작성</p>
+    <p>할인/추가요금 입력 > 최종 금액 자동 계산 > 미용 전/후 사진 업로드 > 고객 만족도 선택 > 포인트/스탐프 적립 > 저장</p>
 
-    <h3>&#x1F4B0; 마감 - 매출 확인</h3>
-    <p>미용 기록 페이지에서 <strong>오늘/주간/월간 매출 카드</strong>를 탭하면 차트로 확인 가능</p>
+    <h3>💰 마감 - 매출 확인</h3>
+    <p>기록 페이지에서:</p>
+    <ul>
+      <li><strong>오늘 매출</strong> 카드 탭 → 상세 내역</li>
+      <li><strong>이번 주 매출</strong> 카드 탭 → 일별 차트</li>
+      <li><strong>이번 달 매출</strong> 카드 탭 → 월간 차트</li>
+      <li><strong>6개월 매출 차트</strong> 확인</li>
+      <li><strong>미용사별/서비스별 매출</strong> 분석</li>
+      <li><strong>월별 아카이브</strong> 펼쳐서 과거 데이터 확인</li>
+    </ul>
   </div>
 </div>
 
-<!-- 4. 주요 기능 -->
+<!-- 5. v3.0 주요 기능 -->
 <div class="section" id="features">
-  <div class="section-header">&#x2B50; 주요 기능</div>
+  <div class="section-header">⭐ v3.0 주요 기능</div>
   <div class="section-body">
 
     <div class="features">
-      <div class="feat"><div class="feat-icon">&#x1F4C5;</div><div class="feat-name">월간 캘린더</div></div>
-      <div class="feat"><div class="feat-icon">&#x1F4F7;</div><div class="feat-name">반려견 사진</div></div>
-      <div class="feat"><div class="feat-icon">&#x1F4CA;</div><div class="feat-name">매출 시각화</div></div>
-      <div class="feat"><div class="feat-icon">&#x1F50D;</div><div class="feat-name">고객 검색</div></div>
-      <div class="feat"><div class="feat-icon">&#x1F514;</div><div class="feat-name">예약 알림</div></div>
-      <div class="feat"><div class="feat-icon">&#x1F4C2;</div><div class="feat-name">월별 아카이브</div></div>
+      <div class="feat"><div class="feat-icon">📊</div><div class="feat-name">6개월 매출</div></div>
+      <div class="feat"><div class="feat-icon">👨‍💼</div><div class="feat-name">미용사 타임테이블</div></div>
+      <div class="feat"><div class="feat-icon">📸</div><div class="feat-icon">📸</div><div class="feat-name">사진 카드</div></div>
+      <div class="feat"><div class="feat-icon">💳</div><div class="feat-name">포인트/프로모션</div></div>
+      <div class="feat"><div class="feat-icon">🎂</div><div class="feat-name">생일 알림</div></div>
+      <div class="feat"><div class="feat-icon">💬</div><div class="feat-name">메시지 템플릿</div></div>
     </div>
 
-    <h3>&#x1F4C5; 월간 캘린더 뷰 <span class="badge badge-new">NEW</span></h3>
-    <p>예약 관리에서 <strong>"캘린더 보기"</strong> 버튼을 탭하면 한 달 전체를 한눈에 볼 수 있습니다.</p>
-    <table class="tbl">
-      <tr><th>색상</th><th>의미</th></tr>
-      <tr><td style="color:#6366F1;font-weight:700">파랑</td><td>1~2건 예약</td></tr>
-      <tr><td style="color:#EF4444;font-weight:700">빨강</td><td>3건 이상 예약</td></tr>
-      <tr><td style="color:#94A3B8">회색</td><td>예약 없음</td></tr>
-    </table>
-    <p>날짜를 탭하면 해당 날짜 예약만 필터링됩니다.</p>
-
-    <h3>&#x1F4F7; 반려견 사진 <span class="badge badge-new">NEW</span></h3>
-    <p>반려견 등록/수정에서 사진을 업로드할 수 있습니다. 카메라로 바로 촬영도 가능합니다.</p>
+    <h3>📊 대시보드 강화 <span class="badge badge-new">완전히 새로워짐</span></h3>
     <ul>
-      <li>반려견 목록에서 사진 표시</li>
-      <li>반려견 상세에서 큰 사진 표시</li>
-      <li>사진 변경/삭제 가능</li>
+      <li><strong>오늘 통계</strong>: 예약/매출/고객수</li>
+      <li><strong>이번 주 매출 차트</strong>: 일별 막대 그래프</li>
+      <li><strong>6개월 매출 차트</strong> <span class="badge badge-new">NEW</span>: 추이 분석</li>
+      <li><strong>미용사별 매출</strong> <span class="badge badge-new">NEW</span>: 이번 달 비율</li>
+      <li><strong>서비스별 매출</strong> <span class="badge badge-new">NEW</span>: 인기 서비스</li>
+      <li><strong>재방문 알림</strong> <span class="badge badge-new">개선됨</span>: 반려견별 개별 주기 + 문자/전화 버튼</li>
+      <li><strong>생일 알림</strong> <span class="badge badge-new">NEW</span>: 고객/반려견 생일</li>
+      <li><strong>미수금 현황</strong> <span class="badge badge-new">NEW</span>: 외상액 + 결제 처리</li>
+      <li><strong>활성 프로모션</strong> <span class="badge badge-new">NEW</span>: 진행 중 프로모션</li>
     </ul>
 
-    <h3>&#x1F4CA; 매출 시각화 <span class="badge badge-new">NEW</span></h3>
-    <p>미용 기록 페이지에서 <strong>매출 카드를 탭</strong>하면:</p>
+    <h3>📅 예약 관리 강화 <span class="badge badge-new">2가지 뷰</span></h3>
+    <table class="tbl">
+      <tr><th>뷰</th><th>특징</th></tr>
+      <tr><td><strong>월간 캘린더</strong></td><td>날짜별 예약 건수 색상 코딩, 휴무일 표시</td></tr>
+      <tr><td><strong>미용사 타임테이블</strong> <span class="badge badge-new">NEW</span></td><td>시간대 x 미용사 그리드, 예약 상태별 색상</td></tr>
+    </table>
     <ul>
-      <li><strong>오늘 매출</strong> → 건별 상세 내역</li>
-      <li><strong>이번 주 매출</strong> → 일별 바 차트 (월~일)</li>
-      <li><strong>이번 달 매출</strong> → 일별 바 차트 (1일~말일)</li>
+      <li><strong>예상 소요시간</strong> <span class="badge badge-new">NEW</span>: 30분~3시간 관리</li>
+      <li><strong>시간 충돌 감지</strong>: 같은 시간 중복 예약 경고</li>
+      <li><strong>노쇼 이력 경고</strong> <span class="badge badge-new">NEW</span>: 과거 노쇼 표시</li>
+      <li><strong>예약 확인 문자</strong> <span class="badge badge-new">NEW</span>: 저장 후 자동 프롬프트</li>
     </ul>
 
-    <h3>&#x1F50D; 검색형 고객 선택 <span class="badge badge-new">NEW</span></h3>
-    <p>예약/미용기록 등록 시 고객을 <strong>이름이나 전화번호로 바로 검색</strong>할 수 있습니다. 기존 드롭다운 대신 검색 입력창이 표시됩니다.</p>
+    <h3>👤 고객 관리 강화 <span class="badge badge-new">태깅 시스템</span></h3>
+    <ul>
+      <li><strong>고객 태깅</strong> <span class="badge badge-new">NEW</span>: VIP/신규/단골/주의 태그 + 필터</li>
+      <li><strong>장기 미방문 경고</strong> <span class="badge badge-new">NEW</span>: 30일+/60일+ 배지</li>
+      <li><strong>정렬</strong> <span class="badge badge-new">NEW</span>: 이름/방문일/등록일/방문횟수</li>
+      <li><strong>방문 통계</strong> <span class="badge badge-new">NEW</span>: 총 방문/지출/평균 객단가</li>
+      <li><strong>생일 필드</strong> <span class="badge badge-new">NEW</span>: 고객 생일 관리</li>
+    </ul>
 
-    <h3>&#x1F514; 예약 알림 <span class="badge badge-new">NEW</span></h3>
-    <p>설정에서 활성화하면 예약 시간 전에 <strong>브라우저 알림</strong>이 옵니다.</p>
+    <h3>🐶 반려견 관리 강화 <span class="badge badge-new">라이트박스</span></h3>
+    <ul>
+      <li><strong>사진 라이트박스</strong> <span class="badge badge-new">NEW</span>: 풀스크린 + 스와이프/화살표</li>
+      <li><strong>사진 자동 압축</strong> <span class="badge badge-new">NEW</span></li>
+      <li><strong>권장 미용 주기</strong> <span class="badge badge-new">NEW</span>: 반려견별 개별 설정</li>
+      <li><strong>모바일 카드 뷰</strong> <span class="badge badge-new">NEW</span></li>
+    </ul>
+
+    <h3>💰 미용 기록 강화 <span class="badge badge-new">매출 분석</span></h3>
+    <ul>
+      <li><strong>할인/추가요금</strong> <span class="badge badge-new">NEW</span>: 입력 시 최종금액 자동 계산</li>
+      <li><strong>프로모션 자동 적용</strong> <span class="badge badge-new">NEW</span></li>
+      <li><strong>고객 만족도</strong> <span class="badge badge-new">NEW</span>: 만족/보통/불만</li>
+      <li><strong>포인트/스탬프</strong> <span class="badge badge-new">NEW</span>: 사용/적립 관리</li>
+      <li><strong>미수금 관리</strong> <span class="badge badge-new">NEW</span>: 외상액 입력</li>
+      <li><strong>미용 전/후 사진</strong> <span class="badge badge-new">NEW</span></li>
+      <li><strong>사진 카드 생성</strong> <span class="badge badge-new">NEW</span>: 8종 레이아웃 + 7종 테마</li>
+      <li><strong>다음 예약 추천</strong> <span class="badge badge-new">NEW</span></li>
+      <li><strong>미용 완료 문자</strong> <span class="badge badge-new">NEW</span>: 자동 프롬프트</li>
+      <li><strong>일일 정산표</strong> <span class="badge badge-new">NEW</span>: 날짜별 인쇄</li>
+      <li><strong>세무 자료 CSV</strong> <span class="badge badge-new">NEW</span>: 월별 내보내기</li>
+    </ul>
+
+    <h3>⚙ 설정 강화 (5개 탭)</h3>
     <table class="tbl">
-      <tr><th>설정</th><th>옵션</th></tr>
-      <tr><td>알림 시간</td><td>10분 / 30분 / 1시간 / 2시간 전</td></tr>
-      <tr><td>조건</td><td>앱이 열려있을 때만 작동</td></tr>
+      <tr><th>탭</th><th>기능</th></tr>
+      <tr><td><strong>매장 관리</strong></td><td>매장 정보 + 미용사 + 휴무일 <span class="badge badge-new">NEW</span></td></tr>
+      <tr><td><strong>알림·메시지</strong></td><td>예약 알림 + 4종 메시지 템플릿 <span class="badge badge-new">NEW</span></td></tr>
+      <tr><td><strong>마케팅</strong></td><td>포인트 + 스탬프 + 프로모션 <span class="badge badge-new">NEW</span></td></tr>
+      <tr><td><strong>사진 카드</strong> <span class="badge badge-new">NEW</span></td><td>8종 레이아웃 + 7종 테마 + 커스터마이징</td></tr>
+      <tr><td><strong>데이터</strong></td><td>백업/복원 + 세무 자료 내보내기 + 초기화</td></tr>
     </table>
 
-    <h3>&#x1F4C2; 월별 아카이브 <span class="badge badge-new">NEW</span></h3>
-    <p>미용 기록 페이지 하단에서 <strong>월별 매출 요약</strong>을 확인할 수 있습니다. 각 월을 펼치면 상세 내역을 볼 수 있습니다.</p>
-
-    <h3>&#x2702; 예약 시 미용 기록 자동 등록 <span class="badge badge-new">NEW</span></h3>
-    <p>새 예약 등록 시 <strong>"미용 기록도 함께 등록"</strong>을 체크하면, 예약 저장 후 미용 기록 폼이 자동으로 열립니다.</p>
-
-    <h3>&#x1F4C8; 주간 매출 차트 <span class="badge badge-new">NEW</span></h3>
-    <p>대시보드에 이번 주 매출이 <strong>일별 막대 차트</strong>로 표시됩니다. 오늘은 초록색으로 강조됩니다.</p>
+    <h3>🔍 빠른 검색 <span class="badge badge-new">전역 검색</span></h3>
+    <ul>
+      <li><strong>PC</strong>: "/" 키 누르면 검색창 활성화</li>
+      <li><strong>모바일</strong>: 돋보기(🔍) 버튼 누르기</li>
+      <li>고객/반려견/예약/기록 전체 검색 가능</li>
+    </ul>
   </div>
 </div>
 
-<!-- 5. 백업 -->
+<!-- 6. 백업 & 데이터 -->
 <div class="section" id="backup">
-  <div class="section-header">&#x1F4BE; 백업 & 데이터 관리</div>
+  <div class="section-header">💾 백업 & 데이터 관리</div>
   <div class="section-body">
 
     <div class="alert alert-danger">
-      <span class="alert-icon">&#x1F6A8;</span>
+      <span class="alert-icon">🚨</span>
       <div><strong>백업은 필수입니다!</strong> 데이터는 한 번 잃으면 복구 불가능합니다.</div>
     </div>
 
-    <h3>백업 방법</h3>
+    <h3>백업 방법 (1분)</h3>
     <div class="steps">
       <div class="step">
         <div class="step-num">1</div>
-        <div class="step-content"><strong>설정</strong> > <strong>데이터 백업하기</strong> 클릭</div>
+        <div class="step-content">더보기 > 설정 > 데이터 탭 > <strong>"데이터 백업하기"</strong></div>
       </div>
       <div class="step">
         <div class="step-num">2</div>
-        <div class="step-content">JSON 파일 다운로드됨</div>
+        <div class="step-content">JSON 파일 자동 다운로드</div>
       </div>
       <div class="step">
         <div class="step-num">3</div>
-        <div class="step-content"><strong>iCloud / Google Drive / 카카오톡</strong>에 보관</div>
+        <div class="step-content">iCloud / Google Drive / 카카오톡에 보관</div>
       </div>
     </div>
 
     <table class="tbl">
       <tr><th>주기</th><th>권장도</th></tr>
-      <tr><td>매일</td><td>&#x2B50;&#x2B50;&#x2B50; 가장 안전</td></tr>
-      <tr><td>주 2회</td><td>&#x2B50;&#x2B50; 권장</td></tr>
-      <tr><td>주 1회</td><td>&#x2B50; 최소</td></tr>
+      <tr><td>매일</td><td>⭐⭐⭐ 가장 안전</td></tr>
+      <tr><td>주 2회</td><td>⭐⭐ 권장</td></tr>
+      <tr><td>주 1회</td><td>⭐ 최소</td></tr>
     </table>
 
     <h3>복원 방법</h3>
-    <p>설정 > <strong>데이터 복원하기</strong> > 백업 JSON 파일 선택 > 확인</p>
+    <p>더보기 > 설정 > 데이터 탭 > <strong>"데이터 복원하기"</strong> > 백업 JSON 파일 선택 > 확인</p>
 
     <h3>폰 교체 시</h3>
-    <div class="code">현재 폰: 설정 > 백업 > 파일 저장
-    ↓ 카카오톡/에어드롭으로 전송
-새 폰: 접속 > 설정 > 복원 > 파일 선택</div>
+    <div class="code">현재 폰: 설정 > 데이터 > 백업
+    ↓ 카카오톡/에어드롭
+새 폰: 접속 > 설정 > 데이터 > 복원</div>
   </div>
 </div>
 
-<!-- 6. 주의사항 -->
+<!-- 7. 주의사항 -->
 <div class="section" id="caution">
-  <div class="section-header">&#x26A0; 주의사항</div>
+  <div class="section-header">⚠ 주의사항</div>
   <div class="section-body">
 
     <div class="alert alert-danger">
-      <span class="alert-icon">&#x274C;</span>
+      <span class="alert-icon">✕</span>
       <div><strong>브라우저 데이터 삭제 금지!</strong><br>설정 > Safari/Chrome > 데이터 삭제 하면 모든 고객 데이터가 사라집니다.</div>
     </div>
 
     <div class="alert alert-danger">
-      <span class="alert-icon">&#x274C;</span>
-      <div><strong>시크릿/프라이빗 모드 사용 금지!</strong><br>창을 닫으면 데이터가 삭제됩니다.</div>
+      <span class="alert-icon">✕</span>
+      <div><strong>시크릿/프라이빗 모드 금지!</strong><br>창을 닫으면 데이터가 삭제됩니다.</div>
     </div>
 
     <div class="alert alert-warning">
-      <span class="alert-icon">&#x26A0;</span>
+      <span class="alert-icon">⚠</span>
       <div><strong>홈 화면에 추가 필수!</strong><br>Safari에서 2주 이상 미사용 시 데이터 삭제될 수 있음. 홈 화면 추가하면 방지됨.</div>
     </div>
 
     <div class="alert alert-info">
-      <span class="alert-icon">&#x1F4F1;</span>
-      <div><strong>메인 기기 하나만 사용하세요.</strong><br>PC와 모바일 데이터는 별개입니다. 모바일을 메인으로 사용하세요.</div>
+      <span class="alert-icon">ℹ</span>
+      <div><strong>정기 백업 필수!</strong><br>주 1회 이상 백업 권장. 폰 분실/고장 대비.</div>
+    </div>
+
+    <div class="alert alert-info">
+      <span class="alert-icon">ℹ</span>
+      <div><strong>메인 기기 하나만 사용하세요.</strong><br>PC와 모바일 데이터는 별개입니다. 한 기기를 메인으로 사용하세요.</div>
     </div>
   </div>
 </div>
 
-<!-- 7. 업그레이드 -->
+<!-- 8. 업그레이드 -->
 <div class="section" id="upgrade">
-  <div class="section-header">&#x1F504; 업그레이드</div>
+  <div class="section-header">🔄 업그레이드</div>
   <div class="section-body">
     <p>PC에서 코드를 수정한 후:</p>
     <div class="code">git add index.html css/ js/ sw.js manifest.json
@@ -433,59 +548,67 @@ git push</div>
     <p>20~30초 후 자동 배포. 모바일에서 <strong>새로고침</strong>하면 적용됩니다.</p>
 
     <div class="alert alert-success">
-      <span class="alert-icon">&#x2714;</span>
-      <div><strong>업그레이드해도 데이터는 안전합니다.</strong><br>코드만 업데이트되고, 고객/예약 데이터(IndexedDB)는 그대로 유지됩니다.</div>
+      <span class="alert-icon">✓</span>
+      <div><strong>업그레이드해도 데이터는 안전합니다!</strong><br>코드만 업데이트되고, 고객/예약 데이터(IndexedDB)는 그대로 유지됩니다.</div>
     </div>
   </div>
 </div>
 
-<!-- 8. 문제 해결 -->
+<!-- 9. 문제 해결 -->
 <div class="section" id="trouble">
-  <div class="section-header">&#x1F527; 문제 해결</div>
+  <div class="section-header">🔧 문제 해결</div>
   <div class="section-body">
 
     <h3>데이터가 사라졌어요</h3>
-    <p>백업 파일 → 설정 > 데이터 복원. 백업 없으면 복구 불가.</p>
+    <p>백업 파일이 있으면 → 설정 > 데이터 탭 > 데이터 복원하기. 없으면 복구 불가.</p>
 
     <h3>화면이 이상해요 (업그레이드 후)</h3>
-    <p>브라우저 캐시 문제입니다. <strong>강제 새로고침</strong>하거나 캐시를 삭제하세요.</p>
+    <p>브라우저 캐시 문제입니다. <strong>강제 새로고침</strong> (아래로 당기기 + 새로고침) 또는 캐시 삭제 후 접속.</p>
 
     <h3>알림이 안 와요</h3>
     <table class="tbl">
       <tr><th>확인</th><th>방법</th></tr>
-      <tr><td>알림 활성화</td><td>설정 > 예약 알림 > 토글 켜기</td></tr>
-      <tr><td>브라우저 권한</td><td>브라우저 설정에서 알림 허용</td></tr>
-      <tr><td>앱 열림 여부</td><td>앱이 열려있어야 작동</td></tr>
+      <tr><td>알림 활성화</td><td>설정 > 알림·메시지 > 예약 알림 토글 ON</td></tr>
+      <tr><td>브라우저 권한</td><td>브라우저 설정에서 알림 허용 확인</td></tr>
+      <tr><td>앱 열림 여부</td><td>앱이 열려있어야만 작동</td></tr>
     </table>
 
     <h3>사진 업로드가 안 돼요</h3>
-    <p>파일이 너무 크면 느릴 수 있습니다. JPG, PNG, GIF, WebP를 지원합니다.</p>
+    <p>파일이 너무 크면 느릴 수 있습니다. JPG, PNG, GIF, WebP를 지원합니다. 저장소 용량 경고도 확인하세요.</p>
+
+    <h3>시간 충돌 경고가 자꾸 떠요</h3>
+    <p>예상 소요시간을 확인하세요. 예: 14:00 시작, 1시간 → 14:00~15:00 점유. 같은 미용사가 이 시간에 다른 예약이 있으면 경고.</p>
   </div>
 </div>
 
-<!-- 9. 실무 팁 -->
+<!-- 10. 실무 팁 -->
 <div class="section" id="tips">
-  <div class="section-header">&#x1F4A1; 실무 팁</div>
+  <div class="section-header">💡 실무 팁</div>
   <div class="section-body">
     <table class="tbl">
       <tr><th>#</th><th>팁</th></tr>
-      <tr><td>1</td><td><strong>캘린더 활용</strong> - 예약 관리에서 한 달 예약을 한눈에 확인</td></tr>
+      <tr><td>1</td><td><strong>캘린더 + 타임테이블</strong> - 두 뷰를 번갈아 사용하면 예약 현황 파악 쉬움</td></tr>
       <tr><td>2</td><td><strong>고객 검색</strong> - 이름 일부만 입력해도 바로 검색됨</td></tr>
       <tr><td>3</td><td><strong>예약+기록 동시</strong> - 체크 한 번으로 기록 자동 생성</td></tr>
       <tr><td>4</td><td><strong>반려견 사진</strong> - 미용 전후 사진 등록하면 상담에 유용</td></tr>
       <tr><td>5</td><td><strong>매출 탭</strong> - 기록 페이지에서 카드 탭하면 차트 확인</td></tr>
       <tr><td>6</td><td><strong>월별 아카이브</strong> - 지난 달 매출 비교 가능</td></tr>
-      <tr><td>7</td><td><strong>재방문 알림</strong> - 예약 버튼 누르면 고객 정보 자동 입력</td></tr>
-      <tr><td>8</td><td><strong>자동 가격</strong> - 서비스 체크만 하면 사이즈별 가격 합산</td></tr>
-      <tr><td>9</td><td><strong>전화번호 포맷</strong> - 숫자만 입력해도 자동 변환</td></tr>
-      <tr><td>10</td><td><strong>백업 경고</strong> - 대시보드 경고 무시하지 마세요!</td></tr>
+      <tr><td>7</td><td><strong>재방문 알림</strong> - 예약 버튼으로 고객 정보 자동 입력</td></tr>
+      <tr><td>8</td><td><strong>고객 태깅</strong> - VIP/신규/단골/주의로 분류 후 필터링</td></tr>
+      <tr><td>9</td><td><strong>생일 알림</strong> - 고객/반려견 생일 축하로 재방문율 UP</td></tr>
+      <tr><td>10</td><td><strong>미수금 현황</strong> - 대시보드에서 외상액 한눈에 확인</td></tr>
+      <tr><td>11</td><td><strong>포인트/프로모션</strong> - 마케팅 탭에서 설정 후 자동 적용</td></tr>
+      <tr><td>12</td><td><strong>사진 카드</strong> - SNS 공유용으로 매력적인 사진 카드 생성</td></tr>
+      <tr><td>13</td><td><strong>세무 자료</strong> - 월별 CSV로 세무신고 시 활용</td></tr>
+      <tr><td>14</td><td><strong>다음 예약 추천</strong> - 미용 완료 후 자동 제안으로 재방문율 UP</td></tr>
+      <tr><td>15</td><td><strong>백업 경고</strong> - 대시보드 경고 무시하지 마세요!</td></tr>
     </table>
   </div>
 </div>
 
-<!-- 10. FAQ -->
+<!-- 11. FAQ -->
 <div class="section" id="faq">
-  <div class="section-header">&#x2753; FAQ</div>
+  <div class="section-header">❓ FAQ</div>
   <div class="section-body">
 
     <h3>홈 화면에 추가는 꼭 해야 하나요?</h3>
@@ -503,6 +626,18 @@ git push</div>
     <h3>PC와 모바일 데이터가 달라요</h3>
     <p>정상입니다. 각 기기가 독립 데이터입니다. <strong>백업/복원</strong>으로 동기화하세요.</p>
 
+    <h3>포인트와 스탐프의 차이는?</h3>
+    <p>포인트는 금액 기반, 스탐프는 회차 기반. 둘 다 적립/사용 관리 가능.</p>
+
+    <h3>프로모션은 자동 적용되나요?</h3>
+    <p>네. 마케팅 탭에서 프로모션을 "활성"으로 설정하면 미용 기록 등록 시 자동 적용됩니다.</p>
+
+    <h3>미수금은 어떻게 관리하나요?</h3>
+    <p>미용 기록에서 "미수금액" 입력 → 대시보드에 누적 → "결제 처리" 버튼으로 정산.</p>
+
+    <h3>사진 카드는 어디서 만들어요?</h3>
+    <p>미용 기록 저장 후 → "사진 카드 생성" → 레이아웃/테마 선택 → 이미지 다운로드.</p>
+
     <h3>30년 후에도 사용 가능한가요?</h3>
     <p>HTML/JS는 웹 표준이므로 <strong>브라우저가 존재하는 한 동작</strong>합니다.</p>
 
@@ -514,12 +649,12 @@ git push</div>
 
 <!-- Bottom -->
 <div class="bottom-bar">
-  <a href="./">&#x2702; 펫살롱 앱 열기</a>
+  <a href="https://a01090037052-lab.github.io/pet-salon/">✂ 펫살롱 앱 열기</a>
   <br>
-  펫살롱 v2.0 | 애견 미용 고객 관리
+  펫살롱 v3.0 | 애견 미용 고객 관리
 </div>
 
-<a href="#" class="back-top">&#x2191;</a>
+<a href="#" class="back-top">⬆</a>
 
 </body>
 </html>
