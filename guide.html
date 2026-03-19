@@ -1,0 +1,525 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>펫살롱 사용 가이드</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    html { font-size: 15px; scroll-behavior: smooth; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Noto Sans KR', sans-serif;
+      background: #F8FAFC; color: #0F172A; line-height: 1.7;
+      padding-bottom: 80px;
+    }
+    a { color: #6366F1; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+
+    /* Header */
+    .header {
+      background: linear-gradient(135deg, #6366F1, #8B5CF6);
+      color: #fff; padding: 32px 20px 24px; text-align: center;
+      position: sticky; top: 0; z-index: 100;
+      box-shadow: 0 2px 12px rgba(99,102,241,0.3);
+    }
+    .header h1 { font-size: 1.4rem; font-weight: 800; margin-bottom: 4px; }
+    .header p { font-size: 0.85rem; opacity: 0.85; }
+
+    /* TOC */
+    .toc {
+      background: #fff; margin: 16px; border-radius: 14px;
+      box-shadow: 0 1px 4px rgba(0,0,0,0.06); overflow: hidden;
+    }
+    .toc-title {
+      padding: 14px 18px; font-weight: 700; font-size: 0.95rem;
+      background: #F1F5F9; border-bottom: 1px solid #E2E8F0;
+    }
+    .toc a {
+      display: block; padding: 12px 18px; color: #334155;
+      border-bottom: 1px solid #F1F5F9; font-size: 0.9rem;
+      transition: background 0.15s;
+    }
+    .toc a:last-child { border-bottom: none; }
+    .toc a:hover, .toc a:active { background: #EEF2FF; text-decoration: none; }
+    .toc .num { color: #6366F1; font-weight: 700; margin-right: 8px; }
+
+    /* Section */
+    .section {
+      background: #fff; margin: 16px; border-radius: 14px;
+      box-shadow: 0 1px 4px rgba(0,0,0,0.06); overflow: hidden;
+    }
+    .section-header {
+      padding: 16px 18px; font-weight: 800; font-size: 1.1rem;
+      background: linear-gradient(135deg, #EEF2FF, #E0E7FF);
+      color: #4338CA; border-bottom: 1px solid #C7D2FE;
+      display: flex; align-items: center; gap: 8px;
+    }
+    .section-body { padding: 18px; }
+    .section-body h3 {
+      font-size: 0.95rem; font-weight: 700; color: #6366F1;
+      margin: 18px 0 10px; padding-bottom: 6px;
+      border-bottom: 2px solid #EEF2FF;
+    }
+    .section-body h3:first-child { margin-top: 0; }
+    .section-body p { margin-bottom: 12px; font-size: 0.9rem; color: #475569; }
+    .section-body ul, .section-body ol {
+      margin-bottom: 14px; padding-left: 20px;
+    }
+    .section-body li {
+      margin-bottom: 6px; font-size: 0.9rem; color: #475569;
+    }
+
+    /* Table */
+    .tbl { width: 100%; border-collapse: collapse; margin-bottom: 14px; font-size: 0.85rem; }
+    .tbl th {
+      background: #F1F5F9; padding: 8px 10px; text-align: left;
+      font-size: 0.78rem; font-weight: 700; color: #64748B;
+      border-bottom: 1px solid #E2E8F0;
+    }
+    .tbl td {
+      padding: 8px 10px; border-bottom: 1px solid #F1F5F9;
+      vertical-align: top;
+    }
+    .tbl tr:last-child td { border-bottom: none; }
+
+    /* Alert boxes */
+    .alert {
+      padding: 12px 14px; border-radius: 10px; margin-bottom: 14px;
+      font-size: 0.85rem; display: flex; gap: 8px; align-items: flex-start;
+    }
+    .alert-icon { font-size: 1.1rem; flex-shrink: 0; margin-top: 1px; }
+    .alert-danger { background: #FEE2E2; color: #991B1B; border: 1px solid #FECACA; }
+    .alert-warning { background: #FEF3C7; color: #92400E; border: 1px solid #FDE68A; }
+    .alert-info { background: #DBEAFE; color: #1E40AF; border: 1px solid #BFDBFE; }
+    .alert-success { background: #D1FAE5; color: #065F46; border: 1px solid #A7F3D0; }
+
+    /* Code block */
+    .code {
+      background: #1E293B; color: #E2E8F0; padding: 14px;
+      border-radius: 10px; font-family: 'SF Mono', monospace;
+      font-size: 0.8rem; overflow-x: auto; margin-bottom: 14px;
+      line-height: 1.8;
+    }
+
+    /* Steps */
+    .steps { counter-reset: step; margin-bottom: 14px; }
+    .step {
+      display: flex; gap: 12px; margin-bottom: 12px;
+      padding: 12px; background: #F8FAFC; border-radius: 10px;
+      border: 1px solid #E2E8F0;
+    }
+    .step-num {
+      width: 28px; height: 28px; border-radius: 50%;
+      background: #6366F1; color: #fff; font-weight: 800;
+      font-size: 0.8rem; display: flex; align-items: center;
+      justify-content: center; flex-shrink: 0;
+    }
+    .step-content { flex: 1; font-size: 0.9rem; color: #334155; }
+    .step-content strong { color: #0F172A; }
+
+    /* Badge */
+    .badge {
+      display: inline-block; padding: 2px 8px; border-radius: 12px;
+      font-size: 0.72rem; font-weight: 700;
+    }
+    .badge-new { background: #D1FAE5; color: #065F46; }
+    .badge-important { background: #FEE2E2; color: #991B1B; }
+
+    /* Feature cards */
+    .features { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 14px; }
+    .feat {
+      padding: 12px; background: #F8FAFC; border-radius: 10px;
+      border: 1px solid #E2E8F0; text-align: center;
+    }
+    .feat-icon { font-size: 1.6rem; margin-bottom: 4px; }
+    .feat-name { font-size: 0.8rem; font-weight: 700; color: #334155; }
+
+    /* Back to top */
+    .back-top {
+      position: fixed; bottom: 20px; right: 20px;
+      width: 44px; height: 44px; border-radius: 50%;
+      background: #6366F1; color: #fff; font-size: 1.2rem;
+      display: flex; align-items: center; justify-content: center;
+      box-shadow: 0 4px 12px rgba(99,102,241,0.4);
+      z-index: 200; text-decoration: none;
+    }
+
+    /* Bottom link */
+    .bottom-bar {
+      text-align: center; padding: 20px; font-size: 0.85rem; color: #94A3B8;
+    }
+    .bottom-bar a {
+      display: inline-block; padding: 10px 24px; background: #6366F1;
+      color: #fff; border-radius: 10px; font-weight: 700;
+      margin-bottom: 10px; text-decoration: none;
+    }
+  </style>
+</head>
+<body>
+
+<div class="header">
+  <h1>&#x2702; 펫살롱 사용 가이드</h1>
+  <p>v2.0 | 2026년 3월</p>
+</div>
+
+<!-- 목차 -->
+<div class="toc">
+  <div class="toc-title">&#x1F4D6; 목차</div>
+  <a href="#start"><span class="num">1</span> 시작하기</a>
+  <a href="#setup"><span class="num">2</span> 초기 설정</a>
+  <a href="#daily"><span class="num">3</span> 일일 사용법</a>
+  <a href="#features"><span class="num">4</span> 주요 기능</a>
+  <a href="#backup"><span class="num">5</span> 백업 & 데이터 관리</a>
+  <a href="#caution"><span class="num">6</span> 주의사항</a>
+  <a href="#upgrade"><span class="num">7</span> 업그레이드</a>
+  <a href="#trouble"><span class="num">8</span> 문제 해결</a>
+  <a href="#tips"><span class="num">9</span> 실무 팁</a>
+  <a href="#faq"><span class="num">10</span> FAQ</a>
+</div>
+
+<!-- 1. 시작하기 -->
+<div class="section" id="start">
+  <div class="section-header">&#x1F680; 시작하기</div>
+  <div class="section-body">
+    <div class="alert alert-success">
+      <span class="alert-icon">&#x2714;</span>
+      <div>앱 주소만 기억하세요. 설치할 것 없이 바로 사용 가능합니다.</div>
+    </div>
+
+    <h3>앱 접속</h3>
+    <div class="code">https://a01090037052-lab.github.io/pet-salon/</div>
+
+    <h3>홈 화면에 추가 (필수!)</h3>
+    <div class="alert alert-warning">
+      <span class="alert-icon">&#x26A0;</span>
+      <div>홈 화면에 추가하지 않으면 Safari가 2주 후 데이터를 삭제할 수 있습니다!</div>
+    </div>
+
+    <div class="steps">
+      <div class="step">
+        <div class="step-num">1</div>
+        <div class="step-content"><strong>iPhone</strong>: Safari에서 접속 → 하단 공유 버튼<br><strong>Android</strong>: Chrome에서 접속 → 메뉴(&#x22EE;)</div>
+      </div>
+      <div class="step">
+        <div class="step-num">2</div>
+        <div class="step-content"><strong>"홈 화면에 추가"</strong> 선택</div>
+      </div>
+      <div class="step">
+        <div class="step-num">3</div>
+        <div class="step-content"><strong>"추가"</strong> 탭 → 홈 화면에 앱 아이콘 생성 완료!</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- 2. 초기 설정 -->
+<div class="section" id="setup">
+  <div class="section-header">&#x2699; 초기 설정</div>
+  <div class="section-body">
+    <p>처음 사용할 때 아래 순서대로 진행하세요.</p>
+
+    <div class="steps">
+      <div class="step">
+        <div class="step-num">1</div>
+        <div class="step-content"><strong>매장 정보 입력</strong><br>설정 > 매장명, 연락처, 주소, 재방문 알림 기준일</div>
+      </div>
+      <div class="step">
+        <div class="step-num">2</div>
+        <div class="step-content"><strong>알림 설정</strong> <span class="badge badge-new">NEW</span><br>설정 > 예약 알림 활성화 + 알림 시간 선택</div>
+      </div>
+      <div class="step">
+        <div class="step-num">3</div>
+        <div class="step-content"><strong>미용사 등록</strong><br>설정 > 미용사 관리 > 이름 추가 후 저장</div>
+      </div>
+      <div class="step">
+        <div class="step-num">4</div>
+        <div class="step-content"><strong>서비스 메뉴 등록</strong><br>서비스 메뉴 > "기본 서비스 자동 등록" 클릭</div>
+      </div>
+      <div class="step">
+        <div class="step-num">5</div>
+        <div class="step-content"><strong>첫 고객 + 반려견 등록</strong><br>고객 관리 > + 새 고객 > 저장 후 반려견 등록 + 사진 업로드</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- 3. 일일 사용법 -->
+<div class="section" id="daily">
+  <div class="section-header">&#x1F4C5; 일일 사용법</div>
+  <div class="section-body">
+
+    <h3>&#x1F305; 아침 - 하루 시작</h3>
+    <ol>
+      <li>대시보드에서 <strong>오늘 예약</strong> 확인</li>
+      <li><strong>이번 주 매출</strong> 차트 확인</li>
+      <li><strong>재방문 알림</strong> 있으면 고객에게 연락</li>
+      <li>백업 알림 있으면 백업하기</li>
+    </ol>
+
+    <h3>&#x1F4DE; 전화 예약 받을 때</h3>
+    <div class="steps">
+      <div class="step">
+        <div class="step-num">1</div>
+        <div class="step-content">예약 관리 > <strong>+ 새 예약</strong></div>
+      </div>
+      <div class="step">
+        <div class="step-num">2</div>
+        <div class="step-content">고객 이름/전화번호로 <strong>검색</strong> <span class="badge badge-new">NEW</span></div>
+      </div>
+      <div class="step">
+        <div class="step-num">3</div>
+        <div class="step-content">날짜 + 시간 + 미용사 + 서비스 선택</div>
+      </div>
+      <div class="step">
+        <div class="step-num">4</div>
+        <div class="step-content">필요 시 <strong>"미용 기록도 함께 등록"</strong> 체크 <span class="badge badge-new">NEW</span></div>
+      </div>
+      <div class="step">
+        <div class="step-num">5</div>
+        <div class="step-content"><strong>저장</strong></div>
+      </div>
+    </div>
+
+    <h3>&#x2702; 미용 완료 후</h3>
+    <p><strong>방법 A (빠름)</strong>: 예약 목록에서 <strong>기록</strong> 버튼 클릭 → 자동 입력</p>
+    <p><strong>방법 B</strong>: 미용 기록 > + 새 기록 > 고객 검색 후 작성</p>
+
+    <h3>&#x1F4B0; 마감 - 매출 확인</h3>
+    <p>미용 기록 페이지에서 <strong>오늘/주간/월간 매출 카드</strong>를 탭하면 차트로 확인 가능</p>
+  </div>
+</div>
+
+<!-- 4. 주요 기능 -->
+<div class="section" id="features">
+  <div class="section-header">&#x2B50; 주요 기능</div>
+  <div class="section-body">
+
+    <div class="features">
+      <div class="feat"><div class="feat-icon">&#x1F4C5;</div><div class="feat-name">월간 캘린더</div></div>
+      <div class="feat"><div class="feat-icon">&#x1F4F7;</div><div class="feat-name">반려견 사진</div></div>
+      <div class="feat"><div class="feat-icon">&#x1F4CA;</div><div class="feat-name">매출 시각화</div></div>
+      <div class="feat"><div class="feat-icon">&#x1F50D;</div><div class="feat-name">고객 검색</div></div>
+      <div class="feat"><div class="feat-icon">&#x1F514;</div><div class="feat-name">예약 알림</div></div>
+      <div class="feat"><div class="feat-icon">&#x1F4C2;</div><div class="feat-name">월별 아카이브</div></div>
+    </div>
+
+    <h3>&#x1F4C5; 월간 캘린더 뷰 <span class="badge badge-new">NEW</span></h3>
+    <p>예약 관리에서 <strong>"캘린더 보기"</strong> 버튼을 탭하면 한 달 전체를 한눈에 볼 수 있습니다.</p>
+    <table class="tbl">
+      <tr><th>색상</th><th>의미</th></tr>
+      <tr><td style="color:#6366F1;font-weight:700">파랑</td><td>1~2건 예약</td></tr>
+      <tr><td style="color:#EF4444;font-weight:700">빨강</td><td>3건 이상 예약</td></tr>
+      <tr><td style="color:#94A3B8">회색</td><td>예약 없음</td></tr>
+    </table>
+    <p>날짜를 탭하면 해당 날짜 예약만 필터링됩니다.</p>
+
+    <h3>&#x1F4F7; 반려견 사진 <span class="badge badge-new">NEW</span></h3>
+    <p>반려견 등록/수정에서 사진을 업로드할 수 있습니다. 카메라로 바로 촬영도 가능합니다.</p>
+    <ul>
+      <li>반려견 목록에서 사진 표시</li>
+      <li>반려견 상세에서 큰 사진 표시</li>
+      <li>사진 변경/삭제 가능</li>
+    </ul>
+
+    <h3>&#x1F4CA; 매출 시각화 <span class="badge badge-new">NEW</span></h3>
+    <p>미용 기록 페이지에서 <strong>매출 카드를 탭</strong>하면:</p>
+    <ul>
+      <li><strong>오늘 매출</strong> → 건별 상세 내역</li>
+      <li><strong>이번 주 매출</strong> → 일별 바 차트 (월~일)</li>
+      <li><strong>이번 달 매출</strong> → 일별 바 차트 (1일~말일)</li>
+    </ul>
+
+    <h3>&#x1F50D; 검색형 고객 선택 <span class="badge badge-new">NEW</span></h3>
+    <p>예약/미용기록 등록 시 고객을 <strong>이름이나 전화번호로 바로 검색</strong>할 수 있습니다. 기존 드롭다운 대신 검색 입력창이 표시됩니다.</p>
+
+    <h3>&#x1F514; 예약 알림 <span class="badge badge-new">NEW</span></h3>
+    <p>설정에서 활성화하면 예약 시간 전에 <strong>브라우저 알림</strong>이 옵니다.</p>
+    <table class="tbl">
+      <tr><th>설정</th><th>옵션</th></tr>
+      <tr><td>알림 시간</td><td>10분 / 30분 / 1시간 / 2시간 전</td></tr>
+      <tr><td>조건</td><td>앱이 열려있을 때만 작동</td></tr>
+    </table>
+
+    <h3>&#x1F4C2; 월별 아카이브 <span class="badge badge-new">NEW</span></h3>
+    <p>미용 기록 페이지 하단에서 <strong>월별 매출 요약</strong>을 확인할 수 있습니다. 각 월을 펼치면 상세 내역을 볼 수 있습니다.</p>
+
+    <h3>&#x2702; 예약 시 미용 기록 자동 등록 <span class="badge badge-new">NEW</span></h3>
+    <p>새 예약 등록 시 <strong>"미용 기록도 함께 등록"</strong>을 체크하면, 예약 저장 후 미용 기록 폼이 자동으로 열립니다.</p>
+
+    <h3>&#x1F4C8; 주간 매출 차트 <span class="badge badge-new">NEW</span></h3>
+    <p>대시보드에 이번 주 매출이 <strong>일별 막대 차트</strong>로 표시됩니다. 오늘은 초록색으로 강조됩니다.</p>
+  </div>
+</div>
+
+<!-- 5. 백업 -->
+<div class="section" id="backup">
+  <div class="section-header">&#x1F4BE; 백업 & 데이터 관리</div>
+  <div class="section-body">
+
+    <div class="alert alert-danger">
+      <span class="alert-icon">&#x1F6A8;</span>
+      <div><strong>백업은 필수입니다!</strong> 데이터는 한 번 잃으면 복구 불가능합니다.</div>
+    </div>
+
+    <h3>백업 방법</h3>
+    <div class="steps">
+      <div class="step">
+        <div class="step-num">1</div>
+        <div class="step-content"><strong>설정</strong> > <strong>데이터 백업하기</strong> 클릭</div>
+      </div>
+      <div class="step">
+        <div class="step-num">2</div>
+        <div class="step-content">JSON 파일 다운로드됨</div>
+      </div>
+      <div class="step">
+        <div class="step-num">3</div>
+        <div class="step-content"><strong>iCloud / Google Drive / 카카오톡</strong>에 보관</div>
+      </div>
+    </div>
+
+    <table class="tbl">
+      <tr><th>주기</th><th>권장도</th></tr>
+      <tr><td>매일</td><td>&#x2B50;&#x2B50;&#x2B50; 가장 안전</td></tr>
+      <tr><td>주 2회</td><td>&#x2B50;&#x2B50; 권장</td></tr>
+      <tr><td>주 1회</td><td>&#x2B50; 최소</td></tr>
+    </table>
+
+    <h3>복원 방법</h3>
+    <p>설정 > <strong>데이터 복원하기</strong> > 백업 JSON 파일 선택 > 확인</p>
+
+    <h3>폰 교체 시</h3>
+    <div class="code">현재 폰: 설정 > 백업 > 파일 저장
+    ↓ 카카오톡/에어드롭으로 전송
+새 폰: 접속 > 설정 > 복원 > 파일 선택</div>
+  </div>
+</div>
+
+<!-- 6. 주의사항 -->
+<div class="section" id="caution">
+  <div class="section-header">&#x26A0; 주의사항</div>
+  <div class="section-body">
+
+    <div class="alert alert-danger">
+      <span class="alert-icon">&#x274C;</span>
+      <div><strong>브라우저 데이터 삭제 금지!</strong><br>설정 > Safari/Chrome > 데이터 삭제 하면 모든 고객 데이터가 사라집니다.</div>
+    </div>
+
+    <div class="alert alert-danger">
+      <span class="alert-icon">&#x274C;</span>
+      <div><strong>시크릿/프라이빗 모드 사용 금지!</strong><br>창을 닫으면 데이터가 삭제됩니다.</div>
+    </div>
+
+    <div class="alert alert-warning">
+      <span class="alert-icon">&#x26A0;</span>
+      <div><strong>홈 화면에 추가 필수!</strong><br>Safari에서 2주 이상 미사용 시 데이터 삭제될 수 있음. 홈 화면 추가하면 방지됨.</div>
+    </div>
+
+    <div class="alert alert-info">
+      <span class="alert-icon">&#x1F4F1;</span>
+      <div><strong>메인 기기 하나만 사용하세요.</strong><br>PC와 모바일 데이터는 별개입니다. 모바일을 메인으로 사용하세요.</div>
+    </div>
+  </div>
+</div>
+
+<!-- 7. 업그레이드 -->
+<div class="section" id="upgrade">
+  <div class="section-header">&#x1F504; 업그레이드</div>
+  <div class="section-body">
+    <p>PC에서 코드를 수정한 후:</p>
+    <div class="code">git add index.html css/ js/ sw.js manifest.json
+git commit -m "기능 추가: 설명"
+git push</div>
+
+    <p>20~30초 후 자동 배포. 모바일에서 <strong>새로고침</strong>하면 적용됩니다.</p>
+
+    <div class="alert alert-success">
+      <span class="alert-icon">&#x2714;</span>
+      <div><strong>업그레이드해도 데이터는 안전합니다.</strong><br>코드만 업데이트되고, 고객/예약 데이터(IndexedDB)는 그대로 유지됩니다.</div>
+    </div>
+  </div>
+</div>
+
+<!-- 8. 문제 해결 -->
+<div class="section" id="trouble">
+  <div class="section-header">&#x1F527; 문제 해결</div>
+  <div class="section-body">
+
+    <h3>데이터가 사라졌어요</h3>
+    <p>백업 파일 → 설정 > 데이터 복원. 백업 없으면 복구 불가.</p>
+
+    <h3>화면이 이상해요 (업그레이드 후)</h3>
+    <p>브라우저 캐시 문제입니다. <strong>강제 새로고침</strong>하거나 캐시를 삭제하세요.</p>
+
+    <h3>알림이 안 와요</h3>
+    <table class="tbl">
+      <tr><th>확인</th><th>방법</th></tr>
+      <tr><td>알림 활성화</td><td>설정 > 예약 알림 > 토글 켜기</td></tr>
+      <tr><td>브라우저 권한</td><td>브라우저 설정에서 알림 허용</td></tr>
+      <tr><td>앱 열림 여부</td><td>앱이 열려있어야 작동</td></tr>
+    </table>
+
+    <h3>사진 업로드가 안 돼요</h3>
+    <p>파일이 너무 크면 느릴 수 있습니다. JPG, PNG, GIF, WebP를 지원합니다.</p>
+  </div>
+</div>
+
+<!-- 9. 실무 팁 -->
+<div class="section" id="tips">
+  <div class="section-header">&#x1F4A1; 실무 팁</div>
+  <div class="section-body">
+    <table class="tbl">
+      <tr><th>#</th><th>팁</th></tr>
+      <tr><td>1</td><td><strong>캘린더 활용</strong> - 예약 관리에서 한 달 예약을 한눈에 확인</td></tr>
+      <tr><td>2</td><td><strong>고객 검색</strong> - 이름 일부만 입력해도 바로 검색됨</td></tr>
+      <tr><td>3</td><td><strong>예약+기록 동시</strong> - 체크 한 번으로 기록 자동 생성</td></tr>
+      <tr><td>4</td><td><strong>반려견 사진</strong> - 미용 전후 사진 등록하면 상담에 유용</td></tr>
+      <tr><td>5</td><td><strong>매출 탭</strong> - 기록 페이지에서 카드 탭하면 차트 확인</td></tr>
+      <tr><td>6</td><td><strong>월별 아카이브</strong> - 지난 달 매출 비교 가능</td></tr>
+      <tr><td>7</td><td><strong>재방문 알림</strong> - 예약 버튼 누르면 고객 정보 자동 입력</td></tr>
+      <tr><td>8</td><td><strong>자동 가격</strong> - 서비스 체크만 하면 사이즈별 가격 합산</td></tr>
+      <tr><td>9</td><td><strong>전화번호 포맷</strong> - 숫자만 입력해도 자동 변환</td></tr>
+      <tr><td>10</td><td><strong>백업 경고</strong> - 대시보드 경고 무시하지 마세요!</td></tr>
+    </table>
+  </div>
+</div>
+
+<!-- 10. FAQ -->
+<div class="section" id="faq">
+  <div class="section-header">&#x2753; FAQ</div>
+  <div class="section-body">
+
+    <h3>홈 화면에 추가는 꼭 해야 하나요?</h3>
+    <p>네. 앱처럼 사용 가능하고, <strong>Safari 데이터 자동 삭제를 방지</strong>합니다.</p>
+
+    <h3>업그레이드하면 데이터가 날아가나요?</h3>
+    <p>아니요. 코드만 업데이트되고 <strong>데이터는 그대로</strong> 유지됩니다.</p>
+
+    <h3>다른 사람도 쓸 수 있나요?</h3>
+    <p>네. URL만 공유하면 됩니다. <strong>데이터는 각 기기에 별도 저장</strong>되어 섞이지 않습니다.</p>
+
+    <h3>알림이 앱을 닫아도 오나요?</h3>
+    <p>아니요. <strong>앱이 열려있을 때만</strong> 작동합니다.</p>
+
+    <h3>PC와 모바일 데이터가 달라요</h3>
+    <p>정상입니다. 각 기기가 독립 데이터입니다. <strong>백업/복원</strong>으로 동기화하세요.</p>
+
+    <h3>30년 후에도 사용 가능한가요?</h3>
+    <p>HTML/JS는 웹 표준이므로 <strong>브라우저가 존재하는 한 동작</strong>합니다.</p>
+
+    <h3>비용이 드나요?</h3>
+    <p><strong>완전 무료</strong>입니다. 지금도, 앞으로도.</p>
+
+  </div>
+</div>
+
+<!-- Bottom -->
+<div class="bottom-bar">
+  <a href="./">&#x2702; 펫살롱 앱 열기</a>
+  <br>
+  펫살롱 v2.0 | 애견 미용 고객 관리
+</div>
+
+<a href="#" class="back-top">&#x2191;</a>
+
+</body>
+</html>
