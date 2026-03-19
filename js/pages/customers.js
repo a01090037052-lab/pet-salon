@@ -9,9 +9,10 @@ App.pages.customers = {
   },
 
   async renderList(container) {
+    // 효율적 쿼리: 목록에서는 사진 등 큰 필드 제외
     const customers = await DB.getAll('customers');
-    const pets = await DB.getAll('pets');
-    const records = await DB.getAll('records');
+    const pets = await DB.getAllLight('pets', ['photo', 'temperament', 'healthNotes', 'preferredStyle']);
+    const records = await DB.getAllLight('records', ['photoBefore', 'photoAfter', 'memo']);
 
     // Pet count per customer
     const petCount = {};
@@ -25,7 +26,20 @@ App.pages.customers = {
       }
     });
 
-    const sorted = customers.sort((a, b) => a.name.localeCompare(b.name, 'ko'));
+    // 정렬 기준 적용
+    const sortKey = this._sortKey || 'name';
+    let sorted;
+    if (sortKey === 'lastVisit') {
+      sorted = customers.sort((a, b) => (lastVisit[b.id] || '').localeCompare(lastVisit[a.id] || ''));
+    } else if (sortKey === 'createdAt') {
+      sorted = customers.sort((a, b) => (b.createdAt || '').localeCompare(a.createdAt || ''));
+    } else if (sortKey === 'visitCount') {
+      const visitCount = {};
+      records.forEach(r => { visitCount[r.customerId] = (visitCount[r.customerId] || 0) + 1; });
+      sorted = customers.sort((a, b) => (visitCount[b.id] || 0) - (visitCount[a.id] || 0));
+    } else {
+      sorted = customers.sort((a, b) => (a.name || '').localeCompare(b.name || '', 'ko'));
+    }
 
     container.innerHTML = `
       <div class="page-header">
@@ -38,6 +52,19 @@ App.pages.customers = {
             <span class="search-icon">&#x1F50D;</span>
             <input type="text" id="customer-search" placeholder="이름, 전화번호 검색...">
           </div>
+          <select id="customer-tag-filter" style="width:auto;min-width:100px;font-size:0.85rem;padding:8px 12px">
+            <option value="">전체 분류</option>
+            <option value="vip">VIP</option>
+            <option value="new">신규</option>
+            <option value="regular">단골</option>
+            <option value="caution">주의</option>
+          </select>
+          <select id="customer-sort" style="width:auto;min-width:120px;font-size:0.85rem;padding:8px 12px">
+            <option value="name" ${sortKey === 'name' ? 'selected' : ''}>이름순</option>
+            <option value="lastVisit" ${sortKey === 'lastVisit' ? 'selected' : ''}>최근방문순</option>
+            <option value="createdAt" ${sortKey === 'createdAt' ? 'selected' : ''}>등록일순</option>
+            <option value="visitCount" ${sortKey === 'visitCount' ? 'selected' : ''}>방문횟수순</option>
+          </select>
           <button class="btn btn-primary" id="btn-add-customer">+ 새 고객</button>
         </div>
       </div>
@@ -66,15 +93,17 @@ App.pages.customers = {
                   </td></tr>
                 ` : sorted.map(c => {
                   const initial = c.name ? c.name.charAt(0) : '?';
+                  const daysAgo = lastVisit[c.id] ? App.getDaysAgo(lastVisit[c.id]) : null;
+                  const absenceBadge = daysAgo >= 60 ? '<span class="badge badge-danger" style="margin-left:6px;font-size:0.65rem">60일+</span>' : daysAgo >= 30 ? '<span class="badge badge-warning" style="margin-left:6px;font-size:0.65rem">30일+</span>' : '';
                   return `
-                  <tr data-id="${c.id}" class="clickable-row" style="cursor:pointer">
+                  <tr data-id="${c.id}" data-tags="${(c.tags || []).join(',')}" class="clickable-row" style="cursor:pointer">
                     <td>
                       <div style="display:flex;align-items:center;gap:10px">
                         <div style="width:34px;height:34px;border-radius:10px;background:linear-gradient(135deg,var(--primary-light),#E0E7FF);display:flex;align-items:center;justify-content:center;font-weight:800;color:var(--primary);font-size:0.85rem;flex-shrink:0">${App.escapeHtml(initial)}</div>
-                        <strong>${App.escapeHtml(c.name)}</strong>
+                        <strong>${App.escapeHtml(c.name)}</strong>${this.getTagBadges(c.tags)}${absenceBadge}
                       </div>
                     </td>
-                    <td><a href="tel:${App.escapeHtml(c.phone.replace(/\D/g, ''))}" style="color:var(--primary)" onclick="event.stopPropagation()">${App.formatPhone(c.phone)}</a></td>
+                    <td><a href="tel:${App.escapeHtml((c.phone || '').replace(/\D/g, ''))}" style="color:var(--primary)" onclick="event.stopPropagation()">${App.formatPhone(c.phone)}</a></td>
                     <td><span class="badge badge-info">${petCount[c.id] || 0}마리</span></td>
                     <td>${lastVisit[c.id] ? App.getRelativeTime(lastVisit[c.id]) : '-'}</td>
                     <td>${App.formatDate(c.createdAt)}</td>
@@ -87,6 +116,36 @@ App.pages.customers = {
               </tbody>
             </table>
           </div>
+
+          <!-- Mobile Card List -->
+          <div class="mobile-card-list" id="customer-card-list">
+            ${sorted.length === 0 ? `
+              <div class="empty-state">
+                <div class="empty-state-icon">&#x1F464;</div>
+                <div class="empty-state-text">등록된 고객이 없습니다</div>
+                <button class="btn btn-primary" onclick="document.getElementById('btn-add-customer').click()">첫 고객 등록하기</button>
+              </div>
+            ` : sorted.map(c => {
+              const initial = c.name ? c.name.charAt(0) : '?';
+              const daysAgoM = lastVisit[c.id] ? App.getDaysAgo(lastVisit[c.id]) : null;
+              const absenceBadgeM = daysAgoM >= 60 ? '<span class="badge badge-danger" style="margin-left:6px;font-size:0.65rem">60일+</span>' : daysAgoM >= 30 ? '<span class="badge badge-warning" style="margin-left:6px;font-size:0.65rem">30일+</span>' : '';
+              return `
+              <div class="mobile-card clickable-row" data-id="${c.id}" data-tags="${(c.tags || []).join(',')}" style="cursor:pointer">
+                <div class="mobile-card-header">
+                  <div style="display:flex;align-items:center;gap:10px">
+                    <div class="mobile-card-avatar">${App.escapeHtml(initial)}</div>
+                    <strong>${App.escapeHtml(c.name)}</strong>${this.getTagBadges(c.tags)}${absenceBadgeM}
+                  </div>
+                  <span class="badge badge-info">${petCount[c.id] || 0}마리</span>
+                </div>
+                <div class="mobile-card-body">
+                  <a href="tel:${App.escapeHtml((c.phone || '').replace(/\D/g, ''))}" class="mobile-card-phone" onclick="event.stopPropagation()">&#x1F4DE; ${App.formatPhone(c.phone)}</a>
+                  <span class="mobile-card-meta-text">${lastVisit[c.id] ? '최근 방문: ' + App.getRelativeTime(lastVisit[c.id]) : '방문 기록 없음'}</span>
+                </div>
+              </div>`;
+            }).join('')}
+          </div>
+
         </div>
       </div>
     `;
@@ -105,19 +164,25 @@ App.pages.customers = {
       .filter(a => a.status !== 'cancelled')
       .sort((a, b) => (b.date || '').localeCompare(a.date || ''));
 
-    const totalSpend = records.reduce((sum, r) => sum + (Number(r.totalPrice) || 0), 0);
+    const totalSpend = records.reduce((sum, r) => sum + App.getRecordAmount(r), 0);
     const visitCount = records.length;
+    const unpaidRecords = records.filter(r => r.paymentMethod === 'unpaid');
+    const unpaidBalance = unpaidRecords.reduce((sum, r) => sum + App.getRecordAmount(r), 0);
+    const noshowCount = appointments.filter(a => a.status === 'noshow').length;
 
     container.innerHTML = `
       <div class="back-link" onclick="App.navigate('customers')">&#x2190; 고객 목록</div>
       <div class="detail-header">
         <div class="detail-avatar">&#x1F464;</div>
         <div class="detail-info">
-          <h2>${App.escapeHtml(customer.name)}</h2>
+          <h2>${App.escapeHtml(customer.name)}${this.getTagBadges(customer.tags)}</h2>
           <div class="detail-meta">
-            <a href="tel:${App.escapeHtml(customer.phone.replace(/\D/g, ''))}" style="color:var(--primary)">&#x1F4DE; ${App.formatPhone(customer.phone)}</a>
+            <a href="tel:${App.escapeHtml((customer.phone || '').replace(/\D/g, ''))}" style="color:var(--primary)">&#x1F4DE; ${App.formatPhone(customer.phone)}</a>
+            <a href="sms:${App.escapeHtml((customer.phone || '').replace(/\D/g, ''))}" style="color:var(--primary);font-size:0.85rem" title="문자 보내기">&#x1F4AC; 문자</a>
             <span>방문 ${visitCount}회</span>
             <span>총 ${App.formatCurrency(totalSpend)}</span>
+            ${unpaidBalance > 0 ? `<span style="color:var(--danger);font-weight:700">미수금 ${App.formatCurrency(unpaidBalance)}</span>` : ''}
+            ${noshowCount > 0 ? `<span style="color:var(--danger);font-weight:700">노쇼 ${noshowCount}회</span>` : ''}
           </div>
         </div>
         <div style="margin-left:auto;display:flex;gap:8px">
@@ -134,6 +199,63 @@ App.pages.customers = {
         </div>
       </div>
 
+      ${await (async () => {
+        const rewardSettings = await DB.getSetting('rewardSettings') || { type: 'none' };
+        let rewardHtml = '';
+        if (rewardSettings.type === 'stamp') {
+          const stamps = customer.stamps || 0;
+          const goal = rewardSettings.stampGoal || 10;
+          rewardHtml = `
+            <div style="background:var(--primary-light);border:1.5px solid var(--primary-lighter);border-radius:var(--radius);padding:14px 18px;margin-bottom:16px">
+              <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+                <span style="font-weight:700;font-size:1rem">&#x2B50; 스탬프</span>
+                <span style="font-weight:800;color:var(--primary);font-size:1.2rem">${stamps} / ${goal}</span>
+              </div>
+              <div style="background:var(--border);border-radius:6px;height:10px;overflow:hidden">
+                <div style="background:var(--primary);height:100%;width:${Math.min(100, (stamps/goal)*100)}%;border-radius:6px"></div>
+              </div>
+              ${stamps >= goal ? '<div style="color:var(--success);font-weight:700;margin-top:6px;font-size:0.9rem">&#x1F389; 무료 서비스 제공 가능!</div>' : ''}
+            </div>`;
+        } else if (rewardSettings.type === 'point') {
+          const points = customer.points || 0;
+          rewardHtml = `
+            <div style="background:var(--primary-light);border:1.5px solid var(--primary-lighter);border-radius:var(--radius);padding:14px 18px;margin-bottom:16px">
+              <div style="display:flex;justify-content:space-between;align-items:center">
+                <span style="font-weight:700;font-size:1rem">&#x1F4B0; 보유 포인트</span>
+                <span style="font-weight:800;color:var(--primary);font-size:1.2rem">${points.toLocaleString()}P</span>
+              </div>
+            </div>`;
+        }
+        return rewardHtml;
+      })()}
+
+      ${visitCount > 0 ? (() => {
+        const avgSpend = Math.round(totalSpend / visitCount);
+        const firstVisit = records.length > 0 ? records[records.length - 1].date : null;
+        const lastVisitDate = records.length > 0 ? records[0].date : null;
+        let avgCycle = '-';
+        if (records.length >= 2) {
+          const dates = records.map(r => new Date(r.date)).sort((a, b) => a - b);
+          let totalDays = 0;
+          for (let i = 1; i < dates.length; i++) {
+            totalDays += Math.round((dates[i] - dates[i - 1]) / (1000 * 60 * 60 * 24));
+          }
+          avgCycle = Math.round(totalDays / (dates.length - 1)) + '일';
+        }
+        return `
+      <div class="detail-section">
+        <h3 class="detail-section-title">방문 통계</h3>
+        <div class="info-grid" style="grid-template-columns:repeat(auto-fit,minmax(140px,1fr))">
+          <div class="info-item"><label>총 방문</label><span style="font-weight:700;font-size:1.1rem">${visitCount}회</span></div>
+          <div class="info-item"><label>총 지출</label><span style="font-weight:700;font-size:1.1rem">${App.formatCurrency(totalSpend)}</span></div>
+          <div class="info-item"><label>평균 지출</label><span style="font-weight:700;font-size:1.1rem">${App.formatCurrency(avgSpend)}</span></div>
+          <div class="info-item"><label>평균 방문 주기</label><span style="font-weight:700;font-size:1.1rem">${avgCycle}</span></div>
+          <div class="info-item"><label>첫 방문</label><span>${App.formatDate(firstVisit)}</span></div>
+          <div class="info-item"><label>최근 방문</label><span>${App.formatDate(lastVisitDate)}</span></div>
+        </div>
+      </div>`;
+      })() : ''}
+
       <div class="detail-section">
         <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
           <h3 class="detail-section-title" style="margin-bottom:0;border:none;padding:0">반려견 (${pets.length}마리)</h3>
@@ -143,7 +265,10 @@ App.pages.customers = {
           ${pets.length === 0 ? '<p style="color:var(--text-muted)">등록된 반려견이 없습니다.</p>' :
             pets.map(p => `
               <div class="pet-card" onclick="App.navigate('pets/${p.id}')">
-                <div class="pet-avatar">&#x1F436;</div>
+                ${p.photo
+                  ? `<img src="${p.photo}" class="photo-viewable" data-caption="${App.escapeHtml(p.name)}" style="width:48px;height:48px;object-fit:cover;border-radius:var(--radius);flex-shrink:0" alt="${App.escapeHtml(p.name)}" onclick="event.stopPropagation()">`
+                  : `<div class="pet-avatar">&#x1F436;</div>`
+                }
                 <div>
                   <div class="pet-name">${App.escapeHtml(p.name)}</div>
                   <div class="pet-breed">${App.escapeHtml(p.breed || '견종 미입력')} | ${p.weight ? p.weight + 'kg' : '체중 미입력'}</div>
@@ -155,36 +280,62 @@ App.pages.customers = {
 
       <div class="detail-section">
         <h3 class="detail-section-title">최근 미용 기록</h3>
-        ${records.length === 0 ? '<p style="color:var(--text-muted)">미용 기록이 없습니다.</p>' : `
+        ${await (async () => {
+          if (records.length === 0) return '<p style="color:var(--text-muted)">미용 기록이 없습니다.</p>';
+          const allPets = await DB.getAll('pets');
+          const petMap = {}; allPets.forEach(p => petMap[p.id] = p);
+          const allServices = await DB.getAll('services');
+          const serviceMap = {}; allServices.forEach(s => serviceMap[s.id] = s.name);
+          return `
           <div class="table-container">
             <table class="data-table">
-              <thead><tr><th>날짜</th><th>반려견</th><th>서비스</th><th>금액</th><th>담당</th></tr></thead>
+              <thead><tr><th>날짜</th><th>반려견</th><th>서비스</th><th>금액</th><th>담당</th><th>결제</th><th>사진</th></tr></thead>
               <tbody>
-                ${(await Promise.all(records.slice(0, 10).map(async r => {
-                  const pet = await DB.get('pets', r.petId);
-                  const serviceNames = await App.getServiceNames(r.serviceIds);
-                  return `<tr>
+                ${records.slice(0, 10).map(r => {
+                  const pet = petMap[r.petId];
+                  const serviceNames = (r.serviceIds || []).map(id => serviceMap[id] || '').filter(Boolean).join(', ') || '-';
+                  const hasPhotos = r.photoBefore || r.photoAfter;
+                  return `<tr${r.paymentMethod === 'unpaid' ? ' style="background:var(--warning-light)"' : ''}>
                     <td>${App.formatDate(r.date)}</td>
                     <td>${App.escapeHtml(pet?.name || '-')}</td>
                     <td>${App.escapeHtml(serviceNames)}</td>
-                    <td><strong>${App.formatCurrency(r.totalPrice)}</strong></td>
+                    <td><strong>${App.formatCurrency(App.getRecordAmount(r))}</strong></td>
                     <td>${App.escapeHtml(r.groomer || '-')}</td>
+                    <td>${App.pages.records.getPaymentLabel(r.paymentMethod)}</td>
+                    <td>${hasPhotos ? `<button class="btn-icon" onclick="App.pages.records.showPhotosById(${r.id})" title="사진 보기">&#x1F4F7;</button>` : '-'}</td>
                   </tr>`;
-                }))).join('')}
+                }).join('')}
               </tbody>
             </table>
-          </div>
-        `}
+          </div>`;
+        })()}
       </div>
     `;
   },
+
+  _sortKey: 'name',
 
   async init(params) {
     // Add customer button
     document.getElementById('btn-add-customer')?.addEventListener('click', () => this.showForm());
 
+    // Sort
+    document.getElementById('customer-sort')?.addEventListener('change', (e) => {
+      this._sortKey = e.target.value;
+      App.handleRoute();
+    });
+
+    // Tag filter
+    document.getElementById('customer-tag-filter')?.addEventListener('change', (e) => {
+      this._tagFilter = e.target.value;
+      this.applyFilters();
+    });
+
     // Search
-    document.getElementById('customer-search')?.addEventListener('input', (e) => this.filterTable(e.target.value));
+    document.getElementById('customer-search')?.addEventListener('input', (e) => {
+      this._searchQuery = e.target.value;
+      this.applyFilters();
+    });
 
     // Row click -> detail
     document.querySelectorAll('.clickable-row').forEach(row => {
@@ -237,9 +388,24 @@ App.pages.customers = {
           <label class="form-label">연락처 <span class="required">*</span></label>
           <input type="tel" id="f-phone" value="${App.escapeHtml(customer.phone || '')}" placeholder="010-0000-0000">
         </div>
+        <div class="form-row">
+          <div class="form-group">
+            <label class="form-label">주소</label>
+            <input type="text" id="f-address" value="${App.escapeHtml(customer.address || '')}" placeholder="주소">
+          </div>
+          <div class="form-group">
+            <label class="form-label">생일</label>
+            <input type="date" id="f-birthday" value="${customer.birthday || ''}">
+          </div>
+        </div>
         <div class="form-group">
-          <label class="form-label">주소</label>
-          <input type="text" id="f-address" value="${App.escapeHtml(customer.address || '')}" placeholder="주소">
+          <label class="form-label">고객 분류</label>
+          <div style="display:flex;gap:6px;flex-wrap:wrap">
+            <label class="checkbox-label"><input type="checkbox" name="customerTag" value="vip" ${(customer.tags || []).includes('vip') ? 'checked' : ''}> VIP</label>
+            <label class="checkbox-label"><input type="checkbox" name="customerTag" value="new" ${(customer.tags || []).includes('new') ? 'checked' : ''}> 신규</label>
+            <label class="checkbox-label"><input type="checkbox" name="customerTag" value="regular" ${(customer.tags || []).includes('regular') ? 'checked' : ''}> 단골</label>
+            <label class="checkbox-label"><input type="checkbox" name="customerTag" value="caution" ${(customer.tags || []).includes('caution') ? 'checked' : ''}> 주의</label>
+          </div>
         </div>
         <div class="form-group">
           <label class="form-label">메모</label>
@@ -254,21 +420,25 @@ App.pages.customers = {
     const name = document.getElementById('f-name').value.trim();
     const phone = document.getElementById('f-phone').value.trim();
     const address = document.getElementById('f-address').value.trim();
+    const birthday = document.getElementById('f-birthday')?.value || '';
     const memo = document.getElementById('f-memo').value.trim();
 
-    if (!name) { App.showToast('이름을 입력해주세요.', 'error'); return; }
-    if (!phone) { App.showToast('연락처를 입력해주세요.', 'error'); return; }
+    const tags = [];
+    document.querySelectorAll('input[name="customerTag"]:checked').forEach(cb => tags.push(cb.value));
+
+    if (!name) { App.showToast('이름을 입력해주세요.', 'error'); App.highlightField('f-name'); return; }
+    if (!phone) { App.showToast('연락처를 입력해주세요.', 'error'); App.highlightField('f-phone'); return; }
 
     // Check phone duplicate
     const allCustomers = await DB.getAll('customers');
-    const duplicate = allCustomers.find(c => c.phone.replace(/\D/g, '') === phone.replace(/\D/g, '') && c.id !== id);
+    const duplicate = allCustomers.find(c => (c.phone || '').replace(/\D/g, '') === phone.replace(/\D/g, '') && c.id !== id);
     if (duplicate) {
       App.showToast(`이미 등록된 연락처입니다 (${duplicate.name})`, 'error');
       return;
     }
 
     try {
-      const data = { name, phone, address, memo };
+      const data = { name, phone, address, birthday, memo, tags };
 
       if (id) {
         const existing = await DB.get('customers', id);
@@ -292,7 +462,7 @@ App.pages.customers = {
     const customer = await DB.get('customers', id);
     if (!customer) return;
 
-    const confirmed = await App.confirm(`"${customer.name}" 고객을 삭제하시겠습니까?<br>관련 반려견, 예약, 미용 기록도 모두 삭제됩니다.`);
+    const confirmed = await App.confirm(`"${App.escapeHtml(customer.name)}" 고객을 삭제하시겠습니까?<br>관련 반려견, 예약, 미용 기록도 모두 삭제됩니다.`);
     if (!confirmed) return;
 
     try {
@@ -315,12 +485,37 @@ App.pages.customers = {
     }
   },
 
-  filterTable(query) {
-    const rows = document.querySelectorAll('#customer-table tbody tr');
-    const q = query.toLowerCase();
-    rows.forEach(row => {
-      const text = row.textContent.toLowerCase();
-      row.style.display = text.includes(q) ? '' : 'none';
+  getTagBadges(tags) {
+    if (!tags || tags.length === 0) return '';
+    const tagLabels = { vip: 'VIP', 'new': '신규', regular: '단골', caution: '주의' };
+    const tagColors = { vip: 'badge-warning', 'new': 'badge-info', regular: 'badge-success', caution: 'badge-danger' };
+    return tags.map(t => `<span class="badge ${tagColors[t] || 'badge-secondary'}" style="font-size:0.6rem;margin-left:4px">${tagLabels[t] || t}</span>`).join('');
+  },
+
+  _searchQuery: '',
+  _tagFilter: '',
+
+  applyFilters() {
+    const q = (this._searchQuery || '').toLowerCase();
+    const tag = this._tagFilter || '';
+
+    const matchesFilter = (el) => {
+      const textMatch = !q || el.textContent.toLowerCase().includes(q);
+      const tagMatch = !tag || (el.dataset.tags || '').split(',').includes(tag);
+      return textMatch && tagMatch;
+    };
+
+    document.querySelectorAll('#customer-table tbody tr').forEach(row => {
+      row.style.display = matchesFilter(row) ? '' : 'none';
     });
+
+    document.querySelectorAll('#customer-card-list .mobile-card').forEach(card => {
+      card.style.display = matchesFilter(card) ? '' : 'none';
+    });
+  },
+
+  filterTable(query) {
+    this._searchQuery = query;
+    this.applyFilters();
   }
 };

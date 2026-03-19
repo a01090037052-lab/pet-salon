@@ -10,8 +10,9 @@ App.pages.pets = {
 
   async renderList(container) {
     const pets = await DB.getAll('pets');
-    const customers = await DB.getAll('customers');
-    const records = await DB.getAll('records');
+    const customers = await DB.getAllLight('customers', ['memo', 'address']);
+    // 효율적 쿼리: 목록에서는 사진/메모 등 큰 필드 제외
+    const records = await DB.getAllLight('records', ['photoBefore', 'photoAfter', 'memo']);
     const customerMap = {};
     customers.forEach(c => customerMap[c.id] = c);
 
@@ -66,7 +67,7 @@ App.pages.pets = {
                   const owner = customerMap[p.customerId];
                   return `
                     <tr data-id="${p.id}" class="clickable-row" style="cursor:pointer">
-                      <td><strong>${p.photo ? `<img src="${p.photo}" class="pet-list-photo" alt="">` : '&#x1F436;'} ${App.escapeHtml(p.name)}</strong></td>
+                      <td><strong>${p.photo ? `<img src="${p.photo}" class="pet-list-photo photo-viewable" data-caption="${App.escapeHtml(p.name)}" style="width:40px;height:40px;object-fit:cover;border-radius:8px" alt="">` : '&#x1F436;'} ${App.escapeHtml(p.name)}</strong></td>
                       <td>${App.escapeHtml(p.breed || '-')}</td>
                       <td class="hide-mobile">${p.weight ? p.weight + 'kg' : '-'}</td>
                       <td class="hide-mobile">${this.getGenderLabel(p.gender)}${p.neutered ? ' (중성화)' : ''}</td>
@@ -81,6 +82,39 @@ App.pages.pets = {
               </tbody>
             </table>
           </div>
+
+          <!-- Mobile Card List -->
+          <div class="mobile-card-list" id="pet-card-list">
+            ${sorted.length === 0 ? `
+              <div class="empty-state">
+                <div class="empty-state-icon">&#x1F436;</div>
+                <div class="empty-state-text">등록된 반려견이 없습니다</div>
+              </div>
+            ` : sorted.map(p => {
+              const owner = customerMap[p.customerId];
+              const lastVisit = petLastVisit[p.id];
+              return `
+              <div class="mobile-card" data-id="${p.id}" style="cursor:pointer"
+                   data-search="${(p.name || '') + ' ' + (p.breed || '') + ' ' + (owner?.name || '')}">
+                <div class="mobile-card-header">
+                  <span style="font-weight:700;font-size:1rem">${p.photo ? `<img src="${p.photo}" class="photo-viewable" data-caption="${App.escapeHtml(p.name)}" style="width:28px;height:28px;border-radius:8px;object-fit:cover;vertical-align:middle;margin-right:4px">` : '&#x1F436;'} ${App.escapeHtml(p.name)}</span>
+                  <span style="color:var(--text-secondary);font-size:0.85rem">${App.escapeHtml(p.breed || '-')}</span>
+                </div>
+                <div class="mobile-card-body">
+                  <div class="mobile-card-meta">
+                    <span>${p.weight ? p.weight + 'kg' : '-'}</span>
+                    <span>&#x1F464; ${App.escapeHtml(owner?.name || '-')}</span>
+                    <span>${lastVisit ? App.getRelativeTime(lastVisit) : '방문 없음'}</span>
+                  </div>
+                </div>
+                <div class="mobile-card-actions">
+                  <button class="btn btn-sm btn-secondary btn-edit-pet" data-id="${p.id}">&#x270F; 수정</button>
+                  <button class="btn btn-sm btn-danger btn-delete-pet" data-id="${p.id}">&#x1F5D1; 삭제</button>
+                </div>
+              </div>`;
+            }).join('')}
+          </div>
+
         </div>
       </div>
     `;
@@ -100,8 +134,12 @@ App.pages.pets = {
     container.innerHTML = `
       <div class="back-link" onclick="App.navigate('pets')">&#x2190; 반려견 목록</div>
       <div class="detail-header">
-        <div class="detail-avatar" style="background:var(--warning-light);overflow:hidden">
-          ${pet.photo ? `<img src="${pet.photo}" alt="${App.escapeHtml(pet.name)}" style="width:100%;height:100%;object-fit:cover;border-radius:var(--radius-lg)">` : '&#x1F436;'}
+        <div class="pet-detail-photo">
+          ${pet.photo
+            ? `<img src="${pet.photo}" class="photo-viewable" data-caption="${App.escapeHtml(pet.name)}"
+                style="width:200px;height:200px;object-fit:cover;border-radius:var(--radius-lg);cursor:pointer" alt="${App.escapeHtml(pet.name)}">`
+            : `<div style="width:200px;height:200px;border-radius:var(--radius-lg);background:linear-gradient(135deg,#FEF3C7,#FDE68A);display:flex;align-items:center;justify-content:center;font-size:4rem">&#x1F436;</div>`
+          }
         </div>
         <div class="detail-info">
           <h2>${App.escapeHtml(pet.name)}</h2>
@@ -134,31 +172,52 @@ App.pages.pets = {
           <div class="info-item"><label>성격/행동</label><span>${App.escapeHtml(pet.temperament || '기록 없음')}</span></div>
           <div class="info-item"><label>건강 특이사항</label><span>${App.escapeHtml(pet.healthNotes || '기록 없음')}</span></div>
           <div class="info-item"><label>알러지</label><span>${App.escapeHtml(pet.allergies || '기록 없음')}</span></div>
+          <div class="info-item"><label>선호 미용 스타일</label><span>${App.escapeHtml(pet.preferredStyle || '기록 없음')}</span></div>
+          <div class="info-item"><label>권장 미용 주기</label><span>${pet.groomingCycle ? pet.groomingCycle + '일' : '미설정'}</span></div>
+          ${(() => {
+            if (pet.groomingCycle && records.length > 0) {
+              const lastDate = new Date(records[0].date);
+              const nextDate = new Date(lastDate);
+              nextDate.setDate(nextDate.getDate() + pet.groomingCycle);
+              const nextStr = App.formatLocalDate(nextDate);
+              const daysUntil = Math.floor((nextDate - new Date()) / (1000*60*60*24));
+              const overdue = daysUntil < 0;
+              return '<div class="info-item"><label>다음 권장 미용일</label><span style="font-weight:700;color:' + (overdue ? 'var(--danger)' : 'var(--primary)') + '">' + App.formatDate(nextStr) + (overdue ? ' (' + Math.abs(daysUntil) + '일 초과)' : ' (' + daysUntil + '일 후)') + '</span></div>';
+            }
+            return '';
+          })()}
           <div class="info-item"><label>메모</label><span>${App.escapeHtml(pet.memo || '기록 없음')}</span></div>
         </div>
       </div>
 
       <div class="detail-section">
         <h3 class="detail-section-title">미용 기록 (${records.length}건)</h3>
-        ${records.length === 0 ? '<p style="color:var(--text-muted)">미용 기록이 없습니다.</p>' : `
+        ${await (async () => {
+          if (records.length === 0) return '<p style="color:var(--text-muted)">미용 기록이 없습니다.</p>';
+          const allServices = await DB.getAll('services');
+          const serviceMap = {}; allServices.forEach(s => serviceMap[s.id] = s.name);
+          return `
           <div class="table-container">
             <table class="data-table">
-              <thead><tr><th>날짜</th><th>서비스</th><th>금액</th><th>담당</th><th>메모</th></tr></thead>
+              <thead><tr><th>날짜</th><th>서비스</th><th>금액</th><th>담당</th><th>결제</th><th>사진</th><th>메모</th></tr></thead>
               <tbody>
-                ${(await Promise.all(records.map(async r => {
-                  const serviceNames = await App.getServiceNames(r.serviceIds);
-                  return `<tr>
+                ${records.map(r => {
+                  const serviceNames = (r.serviceIds || []).map(id => serviceMap[id] || '').filter(Boolean).join(', ') || '-';
+                  const hasPhotos = r.photoBefore || r.photoAfter;
+                  return `<tr${r.paymentMethod === 'unpaid' ? ' style="background:var(--warning-light)"' : ''}>
                     <td>${App.formatDate(r.date)}</td>
                     <td>${App.escapeHtml(serviceNames)}</td>
-                    <td><strong>${App.formatCurrency(r.totalPrice)}</strong></td>
+                    <td><strong>${App.formatCurrency(App.getRecordAmount(r))}</strong></td>
                     <td>${App.escapeHtml(r.groomer || '-')}</td>
+                    <td>${App.pages.records.getPaymentLabel(r.paymentMethod)}</td>
+                    <td>${hasPhotos ? `<button class="btn-icon" onclick="App.pages.records.showPhotosById(${r.id})" title="사진 보기">&#x1F4F7;</button>` : '-'}</td>
                     <td>${App.escapeHtml(r.memo || '-')}</td>
                   </tr>`;
-                }))).join('')}
+                }).join('')}
               </tbody>
             </table>
-          </div>
-        `}
+          </div>`;
+        })()}
       </div>
     `;
   },
@@ -171,6 +230,14 @@ App.pages.pets = {
       row.addEventListener('click', (e) => {
         if (e.target.closest('.table-actions')) return;
         App.navigate('pets/' + row.dataset.id);
+      });
+    });
+
+    // Mobile card click to navigate
+    document.querySelectorAll('#pet-card-list .mobile-card').forEach(card => {
+      card.addEventListener('click', (e) => {
+        if (e.target.closest('.mobile-card-actions')) return;
+        App.navigate('pets/' + card.dataset.id);
       });
     });
 
@@ -282,6 +349,23 @@ App.pages.pets = {
             <input type="text" id="f-memo" value="${App.escapeHtml(pet.memo || '')}" placeholder="기타 메모">
           </div>
         </div>
+        <div class="form-group">
+          <label class="form-label">선호 미용 스타일</label>
+          <textarea id="f-preferredStyle" placeholder="예: 곰돌이 컷, 몸통 5mm, 다리 가위컷, 얼굴 둥글게">${App.escapeHtml(pet.preferredStyle || '')}</textarea>
+        </div>
+        <div class="form-group">
+          <label class="form-label">권장 미용 주기 (일)</label>
+          <select id="f-groomingCycle">
+            <option value="">미설정</option>
+            <option value="14" ${pet.groomingCycle == 14 ? 'selected' : ''}>2주 (14일)</option>
+            <option value="21" ${pet.groomingCycle == 21 ? 'selected' : ''}>3주 (21일)</option>
+            <option value="28" ${pet.groomingCycle == 28 ? 'selected' : ''}>4주 (28일)</option>
+            <option value="35" ${pet.groomingCycle == 35 ? 'selected' : ''}>5주 (35일)</option>
+            <option value="42" ${pet.groomingCycle == 42 ? 'selected' : ''}>6주 (42일)</option>
+            <option value="56" ${pet.groomingCycle == 56 ? 'selected' : ''}>8주 (56일)</option>
+          </select>
+          <div class="form-hint">개별 미용 주기를 설정하면 대시보드 재방문 알림에 반영됩니다</div>
+        </div>
       `,
       onSave: () => this.savePet(id, presetCustomerId)
     });
@@ -299,30 +383,33 @@ App.pages.pets = {
     document.getElementById('f-photo')?.addEventListener('change', (e) => {
       const file = e.target.files[0];
       if (!file) return;
-      if (file.size > 2 * 1024 * 1024) {
-        App.showToast('파일이 너무 큽니다 (2MB 이하 권장)', 'warning');
+      if (file.size > 10 * 1024 * 1024) {
+        App.showToast('파일이 너무 큽니다 (10MB 이하만 업로드 가능)', 'error');
+        e.target.value = '';
+        return;
       }
       const reader = new FileReader();
       reader.onload = (ev) => {
-        const dataUrl = ev.target.result;
-        document.getElementById('f-photo-data').value = dataUrl;
-        const preview = document.getElementById('f-photo-preview');
-        if (preview) preview.innerHTML = `<img src="${dataUrl}" alt="반려견 사진">`;
-        // 삭제 버튼 추가
-        if (!document.getElementById('f-photo-remove')) {
-          const removeBtn = document.createElement('button');
-          removeBtn.type = 'button';
-          removeBtn.id = 'f-photo-remove';
-          removeBtn.className = 'btn btn-sm btn-danger';
-          removeBtn.style.marginLeft = '8px';
-          removeBtn.textContent = '삭제';
-          removeBtn.addEventListener('click', () => {
-            document.getElementById('f-photo-data').value = '';
-            preview.innerHTML = '<span class="pet-photo-placeholder">&#x1F436;</span>';
-            removeBtn.remove();
-          });
-          document.getElementById('f-photo-btn')?.after(removeBtn);
-        }
+        this.resizeImage(ev.target.result, (compressedDataUrl) => {
+          document.getElementById('f-photo-data').value = compressedDataUrl;
+          const preview = document.getElementById('f-photo-preview');
+          if (preview) preview.innerHTML = `<img src="${compressedDataUrl}" alt="반려견 사진">`;
+          // 삭제 버튼 추가
+          if (!document.getElementById('f-photo-remove')) {
+            const removeBtn = document.createElement('button');
+            removeBtn.type = 'button';
+            removeBtn.id = 'f-photo-remove';
+            removeBtn.className = 'btn btn-sm btn-danger';
+            removeBtn.style.marginLeft = '8px';
+            removeBtn.textContent = '삭제';
+            removeBtn.addEventListener('click', () => {
+              document.getElementById('f-photo-data').value = '';
+              preview.innerHTML = '<span class="pet-photo-placeholder">&#x1F436;</span>';
+              removeBtn.remove();
+            });
+            document.getElementById('f-photo-btn')?.after(removeBtn);
+          }
+        });
       };
       reader.readAsDataURL(file);
     });
@@ -348,12 +435,14 @@ App.pages.pets = {
       const healthNotes = document.getElementById('f-healthNotes').value.trim();
       const allergies = document.getElementById('f-allergies').value.trim();
       const memo = document.getElementById('f-memo').value.trim();
+      const preferredStyle = document.getElementById('f-preferredStyle')?.value.trim() || '';
+      const groomingCycle = Number(document.getElementById('f-groomingCycle')?.value) || null;
       const photo = document.getElementById('f-photo-data')?.value || '';
 
-      if (!customerId) { App.showToast('보호자를 선택해주세요.', 'error'); return; }
-      if (!name) { App.showToast('이름을 입력해주세요.', 'error'); return; }
+      if (!customerId) { App.showToast('보호자를 선택해주세요.', 'error'); App.highlightField('f-customerId'); return; }
+      if (!name) { App.showToast('이름을 입력해주세요.', 'error'); App.highlightField('f-name'); return; }
 
-      const data = { customerId, name, breed, weight, gender, birthDate, neutered, size, temperament, healthNotes, allergies, memo, photo };
+      const data = { customerId, name, breed, weight, gender, birthDate, neutered, size, temperament, healthNotes, allergies, memo, preferredStyle, groomingCycle, photo };
 
       if (id) {
         const existing = await DB.get('pets', id);
@@ -378,7 +467,7 @@ App.pages.pets = {
       const pet = await DB.get('pets', id);
       if (!pet) return;
 
-      const confirmed = await App.confirm(`"${pet.name}"을(를) 삭제하시겠습니까?<br>관련 예약과 미용 기록도 모두 삭제됩니다.`);
+      const confirmed = await App.confirm(`"${App.escapeHtml(pet.name)}"을(를) 삭제하시겠습니까?<br>관련 예약과 미용 기록도 모두 삭제됩니다.`);
       if (!confirmed) return;
 
       const appointments = await DB.getByIndex('appointments', 'petId', id);
@@ -425,11 +514,40 @@ App.pages.pets = {
   },
 
   filterTable(query) {
-    const rows = document.querySelectorAll('#pet-table tbody tr');
     const q = query.toLowerCase();
+    // Filter table rows
+    const rows = document.querySelectorAll('#pet-table tbody tr');
     rows.forEach(row => {
       const text = row.textContent.toLowerCase();
       row.style.display = text.includes(q) ? '' : 'none';
     });
+    // Filter mobile cards
+    document.querySelectorAll('#pet-card-list .mobile-card').forEach(card => {
+      const search = (card.dataset.search || '').toLowerCase();
+      card.style.display = search.includes(q) ? '' : 'none';
+    });
+  },
+
+  resizeImage(dataUrl, callback) {
+    const img = new Image();
+    img.onload = () => {
+      const MAX = 800;
+      let { width, height } = img;
+      if (width > MAX || height > MAX) {
+        if (width >= height) {
+          height = Math.round((height * MAX) / width);
+          width = MAX;
+        } else {
+          width = Math.round((width * MAX) / height);
+          height = MAX;
+        }
+      }
+      const canvas = document.createElement('canvas');
+      canvas.width = width;
+      canvas.height = height;
+      canvas.getContext('2d').drawImage(img, 0, 0, width, height);
+      callback(canvas.toDataURL('image/jpeg', 0.7));
+    };
+    img.src = dataUrl;
   }
 };

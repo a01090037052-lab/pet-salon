@@ -28,6 +28,7 @@ App.pages.appointments = {
         </div>
         <div class="page-actions">
           <button class="btn btn-secondary" id="btn-toggle-calendar">&#x1F4C5; 캘린더 뷰</button>
+          <button class="btn btn-secondary" id="btn-toggle-timetable">&#x1F552; 타임테이블</button>
           <button class="btn btn-primary" id="btn-add-appointment">+ 새 예약</button>
         </div>
       </div>
@@ -47,6 +48,23 @@ App.pages.appointments = {
           <div class="calendar-day-label">금</div>
           <div class="calendar-day-label">토</div>
           <div class="calendar-day-label">일</div>
+        </div>
+      </div>
+
+      <!-- 타임테이블 뷰 -->
+      <div id="timetable-container" style="display:none;margin-bottom:20px">
+        <div class="card">
+          <div class="card-header">
+            <div style="display:flex;align-items:center;gap:10px">
+              <button class="btn btn-sm btn-secondary" id="tt-prev">&#x25C0;</button>
+              <strong id="tt-date">${today}</strong>
+              <button class="btn btn-sm btn-secondary" id="tt-next">&#x25B6;</button>
+            </div>
+            <span class="card-title" style="margin-left:auto">&#x1F552; 미용사별 타임테이블</span>
+          </div>
+          <div class="card-body" style="overflow-x:auto;padding:0">
+            <div id="timetable-grid"></div>
+          </div>
         </div>
       </div>
 
@@ -85,6 +103,7 @@ App.pages.appointments = {
                   <th>반려견</th>
                   <th class="hide-mobile">서비스</th>
                   <th class="hide-mobile">담당</th>
+                  <th class="hide-mobile">메모</th>
                   <th>상태</th>
                   <th>관리</th>
                 </tr>
@@ -113,11 +132,12 @@ App.pages.appointments = {
                         ${isToday ? '<span class="badge badge-info" style="margin-left:4px">오늘</span>' : ''}
                         ${isPast && a.status !== 'completed' && a.status !== 'cancelled' ? '<span class="badge badge-danger" style="margin-left:4px">지남</span>' : ''}
                       </td>
-                      <td>${a.time || '-'}</td>
-                      <td><a href="#customers/${a.customerId}" style="color:var(--primary)" onclick="event.stopPropagation()">${App.escapeHtml(customer?.name || '-')}</a></td>
+                      <td>${a.time || '-'}${a.duration && a.duration !== 60 ? `<div style="font-size:0.7rem;color:var(--text-muted)">${a.duration}분</div>` : ''}</td>
+                      <td><a href="#customers/${a.customerId}" style="color:var(--primary)" onclick="event.stopPropagation()">${App.escapeHtml(customer?.name || '-')}</a>${customer?.phone ? ` <a href="sms:${App.escapeHtml((customer.phone || '').replace(/\D/g, ''))}" onclick="event.stopPropagation()" title="문자 보내기" style="color:var(--text-muted);font-size:0.8rem">&#x1F4AC;</a>` : ''}</td>
                       <td><a href="#pets/${a.petId}" style="color:var(--primary)" onclick="event.stopPropagation()">${App.escapeHtml(pet?.name || '-')}</a></td>
                       <td class="hide-mobile"><span style="font-size:0.85rem">${App.escapeHtml(serviceNames)}</span></td>
                       <td class="hide-mobile">${App.escapeHtml(a.groomer || '-')}</td>
+                      <td class="hide-mobile" style="max-width:120px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${App.escapeHtml(a.memo || '')}">${App.escapeHtml(a.memo || '-')}</td>
                       <td>
                         <select class="status-select" data-id="${a.id}" style="padding:4px 8px;font-size:0.8rem;width:auto;min-width:70px">
                           <option value="pending" ${a.status === 'pending' ? 'selected' : ''}>대기</option>
@@ -137,6 +157,54 @@ App.pages.appointments = {
               </tbody>
             </table>
           </div>
+
+          <!-- Mobile Card List -->
+          <div class="mobile-card-list" id="appt-card-list">
+            ${sorted.length === 0 ? `
+              <div class="empty-state">
+                <div class="empty-state-icon">&#x1F4C5;</div>
+                <div class="empty-state-text">등록된 예약이 없습니다</div>
+                <button class="btn btn-primary" onclick="App.pages.appointments.showForm()">+ 첫 예약 등록하기</button>
+              </div>
+            ` : sorted.map(a => {
+              const customer = customerMap[a.customerId];
+              const pet = petMap[a.petId];
+              const isToday = a.date === today;
+              const isPast = a.date < today;
+              const statusLabels = { pending: '대기', confirmed: '확정', completed: '완료', cancelled: '취소', noshow: '노쇼' };
+              const statusClass = { pending: 'badge-warning', confirmed: 'badge-info', completed: 'badge-success', cancelled: 'badge-secondary', noshow: 'badge-danger' };
+              return `
+              <div class="mobile-card" data-id="${a.id}" data-status="${a.status || 'pending'}" data-date="${a.date}"
+                   data-search="${(customer?.name || '') + ' ' + (customer?.phone || '') + ' ' + (pet?.name || '')}"
+                   style="${isToday ? 'border-left:3px solid var(--primary)' : ''}${isPast && a.status !== 'completed' && a.status !== 'cancelled' ? 'border-left:3px solid var(--danger)' : ''}">
+                <div class="mobile-card-header">
+                  <div class="mobile-card-date">
+                    <strong>${App.formatDate(a.date)}</strong> ${a.time || ''}${a.duration && a.duration !== 60 ? ` <span style="font-size:0.75rem;color:var(--text-muted)">(${a.duration}분)</span>` : ''}
+                    ${isToday ? '<span class="badge badge-info">오늘</span>' : ''}
+                    ${isPast && a.status !== 'completed' && a.status !== 'cancelled' ? '<span class="badge badge-danger">지남</span>' : ''}
+                  </div>
+                  <span class="badge ${statusClass[a.status] || 'badge-secondary'}">${statusLabels[a.status] || a.status}</span>
+                </div>
+                <div class="mobile-card-body">
+                  <span class="mobile-card-info">&#x1F464; ${App.escapeHtml(customer?.name || '-')} &middot; &#x1F436; ${App.escapeHtml(pet?.name || '-')}</span>
+                  ${a.memo ? `<div style="font-size:0.8rem;color:var(--text-secondary);margin-top:4px">&#x1F4DD; ${App.escapeHtml(a.memo.length > 40 ? a.memo.slice(0, 40) + '...' : a.memo)}</div>` : ''}
+                </div>
+                <div class="mobile-card-actions">
+                  <select class="status-select" data-id="${a.id}" style="flex:1;padding:8px 10px;font-size:0.8rem;min-width:70px;min-height:48px">
+                    <option value="pending" ${a.status === 'pending' ? 'selected' : ''}>대기</option>
+                    <option value="confirmed" ${a.status === 'confirmed' ? 'selected' : ''}>확정</option>
+                    <option value="completed" ${a.status === 'completed' ? 'selected' : ''}>완료</option>
+                    <option value="cancelled" ${a.status === 'cancelled' ? 'selected' : ''}>취소</option>
+                    <option value="noshow" ${a.status === 'noshow' ? 'selected' : ''}>노쇼</option>
+                  </select>
+                  <button class="btn btn-sm btn-secondary btn-edit-appt" data-id="${a.id}">&#x270F; 수정</button>
+                  <button class="btn btn-sm btn-success btn-complete-appt" data-id="${a.id}">&#x2714; 기록</button>
+                  <button class="btn btn-sm btn-danger btn-delete-appt" data-id="${a.id}">&#x1F5D1; 삭제</button>
+                </div>
+              </div>`;
+            }).join('')}
+          </div>
+
         </div>
       </div>
     `;
@@ -146,12 +214,24 @@ App.pages.appointments = {
   _calYear: new Date().getFullYear(),
   _calMonth: new Date().getMonth(),
 
-  renderCalendar() {
+  _closedDays: null,
+
+  async renderCalendar() {
     const container = document.getElementById('calendar-container');
     if (!container || container.style.display === 'none') return;
 
+    // 효율적 쿼리: 현재 달 ± 1개월 데이터만 로드
     const year = this._calYear;
     const month = this._calMonth;
+    const monthStart = `${year}-${String(month + 1).padStart(2, '0')}-01`;
+    const monthEnd = `${year}-${String(month + 1).padStart(2, '0')}-31`;
+    this._appointments = await DB.getByDateRange('appointments', 'date', monthStart, monthEnd);
+
+    // 휴무일 가져오기
+    if (this._closedDays === null) {
+      this._closedDays = await DB.getSetting('closedDays') || [];
+    }
+
     const title = document.getElementById('cal-title');
     if (title) title.textContent = `${year}년 ${month + 1}월`;
 
@@ -193,18 +273,21 @@ App.pages.appointments = {
       cellsHtml += '<div class="calendar-cell empty"></div>';
     }
     // 날짜 셀
+    const closedDays = this._closedDays || [];
     for (let d = 1; d <= daysInMonth; d++) {
       const dateStr = `${year}-${String(month + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
       const count = dateCounts[dateStr] || 0;
       const isToday = dateStr === today;
+      const cellDate = new Date(year, month, d);
+      const isClosed = closedDays.includes(cellDate.getDay());
       let colorClass = 'cal-gray';
       if (count >= 3) colorClass = 'cal-red';
       else if (count >= 1) colorClass = 'cal-blue';
 
       cellsHtml += `
-        <div class="calendar-cell ${isToday ? 'today' : ''}" data-date="${dateStr}">
+        <div class="calendar-cell ${isToday ? 'today' : ''} ${isClosed ? 'closed' : ''}" data-date="${dateStr}" style="${isClosed ? 'background:var(--bg);opacity:0.6' : ''}">
           <span class="cal-day-num">${d}</span>
-          <button class="cal-count-btn ${colorClass}" title="${dateStr}: ${count}건">${count}</button>
+          ${isClosed ? '<span style="font-size:0.6rem;color:var(--danger);font-weight:700">휴무</span>' : `<button class="cal-count-btn ${colorClass}" title="${dateStr}: ${count}건">${count}</button>`}
         </div>`;
     }
 
@@ -244,9 +327,36 @@ App.pages.appointments = {
         if (isHidden) {
           this._calYear = new Date().getFullYear();
           this._calMonth = new Date().getMonth();
+          this._closedDays = null;
           this.renderCalendar();
         }
       }
+    });
+
+    // 타임테이블 토글
+    this._ttDate = App.getToday();
+    document.getElementById('btn-toggle-timetable')?.addEventListener('click', () => {
+      const tt = document.getElementById('timetable-container');
+      if (tt) {
+        const isHidden = tt.style.display === 'none';
+        tt.style.display = isHidden ? 'block' : 'none';
+        if (isHidden) {
+          this._ttDate = App.getToday();
+          this.renderTimetable();
+        }
+      }
+    });
+    document.getElementById('tt-prev')?.addEventListener('click', () => {
+      const d = new Date(this._ttDate);
+      d.setDate(d.getDate() - 1);
+      this._ttDate = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+      this.renderTimetable();
+    });
+    document.getElementById('tt-next')?.addEventListener('click', () => {
+      const d = new Date(this._ttDate);
+      d.setDate(d.getDate() + 1);
+      this._ttDate = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+      this.renderTimetable();
     });
 
     // 캘린더 이전/다음 버튼
@@ -261,8 +371,10 @@ App.pages.appointments = {
       this.renderCalendar();
     });
 
-    // 예약 데이터 캐시 (캘린더용)
-    this._appointments = await DB.getAll('appointments');
+    // 예약 데이터 캐시 (캘린더용) - 현재 월 기준으로 로드
+    const calStart = `${this._calYear}-${String(this._calMonth + 1).padStart(2, '0')}-01`;
+    const calEnd = `${this._calYear}-${String(this._calMonth + 1).padStart(2, '0')}-31`;
+    this._appointments = await DB.getByDateRange('appointments', 'date', calStart, calEnd);
 
     // Quick date filters
     document.querySelectorAll('.quick-filter-btn').forEach(btn => {
@@ -278,7 +390,7 @@ App.pages.appointments = {
           dateInput.value = today;
         } else if (filter === 'tomorrow') {
           const d = new Date(); d.setDate(d.getDate() + 1);
-          dateInput.value = App.formatDate(d.toISOString());
+          dateInput.value = App.formatLocalDate(d);
         } else if (filter === 'week') {
           dateInput.value = '';
           // Week filter handled in applyFilters
@@ -303,9 +415,25 @@ App.pages.appointments = {
     document.querySelectorAll('.status-select').forEach(sel => {
       sel.addEventListener('change', async (e) => {
         const id = Number(e.target.dataset.id);
+        const newStatus = e.target.value;
         const appt = await DB.get('appointments', id);
-        appt.status = e.target.value;
+        appt.status = newStatus;
         await DB.update('appointments', appt);
+        // Update row data-status for filtering
+        const row = e.target.closest('tr');
+        if (row) row.dataset.status = newStatus;
+        // Update corresponding mobile card data-status and badge
+        const card = document.querySelector(`#appt-card-list .mobile-card[data-id="${id}"]`);
+        if (card) {
+          card.dataset.status = newStatus;
+          const statusLabels = { pending: '대기', confirmed: '확정', completed: '완료', cancelled: '취소', noshow: '노쇼' };
+          const statusClasses = { pending: 'badge-warning', confirmed: 'badge-info', completed: 'badge-success', cancelled: 'badge-secondary', noshow: 'badge-danger' };
+          const badge = card.querySelector('.mobile-card-header .badge');
+          if (badge) {
+            badge.textContent = statusLabels[newStatus] || newStatus;
+            badge.className = 'badge ' + (statusClasses[newStatus] || 'badge-secondary');
+          }
+        }
         App.showToast('예약 상태가 변경되었습니다.');
       });
     });
@@ -326,12 +454,97 @@ App.pages.appointments = {
     });
   },
 
+  async renderTimetable() {
+    const grid = document.getElementById('timetable-grid');
+    const dateLabel = document.getElementById('tt-date');
+    if (!grid) return;
+    if (dateLabel) dateLabel.textContent = this._ttDate;
+
+    // 효율적 쿼리: 해당 날짜의 예약만 인덱스로 로드
+    const dayApptsRaw = await DB.getByIndex('appointments', 'date', this._ttDate);
+
+    const dayAppts = dayApptsRaw.filter(a => a.status !== 'cancelled');
+    const [customers, pets] = await Promise.all([DB.getAll('customers'), DB.getAll('pets')]);
+    const customerMap = {}; customers.forEach(c => customerMap[c.id] = c);
+    const petMap = {}; pets.forEach(p => petMap[p.id] = p);
+
+    // 미용사 목록 수집
+    const groomers = await DB.getSetting('groomers') || [];
+    const activeGroomers = groomers.length > 0 ? groomers : [...new Set(dayAppts.map(a => a.groomer || '미지정').filter(Boolean))];
+    if (activeGroomers.length === 0) activeGroomers.push('미지정');
+
+    // 시간 슬롯 (9:00 ~ 19:00, 30분 단위)
+    const slots = [];
+    for (let h = 9; h <= 19; h++) {
+      slots.push(`${String(h).padStart(2, '0')}:00`);
+      if (h < 19) slots.push(`${String(h).padStart(2, '0')}:30`);
+    }
+
+    // 예약을 시간+미용사로 매핑 (duration-aware)
+    const toMin = (t) => { const [h, m] = t.split(':').map(Number); return h * 60 + m; };
+    // Build a set of occupied cells: key = "slot_groomer" -> appointment (for spanning)
+    const cellMap = {}; // key -> { appt, isStart }
+    dayAppts.forEach(a => {
+      const time = a.time || '';
+      if (!time) return;
+      const groomer = a.groomer || '미지정';
+      const dur = a.duration || 60;
+      const startMin = toMin(time);
+      const slotCount = Math.ceil(dur / 30);
+      for (let i = 0; i < slotCount; i++) {
+        const slotMin = startMin + i * 30;
+        const slotH = String(Math.floor(slotMin / 60)).padStart(2, '0');
+        const slotM = String(slotMin % 60).padStart(2, '0');
+        const slotKey = `${slotH}:${slotM}_${groomer}`;
+        cellMap[slotKey] = { appt: a, isStart: i === 0, slotCount };
+      }
+    });
+
+    const colCount = activeGroomers.length + 1;
+    let html = `<div style="display:grid;grid-template-columns:60px repeat(${activeGroomers.length}, 1fr);min-width:${colCount * 100}px">`;
+    // 헤더
+    html += `<div style="padding:8px;font-weight:700;background:var(--bg);border-bottom:2px solid var(--border);text-align:center;font-size:0.8rem">시간</div>`;
+    activeGroomers.forEach(g => {
+      html += `<div style="padding:8px;font-weight:700;background:var(--bg);border-bottom:2px solid var(--border);text-align:center;font-size:0.85rem">${App.escapeHtml(g)}</div>`;
+    });
+
+    // 시간 슬롯
+    slots.forEach(slot => {
+      html += `<div style="padding:6px 4px;font-size:0.75rem;color:var(--text-muted);border-bottom:1px solid var(--border);text-align:center;background:var(--bg)">${slot}</div>`;
+      activeGroomers.forEach(g => {
+        const key = `${slot}_${g}`;
+        const cell = cellMap[key];
+        if (cell && cell.isStart) {
+          const a = cell.appt;
+          const customer = customerMap[a.customerId];
+          const pet = petMap[a.petId];
+          const statusColors = { pending: 'var(--warning)', confirmed: 'var(--primary)', completed: 'var(--success)', noshow: 'var(--danger)' };
+          const durLabel = (a.duration || 60) >= 60 ? Math.floor((a.duration || 60) / 60) + '시간' + ((a.duration || 60) % 60 ? ' ' + (a.duration || 60) % 60 + '분' : '') : (a.duration || 60) + '분';
+          html += `<div style="padding:4px 6px;border-bottom:1px solid var(--border);background:${statusColors[a.status] || 'var(--primary)'}15;border-left:3px solid ${statusColors[a.status] || 'var(--primary)'}">
+            <div style="font-size:0.78rem;font-weight:700">${App.escapeHtml(customer?.name || '-')}</div>
+            <div style="font-size:0.7rem;color:var(--text-secondary)">${App.escapeHtml(pet?.name || '-')}</div>
+            <div style="font-size:0.65rem;color:var(--text-muted)">${durLabel}</div>
+          </div>`;
+        } else if (cell && !cell.isStart) {
+          const a = cell.appt;
+          const statusColors = { pending: 'var(--warning)', confirmed: 'var(--primary)', completed: 'var(--success)', noshow: 'var(--danger)' };
+          html += `<div style="padding:0;border-bottom:1px solid var(--border);background:${statusColors[a.status] || 'var(--primary)'}15;border-left:3px solid ${statusColors[a.status] || 'var(--primary)'}"></div>`;
+        } else {
+          html += `<div style="padding:4px;border-bottom:1px solid var(--border)"></div>`;
+        }
+      });
+    });
+
+    html += '</div>';
+    grid.innerHTML = html;
+  },
+
   applyFilters(special) {
     const search = (document.getElementById('appt-search')?.value || '').toLowerCase();
     const status = document.getElementById('filter-status')?.value || '';
     const date = document.getElementById('filter-date')?.value || '';
     const today = App.getToday();
-    const weekEnd = (() => { const d = new Date(); d.setDate(d.getDate() + 7); return App.formatDate(d.toISOString()); })();
+    const weekEnd = (() => { const d = new Date(); d.setDate(d.getDate() + 7); return App.formatLocalDate(d); })();
 
     document.querySelectorAll('#appt-tbody tr').forEach(row => {
       if (!row.dataset.id) return;
@@ -345,10 +558,31 @@ App.pages.appointments = {
       }
       row.style.display = (matchSearch && matchStatus && matchDate) ? '' : 'none';
     });
+
+    // Also filter mobile cards
+    document.querySelectorAll('#appt-card-list .mobile-card').forEach(card => {
+      if (!card.dataset.id) return;
+      const matchSearch = !search || (card.dataset.search || '').toLowerCase().includes(search);
+      const matchStatus = !status || card.dataset.status === status;
+      let matchDate = true;
+      if (special === 'week') {
+        matchDate = card.dataset.date >= today && card.dataset.date <= weekEnd;
+      } else if (date) {
+        matchDate = card.dataset.date === date;
+      }
+      card.style.display = (matchSearch && matchStatus && matchDate) ? '' : 'none';
+    });
   },
 
-  async showForm(id, preCustomerId, prePetId) {
-    let appt = id ? await DB.get('appointments', id) : { date: App.getToday(), status: 'pending', customerId: preCustomerId || null, petId: prePetId || null };
+  async showForm(id, preCustomerId, prefill) {
+    let appt = id ? await DB.get('appointments', id) : { date: App.getToday(), status: 'pending', customerId: preCustomerId || null, petId: (prefill && prefill.petId) || null };
+    // Apply prefill data from records page (F8)
+    if (prefill && !id) {
+      if (prefill.date) appt.date = prefill.date;
+      if (prefill.groomer) appt.groomer = prefill.groomer;
+      if (prefill.serviceIds) appt.serviceIds = prefill.serviceIds;
+      if (prefill.petId) appt.petId = prefill.petId;
+    }
     const petOptions = await App.getPetOptions(appt.customerId, appt.petId);
     const serviceCheckboxes = await App.getServiceCheckboxes(appt.serviceIds || []);
 
@@ -360,6 +594,7 @@ App.pages.appointments = {
           <div class="form-group">
             <label class="form-label">고객 <span class="required">*</span></label>
             <div id="appt-customer-select"></div>
+            <div id="noshow-warning"></div>
           </div>
           <div class="form-group">
             <label class="form-label">반려견 <span class="required">*</span></label>
@@ -369,7 +604,7 @@ App.pages.appointments = {
             </select>
           </div>
         </div>
-        <div class="form-row three">
+        <div class="form-row" style="grid-template-columns:1fr 1fr 1fr 1fr">
           <div class="form-group">
             <label class="form-label">날짜 <span class="required">*</span></label>
             <input type="date" id="f-date" value="${appt.date || ''}">
@@ -379,13 +614,23 @@ App.pages.appointments = {
             <input type="time" id="f-time" value="${appt.time || ''}">
           </div>
           <div class="form-group">
+            <label class="form-label">소요시간</label>
+            <select id="f-duration">
+              <option value="30" ${(appt.duration || 60) === 30 ? 'selected' : ''}>30분</option>
+              <option value="60" ${(appt.duration || 60) === 60 ? 'selected' : ''}>1시간</option>
+              <option value="90" ${appt.duration === 90 ? 'selected' : ''}>1시간 30분</option>
+              <option value="120" ${appt.duration === 120 ? 'selected' : ''}>2시간</option>
+              <option value="150" ${appt.duration === 150 ? 'selected' : ''}>2시간 30분</option>
+              <option value="180" ${appt.duration === 180 ? 'selected' : ''}>3시간</option>
+            </select>
+          </div>
+          <div class="form-group">
             <label class="form-label">담당 미용사</label>
             <select id="f-groomer">${await App.getGroomerOptions(appt.groomer)}</select>
           </div>
         </div>
         <div class="form-group">
-          <label class="form-label">서비스</label>
-          <div id="f-services" style="display:flex;flex-direction:column;gap:6px">
+          <div id="f-services">
             ${serviceCheckboxes}
           </div>
         </div>
@@ -415,10 +660,76 @@ App.pages.appointments = {
       onSave: () => this.saveAppointment(id)
     });
 
+    // 서비스 칩 토글 (checked 클래스)
+    document.querySelectorAll('.service-chip input[type="checkbox"]').forEach(cb => {
+      cb.addEventListener('change', () => {
+        const chip = cb.closest('.service-chip');
+        if (chip) chip.classList.toggle('checked', cb.checked);
+      });
+    });
+
+    // 전체 선택/해제 토글
+    document.getElementById('btn-toggle-services')?.addEventListener('click', (e) => {
+      e.preventDefault();
+      const checkboxes = document.querySelectorAll('input[name="serviceIds"]');
+      const allChecked = Array.from(checkboxes).every(cb => cb.checked);
+      checkboxes.forEach(cb => {
+        cb.checked = !allChecked;
+        const chip = cb.closest('.service-chip');
+        if (chip) chip.classList.toggle('checked', cb.checked);
+      });
+      const btn = document.getElementById('btn-toggle-services');
+      if (btn) btn.textContent = allChecked ? '전체 선택' : '전체 해제';
+    });
+
     // 검색 가능한 고객 선택 렌더링
     await App.renderCustomerSelect('appt-customer-select', appt.customerId, async (cid) => {
       document.getElementById('f-petId').innerHTML = '<option value="">반려견 선택</option>' + await App.getPetOptions(cid);
+      // 노쇼 이력 경고
+      const warn = document.getElementById('noshow-warning');
+      if (warn) {
+        warn.innerHTML = '';
+        if (cid) {
+          const allAppts = await DB.getAll('appointments');
+          const noshowCount = allAppts.filter(a => a.customerId === Number(cid) && a.status === 'noshow').length;
+          if (noshowCount > 0) {
+            warn.innerHTML = `<div style="color:var(--danger);font-size:0.85rem;margin-top:4px;font-weight:600">&#x26A0; 이 고객은 노쇼 ${noshowCount}회 이력이 있습니다</div>`;
+          }
+        }
+      }
     });
+
+    // 휴무일 경고
+    const checkClosedDay = async () => {
+      const dateVal = document.getElementById('f-date').value;
+      if (!dateVal) return;
+      const cd = await DB.getSetting('closedDays') || [];
+      const dow = new Date(dateVal).getDay();
+      const dayNames = ['일', '월', '화', '수', '목', '금', '토'];
+      let existingWarn = document.getElementById('closed-day-warning');
+      if (!existingWarn) {
+        existingWarn = document.createElement('div');
+        existingWarn.id = 'closed-day-warning';
+        document.getElementById('f-date')?.parentElement?.appendChild(existingWarn);
+      }
+      if (cd.includes(dow)) {
+        existingWarn.innerHTML = `<div style="color:var(--danger);font-size:0.85rem;margin-top:4px;font-weight:600">&#x26A0; ${dayNames[dow]}요일은 휴무일입니다</div>`;
+      } else {
+        existingWarn.innerHTML = '';
+      }
+    };
+    document.getElementById('f-date')?.addEventListener('change', checkClosedDay);
+    checkClosedDay();
+
+    // 기존 고객 선택 시 노쇼 이력 즉시 표시
+    if (appt.customerId) {
+      const allAppts = await DB.getAll('appointments');
+      const noshowCount = allAppts.filter(a => a.customerId === Number(appt.customerId) && a.status === 'noshow').length;
+      if (noshowCount > 0) {
+        const warn = document.getElementById('noshow-warning');
+        if (warn) warn.innerHTML = `<div style="color:var(--danger);font-size:0.85rem;margin-top:4px;font-weight:600">&#x26A0; 이 고객은 노쇼 ${noshowCount}회 이력이 있습니다</div>`;
+      }
+    }
   },
 
   async saveAppointment(id) {
@@ -426,6 +737,7 @@ App.pages.appointments = {
     const petId = Number(document.getElementById('f-petId').value);
     const date = document.getElementById('f-date').value;
     const time = document.getElementById('f-time').value;
+    const duration = Number(document.getElementById('f-duration')?.value) || 60;
     const groomer = document.getElementById('f-groomer').value.trim();
     const status = document.getElementById('f-status').value;
     const memo = document.getElementById('f-memo').value.trim();
@@ -435,20 +747,27 @@ App.pages.appointments = {
       serviceIds.push(Number(cb.value));
     });
 
-    if (!customerId) { App.showToast('고객을 선택해주세요.', 'error'); return; }
-    if (!petId) { App.showToast('반려견을 선택해주세요.', 'error'); return; }
-    if (!date) { App.showToast('날짜를 입력해주세요.', 'error'); return; }
+    if (!customerId) { App.showToast('고객을 선택해주세요.', 'error'); App.highlightField('appt-customer-select-input'); return; }
+    if (!petId) { App.showToast('반려견을 선택해주세요.', 'error'); App.highlightField('f-petId'); return; }
+    if (!date) { App.showToast('날짜를 입력해주세요.', 'error'); App.highlightField('f-date'); return; }
 
-    // Check time conflict
+    // Check time conflict (duration-aware)
     if (time) {
       const allAppts = await DB.getAll('appointments');
-      const conflict = allAppts.find(a =>
-        a.id !== id && a.date === date && a.time === time && a.status !== 'cancelled' &&
-        (a.groomer === groomer || a.petId === petId)
-      );
+      const toMin = (t) => { const [h, m] = t.split(':').map(Number); return h * 60 + m; };
+      const newStart = toMin(time);
+      const newEnd = newStart + duration;
+      const conflict = allAppts.find(a => {
+        if (a.id === id || a.date !== date || !a.time || a.status === 'cancelled') return false;
+        const isSameResource = (groomer && a.groomer && a.groomer === groomer) || a.petId === petId;
+        if (!isSameResource) return false;
+        const aStart = toMin(a.time);
+        const aEnd = aStart + (a.duration || 60);
+        return newStart < aEnd && newEnd > aStart;
+      });
       if (conflict) {
         const conflictPet = await DB.get('pets', conflict.petId);
-        App.showToast(`같은 시간에 이미 예약이 있습니다 (${conflictPet?.name || '알 수 없음'})`, 'error');
+        App.showToast(`시간이 겹치는 예약이 있습니다 (${conflictPet?.name || '알 수 없음'}, ${conflict.time})`, 'error');
         return;
       }
     }
@@ -457,7 +776,7 @@ App.pages.appointments = {
     const autoRecord = !id && document.getElementById('f-autoRecord')?.checked;
 
     try {
-      const data = { customerId, petId, date, time, groomer, status, serviceIds, memo };
+      const data = { customerId, petId, date, time, duration, groomer, status, serviceIds, memo };
 
       if (id) {
         const existing = await DB.get('appointments', id);
@@ -479,6 +798,27 @@ App.pages.appointments = {
           }, 300);
           return;
         }
+
+        // 예약 확인 문자 발송 제안
+        const customer = await DB.get('customers', customerId);
+        const pet = await DB.get('pets', petId);
+        const phone = (customer?.phone || '').replace(/\D/g, '');
+        if (phone) {
+          App.closeModal();
+          App.handleRoute();
+          const sendSms = await App.confirm('고객에게 예약 확인 문자를 보내시겠습니까?');
+          if (sendSms) {
+            const msg = await App.buildSms('appointment', {
+              '고객명': customer.name || '',
+              '반려견명': pet?.name || '',
+              '날짜': date,
+              '시간': time || '',
+              '미용사': groomer || ''
+            });
+            window.open(`sms:${phone}?body=${encodeURIComponent(msg)}`);
+          }
+          return;
+        }
       }
 
       App.closeModal();
@@ -493,9 +833,7 @@ App.pages.appointments = {
     try {
       const appt = await DB.get('appointments', id);
       if (!appt) return;
-      appt.status = 'completed';
-      await DB.update('appointments', appt);
-      // Show record form directly without page navigation
+      // Don't change status here; pass appointmentId so records.saveRecord() can update it after saving
       App.pages.records.showForm(null, appt);
     } catch (err) {
       console.error('Complete to record error:', err);

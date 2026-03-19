@@ -17,7 +17,7 @@ App.pages.services = {
       </div>
 
       <div class="card">
-        <div class="card-body no-padding">
+        <div class="card-body no-padding keep-table">
           <div class="table-container">
             <table class="data-table" id="service-table">
               <thead>
@@ -174,7 +174,7 @@ App.pages.services = {
   async deleteService(id) {
     const service = await DB.get('services', id);
     if (!service) return;
-    const confirmed = await App.confirm(`"${service.name}" 서비스를 삭제하시겠습니까?`);
+    const confirmed = await App.confirm(`"${App.escapeHtml(service.name)}" 서비스를 삭제하시겠습니까?`);
     if (!confirmed) return;
     await DB.delete('services', id);
     App.showToast('서비스가 삭제되었습니다.');
