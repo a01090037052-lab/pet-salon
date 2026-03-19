@@ -1,0 +1,9 @@
+data.json
+node_modules/
+.omc/
+.claude/
+.DS_Store
+start.bat
+start.command
+server.js
+사용설명서.md
