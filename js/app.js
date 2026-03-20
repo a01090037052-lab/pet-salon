@@ -1116,7 +1116,7 @@ const App = {
     const lastBackup = await DB.getSetting('lastBackupDate');
     if (!lastBackup) return true; // never backed up
     const days = this.getDaysAgo(lastBackup);
-    return days >= 7;
+    return days >= 30;
   },
 
   // ========== SMS Template System ==========

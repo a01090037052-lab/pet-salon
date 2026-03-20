@@ -551,7 +551,7 @@ App.pages.settings = {
         a.click();
         document.body.removeChild(a);
         URL.revokeObjectURL(url);
-        App.showToast('백업 파일이 다운로드되었습니다.');
+        App.showToast('백업 완료! 이전 백업 파일은 삭제해도 됩니다.', 'info');
         await DB.setSetting('lastBackupDate', App.getToday());
       } catch (err) {
         console.error('Export error:', err);
@@ -895,7 +895,7 @@ App.pages.settings = {
       document.body.removeChild(a);
       URL.revokeObjectURL(url);
       await DB.setSetting('lastBackupDate', App.getToday());
-      App.showToast('백업 파일이 다운로드되었습니다.');
+      App.showToast('백업 완료! 이전 백업 파일은 삭제해도 됩니다.', 'info');
     } catch (err) {
       App.showToast('백업 중 오류가 발생했습니다.', 'error');
     }
