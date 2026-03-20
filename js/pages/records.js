@@ -60,28 +60,9 @@ App.pages.records = {
         </div>
       </div>
 
-      <div class="stats-grid" style="margin-bottom:20px">
-        <div class="stat-card gradient-purple clickable-stat" id="stat-today-revenue" style="cursor:pointer">
-          <div class="stat-icon purple">&#x1F4B5;</div>
-          <div>
-            <div class="stat-value" style="font-size:1.4rem">${App.formatCurrency(todayRevenue)}</div>
-            <div class="stat-label">오늘 매출 (${todayRecords.length}건) &#x1F4C8;</div>
-          </div>
-        </div>
-        <div class="stat-card gradient-blue clickable-stat" id="stat-week-revenue" style="cursor:pointer">
-          <div class="stat-icon blue">&#x1F4CA;</div>
-          <div>
-            <div class="stat-value" style="font-size:1.4rem">${App.formatCurrency(weekRevenue)}</div>
-            <div class="stat-label">이번 주 매출 (${weekRecords.length}건) &#x1F4C8;</div>
-          </div>
-        </div>
-        <div class="stat-card gradient-green clickable-stat" id="stat-month-revenue" style="cursor:pointer">
-          <div class="stat-icon green">&#x1F4B0;</div>
-          <div>
-            <div class="stat-value" style="font-size:1.4rem">${App.formatCurrency(monthRevenue)}</div>
-            <div class="stat-label">이번 달 매출 (${monthRecords.length}건) &#x1F4C8;</div>
-          </div>
-        </div>
+      <!-- 매출 통계는 매출 페이지로 이동 -->
+      <div style="margin-bottom:16px">
+        <a href="#revenue" class="btn btn-secondary btn-sm" style="display:inline-flex;align-items:center;gap:6px">&#x1F4B0; 매출 현황 보기 &rarr;</a>
       </div>
 
       ${unpaidRecs.length > 0 ? `
@@ -147,7 +128,7 @@ App.pages.records = {
                         data-search="${(customer?.name || '') + ' ' + (pet?.name || '')}"
                         data-payment="${r.paymentMethod || ''}"
                         style="${r.paymentMethod === 'unpaid' ? 'background:var(--warning-light);border-left:3px solid var(--danger)' : ''}">
-                      <td>${App.formatDate(r.date)}</td>
+                      <td>${App.formatDate(r.date)}${r.status === 'in_progress' ? ' <span class="badge badge-warning" style="font-size:0.65rem">진행중</span>' : ''}</td>
                       <td><a href="#customers/${r.customerId}" style="color:var(--primary)">${App.escapeHtml(customer?.name || '-')}</a></td>
                       <td><a href="#pets/${r.petId}" style="color:var(--primary)"><strong>&#x1F436; ${App.escapeHtml(pet?.name || '-')}</strong></a></td>
                       <td class="hide-mobile"><span style="font-size:0.85rem">${App.escapeHtml(serviceNames)}</span></td>
@@ -158,6 +139,7 @@ App.pages.records = {
                         ${App.escapeHtml(r.memo || '-')}
                       </td>
                       <td class="table-actions">
+                        ${r.status === 'in_progress' ? `<button class="btn-icon btn-complete-record" data-id="${r.id}" title="완료 처리" style="color:var(--warning);font-weight:800">&#x2705;</button>` : ''}
                         ${r.satisfaction ? `<span title="만족도" style="font-size:1rem">${r.satisfaction === 'good' ? '&#x1F60A;' : r.satisfaction === 'neutral' ? '&#x1F610;' : '&#x1F61F;'}</span>` : ''}
                         <button class="btn-icon btn-photo-card" data-id="${r.id}" title="사진 카드 생성" style="color:var(--info)">&#x1F4F8;</button>
                         <button class="btn-icon btn-receipt-record" data-id="${r.id}" title="영수증" style="color:var(--success)">&#x1F9FE;</button>
@@ -186,7 +168,7 @@ App.pages.records = {
                    data-search="${(customer?.name || '') + ' ' + (pet?.name || '')}"
                    data-payment="${r.paymentMethod || ''}">
                 <div class="mobile-card-header">
-                  <span class="mobile-card-date"><strong>${App.formatDate(r.date)}</strong></span>
+                  <span class="mobile-card-date"><strong>${App.formatDate(r.date)}</strong>${r.status === 'in_progress' ? ' <span class="badge badge-warning" style="font-size:0.65rem">진행중</span>' : ''}</span>
                   <span class="mobile-card-amount"><strong>${App.formatCurrency(r.finalPrice != null ? r.finalPrice : r.totalPrice)}</strong></span>
                 </div>
                 <div class="mobile-card-body">
@@ -198,6 +180,7 @@ App.pages.records = {
                   </div>
                 </div>
                 <div class="mobile-card-actions">
+                  ${r.status === 'in_progress' ? `<button class="btn btn-sm btn-warning btn-complete-record" data-id="${r.id}">&#x2705; 완료 처리</button>` : ''}
                   ${r.satisfaction ? `<span style="font-size:1.1rem">${r.satisfaction === 'good' ? '&#x1F60A;' : r.satisfaction === 'neutral' ? '&#x1F610;' : '&#x1F61F;'}</span>` : ''}
                   <button class="btn btn-sm btn-info btn-photo-card" data-id="${r.id}">&#x1F4F8; 카드</button>
                   <button class="btn btn-sm btn-success btn-receipt-record" data-id="${r.id}">&#x1F9FE; 영수증</button>
@@ -326,11 +309,6 @@ App.pages.records = {
     document.getElementById('btn-daily-report')?.addEventListener('click', () => this.showDailyReport());
     document.getElementById('btn-export-csv')?.addEventListener('click', () => this.showExportModal());
 
-    // 매출 카드 클릭 이벤트
-    document.getElementById('stat-today-revenue')?.addEventListener('click', () => this.showRevenueChart('today'));
-    document.getElementById('stat-week-revenue')?.addEventListener('click', () => this.showRevenueChart('week'));
-    document.getElementById('stat-month-revenue')?.addEventListener('click', () => this.showRevenueChart('month'));
-
     // 미수금 경고 카드 클릭 -> 미결제 필터
     document.getElementById('unpaid-warning-card')?.addEventListener('click', () => {
       document.getElementById('filter-month').value = '';
@@ -346,8 +324,21 @@ App.pages.records = {
       document.getElementById('record-search').value = '';
       document.getElementById('filter-month').value = '';
       document.getElementById('filter-payment').value = '';
+      sessionStorage.removeItem('record-filter');
       this.applyFilters();
     });
+
+    // Restore saved filter state
+    const savedFilter = sessionStorage.getItem('record-filter');
+    if (savedFilter) {
+      try {
+        const f = JSON.parse(savedFilter);
+        if (f.search) document.getElementById('record-search').value = f.search;
+        if (f.month) document.getElementById('filter-month').value = f.month;
+        if (f.payment) document.getElementById('filter-payment').value = f.payment;
+        this.applyFilters();
+      } catch (e) { /* ignore parse errors */ }
+    }
 
     document.querySelectorAll('.btn-photo-card').forEach(btn => {
       btn.addEventListener('click', () => this.generatePhotoCard(Number(btn.dataset.id)));
@@ -364,12 +355,24 @@ App.pages.records = {
     document.querySelectorAll('.btn-delete-record').forEach(btn => {
       btn.addEventListener('click', () => this.deleteRecord(Number(btn.dataset.id)));
     });
+
+    // 완료 처리 버튼
+    document.querySelectorAll('.btn-complete-record').forEach(btn => {
+      btn.addEventListener('click', () => this.completeRecord(Number(btn.dataset.id)));
+    });
   },
 
   applyFilters() {
     const search = (document.getElementById('record-search')?.value || '').toLowerCase();
     const month = document.getElementById('filter-month')?.value || '';
     const payment = document.getElementById('filter-payment')?.value || '';
+
+    // Save filter state to sessionStorage
+    sessionStorage.setItem('record-filter', JSON.stringify({
+      search: document.getElementById('record-search')?.value || '',
+      month,
+      payment
+    }));
 
     document.querySelectorAll('#record-tbody tr').forEach(row => {
       if (!row.dataset.id) return;
@@ -411,6 +414,7 @@ App.pages.records = {
       title: id ? '미용 기록 수정' : '새 미용 기록',
       size: 'lg',
       content: `
+        <!-- 필수 입력 영역 -->
         <div class="form-row">
           <div class="form-group">
             <label class="form-label">고객 <span class="required">*</span></label>
@@ -424,18 +428,13 @@ App.pages.records = {
             </select>
           </div>
         </div>
-        <div class="form-row three">
-          <div class="form-group">
-            <label class="form-label">날짜 <span class="required">*</span></label>
-            <input type="date" id="f-date" value="${record.date || App.getToday()}">
-          </div>
-          <div class="form-group">
-            <label class="form-label">담당 미용사</label>
-            <select id="f-groomer">${await App.getGroomerOptions(record.groomer)}</select>
-          </div>
-          <div class="form-group">
-            <label class="form-label">다음 방문 권장일</label>
-            <input type="date" id="f-nextVisitDate" value="${record.nextVisitDate || ''}">
+        <div class="form-group">
+          <label class="form-label">날짜 <span class="required">*</span></label>
+          <input type="date" id="f-date" value="${record.date || App.getToday()}">
+        </div>
+        <div class="form-group">
+          <div id="f-services">
+            ${serviceCheckboxes}
           </div>
         </div>
         <div class="form-row">
@@ -454,21 +453,6 @@ App.pages.records = {
             <div class="form-hint">가격 자동 계산에 사용됩니다</div>
           </div>
         </div>
-        <div class="form-group">
-          <div id="f-services">
-            ${serviceCheckboxes}
-          </div>
-        </div>
-        <div class="form-row">
-          <div class="form-group">
-            <label class="form-label">할인 금액</label>
-            <input type="number" id="f-discount" value="${record.discount || ''}" placeholder="0" min="0" step="1000">
-          </div>
-          <div class="form-group">
-            <label class="form-label">추가 요금</label>
-            <input type="number" id="f-extraCharge" value="${record.extraCharge || ''}" placeholder="0" min="0" step="1000">
-          </div>
-        </div>
         <div class="form-group" id="final-price-display" style="background:var(--bg);border-radius:var(--radius);padding:12px 16px;display:flex;justify-content:space-between;align-items:center">
           <span style="font-weight:700">최종 금액</span>
           <span id="final-price-value" style="font-size:1.2rem;font-weight:800;color:var(--primary)">${App.formatCurrency((record.totalPrice || 0) - (record.discount || 0) + (record.extraCharge || 0))}</span>
@@ -476,39 +460,13 @@ App.pages.records = {
         <div class="form-group">
           <label class="form-label">결제 수단</label>
           <select id="f-paymentMethod">
-            <option value="" ${!record.paymentMethod ? 'selected' : ''}>선택 안 함</option>
+            <option value="" ${record.paymentMethod === '' ? 'selected' : ''}>선택 안 함</option>
             <option value="cash" ${record.paymentMethod === 'cash' ? 'selected' : ''}>현금</option>
-            <option value="card" ${record.paymentMethod === 'card' ? 'selected' : ''}>카드</option>
+            <option value="card" ${(!record.paymentMethod && !id) || record.paymentMethod === 'card' ? 'selected' : ''}>카드</option>
             <option value="transfer" ${record.paymentMethod === 'transfer' ? 'selected' : ''}>계좌이체</option>
             <option value="unpaid" ${record.paymentMethod === 'unpaid' ? 'selected' : ''}>미결제(외상)</option>
           </select>
         </div>
-        <div id="promo-banner-area"></div>
-        <div id="reward-section-area"></div>
-        <div class="form-group">
-          <label class="form-label">고객 만족도</label>
-          <div style="display:flex;gap:12px" id="satisfaction-group">
-            <label class="satisfaction-option" style="flex:1;text-align:center;padding:10px;border:2px solid var(--border);border-radius:10px;cursor:pointer;transition:all 0.15s${record.satisfaction === 'good' ? ';border-color:var(--success);background:var(--success-light)' : ''}">
-              <input type="radio" name="satisfaction" value="good" style="display:none" ${record.satisfaction === 'good' ? 'checked' : ''}> &#x1F60A; 만족
-            </label>
-            <label class="satisfaction-option" style="flex:1;text-align:center;padding:10px;border:2px solid var(--border);border-radius:10px;cursor:pointer;transition:all 0.15s${record.satisfaction === 'neutral' ? ';border-color:var(--warning);background:var(--warning-light)' : ''}">
-              <input type="radio" name="satisfaction" value="neutral" style="display:none" ${record.satisfaction === 'neutral' ? 'checked' : ''}> &#x1F610; 보통
-            </label>
-            <label class="satisfaction-option" style="flex:1;text-align:center;padding:10px;border:2px solid var(--border);border-radius:10px;cursor:pointer;transition:all 0.15s${record.satisfaction === 'bad' ? ';border-color:var(--danger);background:var(--danger-light)' : ''}">
-              <input type="radio" name="satisfaction" value="bad" style="display:none" ${record.satisfaction === 'bad' ? 'checked' : ''}> &#x1F61F; 불만
-            </label>
-          </div>
-        </div>
-        <div class="form-group" id="dissatisfaction-reason-group" style="display:${record.satisfaction === 'bad' ? 'block' : 'none'}">
-          <label class="form-label">불만 사유</label>
-          <textarea id="f-dissatisfactionReason" placeholder="불만족 사유를 입력해주세요">${App.escapeHtml(record.dissatisfactionReason || '')}</textarea>
-        </div>
-        <div class="form-group">
-          <label class="form-label">메모</label>
-          <textarea id="f-memo" placeholder="미용 중 특이사항, 다음 방문 시 참고할 내용 등">${App.escapeHtml(record.memo || '')}</textarea>
-        </div>
-        <input type="hidden" id="f-appointmentId" value="${record.appointmentId || ''}">
-        <input type="hidden" id="f-pointsUsed" value="${record.pointsUsed || 0}">
         <div class="form-row">
           <div class="form-group">
             <label class="form-label">&#x1F4F7; 미용 전 사진</label>
@@ -539,6 +497,74 @@ App.pages.records = {
             <input type="hidden" id="f-photoAfter-data" value="">
           </div>
         </div>
+
+        <!-- 상세 옵션 토글 -->
+        <div class="form-detail-divider" onclick="this.closest('.modal-body').querySelector('.form-detail-section').classList.toggle('open');this.classList.toggle('open')">
+          <span class="form-detail-divider-line"></span>
+          <span class="form-detail-divider-label">상세 옵션</span>
+          <span class="form-detail-divider-chevron">&#x25BC;</span>
+          <span class="form-detail-divider-line"></span>
+        </div>
+
+        <!-- 상세 옵션 영역 -->
+        <div class="form-detail-section">
+          <div class="form-row">
+            <div class="form-group">
+              <label class="form-label">담당 미용사</label>
+              <select id="f-groomer">${await App.getGroomerOptions(record.groomer)}</select>
+            </div>
+            <div class="form-group">
+              <label class="form-label">다음 방문 권장일</label>
+              <input type="date" id="f-nextVisitDate" value="${record.nextVisitDate || ''}">
+            </div>
+          </div>
+          <div class="form-row">
+            <div class="form-group">
+              <label class="form-label">할인 금액</label>
+              <input type="number" id="f-discount" value="${record.discount || ''}" placeholder="0" min="0" step="1000">
+            </div>
+            <div class="form-group">
+              <label class="form-label">추가 요금</label>
+              <input type="number" id="f-extraCharge" value="${record.extraCharge || ''}" placeholder="0" min="0" step="1000">
+            </div>
+          </div>
+          <div class="form-group">
+            <label class="form-label">진행 상태</label>
+            <select id="f-status">
+              <option value="completed" ${(record.status || 'completed') === 'completed' ? 'selected' : ''}>완료</option>
+              <option value="in_progress" ${record.status === 'in_progress' ? 'selected' : ''}>진행중 (빠른 등록)</option>
+            </select>
+            <div class="form-hint">"진행중"으로 저장하면 나중에 금액/사진 등을 추가할 수 있습니다</div>
+          </div>
+          <div id="reward-section-area"></div>
+          <div class="form-group">
+            <label class="form-label">고객 만족도</label>
+            <div style="display:flex;gap:12px" id="satisfaction-group">
+              <label class="satisfaction-option" style="flex:1;text-align:center;padding:10px;border:2px solid var(--border);border-radius:10px;cursor:pointer;transition:all 0.15s${record.satisfaction === 'good' ? ';border-color:var(--success);background:var(--success-light)' : ''}">
+                <input type="radio" name="satisfaction" value="good" style="display:none" ${record.satisfaction === 'good' ? 'checked' : ''}> &#x1F60A; 만족
+              </label>
+              <label class="satisfaction-option" style="flex:1;text-align:center;padding:10px;border:2px solid var(--border);border-radius:10px;cursor:pointer;transition:all 0.15s${record.satisfaction === 'neutral' ? ';border-color:var(--warning);background:var(--warning-light)' : ''}">
+                <input type="radio" name="satisfaction" value="neutral" style="display:none" ${record.satisfaction === 'neutral' ? 'checked' : ''}> &#x1F610; 보통
+              </label>
+              <label class="satisfaction-option" style="flex:1;text-align:center;padding:10px;border:2px solid var(--border);border-radius:10px;cursor:pointer;transition:all 0.15s${record.satisfaction === 'bad' ? ';border-color:var(--danger);background:var(--danger-light)' : ''}">
+                <input type="radio" name="satisfaction" value="bad" style="display:none" ${record.satisfaction === 'bad' ? 'checked' : ''}> &#x1F61F; 불만
+              </label>
+            </div>
+          </div>
+          <div class="form-group" id="dissatisfaction-reason-group" style="display:${record.satisfaction === 'bad' ? 'block' : 'none'}">
+            <label class="form-label">불만 사유</label>
+            <textarea id="f-dissatisfactionReason" placeholder="불만족 사유를 입력해주세요">${App.escapeHtml(record.dissatisfactionReason || '')}</textarea>
+          </div>
+          <div class="form-group">
+            <label class="form-label">컨디션 메모</label>
+            <textarea id="f-conditionMemo" placeholder="반려견 상태 기록 (예: 피부 양호, 왼쪽 귀 빨간점 발견, 털 엉킴 약간)">${App.escapeHtml(record.conditionMemo || '')}</textarea>
+          </div>
+          <div class="form-group">
+            <label class="form-label">메모</label>
+            <textarea id="f-memo" placeholder="미용 중 특이사항, 다음 방문 시 참고할 내용 등">${App.escapeHtml(record.memo || '')}</textarea>
+          </div>
+        </div>
+        <input type="hidden" id="f-appointmentId" value="${record.appointmentId || ''}">
       `,
       onSave: () => this.saveRecord(id)
     });
@@ -559,6 +585,15 @@ App.pages.records = {
           if (size) sizeSelect.value = size;
           // Trigger price recalculation
           sizeSelect.dispatchEvent(new Event('change'));
+        }
+        // Auto-calculate next visit date from grooming cycle
+        if (pet.groomingCycle) {
+          const nextVisitInput = document.getElementById('f-nextVisitDate');
+          if (nextVisitInput && !nextVisitInput.value) {
+            const today = new Date();
+            today.setDate(today.getDate() + pet.groomingCycle);
+            nextVisitInput.value = App.formatLocalDate(today);
+          }
         }
         // Show pet info box
         this.showPetInfoBox(pet);
@@ -720,98 +755,21 @@ App.pages.records = {
             document.getElementById('f-discount').dispatchEvent(evt);
           }
         });
-      } else if (rewardSettings.type === 'point') {
-        const points = customer.points || 0;
-        const minUse = rewardSettings.minUsePoints || 1000;
-        area.innerHTML = `
-          <div style="background:var(--primary-light);border:1.5px solid var(--primary-lighter);border-radius:var(--radius);padding:12px 16px;margin-bottom:12px">
-            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
-              <span style="font-weight:700">&#x1F4B0; 보유 포인트</span>
-              <span style="font-weight:800;color:var(--primary)">${points.toLocaleString()}P</span>
-            </div>
-            ${points >= minUse ? `
-              <div style="display:flex;gap:8px;align-items:center;margin-top:4px">
-                <label class="form-label" style="margin:0;white-space:nowrap;font-size:0.85rem">사용할 포인트:</label>
-                <input type="number" id="f-usePoints" value="0" min="0" max="${points}" step="100" style="width:120px;padding:6px 10px">
-                <button type="button" class="btn btn-sm btn-secondary" id="f-useAllPoints">전액 사용</button>
-              </div>
-              <div class="form-hint" style="margin-top:4px">최소 ${minUse.toLocaleString()}P 이상 사용 가능</div>
-            ` : `<div style="font-size:0.85rem;color:var(--text-muted);margin-top:4px">최소 ${minUse.toLocaleString()}P부터 사용 가능합니다</div>`}
-          </div>`;
-        document.getElementById('f-useAllPoints')?.addEventListener('click', () => {
-          const el = document.getElementById('f-usePoints');
-          if (el) { el.value = points; el.dispatchEvent(new Event('input', { bubbles: true })); }
-        });
-        document.getElementById('f-usePoints')?.addEventListener('input', (e) => {
-          let val = Number(e.target.value) || 0;
-          if (val > points) val = points;
-          if (val > 0 && val < minUse) val = 0;
-          document.getElementById('f-pointsUsed').value = val;
-          document.getElementById('f-discount').value = val;
-          const evt = new Event('input', { bubbles: true });
-          document.getElementById('f-discount').dispatchEvent(evt);
-        });
       }
     };
 
-    // Load promotions banner
-    const loadPromoBanner = async (serviceIds) => {
-      const area = document.getElementById('promo-banner-area');
-      if (!area) return;
-      const promotions = await DB.getSetting('promotions') || [];
-      const today = App.getToday();
-      const activePromos = promotions.filter(p => p.isActive && p.startDate <= today && p.endDate >= today);
-      if (activePromos.length === 0) { area.innerHTML = ''; return; }
-
-      const checkedServiceIds = [];
-      document.querySelectorAll('input[name="serviceIds"]:checked').forEach(cb => checkedServiceIds.push(Number(cb.value)));
-
-      const matching = activePromos.filter(p => {
-        if (!p.serviceIds || p.serviceIds.length === 0) return true;
-        return checkedServiceIds.some(sid => p.serviceIds.includes(sid));
-      });
-
-      if (matching.length === 0) { area.innerHTML = ''; return; }
-
-      area.innerHTML = matching.map(p => {
-        const discountText = p.discountType === 'percent' ? p.discountValue + '% 할인' : App.formatCurrency(p.discountValue) + ' 할인';
-        return `
-          <div style="background:linear-gradient(135deg,#6366F1,#8B5CF6);border-radius:var(--radius);padding:12px 16px;margin-bottom:12px;color:#fff;display:flex;align-items:center;gap:12px">
-            <span style="font-size:1.3rem">&#x1F389;</span>
-            <div style="flex:1">
-              <div style="font-weight:700">${App.escapeHtml(p.name)} 적용 가능</div>
-              <div style="font-size:0.85rem;opacity:0.85">${discountText}</div>
-            </div>
-            <button type="button" class="btn btn-sm btn-apply-promo" data-id="${p.id}" style="background:#fff;color:var(--primary);font-weight:700">적용</button>
-          </div>`;
-      }).join('');
-
-      // Promo apply button
-      area.querySelectorAll('.btn-apply-promo').forEach(btn => {
-        btn.addEventListener('click', () => {
-          const pid = Number(btn.dataset.id);
-          const promo = matching.find(p => p.id === pid);
-          if (!promo) return;
-          const total = Number(document.getElementById('f-totalPrice').value) || 0;
-          let discountVal = 0;
-          if (promo.discountType === 'percent') {
-            discountVal = Math.floor(total * promo.discountValue / 100);
-          } else {
-            discountVal = promo.discountValue;
-          }
-          document.getElementById('f-discount').value = discountVal;
-          const evt = new Event('input', { bubbles: true });
-          document.getElementById('f-discount').dispatchEvent(evt);
-          btn.textContent = '적용됨';
-          btn.disabled = true;
-          App.showToast(promo.name + ' 할인이 적용되었습니다.');
-        });
-      });
-    };
-
-    // Trigger reward/promo load on customer change
+    // Trigger reward load on customer change
     const origCustomerOnChange = async (cid) => {
-      document.getElementById('f-petId').innerHTML = '<option value="">반려견 선택</option>' + await App.getPetOptions(cid);
+      const petSelect = document.getElementById('f-petId');
+      petSelect.innerHTML = '<option value="">반려견 선택</option>' + await App.getPetOptions(cid);
+      // 반려견 1마리 자동 선택
+      if (cid) {
+        const cPets = await DB.getByIndex('pets', 'customerId', Number(cid));
+        if (cPets.length === 1) {
+          petSelect.value = cPets[0].id;
+          petSelect.dispatchEvent(new Event('change'));
+        }
+      }
       await loadRewardSection(cid);
     };
 
@@ -821,12 +779,22 @@ App.pages.records = {
     // Load reward for pre-selected customer
     if (record.customerId) await loadRewardSection(record.customerId);
 
-    // Load promo on service change
-    document.querySelectorAll('input[name="serviceIds"]').forEach(cb => {
-      cb.addEventListener('change', () => loadPromoBanner());
-    });
-    // Initial promo check
-    await loadPromoBanner();
+    // Fix 5: Pre-check services when coming from appointment
+    if (record.serviceIds && record.serviceIds.length > 0) {
+      setTimeout(() => {
+        record.serviceIds.forEach(sid => {
+          const checkbox = document.querySelector(`input[name="serviceIds"][value="${sid}"]`);
+          if (checkbox) {
+            checkbox.checked = true;
+            const chip = checkbox.closest('.service-chip');
+            if (chip) chip.classList.add('checked');
+          }
+        });
+        // Trigger price calculation
+        calcPrice();
+      }, 200);
+    }
+
   },
 
   _setupPhotoUpload(field) {
@@ -931,10 +899,12 @@ App.pages.records = {
       const appointmentId = document.getElementById('f-appointmentId')?.value || null;
       const satisfaction = document.querySelector('input[name="satisfaction"]:checked')?.value || '';
       const dissatisfactionReason = satisfaction === 'bad' ? (document.getElementById('f-dissatisfactionReason')?.value.trim() || '') : '';
-      const pointsUsed = Number(document.getElementById('f-pointsUsed')?.value) || 0;
       const useStampReward = document.getElementById('f-useStampReward')?.checked || false;
+      const status = document.getElementById('f-status')?.value || 'completed';
 
-      const data = { customerId, petId, date, groomer, nextVisitDate, serviceIds, totalPrice, discount, extraCharge, finalPrice, memo, paymentMethod, photoBefore, photoAfter, appointmentId, satisfaction, dissatisfactionReason, pointsUsed };
+      const conditionMemo = document.getElementById('f-conditionMemo')?.value.trim() || '';
+
+      const data = { customerId, petId, date, groomer, nextVisitDate, serviceIds, totalPrice, discount, extraCharge, finalPrice, memo, paymentMethod, photoBefore, photoAfter, appointmentId, satisfaction, dissatisfactionReason, status, conditionMemo };
 
       if (id) {
         const existing = await DB.get('records', id);
@@ -950,90 +920,141 @@ App.pages.records = {
             if (appt) {
               appt.status = 'completed';
               await DB.update('appointments', appt);
+              App.showToast('연결된 예약이 완료 처리되었습니다.', 'info');
             }
           } catch (e) {
             console.warn('Failed to update appointment status:', e);
           }
         }
 
-        // 포인트/스탬프 적립 처리
+        // 스탬프 적립 처리
         try {
           const rewardSettings = await DB.getSetting('rewardSettings') || { type: 'none' };
-          if (rewardSettings.type !== 'none') {
+          if (rewardSettings.type === 'stamp') {
             const customer = await DB.get('customers', customerId);
             if (customer) {
-              if (rewardSettings.type === 'stamp') {
-                customer.stamps = (customer.stamps || 0) + 1;
-                // 포인트 사용으로 스탬프 리딤 처리
-                if (useStampReward) {
-                  customer.stamps = customer.stamps - (rewardSettings.stampGoal || 10);
-                  if (customer.stamps < 0) customer.stamps = 0;
-                  App.showToast('&#x1F389; 스탬프 적립 완료! 무료 서비스가 제공되었습니다.', 'success');
-                } else if (customer.stamps >= (rewardSettings.stampGoal || 10)) {
-                  App.showToast('&#x1F389; 스탬프 적립 완료! 다음 방문 시 무료 서비스를 받을 수 있습니다.', 'success');
-                } else {
-                  App.showToast('스탬프 1개 적립! (현재 ' + customer.stamps + '/' + (rewardSettings.stampGoal || 10) + ')', 'success');
-                }
-                await DB.update('customers', customer);
-              } else if (rewardSettings.type === 'point') {
-                // 포인트 사용 차감
-                if (pointsUsed > 0) {
-                  customer.points = (customer.points || 0) - pointsUsed;
-                  if (customer.points < 0) customer.points = 0;
-                }
-                // 포인트 적립
-                const earned = Math.floor(finalPrice * (rewardSettings.pointRate || 5) / 100);
-                customer.points = (customer.points || 0) + earned;
-                await DB.update('customers', customer);
-                App.showToast(earned.toLocaleString() + 'P 적립! (보유: ' + customer.points.toLocaleString() + 'P)', 'success');
+              customer.stamps = (customer.stamps || 0) + 1;
+              if (useStampReward) {
+                customer.stamps = customer.stamps - (rewardSettings.stampGoal || 10);
+                if (customer.stamps < 0) customer.stamps = 0;
+                App.showToast('&#x1F389; 스탬프 적립 완료! 무료 서비스가 제공되었습니다.', 'success');
+              } else if (customer.stamps >= (rewardSettings.stampGoal || 10)) {
+                App.showToast('&#x1F389; 스탬프 적립 완료! 다음 방문 시 무료 서비스를 받을 수 있습니다.', 'success');
+              } else {
+                App.showToast('스탬프 1개 적립! (현재 ' + customer.stamps + '/' + (rewardSettings.stampGoal || 10) + ')', 'success');
               }
+              await DB.update('customers', customer);
             }
           }
         } catch (e) {
           console.warn('Reward processing error:', e);
         }
 
-        App.showToast('미용 기록이 저장되었습니다.');
+        // 고객 자동 분류 (방문 횟수 기반)
+        try {
+          const autoTagEnabled = await DB.getSetting('autoTagEnabled');
+          if (autoTagEnabled) {
+            const custRecords = await DB.getByIndex('records', 'customerId', customerId);
+            const visitCount = custRecords.length + 1; // 현재 저장 포함
+            const autoTagNewMax = (await DB.getSetting('autoTagNewMax')) || 2;
+            const autoTagNormalMax = (await DB.getSetting('autoTagNormalMax')) || 9;
+            const autoTagRegularMin = (await DB.getSetting('autoTagRegularMin')) || 10;
+
+            const cust = await DB.get('customers', customerId);
+            if (cust) {
+              const tags = (cust.tags || []).filter(t => t === 'vip' || t === 'caution');
+              if (visitCount <= autoTagNewMax) {
+                tags.push('new');
+              } else if (visitCount <= autoTagNormalMax) {
+                tags.push('normal');
+              } else if (visitCount >= autoTagRegularMin) {
+                tags.push('regular');
+              }
+              cust.tags = tags;
+              await DB.update('customers', cust);
+            }
+          }
+        } catch (e) {
+          console.warn('Auto-tag error:', e);
+        }
+
       }
 
       App.closeModal();
 
-      // F8: 다음 방문 권장일이 있으면 예약 생성 제안
-      if (!id && nextVisitDate) {
-        const doCreate = await App.confirm(`다음 방문 권장일(${App.formatDate(nextVisitDate)})에 예약을 등록하시겠습니까?`);
-        if (doCreate) {
-          App.handleRoute();
-          App.pages.appointments.showForm(null, customerId, { petId, date: nextVisitDate, groomer, serviceIds });
-          return;
-        }
-      }
-
-      // 미용 완료 문자 발송 제안 (신규 기록만)
+      // 신규 기록: 완료 모달 (다음 예약 + 문자 발송 버튼 통합)
       if (!id) {
         const customer = await DB.get('customers', customerId);
         const pet = await DB.get('pets', petId);
-        const phone = (customer?.phone || '').replace(/\D/g, '');
-        if (phone) {
-          App.handleRoute();
-          const sendSms = await App.confirm('고객에게 미용 완료 안내 문자를 보내시겠습니까?');
-          if (sendSms) {
-            const serviceNames = await App.getServiceNames(serviceIds);
-            const msg = await App.buildSms('complete', {
-              '고객명': customer.name || '',
-              '반려견명': pet?.name || '',
-              '서비스': serviceNames !== '-' ? serviceNames : '',
-              '금액': String(finalPrice)
-            });
-            window.open(`sms:${phone}?body=${encodeURIComponent(msg)}`);
-          }
-          return;
-        }
+        const customerPhone = (customer?.phone || '').replace(/\D/g, '');
+
+        App.handleRoute();
+
+        App.showModal({
+          title: '미용 기록 저장 완료',
+          hideFooter: true,
+          content: `
+            <div style="text-align:center;padding:20px 0">
+              <div style="font-size:2.5rem;margin-bottom:12px">&#x2705;</div>
+              <div style="font-size:1.1rem;font-weight:700;margin-bottom:20px">미용 기록이 저장되었습니다</div>
+              <div style="display:flex;flex-direction:column;gap:10px;max-width:280px;margin:0 auto">
+                ${nextVisitDate ? `<button class="btn btn-primary" id="post-save-appt">&#x1F4C5; 다음 예약 등록 (${App.formatDate(nextVisitDate)})</button>` : ''}
+                ${customerPhone ? `<button class="btn btn-success" id="post-save-sms">&#x1F4AC; 미용 완료 문자 보내기</button>` : ''}
+                <button class="btn btn-secondary" id="post-save-close">완료</button>
+              </div>
+            </div>
+          `
+        });
+
+        document.getElementById('post-save-appt')?.addEventListener('click', () => {
+          App.closeModal();
+          App.pages.appointments.showForm(null, customerId, { petId, date: nextVisitDate, groomer, serviceIds });
+        });
+        document.getElementById('post-save-sms')?.addEventListener('click', async () => {
+          const serviceNames = await App.getServiceNames(serviceIds);
+          const msg = await App.buildSms('complete', {
+            '고객명': customer?.name || '',
+            '반려견명': pet?.name || '',
+            '서비스': serviceNames !== '-' ? serviceNames : '',
+            '금액': String(finalPrice)
+          });
+          window.open(`sms:${customerPhone}?body=${encodeURIComponent(msg)}`);
+          App.closeModal();
+        });
+        document.getElementById('post-save-close')?.addEventListener('click', () => {
+          App.closeModal();
+        });
+        return;
       }
 
       App.handleRoute();
     } catch (err) {
       console.error('saveRecord error:', err);
       App.showToast('저장 중 오류가 발생했습니다.', 'error');
+    }
+  },
+
+  async completeRecord(id) {
+    try {
+      const doComplete = await App.confirm('이 미용 기록을 완료 처리하시겠습니까?');
+      if (!doComplete) return;
+      // 수정 폼을 열어서 나머지 정보를 채울 수 있도록 함
+      const record = await DB.get('records', id);
+      if (record) {
+        record.status = 'completed';
+        await DB.update('records', record);
+        App.showToast('미용 기록이 완료 처리되었습니다.');
+        // 바로 수정 폼 열기 (추가 정보 입력 기회 제공)
+        const editMore = await App.confirm('추가 정보를 입력하시겠습니까?\n(금액, 사진, 만족도 등)');
+        if (editMore) {
+          this.showForm(id);
+          return;
+        }
+        App.handleRoute();
+      }
+    } catch (err) {
+      console.error('completeRecord error:', err);
+      App.showToast('완료 처리 중 오류가 발생했습니다.', 'error');
     }
   },
 
@@ -1100,7 +1121,8 @@ App.pages.records = {
     if (existing) existing.remove();
 
     let warningHtml = '';
-    // Check last record satisfaction
+    let conditionHtml = '';
+    // Check last record satisfaction and conditions
     try {
       const petRecords = await DB.getByIndex('records', 'petId', pet.id);
       if (petRecords.length > 0) {
@@ -1113,17 +1135,37 @@ App.pages.records = {
               ${lastRecord.dissatisfactionReason ? `<div style="font-size:0.88rem;color:#991B1B;margin-top:4px">사유: ${App.escapeHtml(lastRecord.dissatisfactionReason)}</div>` : ''}
             </div>`;
         }
+        // Show conditionMemo from last visit
+        if (lastRecord.conditionMemo) {
+          conditionHtml = `
+            <div style="background:#FEF9C3;border:1.5px solid #EAB308;border-radius:var(--radius);padding:10px 14px;margin-bottom:8px">
+              <div style="font-weight:700;color:#854D0E">&#x1F4CB; 지난 컨디션 메모</div>
+              <div style="font-size:0.88rem;color:#854D0E;margin-top:4px">${App.escapeHtml(lastRecord.conditionMemo)}</div>
+            </div>`;
+        }
       }
     } catch (e) { /* ignore */ }
 
-    const hasNotes = pet.temperament || pet.healthNotes || pet.allergies || pet.preferredStyle || warningHtml;
+    // Handover note (인수인계 메모)
+    let handoverHtml = '';
+    if (pet.handoverNote) {
+      handoverHtml = `
+        <div style="background:#DBEAFE;border:1.5px solid #3B82F6;border-radius:var(--radius);padding:10px 14px;margin-bottom:8px">
+          <div style="font-weight:700;color:#1D4ED8">&#x1F4CB; 인수인계 메모</div>
+          <div style="font-size:0.88rem;color:#1E40AF;margin-top:4px">${App.escapeHtml(pet.handoverNote)}</div>
+        </div>`;
+    }
+
+    const hasNotes = pet.temperament || pet.healthNotes || pet.allergies || pet.preferredStyle || warningHtml || conditionHtml || handoverHtml;
     if (!hasNotes) return;
 
     const box = document.createElement('div');
     box.id = 'pet-info-display';
     box.className = 'pet-info-box';
     box.innerHTML = `
+      ${handoverHtml}
       ${warningHtml}
+      ${conditionHtml}
       <div class="pet-info-title">&#x26A0; ${App.escapeHtml(pet.name)} 특이사항</div>
       ${pet.temperament ? `<div class="pet-info-row"><span class="pet-info-label">성격</span> ${App.escapeHtml(pet.temperament)}</div>` : ''}
       ${pet.healthNotes ? `<div class="pet-info-row"><span class="pet-info-label">건강</span> ${App.escapeHtml(pet.healthNotes)}</div>` : ''}
@@ -1368,26 +1410,6 @@ App.pages.records = {
     cute: { name: '귀여운', color: '#F472B6', bgColor: '#FFF1F2', emoji: '\uD83D\uDC3E', footerBg: '#F472B6' }
   },
 
-  CARD_FONTS: {
-    default: { name: '\uAE30\uBCF8', family: '-apple-system, BlinkMacSystemFont, sans-serif' },
-    cute: { name: '\uADC0\uC5EC\uC6B4', family: '"Comic Sans MS", "Chalkboard SE", "Bradley Hand", cursive, sans-serif' },
-    elegant: { name: '\uACE0\uAE09\uC2A4\uB7EC\uC6B4', family: 'Georgia, "Noto Serif", "Times New Roman", serif' },
-    simple: { name: '\uC2EC\uD50C', family: '"SF Mono", "Menlo", "Consolas", monospace, sans-serif' }
-  },
-
-  CARD_STICKERS: {
-    none: '\uC5C6\uC74C',
-    flowers: '\uD83C\uDF38\uD83C\uDF3A\uD83C\uDF37',
-    hearts: '\u2764\uD83D\uDC95\uD83D\uDC96',
-    stars: '\u2B50\u2728\uD83C\uDF1F',
-    paws: '\uD83D\uDC3E\uD83D\uDC15\uD83D\uDC29',
-    ribbon: '\uD83C\uDF80\uD83C\uDF81\u2728',
-    christmas: '\uD83C\uDF84\uD83C\uDF85\u2744',
-    summer: '\uD83C\uDF0A\uD83C\uDFD6\u2600',
-    autumn: '\uD83C\uDF42\uD83C\uDF41\uD83C\uDF30',
-    birthday: '\uD83C\uDF82\uD83C\uDF89\uD83C\uDF88'
-  },
-
   // --- Helper: load image from src (base64 or url) ---
   _loadImg(src) {
     return new Promise(resolve => {
@@ -1438,89 +1460,6 @@ App.pages.records = {
     let t = text;
     while (t.length > 0 && ctx.measureText(t + '...').width > maxWidth) t = t.slice(0, -1);
     return t + '...';
-  },
-
-  // --- Helper: draw stickers ---
-  _drawStickers(ctx, w, h, stickerKey) {
-    if (!stickerKey || stickerKey === 'none') return;
-    const stickerStr = this.CARD_STICKERS[stickerKey];
-    if (!stickerStr || stickerStr === '\uC5C6\uC74C') return;
-    const emojis = [...stickerStr];
-    ctx.font = '24px -apple-system, sans-serif';
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'middle';
-    const positions = [
-      [20, 20], [w - 30, 20], [20, h - 30], [w - 30, h - 30],
-      [w / 2, 15], [w / 2, h - 25], [15, h / 2], [w - 25, h / 2],
-      [w * 0.25, 18], [w * 0.75, h - 22]
-    ];
-    positions.forEach((pos, i) => {
-      ctx.fillText(emojis[i % emojis.length], pos[0], pos[1]);
-    });
-    ctx.textBaseline = 'alphabetic';
-  },
-
-  // --- Helper: draw frame decorations ---
-  _drawFrame(ctx, w, h, frameKey, mainColor) {
-    if (!frameKey || frameKey === 'none') return;
-    if (frameKey === 'rounded') {
-      ctx.save();
-      ctx.strokeStyle = mainColor;
-      ctx.lineWidth = 4;
-      this._roundRect(ctx, 6, 6, w - 12, h - 12, 20);
-      ctx.stroke();
-      ctx.restore();
-    } else if (frameKey === 'flower') {
-      ctx.font = '22px -apple-system, sans-serif';
-      ctx.textAlign = 'center';
-      ctx.textBaseline = 'middle';
-      const e = '\uD83C\uDF38';
-      const pts = [[16, 16], [w - 16, 16], [16, h - 16], [w - 16, h - 16], [w / 2, 14], [w / 2, h - 14], [14, h / 2], [w - 14, h / 2]];
-      pts.forEach(p => ctx.fillText(e, p[0], p[1]));
-      ctx.textBaseline = 'alphabetic';
-    } else if (frameKey === 'paw') {
-      ctx.font = '20px -apple-system, sans-serif';
-      ctx.textAlign = 'center';
-      ctx.textBaseline = 'middle';
-      const e = '\uD83D\uDC3E';
-      const pts = [[18, 18], [w - 18, 18], [18, h - 18], [w - 18, h - 18], [w / 3, 14], [w * 2 / 3, h - 14]];
-      pts.forEach(p => ctx.fillText(e, p[0], p[1]));
-      ctx.textBaseline = 'alphabetic';
-    } else if (frameKey === 'heart') {
-      ctx.font = '20px -apple-system, sans-serif';
-      ctx.textAlign = 'center';
-      ctx.textBaseline = 'middle';
-      const e = '\u2665';
-      ctx.fillStyle = mainColor;
-      const pts = [[16, 16], [w - 16, 16], [16, h - 16], [w - 16, h - 16], [w / 2, 14]];
-      pts.forEach(p => ctx.fillText(e, p[0], p[1]));
-      ctx.textBaseline = 'alphabetic';
-    } else if (frameKey === 'star') {
-      ctx.font = '18px -apple-system, sans-serif';
-      ctx.textAlign = 'center';
-      ctx.textBaseline = 'middle';
-      const e = '\u2B50';
-      const pts = [];
-      for (let i = 0; i < 12; i++) {
-        const angle = (i / 12) * Math.PI * 2;
-        const rx = w / 2 - 14, ry = h / 2 - 14;
-        pts.push([w / 2 + Math.cos(angle) * rx, h / 2 + Math.sin(angle) * ry]);
-      }
-      pts.forEach(p => ctx.fillText(e, p[0], p[1]));
-      ctx.textBaseline = 'alphabetic';
-    }
-  },
-
-  // --- Helper: draw background image with opacity ---
-  async _drawBgImage(ctx, bgImage, w, h) {
-    if (!bgImage) return;
-    const img = await this._loadImg(bgImage);
-    if (!img) return;
-    ctx.save();
-    ctx.globalAlpha = 0.15;
-    this._drawImageCover(ctx, img, 0, 0, w, h);
-    ctx.globalAlpha = 1.0;
-    ctx.restore();
   },
 
   // --- Helper: draw header (logo or text) ---
@@ -1575,8 +1514,7 @@ App.pages.records = {
     const mainColor = designSettings.mainColor || tplPreset.color;
     const bgColor = tplPreset.bgColor;
     const emoji = tplPreset.emoji;
-    const fontDef = this.CARD_FONTS[designSettings.font] || this.CARD_FONTS.default;
-    const fontFamily = fontDef.family;
+    const fontFamily = '-apple-system, BlinkMacSystemFont, sans-serif';
     const footerMessage = designSettings.footerMessage || '\uAC10\uC0AC\uD569\uB2C8\uB2E4 \u2665';
     const layout = designSettings.layout || 'vertical';
     const s = designSettings; // shorthand
@@ -1597,7 +1535,6 @@ App.pages.records = {
       canvas.width = 600; canvas.height = 900;
       ctx = canvas.getContext('2d');
       ctx.fillStyle = bgColor; ctx.fillRect(0, 0, 600, 900);
-      await this._drawBgImage(ctx, s.bgImage, 600, 900);
 
       await this._drawHeader(ctx, 0, 0, 600, 70, shopName, emoji, mainColor, s.logo, fontFamily);
 
@@ -1641,52 +1578,12 @@ App.pages.records = {
       this._drawFooter(ctx, 0, 850, 600, 50, footerParts, mainColor, fontFamily);
     }
 
-    // ===== Layout: horizontal =====
-    else if (layout === 'horizontal') {
-      canvas.width = 900; canvas.height = 600;
-      ctx = canvas.getContext('2d');
-      ctx.fillStyle = bgColor; ctx.fillRect(0, 0, 900, 600);
-      await this._drawBgImage(ctx, s.bgImage, 900, 600);
-
-      await this._drawHeader(ctx, 0, 0, 900, 70, shopName, emoji, mainColor, s.logo, fontFamily);
-
-      // Before
-      ctx.save();
-      this._roundRect(ctx, 30, 90, 400, 340, 12); ctx.clip();
-      this._drawImageCover(ctx, imgBefore, 30, 90, 400, 340);
-      ctx.restore();
-      ctx.fillStyle = mainColor; ctx.font = 'bold 14px ' + fontFamily; ctx.textAlign = 'center';
-      ctx.fillText('BEFORE', 230, 445);
-
-      // Arrow
-      ctx.fillStyle = mainColor; ctx.font = 'bold 32px ' + fontFamily;
-      ctx.fillText('\u2192', 450, 260);
-
-      // After
-      ctx.save();
-      this._roundRect(ctx, 470, 90, 400, 340, 12); ctx.clip();
-      this._drawImageCover(ctx, imgAfter, 470, 90, 400, 340);
-      ctx.restore();
-      ctx.fillStyle = mainColor; ctx.font = 'bold 14px ' + fontFamily; ctx.textAlign = 'center';
-      ctx.fillText('AFTER', 670, 445);
-
-      // Info
-      let iy = 475;
-      ctx.fillStyle = '#0F172A'; ctx.font = '14px ' + fontFamily; ctx.textAlign = 'center';
-      infoLines.forEach(line => {
-        if (iy < 555) { ctx.fillText(this._truncText(ctx, line, 820), 450, iy); iy += 20; }
-      });
-
-      this._drawFooter(ctx, 0, 555, 900, 45, footerParts, mainColor, fontFamily);
-    }
-
     // ===== Layout: photobooth4 (인생네컷 4컷) =====
     else if (layout === 'photobooth4') {
       canvas.width = 600; canvas.height = 1000;
       ctx = canvas.getContext('2d');
       // White base
       ctx.fillStyle = '#FFFFFF'; ctx.fillRect(0, 0, 600, 1000);
-      await this._drawBgImage(ctx, s.bgImage, 600, 1000);
 
       // Film strip borders
       ctx.fillStyle = '#1a1a1a';
@@ -1743,196 +1640,11 @@ App.pages.records = {
       this._drawFooter(ctx, 30, 955, 540, 40, footerParts, mainColor, fontFamily);
     }
 
-    // ===== Layout: photobooth2 (인생네컷 2컷) =====
-    else if (layout === 'photobooth2') {
-      canvas.width = 400; canvas.height = 1000;
-      ctx = canvas.getContext('2d');
-      ctx.fillStyle = '#FFFFFF'; ctx.fillRect(0, 0, 400, 1000);
-      await this._drawBgImage(ctx, s.bgImage, 400, 1000);
-
-      // Film strip borders
-      ctx.fillStyle = '#1a1a1a';
-      ctx.fillRect(0, 0, 20, 1000);
-      ctx.fillRect(380, 0, 20, 1000);
-      for (let fy = 30; fy < 1000; fy += 50) {
-        ctx.fillStyle = '#FFFFFF';
-        ctx.beginPath(); ctx.arc(10, fy, 4, 0, Math.PI * 2); ctx.fill();
-        ctx.beginPath(); ctx.arc(390, fy, 4, 0, Math.PI * 2); ctx.fill();
-      }
-
-      // Header
-      ctx.fillStyle = mainColor; ctx.font = 'bold 20px ' + fontFamily; ctx.textAlign = 'center';
-      ctx.fillText(shopName, 200, 45);
-
-      // Before photo
-      ctx.save(); this._roundRect(ctx, 35, 65, 330, 360, 10); ctx.clip();
-      this._drawImageCover(ctx, imgBefore, 35, 65, 330, 360); ctx.restore();
-      ctx.fillStyle = mainColor; ctx.font = 'bold 13px ' + fontFamily; ctx.textAlign = 'center';
-      ctx.fillText('BEFORE', 200, 443);
-
-      // After photo
-      ctx.save(); this._roundRect(ctx, 35, 460, 330, 360, 10); ctx.clip();
-      this._drawImageCover(ctx, imgAfter, 35, 460, 330, 360); ctx.restore();
-      ctx.fillStyle = mainColor; ctx.font = 'bold 13px ' + fontFamily; ctx.textAlign = 'center';
-      ctx.fillText('AFTER', 200, 838);
-
-      // Info
-      let iy = 868;
-      ctx.fillStyle = '#0F172A'; ctx.font = 'bold 16px ' + fontFamily; ctx.textAlign = 'center';
-      ctx.fillText((pet?.name || '') + ' \u2665 ' + App.formatDate(record.date), 200, iy); iy += 24;
-      ctx.font = '12px ' + fontFamily; ctx.fillStyle = '#64748B';
-      infoLines.slice(0, 3).forEach(line => {
-        if (iy < 960) { ctx.fillText(this._truncText(ctx, line, 320), 200, iy); iy += 18; }
-      });
-
-      this._drawFooter(ctx, 20, 960, 360, 35, footerParts, mainColor, fontFamily);
-    }
-
-    // ===== Layout: polaroid =====
-    else if (layout === 'polaroid') {
-      canvas.width = 600; canvas.height = 750;
-      ctx = canvas.getContext('2d');
-      ctx.fillStyle = bgColor; ctx.fillRect(0, 0, 600, 750);
-      await this._drawBgImage(ctx, s.bgImage, 600, 750);
-
-      // White polaroid card area
-      const px = 40, py = 30, pw = 520, cardH = 690;
-      ctx.save();
-      ctx.shadowColor = 'rgba(0,0,0,0.15)'; ctx.shadowBlur = 20; ctx.shadowOffsetY = 5;
-      ctx.fillStyle = '#FFFFFF';
-      this._roundRect(ctx, px, py, pw, cardH, 6);
-      ctx.fill();
-      ctx.restore();
-
-      // Main photo (After, large)
-      const photoMargin = 30;
-      const photoX = px + photoMargin, photoY = py + photoMargin;
-      const photoW = pw - photoMargin * 2, photoH = 420;
-      ctx.save();
-      this._roundRect(ctx, photoX, photoY, photoW, photoH, 4); ctx.clip();
-      this._drawImageCover(ctx, imgAfter || imgBefore, photoX, photoY, photoW, photoH);
-      ctx.restore();
-
-      // Small before thumbnail in corner
-      if (imgBefore && imgAfter) {
-        const tbW = 90, tbH = 90;
-        const tbX = photoX + photoW - tbW - 8, tbY = photoY + photoH - tbH - 8;
-        ctx.fillStyle = '#FFFFFF';
-        ctx.fillRect(tbX - 3, tbY - 3, tbW + 6, tbH + 6);
-        ctx.save();
-        this._roundRect(ctx, tbX, tbY, tbW, tbH, 3); ctx.clip();
-        this._drawImageCover(ctx, imgBefore, tbX, tbY, tbW, tbH);
-        ctx.restore();
-        ctx.fillStyle = '#FFFFFF'; ctx.font = 'bold 9px ' + fontFamily; ctx.textAlign = 'center';
-        ctx.fillText('BEFORE', tbX + tbW / 2, tbY + tbH + 12);
-      }
-
-      // Handwritten-style text area
-      const textY = photoY + photoH + 35;
-      ctx.fillStyle = '#0F172A';
-      ctx.font = 'bold 22px ' + (designSettings.font === 'cute' ? fontFamily : '"Comic Sans MS", "Chalkboard SE", cursive, ' + fontFamily);
-      ctx.textAlign = 'center';
-      ctx.fillText((pet?.name || '') + ' \u2665 ' + App.formatDate(record.date), px + pw / 2, textY);
-
-      let iy = textY + 30;
-      ctx.font = '14px ' + fontFamily; ctx.fillStyle = '#64748B';
-      infoLines.forEach(line => {
-        if (iy < py + cardH - 30) { ctx.fillText(this._truncText(ctx, line, pw - 60), px + pw / 2, iy); iy += 22; }
-      });
-
-      // Footer text at bottom of polaroid
-      ctx.fillStyle = mainColor; ctx.font = '12px ' + fontFamily;
-      const ftxt = footerParts.filter(Boolean).join(' | ');
-      ctx.fillText(this._truncText(ctx, ftxt, pw - 40), px + pw / 2, py + cardH - 15);
-    }
-
-    // ===== Layout: photoFocus (사진 강조형) =====
-    else if (layout === 'photoFocus') {
-      canvas.width = 600; canvas.height = 800;
-      ctx = canvas.getContext('2d');
-      ctx.fillStyle = bgColor; ctx.fillRect(0, 0, 600, 800);
-      await this._drawBgImage(ctx, s.bgImage, 600, 800);
-
-      await this._drawHeader(ctx, 0, 0, 600, 60, shopName, emoji, mainColor, s.logo, fontFamily);
-
-      // Large After photo
-      ctx.save();
-      this._roundRect(ctx, 25, 75, 550, 440, 14); ctx.clip();
-      this._drawImageCover(ctx, imgAfter || imgBefore, 25, 75, 550, 440);
-      ctx.restore();
-      ctx.fillStyle = mainColor; ctx.font = 'bold 14px ' + fontFamily; ctx.textAlign = 'right';
-      ctx.fillText('AFTER', 560, 530);
-
-      // Small Before photo bottom-left
-      if (imgBefore) {
-        ctx.save();
-        this._roundRect(ctx, 25, 545, 160, 130, 10); ctx.clip();
-        this._drawImageCover(ctx, imgBefore, 25, 545, 160, 130);
-        ctx.restore();
-        ctx.fillStyle = mainColor; ctx.font = 'bold 11px ' + fontFamily; ctx.textAlign = 'center';
-        ctx.fillText('BEFORE', 105, 690);
-      }
-
-      // Info to the right of small photo
-      let iy = 565;
-      ctx.fillStyle = '#0F172A'; ctx.font = 'bold 18px ' + fontFamily; ctx.textAlign = 'left';
-      ctx.fillText((pet?.name || '') + '\uC758 \uBBF8\uC6A9 \uAE30\uB85D', 200, iy); iy += 28;
-      ctx.font = '14px ' + fontFamily; ctx.fillStyle = '#64748B'; ctx.textAlign = 'left';
-      infoLines.forEach(line => {
-        if (iy < 740) { ctx.fillText(this._truncText(ctx, line, 360), 200, iy); iy += 22; }
-      });
-
-      this._drawFooter(ctx, 0, 750, 600, 50, footerParts, mainColor, fontFamily);
-    }
-
-    // ===== Layout: infoFocus (정보 중심형) =====
-    else if (layout === 'infoFocus') {
-      canvas.width = 600; canvas.height = 800;
-      ctx = canvas.getContext('2d');
-      ctx.fillStyle = bgColor; ctx.fillRect(0, 0, 600, 800);
-      await this._drawBgImage(ctx, s.bgImage, 600, 800);
-
-      await this._drawHeader(ctx, 0, 0, 600, 60, shopName, emoji, mainColor, s.logo, fontFamily);
-
-      // Two small photos side by side
-      const pw = 180, ph = 150;
-      ctx.save(); this._roundRect(ctx, 110, 80, pw, ph, 10); ctx.clip();
-      this._drawImageCover(ctx, imgBefore, 110, 80, pw, ph); ctx.restore();
-      ctx.fillStyle = mainColor; ctx.font = 'bold 12px ' + fontFamily; ctx.textAlign = 'center';
-      ctx.fillText('BEFORE', 200, 245);
-
-      ctx.fillStyle = mainColor; ctx.font = 'bold 24px ' + fontFamily;
-      ctx.fillText('\u2192', 300, 155);
-
-      ctx.save(); this._roundRect(ctx, 310, 80, pw, ph, 10); ctx.clip();
-      this._drawImageCover(ctx, imgAfter, 310, 80, pw, ph); ctx.restore();
-      ctx.fillStyle = mainColor; ctx.font = 'bold 12px ' + fontFamily; ctx.textAlign = 'center';
-      ctx.fillText('AFTER', 400, 245);
-
-      // Large info area
-      let iy = 280;
-      ctx.fillStyle = '#0F172A'; ctx.font = 'bold 24px ' + fontFamily; ctx.textAlign = 'center';
-      ctx.fillText((pet?.name || '') + '\uC758 \uBBF8\uC6A9 \uAE30\uB85D', 300, iy); iy += 40;
-
-      // Divider line
-      ctx.strokeStyle = mainColor; ctx.lineWidth = 2;
-      ctx.beginPath(); ctx.moveTo(150, iy); ctx.lineTo(450, iy); ctx.stroke();
-      iy += 30;
-
-      ctx.font = '18px ' + fontFamily; ctx.fillStyle = '#0F172A'; ctx.textAlign = 'center';
-      infoLines.forEach(line => {
-        if (iy < 730) { ctx.fillText(this._truncText(ctx, line, 480), 300, iy); iy += 32; }
-      });
-
-      this._drawFooter(ctx, 0, 750, 600, 50, footerParts, mainColor, fontFamily);
-    }
-
     // ===== Layout: minimal =====
     else if (layout === 'minimal') {
       canvas.width = 600; canvas.height = 700;
       ctx = canvas.getContext('2d');
       ctx.fillStyle = '#FFFFFF'; ctx.fillRect(0, 0, 600, 700);
-      await this._drawBgImage(ctx, s.bgImage, 600, 700);
 
       // Before
       ctx.save(); this._roundRect(ctx, 30, 30, 540, 270, 12); ctx.clip();
@@ -1971,10 +1683,6 @@ App.pages.records = {
       ctx.fillText('Photo Card', 300, 400);
     }
 
-    // Draw frame & stickers on top
-    this._drawFrame(ctx, canvas.width, canvas.height, s.frame, mainColor);
-    this._drawStickers(ctx, canvas.width, canvas.height, s.sticker);
-
     return canvas;
   },
 
@@ -1997,9 +1705,6 @@ App.pages.records = {
         layout: ds.layout || 'vertical',
         template: ds.template || os.template || 'default',
         mainColor: ds.mainColor || os.mainColor || '#6366F1',
-        font: ds.font || 'default',
-        frame: ds.frame || 'none',
-        sticker: ds.sticker || 'none',
         showService: ds.showService !== false,
         showPrice: ds.showPrice !== false,
         showGroomer: ds.showGroomer !== false,
@@ -2008,8 +1713,7 @@ App.pages.records = {
         showPetInfo: ds.showPetInfo !== false,
         showShopPhone: ds.showShopPhone !== false,
         footerMessage: ds.footerMessage || os.footerMessage || '\uAC10\uC0AC\uD569\uB2C8\uB2E4 \u2665',
-        logo: ds.logo || null,
-        bgImage: ds.bgImage || null
+        logo: ds.logo || null
       };
 
       const canvas = await this._generateCardCanvas(record, customer, pet, shopName, shopPhone, serviceNames, designSettings);

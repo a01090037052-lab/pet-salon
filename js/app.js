@@ -213,6 +213,8 @@ const App = {
   },
 
   async renderPage(page, params) {
+    window.scrollTo(0, 0);
+    document.getElementById('main-content').scrollTop = 0;
     const pageModule = this.pages[page];
     if (pageModule && pageModule.render) {
       const content = document.getElementById('page-content');
@@ -268,6 +270,7 @@ const App = {
 
   // ========== Modal ==========
   showModal(options) {
+    this._lastFocusedElement = document.activeElement;
     const { title, content, onSave, size, hideFooter, saveText } = options;
     document.getElementById('modal-title').textContent = title;
     document.getElementById('modal-body').innerHTML = content;
@@ -298,6 +301,24 @@ const App = {
     overlay.classList.remove('hidden');
     overlay.classList.add('animate-in');
 
+    // Mobile drag-to-close
+    if (window.innerWidth <= 768) {
+      const modal = document.getElementById('modal');
+      const header = modal.querySelector('.modal-header');
+      let startY = 0, dy = 0;
+      const onStart = (e) => { startY = e.touches[0].clientY; modal.style.transition = 'none'; };
+      const onMove = (e) => { dy = e.touches[0].clientY - startY; if (dy > 0) modal.style.transform = `translateY(${dy}px)`; };
+      const onEnd = () => { modal.style.transition = ''; if (dy > 100) { this.closeModal(); } modal.style.transform = ''; dy = 0; };
+      header.addEventListener('touchstart', onStart, { passive: true });
+      header.addEventListener('touchmove', onMove, { passive: true });
+      header.addEventListener('touchend', onEnd);
+      this._modalDragCleanup = () => {
+        header.removeEventListener('touchstart', onStart);
+        header.removeEventListener('touchmove', onMove);
+        header.removeEventListener('touchend', onEnd);
+      };
+    }
+
     // Auto-format phone inputs inside modal
     setTimeout(() => this.setupPhoneInputs(), 50);
 
@@ -326,6 +347,11 @@ const App = {
     modalBody.onkeydown = null;
     modalBody.innerHTML = '';
     document.getElementById('modal-save').onclick = null;
+    if (this._modalDragCleanup) { this._modalDragCleanup(); this._modalDragCleanup = null; }
+    if (this._lastFocusedElement) {
+      try { this._lastFocusedElement.focus(); } catch(e) {}
+      this._lastFocusedElement = null;
+    }
   },
 
   // ========== Confirm Dialog ==========
@@ -343,7 +369,7 @@ const App = {
     });
   },
 
-  closeConfirm(result) {
+  closeConfirm(result = false) {
     document.getElementById('confirm-overlay').classList.add('hidden');
     if (this._confirmResolve) {
       this._confirmResolve(result);
@@ -356,12 +382,17 @@ const App = {
     const container = document.getElementById('toast-container');
     const toast = document.createElement('div');
     toast.className = `toast ${type}`;
-    toast.textContent = message;
+    toast.innerHTML = `<span>${message}</span><button class="toast-dismiss" onclick="this.parentElement.style.animation='toastOut 0.3s ease forwards';setTimeout(()=>this.parentElement.remove(),300)">&times;</button>`;
     container.appendChild(toast);
+
+    // Duration based on type: success=1.5s, info=2s, error=5s
+    const duration = type === 'error' ? 5000 : type === 'info' ? 2000 : 1500;
     setTimeout(() => {
-      toast.style.animation = 'toastOut 0.3s ease forwards';
-      setTimeout(() => toast.remove(), 300);
-    }, 2800);
+      if (toast.parentElement) {
+        toast.style.animation = 'toastOut 0.3s ease forwards';
+        setTimeout(() => toast.remove(), 300);
+      }
+    }, duration);
 
     // Update badges after data changes
     if (type === 'success') {
@@ -387,19 +418,30 @@ const App = {
   },
 
   // ========== Field Validation Highlight ==========
-  highlightField(elementId) {
+  highlightField(elementId, errorMessage) {
     const el = document.getElementById(elementId);
     if (!el) return;
     el.classList.add('field-error');
+    // Add error message
+    if (errorMessage) {
+      let msg = el.parentElement?.querySelector('.field-error-msg');
+      if (!msg) {
+        msg = document.createElement('div');
+        msg.className = 'field-error-msg';
+        el.parentElement?.appendChild(msg);
+      }
+      msg.textContent = errorMessage;
+    }
     el.scrollIntoView({ behavior: 'smooth', block: 'center' });
     const removeError = () => {
       el.classList.remove('field-error');
+      el.parentElement?.querySelector('.field-error-msg')?.remove();
       el.removeEventListener('input', removeError);
       el.removeEventListener('change', removeError);
     };
     el.addEventListener('input', removeError);
     el.addEventListener('change', removeError);
-    setTimeout(() => el.classList.remove('field-error'), 3000);
+    setTimeout(() => removeError(), 5000);
   },
 
   // ========== Utility Functions ==========
@@ -545,7 +587,15 @@ const App = {
       const addOpt = e.target.closest('.search-select-add');
       if (addOpt) {
         dropdown.classList.remove('open');
-        App.pages.customers?.showForm();
+        // afterSaveCallback: 고객 저장 후 선택 필드에 자동 반영
+        App.pages.customers?.showForm(null, async (newCustomerId) => {
+          const newCustomer = await DB.get('customers', newCustomerId);
+          if (newCustomer) {
+            hidden.value = newCustomerId;
+            input.value = App.escapeHtml(newCustomer.name) + ' (' + App.formatPhone(newCustomer.phone) + ')';
+            if (onChange) onChange(newCustomerId);
+          }
+        });
         return;
       }
       const opt = e.target.closest('.search-select-option');
@@ -763,7 +813,7 @@ const App = {
     try {
       const [customers, pets, records, services] = await Promise.all([
         DB.getAll('customers'),
-        DB.getAllLight('pets', ['photo', 'temperament', 'healthNotes', 'preferredStyle']),
+        DB.getAllLight('pets', ['photo', 'preferredStyle']),
         DB.getAllLight('records', ['photoBefore', 'photoAfter', 'memo']),
         DB.getAll('services')
       ]);
@@ -802,6 +852,10 @@ const App = {
     input.value = '';
     document.getElementById('global-search-results').innerHTML = '';
 
+    history.pushState({ searchOpen: true }, '');
+    this._searchPopHandler = () => { this.closeSearch(); };
+    window.addEventListener('popstate', this._searchPopHandler, { once: true });
+
     // Auto-focus
     setTimeout(() => input.focus(), 50);
   },
@@ -813,6 +867,10 @@ const App = {
     overlay.classList.remove('animate-in');
     this._searchData = null;
     document.getElementById('global-search-results').innerHTML = '';
+    if (this._searchPopHandler) {
+      window.removeEventListener('popstate', this._searchPopHandler);
+      this._searchPopHandler = null;
+    }
   },
 
   performSearch(query) {
@@ -845,8 +903,16 @@ const App = {
         <div class="gs-no-results">
           <div class="gs-no-results-icon">&#x1F50D;</div>
           <div class="gs-no-results-text">검색 결과 없음</div>
-          <button class="btn btn-primary" onclick="App.closeSearch(); App.pages.customers?.showForm();">+ 새 고객 등록</button>
+          <button class="btn btn-primary" id="gs-new-customer-btn">+ 새 고객 등록</button>
         </div>`;
+      document.getElementById('gs-new-customer-btn')?.addEventListener('click', () => {
+        App.closeSearch();
+        App.pages.customers?.showForm(null, async (newCustomerId) => {
+          const newCustomer = await DB.get('customers', newCustomerId);
+          const customerName = newCustomer ? newCustomer.name : '';
+          App.showToast(`${customerName} 고객이 등록되었습니다.`);
+        });
+      });
       return;
     }
 
@@ -1000,6 +1066,10 @@ const App = {
               <span class="gs-action-btn-icon">&#x1F4C5;</span>
               <span>예약</span>
             </button>
+            <button class="gs-action-btn" id="gs-action-record" data-customer-id="${customer.id}">
+              <span class="gs-action-btn-icon">&#x2702;</span>
+              <span>미용기록</span>
+            </button>
             <button class="gs-action-btn" id="gs-action-detail" data-customer-id="${customer.id}">
               <span class="gs-action-btn-icon">&#x1F4CB;</span>
               <span>상세</span>
@@ -1016,11 +1086,21 @@ const App = {
 
     // Appointment button
     document.getElementById('gs-action-appt')?.addEventListener('click', () => {
+      const petId = cPets.length === 1 ? cPets[0].id : undefined;
       this.closeSearch();
       if (this.pages.appointments?.showForm) {
-        this.pages.appointments.showForm(null, customer.id);
+        this.pages.appointments.showForm(null, customer.id, petId ? { petId } : undefined);
       } else {
         this.navigate('appointments');
+      }
+    });
+
+    // Record button
+    document.getElementById('gs-action-record')?.addEventListener('click', () => {
+      const petId = cPets.length === 1 ? cPets[0].id : undefined;
+      this.closeSearch();
+      if (this.pages.records?.showForm) {
+        this.pages.records.showForm(null, { customerId: customer.id, petId: petId || undefined });
       }
     });
 
@@ -1138,7 +1218,6 @@ const App = {
     let tpl = await this.getSmsTemplate(type);
     const shopName = await DB.getSetting('shopName') || '펫살롱';
     const shopPhone = await DB.getSetting('shopPhone') || '';
-
     const allVars = {
       '매장명': shopName,
       '전화번호': shopPhone,
@@ -1148,6 +1227,7 @@ const App = {
     for (const [key, val] of Object.entries(allVars)) {
       tpl = tpl.replace(new RegExp(`\\{${key}\\}`, 'g'), val || '');
     }
+
     return tpl;
   }
 };

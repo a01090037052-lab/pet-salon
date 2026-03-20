@@ -26,6 +26,14 @@ App.pages.customers = {
       }
     });
 
+    // Restore sort key from sessionStorage if not already set
+    if (!this._sortKey) {
+      try {
+        const sf = sessionStorage.getItem('customer-filter');
+        if (sf) { const f = JSON.parse(sf); if (f.sort) this._sortKey = f.sort; }
+      } catch (e) { /* ignore */ }
+    }
+
     // 정렬 기준 적용
     const sortKey = this._sortKey || 'name';
     let sorted;
@@ -56,6 +64,7 @@ App.pages.customers = {
             <option value="">전체 분류</option>
             <option value="vip">VIP</option>
             <option value="new">신규</option>
+            <option value="normal">일반</option>
             <option value="regular">단골</option>
             <option value="caution">주의</option>
           </select>
@@ -141,6 +150,10 @@ App.pages.customers = {
                 <div class="mobile-card-body">
                   <a href="tel:${App.escapeHtml((c.phone || '').replace(/\D/g, ''))}" class="mobile-card-phone" onclick="event.stopPropagation()">&#x1F4DE; ${App.formatPhone(c.phone)}</a>
                   <span class="mobile-card-meta-text">${lastVisit[c.id] ? '최근 방문: ' + App.getRelativeTime(lastVisit[c.id]) : '방문 기록 없음'}</span>
+                  <div style="display:flex;gap:4px;margin-top:8px;border-top:1px solid var(--border-light);padding-top:8px">
+                    <button class="btn btn-sm btn-secondary btn-edit-customer" data-id="${c.id}" style="flex:1" onclick="event.stopPropagation()">수정</button>
+                    <button class="btn btn-sm btn-danger btn-delete-customer" data-id="${c.id}" style="flex:1" onclick="event.stopPropagation()">삭제</button>
+                  </div>
                 </div>
               </div>`;
             }).join('')}
@@ -216,15 +229,6 @@ App.pages.customers = {
               </div>
               ${stamps >= goal ? '<div style="color:var(--success);font-weight:700;margin-top:6px;font-size:0.9rem">&#x1F389; 무료 서비스 제공 가능!</div>' : ''}
             </div>`;
-        } else if (rewardSettings.type === 'point') {
-          const points = customer.points || 0;
-          rewardHtml = `
-            <div style="background:var(--primary-light);border:1.5px solid var(--primary-lighter);border-radius:var(--radius);padding:14px 18px;margin-bottom:16px">
-              <div style="display:flex;justify-content:space-between;align-items:center">
-                <span style="font-weight:700;font-size:1rem">&#x1F4B0; 보유 포인트</span>
-                <span style="font-weight:800;color:var(--primary);font-size:1.2rem">${points.toLocaleString()}P</span>
-              </div>
-            </div>`;
         }
         return rewardHtml;
       })()}
@@ -263,7 +267,9 @@ App.pages.customers = {
         </div>
         <div class="grid-3">
           ${pets.length === 0 ? '<p style="color:var(--text-muted)">등록된 반려견이 없습니다.</p>' :
-            pets.map(p => `
+            pets.map(p => {
+              const petNotes = [p.temperament, p.healthNotes, p.allergies].filter(Boolean);
+              return `
               <div class="pet-card" onclick="App.navigate('pets/${p.id}')">
                 ${p.photo
                   ? `<img src="${p.photo}" class="photo-viewable" data-caption="${App.escapeHtml(p.name)}" style="width:48px;height:48px;object-fit:cover;border-radius:var(--radius);flex-shrink:0" alt="${App.escapeHtml(p.name)}" onclick="event.stopPropagation()">`
@@ -272,9 +278,10 @@ App.pages.customers = {
                 <div>
                   <div class="pet-name">${App.escapeHtml(p.name)}</div>
                   <div class="pet-breed">${App.escapeHtml(p.breed || '견종 미입력')} | ${p.weight ? p.weight + 'kg' : '체중 미입력'}</div>
+                  ${petNotes.length > 0 ? `<div style="font-size:0.78rem;color:var(--danger);margin-top:4px;line-height:1.3">&#x26A0; ${petNotes.map(n => App.escapeHtml(n)).join(', ')}</div>` : ''}
                 </div>
               </div>
-            `).join('')}
+            `}).join('')}
         </div>
       </div>
 
@@ -322,6 +329,11 @@ App.pages.customers = {
     // Sort
     document.getElementById('customer-sort')?.addEventListener('change', (e) => {
       this._sortKey = e.target.value;
+      sessionStorage.setItem('customer-filter', JSON.stringify({
+        search: this._searchQuery || '',
+        tag: this._tagFilter || '',
+        sort: this._sortKey
+      }));
       App.handleRoute();
     });
 
@@ -336,6 +348,23 @@ App.pages.customers = {
       this._searchQuery = e.target.value;
       this.applyFilters();
     });
+
+    // Restore saved filter state
+    const savedFilter = sessionStorage.getItem('customer-filter');
+    if (savedFilter) {
+      try {
+        const f = JSON.parse(savedFilter);
+        if (f.search) {
+          document.getElementById('customer-search').value = f.search;
+          this._searchQuery = f.search;
+        }
+        if (f.tag) {
+          document.getElementById('customer-tag-filter').value = f.tag;
+          this._tagFilter = f.tag;
+        }
+        if (f.search || f.tag) this.applyFilters();
+      } catch (e) { /* ignore parse errors */ }
+    }
 
     // Row click -> detail
     document.querySelectorAll('.clickable-row').forEach(row => {
@@ -374,8 +403,11 @@ App.pages.customers = {
     });
   },
 
-  async showForm(id) {
+  async showForm(id, afterSaveCallback) {
     let customer = id ? await DB.get('customers', id) : {};
+
+    // afterSaveCallback 저장 (saveCustomer에서 사용)
+    this._afterSaveCallback = afterSaveCallback || null;
 
     App.showModal({
       title: id ? '고객 정보 수정' : '새 고객 등록',
@@ -440,17 +472,32 @@ App.pages.customers = {
     try {
       const data = { name, phone, address, birthday, memo, tags };
 
+      let newId = id;
       if (id) {
         const existing = await DB.get('customers', id);
         Object.assign(existing, data);
         await DB.update('customers', existing);
         App.showToast('고객 정보가 수정되었습니다.');
       } else {
-        await DB.add('customers', data);
+        newId = await DB.add('customers', data);
         App.showToast('새 고객이 등록되었습니다.');
       }
 
       App.closeModal();
+
+      // afterSaveCallback이 있으면 호출 (예약/기록에서 고객 선택 시)
+      const callback = this._afterSaveCallback;
+      this._afterSaveCallback = null;
+      if (callback) {
+        callback(newId, name);
+        // 반려견도 함께 등록할지 확인
+        const addPet = await App.confirm('반려견도 함께 등록하시겠습니까?');
+        if (addPet) {
+          App.pages.pets?.showForm(null, newId);
+        }
+        return;
+      }
+
       App.handleRoute();
     } catch (err) {
       console.error('Save customer error:', err);
@@ -487,8 +534,8 @@ App.pages.customers = {
 
   getTagBadges(tags) {
     if (!tags || tags.length === 0) return '';
-    const tagLabels = { vip: 'VIP', 'new': '신규', regular: '단골', caution: '주의' };
-    const tagColors = { vip: 'badge-warning', 'new': 'badge-info', regular: 'badge-success', caution: 'badge-danger' };
+    const tagLabels = { vip: 'VIP', 'new': '신규', normal: '일반', regular: '단골', caution: '주의' };
+    const tagColors = { vip: 'badge-warning', 'new': 'badge-info', normal: 'badge-secondary', regular: 'badge-success', caution: 'badge-danger' };
     return tags.map(t => `<span class="badge ${tagColors[t] || 'badge-secondary'}" style="font-size:0.6rem;margin-left:4px">${tagLabels[t] || t}</span>`).join('');
   },
 
@@ -498,6 +545,13 @@ App.pages.customers = {
   applyFilters() {
     const q = (this._searchQuery || '').toLowerCase();
     const tag = this._tagFilter || '';
+
+    // Save filter state to sessionStorage
+    sessionStorage.setItem('customer-filter', JSON.stringify({
+      search: this._searchQuery || '',
+      tag,
+      sort: this._sortKey || 'name'
+    }));
 
     const matchesFilter = (el) => {
       const textMatch = !q || el.textContent.toLowerCase().includes(q);

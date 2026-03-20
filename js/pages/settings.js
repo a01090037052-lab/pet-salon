@@ -24,8 +24,6 @@ App.pages.settings = {
     const completeTpl = savedTemplates.complete || DEFAULT_TEMPLATES.complete;
 
     const rewardSettings = await DB.getSetting('rewardSettings') || { type: 'stamp', stampGoal: 10, pointRate: 5, minUsePoints: 1000 };
-    const promotions = await DB.getSetting('promotions') || [];
-
     const [customers, pets, appointments, records, services] = await Promise.all([
       DB.count('customers'),
       DB.count('pets'),
@@ -77,7 +75,6 @@ App.pages.settings = {
                 <input type="number" id="s-revisitDays" value="${revisitDays}" min="1" max="365" placeholder="30">
                 <div class="form-hint">마지막 미용 후 이 기간이 지나면 대시보드에 알림이 표시됩니다</div>
               </div>
-              <button class="btn btn-primary" id="btn-save-settings">저장</button>
             </div>
           </div>
 
@@ -102,7 +99,6 @@ App.pages.settings = {
                   <button class="btn btn-sm btn-primary" id="btn-add-groomer">추가</button>
                 </div>
               </div>
-              <button class="btn btn-primary" id="btn-save-groomers">미용사 목록 저장</button>
             </div>
           </div>
 
@@ -125,10 +121,10 @@ App.pages.settings = {
                 </div>
                 <div class="form-hint">선택한 요일은 캘린더에 휴무로 표시되고, 예약 시 경고가 나타납니다</div>
               </div>
-              <button class="btn btn-primary" id="btn-save-closed-days">휴무일 저장</button>
             </div>
           </div>
         </div>
+        <button class="btn btn-primary btn-lg" id="btn-save-tab-shop" style="width:100%;margin-top:20px">매장 관리 설정 저장</button>
       </div>
 
       <!-- Tab 2: 알림·메시지 -->
@@ -157,7 +153,6 @@ App.pages.settings = {
                 </select>
                 <div class="form-hint">예약 시간 기준으로 미리 알림을 보냅니다</div>
               </div>
-              <button class="btn btn-primary" id="btn-save-notif">알림 설정 저장</button>
             </div>
           </div>
         </div>
@@ -170,8 +165,7 @@ App.pages.settings = {
           <div class="card-body">
             <p style="color:var(--text-secondary);font-size:0.85rem;margin-bottom:16px">
               문자 발송 시 사용되는 메시지를 수정할 수 있습니다.<br>
-              사용 가능한 변수: <code>{매장명}</code> <code>{고객명}</code> <code>{반려견명}</code> <code>{경과일수}</code> <code>{날짜}</code> <code>{시간}</code> <code>{서비스}</code> <code>{금액}</code> <code>{미용사}</code> <code>{전화번호}</code>
-            </p>
+              사용 가능한 변수: <code>{매장명}</code> <code>{고객명}</code> <code>{반려견명}</code> <code>{경과일수}</code> <code>{날짜}</code> <code>{시간}</code> <code>{서비스}</code> <code>{금액}</code> <code>{미용사}</code> <code>{전화번호}</code>            </p>
             <div class="form-group">
               <label class="form-label">재방문 알림 문자</label>
               <textarea id="tpl-revisit" rows="3">${App.escapeHtml(revisitTpl)}</textarea>
@@ -192,64 +186,84 @@ App.pages.settings = {
               <textarea id="tpl-complete" rows="3">${App.escapeHtml(completeTpl)}</textarea>
               <div class="form-hint">미용 기록 저장 후 고객에게 안내 문자 발송 시 사용</div>
             </div>
-            <button class="btn btn-primary" id="btn-save-templates">템플릿 저장</button>
-            <button class="btn btn-secondary" id="btn-reset-templates" style="margin-left:8px">기본값 복원</button>
+            <button class="btn btn-secondary" id="btn-reset-templates">기본값 복원</button>
           </div>
         </div>
+        <button class="btn btn-primary btn-lg" id="btn-save-tab-notify" style="width:100%;margin-top:20px">알림·메시지 설정 저장</button>
       </div>
 
       <!-- Tab 3: 마케팅 -->
       <div class="settings-tab-content" id="tab-marketing" style="display:none">
-        <!-- 포인트/스탬프 설정 -->
-        <div class="card">
+        <!-- 일일 매출 목표 -->
+        <div class="card" style="margin-bottom:20px">
           <div class="card-header">
-            <span class="card-title">&#x2B50; 포인트/스탬프 설정</span>
+            <span class="card-title">&#x1F3AF; 일일 매출 목표</span>
           </div>
           <div class="card-body">
             <div class="form-group">
-              <label class="form-label">적립 방식</label>
-              <select id="s-rewardType">
-                <option value="stamp" ${rewardSettings.type === 'stamp' ? 'selected' : ''}>스탬프 (방문 횟수 기반)</option>
-                <option value="point" ${rewardSettings.type === 'point' ? 'selected' : ''}>포인트 (금액 비율 기반)</option>
-                <option value="none" ${rewardSettings.type === 'none' ? 'selected' : ''}>사용 안 함</option>
-              </select>
+              <label class="form-label">일일 매출 목표</label>
+              <input type="number" id="s-dailyGoal" value="${(await DB.getSetting('dailyGoal')) || ''}" placeholder="예: 500000" min="0" step="10000">
+              <div class="form-hint">대시보드에 목표 대비 달성률이 표시됩니다</div>
             </div>
-            <div id="stamp-settings" style="display:${rewardSettings.type === 'stamp' ? 'block' : 'none'}">
-              <div class="form-group">
-                <label class="form-label">무료 서비스 기준 (N회 방문)</label>
-                <input type="number" id="s-stampGoal" value="${rewardSettings.stampGoal || 10}" min="2" max="50" placeholder="10">
-                <div class="form-hint">이 횟수만큼 스탬프가 모이면 무료 서비스가 제공됩니다</div>
-              </div>
-            </div>
-            <div id="point-settings" style="display:${rewardSettings.type === 'point' ? 'block' : 'none'}">
-              <div class="form-group">
-                <label class="form-label">적립률 (%)</label>
-                <input type="number" id="s-pointRate" value="${rewardSettings.pointRate || 5}" min="1" max="50" placeholder="5">
-                <div class="form-hint">결제 금액의 해당 비율만큼 포인트가 적립됩니다</div>
-              </div>
-              <div class="form-group">
-                <label class="form-label">최소 사용 포인트</label>
-                <input type="number" id="s-minUsePoints" value="${rewardSettings.minUsePoints || 1000}" min="100" step="100" placeholder="1000">
-                <div class="form-hint">포인트 사용 시 최소 사용 가능 금액입니다</div>
-              </div>
-            </div>
-            <button class="btn btn-primary" id="btn-save-reward">적립 설정 저장</button>
           </div>
         </div>
 
-        <!-- 프로모션 관리 -->
-        <div class="card" style="margin-top:20px">
+        <!-- 스탬프 적립 설정 -->
+        <div class="card">
           <div class="card-header">
-            <span class="card-title">&#x1F389; 프로모션 관리</span>
-            <button class="btn btn-sm btn-primary" id="btn-add-promotion">+ 새 프로모션</button>
+            <span class="card-title">&#x2B50; 스탬프 적립 설정</span>
           </div>
           <div class="card-body">
-            <div id="promotion-list">
-              ${promotions.length === 0 ? '<p style="color:var(--text-muted)">등록된 프로모션이 없습니다.</p>' :
-                promotions.map(p => this.renderPromoItem(p)).join('')}
+            <div class="form-group">
+              <label class="form-label">무료 서비스 기준 (N회 방문)</label>
+              <input type="number" id="s-stampGoal" value="${rewardSettings.stampGoal || 10}" min="2" max="50" placeholder="10">
+              <div class="form-hint">이 횟수만큼 스탬프가 모이면 무료 서비스가 제공됩니다</div>
+            </div>
+            <div class="form-group">
+              <label class="checkbox-label">
+                <input type="checkbox" id="s-stampEnabled" ${rewardSettings.type !== 'none' ? 'checked' : ''}>
+                스탬프 적립 사용
+              </label>
             </div>
           </div>
         </div>
+
+        <!-- 고객 자동 분류 설정 -->
+        <div class="card" style="margin-top:20px">
+          <div class="card-header">
+            <span class="card-title">&#x1F3F7; 고객 자동 분류</span>
+          </div>
+          <div class="card-body">
+            <p style="color:var(--text-secondary);font-size:0.85rem;margin-bottom:16px">
+              미용 기록 저장 시 방문 횟수에 따라 고객 분류를 자동으로 업데이트합니다.<br>
+              VIP와 주의 태그는 수동으로만 지정됩니다.
+            </p>
+            <div class="form-group">
+              <label class="checkbox-label">
+                <input type="checkbox" id="s-autoTagEnabled" ${(await DB.getSetting('autoTagEnabled')) ? 'checked' : ''}>
+                자동 분류 사용
+              </label>
+            </div>
+            <div class="form-row three">
+              <div class="form-group">
+                <label class="form-label">신규 기준 (최대 방문 수)</label>
+                <input type="number" id="s-autoTagNew" value="${(await DB.getSetting('autoTagNewMax')) || 2}" min="0" max="100" placeholder="2">
+                <div class="form-hint">0~이 횟수까지 '신규' 태그</div>
+              </div>
+              <div class="form-group">
+                <label class="form-label">일반 기준 (최대 방문 수)</label>
+                <input type="number" id="s-autoTagNormal" value="${(await DB.getSetting('autoTagNormalMax')) || 9}" min="1" max="200" placeholder="9">
+                <div class="form-hint">신규 초과~이 횟수까지 '일반' 태그</div>
+              </div>
+              <div class="form-group">
+                <label class="form-label">단골 기준 (최소 방문 수)</label>
+                <input type="number" id="s-autoTagRegular" value="${(await DB.getSetting('autoTagRegularMin')) || 10}" min="2" max="200" placeholder="10">
+                <div class="form-hint">이 횟수 이상이면 '단골' 태그</div>
+              </div>
+            </div>
+          </div>
+        </div>
+        <button class="btn btn-primary btn-lg" id="btn-save-tab-marketing" style="width:100%;margin-top:20px">마케팅 설정 저장</button>
       </div>
 
       <!-- Tab 4: 사진 카드 -->
@@ -285,24 +299,6 @@ App.pages.settings = {
               </div>
             </div>
 
-            <!-- 글꼴 -->
-            <div class="form-group">
-              <label class="form-label">글꼴</label>
-              <div id="card-font-list" class="card-design-row"></div>
-            </div>
-
-            <!-- 테두리 -->
-            <div class="form-group">
-              <label class="form-label">테두리 장식</label>
-              <div id="card-frame-list" class="card-design-row"></div>
-            </div>
-
-            <!-- 스티커 -->
-            <div class="form-group">
-              <label class="form-label">스티커</label>
-              <div id="card-sticker-list" class="card-design-row"></div>
-            </div>
-
             <!-- 표시 정보 -->
             <div class="form-group">
               <label class="form-label">표시 정보</label>
@@ -318,19 +314,6 @@ App.pages.settings = {
                   <input type="file" id="card-logo-input" accept="image/*" style="display:none">
                   <button class="btn btn-sm btn-secondary" id="btn-upload-logo">업로드</button>
                   <button class="btn btn-sm btn-ghost" id="btn-remove-logo" style="display:none;font-size:0.75rem;color:var(--danger)">삭제</button>
-                </div>
-              </div>
-            </div>
-
-            <!-- 배경 이미지 -->
-            <div class="form-group">
-              <label class="form-label">배경 이미지</label>
-              <div style="display:flex;align-items:center;gap:12px">
-                <div id="card-bg-preview" style="width:80px;height:60px;border-radius:8px;border:2px dashed var(--border);display:flex;align-items:center;justify-content:center;overflow:hidden;font-size:0.75rem;color:var(--text-muted);flex-shrink:0">없음</div>
-                <div style="display:flex;flex-direction:column;gap:6px">
-                  <input type="file" id="card-bg-input" accept="image/*" style="display:none">
-                  <button class="btn btn-sm btn-secondary" id="btn-upload-bg">업로드</button>
-                  <button class="btn btn-sm btn-ghost" id="btn-remove-bg" style="display:none;font-size:0.75rem;color:var(--danger)">삭제</button>
                 </div>
               </div>
             </div>
@@ -446,14 +429,23 @@ App.pages.settings = {
       });
     });
 
-    // Save settings
-    document.getElementById('btn-save-settings')?.addEventListener('click', async () => {
+    // Tab 1: 매장 관리 전체 저장
+    document.getElementById('btn-save-tab-shop')?.addEventListener('click', async () => {
+      // 매장 정보
       await DB.setSetting('shopName', document.getElementById('s-shopName').value.trim());
       await DB.setSetting('shopPhone', document.getElementById('s-shopPhone').value.trim());
       await DB.setSetting('shopAddress', document.getElementById('s-shopAddress').value.trim());
       await DB.setSetting('revisitDays', Number(document.getElementById('s-revisitDays').value) || 30);
       await App.applyShopName();
-      App.showToast('설정이 저장되었습니다.');
+      // 미용사 목록
+      const inputs = document.querySelectorAll('.groomer-input');
+      const groomers = Array.from(inputs).map(i => i.value.trim()).filter(Boolean);
+      await DB.setSetting('groomers', groomers);
+      // 휴무일
+      const checks = document.querySelectorAll('input[name="closedDay"]:checked');
+      const closedDays = Array.from(checks).map(cb => Number(cb.value));
+      await DB.setSetting('closedDays', closedDays);
+      App.showToast('매장 관리 설정이 저장되었습니다.');
     });
 
     // Add groomer
@@ -476,8 +468,9 @@ App.pages.settings = {
 
     this.bindGroomerRemove();
 
-    // Save notification settings
-    document.getElementById('btn-save-notif')?.addEventListener('click', async () => {
+    // Tab 2: 알림·메시지 전체 저장
+    document.getElementById('btn-save-tab-notify')?.addEventListener('click', async () => {
+      // 알림 설정
       const enabled = document.getElementById('s-notifEnabled').checked;
       const minutes = Number(document.getElementById('s-notifMinutes').value) || 30;
       await DB.setSetting('notifEnabled', enabled);
@@ -488,29 +481,8 @@ App.pages.settings = {
           App.showToast('브라우저 알림 권한이 거부되었습니다. 브라우저 설정에서 허용해주세요.', 'warning');
         }
       }
-      // 알림 체커 시작/중지
       App.setupNotificationChecker();
-      App.showToast('알림 설정이 저장되었습니다.');
-    });
-
-    // Save closed days
-    document.getElementById('btn-save-closed-days')?.addEventListener('click', async () => {
-      const checks = document.querySelectorAll('input[name="closedDay"]:checked');
-      const closedDays = Array.from(checks).map(cb => Number(cb.value));
-      await DB.setSetting('closedDays', closedDays);
-      App.showToast('휴무일이 저장되었습니다.');
-    });
-
-    // Save groomers
-    document.getElementById('btn-save-groomers')?.addEventListener('click', async () => {
-      const inputs = document.querySelectorAll('.groomer-input');
-      const groomers = Array.from(inputs).map(i => i.value.trim()).filter(Boolean);
-      await DB.setSetting('groomers', groomers);
-      App.showToast('미용사 목록이 저장되었습니다.');
-    });
-
-    // Save templates
-    document.getElementById('btn-save-templates')?.addEventListener('click', async () => {
+      // 메시지 템플릿
       const tpls = {
         revisit: document.getElementById('tpl-revisit').value,
         appointment: document.getElementById('tpl-appointment').value,
@@ -518,7 +490,7 @@ App.pages.settings = {
         complete: document.getElementById('tpl-complete').value
       };
       await DB.setSetting('messageTemplates', tpls);
-      App.showToast('메시지 템플릿이 저장되었습니다.');
+      App.showToast('알림·메시지 설정이 저장되었습니다.');
     });
 
     // Reset templates to defaults
@@ -537,14 +509,26 @@ App.pages.settings = {
       App.showToast('기본값으로 복원되었습니다.');
     });
 
+    // Tab 3: 마케팅 전체 저장
+    document.getElementById('btn-save-tab-marketing')?.addEventListener('click', async () => {
+      // 일일 매출 목표
+      const goal = Number(document.getElementById('s-dailyGoal').value) || 0;
+      await DB.setSetting('dailyGoal', goal);
+      // 스탬프 설정
+      const stampEnabled = document.getElementById('s-stampEnabled')?.checked;
+      const stampGoal = Number(document.getElementById('s-stampGoal')?.value) || 10;
+      const stampType = stampEnabled ? 'stamp' : 'none';
+      await DB.setSetting('rewardSettings', { type: stampType, stampGoal });
+      // 고객 자동 분류
+      await DB.setSetting('autoTagEnabled', document.getElementById('s-autoTagEnabled').checked);
+      await DB.setSetting('autoTagNewMax', Number(document.getElementById('s-autoTagNew').value) || 2);
+      await DB.setSetting('autoTagNormalMax', Number(document.getElementById('s-autoTagNormal').value) || 9);
+      await DB.setSetting('autoTagRegularMin', Number(document.getElementById('s-autoTagRegular').value) || 10);
+      App.showToast('마케팅 설정이 저장되었습니다.');
+    });
+
     // 사진 카드 템플릿 설정
     this.setupCardTemplates();
-
-    // 포인트/스탬프 설정
-    this.setupRewardSettings();
-
-    // 프로모션 관리
-    this.setupPromotions();
 
     // Revenue CSV export
     document.getElementById('btn-export-revenue-csv')?.addEventListener('click', () => {
@@ -634,25 +618,6 @@ App.pages.settings = {
     });
   },
 
-  renderPromoItem(p) {
-    const now = App.getToday();
-    const isActive = p.isActive && p.startDate <= now && p.endDate >= now;
-    const isPast = p.endDate < now;
-    const borderColor = isActive ? 'var(--success)' : isPast ? 'var(--text-muted)' : 'var(--warning)';
-    const badgeClass = isActive ? 'badge-success' : isPast ? 'badge-secondary' : 'badge-warning';
-    const statusLabel = isActive ? '진행중' : isPast ? '종료' : '예정';
-    const discountLabel = p.discountType === 'percent' ? p.discountValue + '%' : App.formatCurrency(p.discountValue);
-    return '<div style="display:flex;align-items:center;gap:12px;padding:12px 16px;background:var(--bg);border-radius:var(--radius);margin-bottom:8px;border-left:3px solid ' + borderColor + '">'
-      + '<div style="flex:1">'
-      + '<div style="font-weight:700">' + App.escapeHtml(p.name) + ' <span class="badge ' + badgeClass + '">' + statusLabel + '</span></div>'
-      + '<div style="font-size:0.85rem;color:var(--text-secondary);margin-top:2px">' + p.startDate + ' ~ ' + p.endDate + ' | ' + discountLabel + ' 할인</div>'
-      + (p.description ? '<div style="font-size:0.8rem;color:var(--text-muted);margin-top:2px">' + App.escapeHtml(p.description) + '</div>' : '')
-      + '</div>'
-      + '<button class="btn btn-sm btn-secondary btn-edit-promo" data-id="' + p.id + '">수정</button>'
-      + '<button class="btn btn-sm btn-danger btn-delete-promo" data-id="' + p.id + '">삭제</button>'
-      + '</div>';
-  },
-
   // ========== 사진 카드 디자인 설정 ==========
   CARD_TEMPLATES: {
     default: { name: '기본', color: '#6366F1', bgColor: '#F8FAFC', emoji: '\u2702', footerBg: '#6366F1' },
@@ -666,42 +631,8 @@ App.pages.settings = {
 
   CARD_LAYOUTS: {
     vertical: { name: '\uC138\uB85C\uD615 (\uAE30\uBCF8)', desc: 'Before\u2192After \uC138\uB85C \uBC30\uCE58', icon: '\u2B07' },
-    horizontal: { name: '\uAC00\uB85C\uD615', desc: 'Before | After \uAC00\uB85C \uBC30\uCE58', icon: '\u27A1' },
-    photoFocus: { name: '\uC0AC\uC9C4 \uAC15\uC870\uD615', desc: '\uD070 After \uC0AC\uC9C4 + \uC791\uC740 Before', icon: '\uD83D\uDDBC' },
-    infoFocus: { name: '\uC815\uBCF4 \uC911\uC2EC\uD615', desc: '\uC815\uBCF4 \uC704\uC8FC, \uC0AC\uC9C4 \uC791\uAC8C', icon: '\uD83D\uDCCB' },
     photobooth4: { name: '\uC778\uC0DD\uB124\uCEF7 (4\uCEF7)', desc: '4\uCEF7 \uD3EC\uD1A0\uBD80\uC2A4 \uC2A4\uD0C0\uC77C', icon: '\uD83C\uDFAC' },
-    photobooth2: { name: '\uC778\uC0DD\uB124\uCEF7 (2\uCEF7)', desc: '2\uCEF7 \uD3EC\uD1A0\uBD80\uC2A4 \uC2A4\uD0C0\uC77C', icon: '\uD83C\uDFDE' },
-    polaroid: { name: '\uD3F4\uB77C\uB85C\uC774\uB4DC', desc: '\uD3F4\uB77C\uB85C\uC774\uB4DC \uC0AC\uC9C4 \uB290\uB08C', icon: '\uD83D\uDCF7' },
     minimal: { name: '\uBBF8\uB2C8\uB9D0', desc: '\uC0AC\uC9C4\uB9CC \uAE54\uB054\uD558\uAC8C', icon: '\u2728' }
-  },
-
-  CARD_FRAMES: {
-    none: { name: '\uC5C6\uC74C' },
-    rounded: { name: '\uB465\uADFC \uD14C\uB450\uB9AC' },
-    flower: { name: '\uAF43\uBB34\uB2C8 \uD83C\uDF38' },
-    paw: { name: '\uBC1C\uC790\uAD6D \uD83D\uDC3E' },
-    heart: { name: '\uD558\uD2B8 \u2665' },
-    star: { name: '\uBCC4 \u2B50' }
-  },
-
-  CARD_FONTS: {
-    default: { name: '\uAE30\uBCF8', family: '-apple-system, BlinkMacSystemFont, sans-serif' },
-    cute: { name: '\uADC0\uC5EC\uC6B4', family: '"Comic Sans MS", "Chalkboard SE", "Bradley Hand", cursive, sans-serif' },
-    elegant: { name: '\uACE0\uAE09\uC2A4\uB7EC\uC6B4', family: 'Georgia, "Noto Serif", "Times New Roman", serif' },
-    simple: { name: '\uC2EC\uD50C', family: '"SF Mono", "Menlo", "Consolas", monospace, sans-serif' }
-  },
-
-  CARD_STICKERS: {
-    none: '\uC5C6\uC74C',
-    flowers: '\uD83C\uDF38\uD83C\uDF3A\uD83C\uDF37',
-    hearts: '\u2764\uD83D\uDC95\uD83D\uDC96',
-    stars: '\u2B50\u2728\uD83C\uDF1F',
-    paws: '\uD83D\uDC3E\uD83D\uDC15\uD83D\uDC29',
-    ribbon: '\uD83C\uDF80\uD83C\uDF81\u2728',
-    christmas: '\uD83C\uDF84\uD83C\uDF85\u2744',
-    summer: '\uD83C\uDF0A\uD83C\uDFD6\u2600',
-    autumn: '\uD83C\uDF42\uD83C\uDF41\uD83C\uDF30',
-    birthday: '\uD83C\uDF82\uD83C\uDF89\uD83C\uDF88'
   },
 
   _cardDesignLogo: null,
@@ -715,9 +646,6 @@ App.pages.settings = {
       layout: designSettings.layout || 'vertical',
       template: designSettings.template || oldSettings.template || 'default',
       mainColor: designSettings.mainColor || oldSettings.mainColor || '#6366F1',
-      font: designSettings.font || 'default',
-      frame: designSettings.frame || 'none',
-      sticker: designSettings.sticker || 'none',
       showService: designSettings.showService !== false,
       showPrice: designSettings.showPrice !== false,
       showGroomer: designSettings.showGroomer !== false,
@@ -726,8 +654,7 @@ App.pages.settings = {
       showPetInfo: designSettings.showPetInfo !== false,
       showShopPhone: designSettings.showShopPhone !== false,
       footerMessage: designSettings.footerMessage || oldSettings.footerMessage || '\uAC10\uC0AC\uD569\uB2C8\uB2E4 \u2665',
-      logo: designSettings.logo || null,
-      bgImage: designSettings.bgImage || null
+      logo: designSettings.logo || null
     };
 
     this._cardDesignLogo = settings.logo;
@@ -790,43 +717,6 @@ App.pages.settings = {
       });
     }
 
-    // -- Font --
-    const fontList = document.getElementById('card-font-list');
-    if (fontList) {
-      let fhtml = '';
-      for (const [key, f] of Object.entries(this.CARD_FONTS)) {
-        const sel = settings.font === key;
-        fhtml += '<div class="card-design-chip' + (sel ? ' selected' : '') + '" data-key="' + key + '" style="font-family:' + f.family + '">' + f.name + '</div>';
-      }
-      fontList.innerHTML = fhtml;
-      this._bindSelectionGroup(fontList, '.card-design-chip', 'data-key');
-    }
-
-    // -- Frame --
-    const frameList = document.getElementById('card-frame-list');
-    if (frameList) {
-      let frhtml = '';
-      for (const [key, fr] of Object.entries(this.CARD_FRAMES)) {
-        const sel = settings.frame === key;
-        frhtml += '<div class="card-design-chip' + (sel ? ' selected' : '') + '" data-key="' + key + '">' + fr.name + '</div>';
-      }
-      frameList.innerHTML = frhtml;
-      this._bindSelectionGroup(frameList, '.card-design-chip', 'data-key');
-    }
-
-    // -- Sticker --
-    const stickerList = document.getElementById('card-sticker-list');
-    if (stickerList) {
-      let shtml = '';
-      for (const [key, val] of Object.entries(this.CARD_STICKERS)) {
-        const sel = settings.sticker === key;
-        const label = key === 'none' ? val : val;
-        shtml += '<div class="card-design-chip' + (sel ? ' selected' : '') + '" data-key="' + key + '">' + label + '</div>';
-      }
-      stickerList.innerHTML = shtml;
-      this._bindSelectionGroup(stickerList, '.card-design-chip', 'data-key');
-    }
-
     // -- Info toggles --
     const infoToggles = document.getElementById('card-info-toggles');
     if (infoToggles) {
@@ -868,30 +758,6 @@ App.pages.settings = {
       removeLogoBtn.style.display = 'none';
     });
 
-    // -- BG image upload --
-    const bgPreview = document.getElementById('card-bg-preview');
-    const bgInput = document.getElementById('card-bg-input');
-    const removeBgBtn = document.getElementById('btn-remove-bg');
-    if (settings.bgImage && bgPreview) {
-      bgPreview.innerHTML = '<img src="' + settings.bgImage + '" style="width:100%;height:100%;object-fit:cover">';
-      if (removeBgBtn) removeBgBtn.style.display = 'inline-flex';
-    }
-    document.getElementById('btn-upload-bg')?.addEventListener('click', () => bgInput?.click());
-    bgInput?.addEventListener('change', async (e) => {
-      const file = e.target.files[0];
-      if (!file) return;
-      const base64 = await this._compressImage(file, 800, 0.8);
-      this._cardDesignBg = base64;
-      if (bgPreview) bgPreview.innerHTML = '<img src="' + base64 + '" style="width:100%;height:100%;object-fit:cover">';
-      if (removeBgBtn) removeBgBtn.style.display = 'inline-flex';
-      e.target.value = '';
-    });
-    removeBgBtn?.addEventListener('click', () => {
-      this._cardDesignBg = null;
-      if (bgPreview) bgPreview.innerHTML = '\uC5C6\uC74C';
-      removeBgBtn.style.display = 'none';
-    });
-
     // -- Footer message --
     const footerInput = document.getElementById('card-footer-msg');
     if (footerInput) footerInput.value = settings.footerMessage;
@@ -923,9 +789,6 @@ App.pages.settings = {
   _collectCardDesignSettings() {
     const layoutEl = document.querySelector('#card-layout-list .card-design-item.selected');
     const tplEl = document.querySelector('#card-template-list .card-tpl-item.selected');
-    const fontEl = document.querySelector('#card-font-list .card-design-chip.selected');
-    const frameEl = document.querySelector('#card-frame-list .card-design-chip.selected');
-    const stickerEl = document.querySelector('#card-sticker-list .card-design-chip.selected');
     const colorInput = document.getElementById('card-color');
     const footerInput = document.getElementById('card-footer-msg');
 
@@ -938,9 +801,6 @@ App.pages.settings = {
       layout: layoutEl ? layoutEl.dataset.key : 'vertical',
       template: tplEl ? tplEl.dataset.template : 'default',
       mainColor: colorInput ? colorInput.value : '#6366F1',
-      font: fontEl ? fontEl.dataset.key : 'default',
-      frame: frameEl ? frameEl.dataset.key : 'none',
-      sticker: stickerEl ? stickerEl.dataset.key : 'none',
       showService: infoChecks.showService !== false,
       showPrice: infoChecks.showPrice !== false,
       showGroomer: infoChecks.showGroomer !== false,
@@ -949,8 +809,7 @@ App.pages.settings = {
       showPetInfo: infoChecks.showPetInfo !== false,
       showShopPhone: infoChecks.showShopPhone !== false,
       footerMessage: footerInput ? footerInput.value.trim() : '\uAC10\uC0AC\uD569\uB2C8\uB2E4 \u2665',
-      logo: this._cardDesignLogo || null,
-      bgImage: this._cardDesignBg || null
+      logo: this._cardDesignLogo || null
     };
   },
 
@@ -1018,190 +877,28 @@ App.pages.settings = {
     }
   },
 
-  // ========== 포인트/스탬프 설정 ==========
-  setupRewardSettings() {
-    const typeSelect = document.getElementById('s-rewardType');
-    if (!typeSelect) return;
-    typeSelect.addEventListener('change', () => {
-      const t = typeSelect.value;
-      const stampDiv = document.getElementById('stamp-settings');
-      const pointDiv = document.getElementById('point-settings');
-      if (stampDiv) stampDiv.style.display = t === 'stamp' ? 'block' : 'none';
-      if (pointDiv) pointDiv.style.display = t === 'point' ? 'block' : 'none';
-    });
+  // setupRewardSettings is now handled by btn-save-tab-marketing
 
-    document.getElementById('btn-save-reward')?.addEventListener('click', async () => {
-      const type = document.getElementById('s-rewardType').value;
-      const stampGoal = Number(document.getElementById('s-stampGoal')?.value) || 10;
-      const pointRate = Number(document.getElementById('s-pointRate')?.value) || 5;
-      const minUsePoints = Number(document.getElementById('s-minUsePoints')?.value) || 1000;
-      await DB.setSetting('rewardSettings', { type, stampGoal, pointRate, minUsePoints });
-      App.showToast('적립 설정이 저장되었습니다.');
-    });
-  },
-
-  // ========== 프로모션 관리 ==========
-  setupPromotions() {
-    document.getElementById('btn-add-promotion')?.addEventListener('click', () => this.showPromotionForm());
-
-    document.querySelectorAll('.btn-edit-promo').forEach(btn => {
-      btn.addEventListener('click', () => this.showPromotionForm(Number(btn.dataset.id)));
-    });
-
-    document.querySelectorAll('.btn-delete-promo').forEach(btn => {
-      btn.addEventListener('click', async () => {
-        const confirmed = await App.confirm('이 프로모션을 삭제하시겠습니까?');
-        if (!confirmed) return;
-        const promoId = Number(btn.dataset.id);
-        let promotions = await DB.getSetting('promotions') || [];
-        promotions = promotions.filter(p => p.id !== promoId);
-        await DB.setSetting('promotions', promotions);
-        App.showToast('프로모션이 삭제되었습니다.');
-        App.handleRoute();
-      });
-    });
-  },
-
-  async showPromotionForm(promoId) {
-    const promotions = await DB.getSetting('promotions') || [];
-    const promo = promoId ? promotions.find(p => p.id === promoId) : {};
-    const allServices = await DB.getAll('services');
-    const activeServices = allServices.filter(s => s.isActive !== false);
-
-    App.showModal({
-      title: promoId ? '프로모션 수정' : '새 프로모션',
-      content: `
-        <div class="form-group">
-          <label class="form-label">프로모션 이름 <span class="required">*</span></label>
-          <input type="text" id="f-promoName" value="${App.escapeHtml(promo.name || '')}" placeholder="예: 여름 쿨컷 이벤트">
-        </div>
-        <div class="form-row">
-          <div class="form-group">
-            <label class="form-label">시작일 <span class="required">*</span></label>
-            <input type="date" id="f-promoStart" value="${promo.startDate || App.getToday()}">
-          </div>
-          <div class="form-group">
-            <label class="form-label">종료일 <span class="required">*</span></label>
-            <input type="date" id="f-promoEnd" value="${promo.endDate || ''}">
-          </div>
-        </div>
-        <div class="form-row">
-          <div class="form-group">
-            <label class="form-label">할인 유형</label>
-            <select id="f-promoDiscountType">
-              <option value="percent" ${(promo.discountType || 'percent') === 'percent' ? 'selected' : ''}>비율 (%)</option>
-              <option value="fixed" ${promo.discountType === 'fixed' ? 'selected' : ''}>금액 (원)</option>
-            </select>
-          </div>
-          <div class="form-group">
-            <label class="form-label">할인 값</label>
-            <input type="number" id="f-promoDiscountValue" value="${promo.discountValue || ''}" min="0" placeholder="예: 20">
-          </div>
-        </div>
-        <div class="form-group">
-          <label class="form-label">적용 서비스 (미선택 시 전체 적용)</label>
-          <div style="display:flex;flex-direction:column;gap:6px">
-            ${activeServices.map(s => `
-              <label class="checkbox-label">
-                <input type="checkbox" name="promoServiceIds" value="${s.id}" ${(promo.serviceIds || []).includes(s.id) ? 'checked' : ''}>
-                ${App.escapeHtml(s.name)}
-              </label>
-            `).join('')}
-          </div>
-        </div>
-        <div class="form-group">
-          <label class="form-label">설명</label>
-          <textarea id="f-promoDesc" placeholder="프로모션 상세 설명">${App.escapeHtml(promo.description || '')}</textarea>
-        </div>
-        <div class="form-group">
-          <label class="checkbox-label">
-            <input type="checkbox" id="f-promoActive" ${promo.isActive !== false ? 'checked' : ''}>
-            활성화
-          </label>
-        </div>
-      `,
-      onSave: async () => {
-        const name = document.getElementById('f-promoName').value.trim();
-        const startDate = document.getElementById('f-promoStart').value;
-        const endDate = document.getElementById('f-promoEnd').value;
-        const discountType = document.getElementById('f-promoDiscountType').value;
-        const discountValue = Number(document.getElementById('f-promoDiscountValue').value) || 0;
-        const description = document.getElementById('f-promoDesc').value.trim();
-        const isActive = document.getElementById('f-promoActive').checked;
-
-        const serviceIds = [];
-        document.querySelectorAll('input[name="promoServiceIds"]:checked').forEach(cb => serviceIds.push(Number(cb.value)));
-
-        if (!name) { App.showToast('프로모션 이름을 입력해주세요.', 'error'); return; }
-        if (!startDate || !endDate) { App.showToast('기간을 입력해주세요.', 'error'); return; }
-        if (startDate > endDate) { App.showToast('종료일이 시작일보다 빠릅니다.', 'error'); return; }
-
-        let promos = await DB.getSetting('promotions') || [];
-        if (promoId) {
-          const idx = promos.findIndex(p => p.id === promoId);
-          if (idx >= 0) {
-            promos[idx] = { ...promos[idx], name, startDate, endDate, discountType, discountValue, serviceIds, description, isActive };
-          }
-        } else {
-          promos.push({ id: Date.now(), name, startDate, endDate, discountType, discountValue, serviceIds, description, isActive });
-        }
-        await DB.setSetting('promotions', promos);
-        App.showToast(promoId ? '프로모션이 수정되었습니다.' : '새 프로모션이 등록되었습니다.');
-        App.closeModal();
-        App.handleRoute();
-      }
-    });
-  },
-
-  // ========== 프로모션 문자 발송 ==========
-  async showPromoSmsModal(promoId) {
-    const promotions = await DB.getSetting('promotions') || [];
-    const promo = promotions.find(p => p.id === promoId);
-    if (!promo) return;
-
-    const customers = await DB.getAll('customers');
-    const records = await DB.getAll('records');
-    const shopName = await DB.getSetting('shopName') || '펫살롱';
-
-    const lastVisitMap = {};
-    records.forEach(r => {
-      if (!lastVisitMap[r.customerId] || r.date > lastVisitMap[r.customerId]) {
-        lastVisitMap[r.customerId] = r.date;
-      }
-    });
-
-    const discountText = promo.discountType === 'percent' ? promo.discountValue + '% 할인' : App.formatCurrency(promo.discountValue) + ' 할인';
-    const promoMsg = `[${shopName}] ${promo.name} 안내! ${promo.startDate}~${promo.endDate} ${discountText}. ${promo.description || ''} 예약 문의 환영!`;
-
-    const customerList = customers.map(c => {
-      const phone = (c.phone || '').replace(/\D/g, '');
-      const lastVisit = lastVisitMap[c.id];
-      const daysAgo = lastVisit ? App.getDaysAgo(lastVisit) : null;
-      return { ...c, phone, lastVisit, daysAgo };
-    }).sort((a, b) => (b.daysAgo || 999) - (a.daysAgo || 999));
-
-    App.showModal({
-      title: '프로모션 문자 발송 - ' + App.escapeHtml(promo.name),
-      size: 'lg',
-      hideFooter: true,
-      content: `
-        <div style="margin-bottom:16px;padding:12px 16px;background:var(--primary-light);border-radius:var(--radius)">
-          <div style="font-weight:700;margin-bottom:4px">발송 메시지 미리보기</div>
-          <div style="font-size:0.88rem;color:var(--text-secondary)">${App.escapeHtml(promoMsg)}</div>
-        </div>
-        <div style="font-weight:700;margin-bottom:8px">고객 목록 (${customerList.length}명)</div>
-        <div style="max-height:400px;overflow-y:auto;display:flex;flex-direction:column;gap:6px">
-          ${customerList.map(c => `
-            <div style="display:flex;align-items:center;gap:12px;padding:8px 12px;background:var(--bg);border-radius:var(--radius)">
-              <div style="flex:1">
-                <strong>${App.escapeHtml(c.name)}</strong>
-                <span style="color:var(--text-muted);font-size:0.85rem;margin-left:6px">${c.daysAgo !== null ? c.daysAgo + '일 전 방문' : '방문 없음'}</span>
-              </div>
-              ${c.phone ? `<a href="sms:${App.escapeHtml(c.phone)}?body=${encodeURIComponent(promoMsg)}" class="btn btn-sm btn-success" onclick="event.stopPropagation()">문자</a>` : '<span style="color:var(--text-muted);font-size:0.8rem">번호 없음</span>'}
-            </div>
-          `).join('')}
-        </div>
-      `
-    });
+  async directBackup() {
+    try {
+      const data = await DB.exportAll();
+      const json = JSON.stringify(data, null, 2);
+      const blob = new Blob([json], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      const date = App.getToday();
+      a.href = url;
+      const backupName = await DB.getSetting('shopName') || '펫살롱';
+      a.download = `${backupName}_백업_${date}.json`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+      await DB.setSetting('lastBackupDate', App.getToday());
+      App.showToast('백업 파일이 다운로드되었습니다.');
+    } catch (err) {
+      App.showToast('백업 중 오류가 발생했습니다.', 'error');
+    }
   }
+
 };

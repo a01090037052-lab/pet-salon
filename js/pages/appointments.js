@@ -10,7 +10,7 @@ App.pages.appointments = {
       return (a.time || '').localeCompare(b.time || '');
     });
 
-    const statusCounts = { all: appointments.length, pending: 0, confirmed: 0, completed: 0, cancelled: 0, noshow: 0 };
+    const statusCounts = { all: appointments.length, pending: 0, confirmed: 0, in_progress: 0, completed: 0, cancelled: 0, noshow: 0 };
     appointments.forEach(a => { if (statusCounts[a.status] !== undefined) statusCounts[a.status]++; });
 
     const [customers, pets, services] = await Promise.all([
@@ -83,6 +83,7 @@ App.pages.appointments = {
           <option value="">전체 상태 (${statusCounts.all})</option>
           <option value="pending">대기 (${statusCounts.pending})</option>
           <option value="confirmed">확정 (${statusCounts.confirmed})</option>
+          <option value="in_progress">미용중 (${statusCounts.in_progress})</option>
           <option value="completed">완료 (${statusCounts.completed})</option>
           <option value="cancelled">취소 (${statusCounts.cancelled})</option>
           <option value="noshow">노쇼 (${statusCounts.noshow})</option>
@@ -142,6 +143,7 @@ App.pages.appointments = {
                         <select class="status-select" data-id="${a.id}" style="padding:4px 8px;font-size:0.8rem;width:auto;min-width:70px">
                           <option value="pending" ${a.status === 'pending' ? 'selected' : ''}>대기</option>
                           <option value="confirmed" ${a.status === 'confirmed' ? 'selected' : ''}>확정</option>
+                          <option value="in_progress" ${a.status === 'in_progress' ? 'selected' : ''}>미용중</option>
                           <option value="completed" ${a.status === 'completed' ? 'selected' : ''}>완료</option>
                           <option value="cancelled" ${a.status === 'cancelled' ? 'selected' : ''}>취소</option>
                           <option value="noshow" ${a.status === 'noshow' ? 'selected' : ''}>노쇼</option>
@@ -171,8 +173,8 @@ App.pages.appointments = {
               const pet = petMap[a.petId];
               const isToday = a.date === today;
               const isPast = a.date < today;
-              const statusLabels = { pending: '대기', confirmed: '확정', completed: '완료', cancelled: '취소', noshow: '노쇼' };
-              const statusClass = { pending: 'badge-warning', confirmed: 'badge-info', completed: 'badge-success', cancelled: 'badge-secondary', noshow: 'badge-danger' };
+              const statusLabels = { pending: '대기', confirmed: '확정', in_progress: '미용중', completed: '완료', cancelled: '취소', noshow: '노쇼' };
+              const statusClass = { pending: 'badge-warning', confirmed: 'badge-info', in_progress: 'badge-info', completed: 'badge-success', cancelled: 'badge-secondary', noshow: 'badge-danger' };
               return `
               <div class="mobile-card" data-id="${a.id}" data-status="${a.status || 'pending'}" data-date="${a.date}"
                    data-search="${(customer?.name || '') + ' ' + (customer?.phone || '') + ' ' + (pet?.name || '')}"
@@ -408,8 +410,27 @@ App.pages.appointments = {
       document.getElementById('appt-search').value = '';
       document.getElementById('filter-status').value = '';
       document.getElementById('filter-date').value = '';
+      document.querySelectorAll('.quick-filter-btn').forEach(b => b.classList.remove('active'));
+      document.querySelector('.quick-filter-btn[data-filter="all"]')?.classList.add('active');
+      sessionStorage.removeItem('appt-filter');
       this.applyFilters();
     });
+
+    // Restore saved filter state
+    const savedFilter = sessionStorage.getItem('appt-filter');
+    if (savedFilter) {
+      try {
+        const f = JSON.parse(savedFilter);
+        if (f.search) document.getElementById('appt-search').value = f.search;
+        if (f.status) document.getElementById('filter-status').value = f.status;
+        if (f.date) document.getElementById('filter-date').value = f.date;
+        if (f.quickFilter && f.quickFilter !== 'all') {
+          document.querySelectorAll('.quick-filter-btn').forEach(b => b.classList.remove('active'));
+          document.querySelector(`.quick-filter-btn[data-filter="${f.quickFilter}"]`)?.classList.add('active');
+        }
+        this.applyFilters(f.quickFilter === 'week' ? 'week' : null);
+      } catch (e) { /* ignore parse errors */ }
+    }
 
     // Status change
     document.querySelectorAll('.status-select').forEach(sel => {
@@ -426,8 +447,8 @@ App.pages.appointments = {
         const card = document.querySelector(`#appt-card-list .mobile-card[data-id="${id}"]`);
         if (card) {
           card.dataset.status = newStatus;
-          const statusLabels = { pending: '대기', confirmed: '확정', completed: '완료', cancelled: '취소', noshow: '노쇼' };
-          const statusClasses = { pending: 'badge-warning', confirmed: 'badge-info', completed: 'badge-success', cancelled: 'badge-secondary', noshow: 'badge-danger' };
+          const statusLabels = { pending: '대기', confirmed: '확정', in_progress: '미용중', completed: '완료', cancelled: '취소', noshow: '노쇼' };
+          const statusClasses = { pending: 'badge-warning', confirmed: 'badge-info', in_progress: 'badge-info', completed: 'badge-success', cancelled: 'badge-secondary', noshow: 'badge-danger' };
           const badge = card.querySelector('.mobile-card-header .badge');
           if (badge) {
             badge.textContent = statusLabels[newStatus] || newStatus;
@@ -518,7 +539,7 @@ App.pages.appointments = {
           const a = cell.appt;
           const customer = customerMap[a.customerId];
           const pet = petMap[a.petId];
-          const statusColors = { pending: 'var(--warning)', confirmed: 'var(--primary)', completed: 'var(--success)', noshow: 'var(--danger)' };
+          const statusColors = { pending: 'var(--warning)', confirmed: 'var(--primary)', in_progress: 'var(--info)', completed: 'var(--success)', noshow: 'var(--danger)' };
           const durLabel = (a.duration || 60) >= 60 ? Math.floor((a.duration || 60) / 60) + '시간' + ((a.duration || 60) % 60 ? ' ' + (a.duration || 60) % 60 + '분' : '') : (a.duration || 60) + '분';
           html += `<div style="padding:4px 6px;border-bottom:1px solid var(--border);background:${statusColors[a.status] || 'var(--primary)'}15;border-left:3px solid ${statusColors[a.status] || 'var(--primary)'}">
             <div style="font-size:0.78rem;font-weight:700">${App.escapeHtml(customer?.name || '-')}</div>
@@ -527,7 +548,7 @@ App.pages.appointments = {
           </div>`;
         } else if (cell && !cell.isStart) {
           const a = cell.appt;
-          const statusColors = { pending: 'var(--warning)', confirmed: 'var(--primary)', completed: 'var(--success)', noshow: 'var(--danger)' };
+          const statusColors = { pending: 'var(--warning)', confirmed: 'var(--primary)', in_progress: 'var(--info)', completed: 'var(--success)', noshow: 'var(--danger)' };
           html += `<div style="padding:0;border-bottom:1px solid var(--border);background:${statusColors[a.status] || 'var(--primary)'}15;border-left:3px solid ${statusColors[a.status] || 'var(--primary)'}"></div>`;
         } else {
           html += `<div style="padding:4px;border-bottom:1px solid var(--border)"></div>`;
@@ -544,6 +565,14 @@ App.pages.appointments = {
     const status = document.getElementById('filter-status')?.value || '';
     const date = document.getElementById('filter-date')?.value || '';
     const today = App.getToday();
+
+    // Save filter state to sessionStorage
+    sessionStorage.setItem('appt-filter', JSON.stringify({
+      search: document.getElementById('appt-search')?.value || '',
+      status,
+      date,
+      quickFilter: document.querySelector('.quick-filter-btn.active')?.dataset.filter || 'all'
+    }));
     const weekEnd = (() => { const d = new Date(); d.setDate(d.getDate() + 7); return App.formatLocalDate(d); })();
 
     document.querySelectorAll('#appt-tbody tr').forEach(row => {
@@ -590,6 +619,7 @@ App.pages.appointments = {
       title: id ? '예약 수정' : '새 예약',
       size: 'lg',
       content: `
+        <!-- 필수 입력 영역 -->
         <div class="form-row">
           <div class="form-group">
             <label class="form-label">고객 <span class="required">*</span></label>
@@ -604,7 +634,7 @@ App.pages.appointments = {
             </select>
           </div>
         </div>
-        <div class="form-row" style="grid-template-columns:1fr 1fr 1fr 1fr">
+        <div class="form-row">
           <div class="form-group">
             <label class="form-label">날짜 <span class="required">*</span></label>
             <input type="date" id="f-date" value="${appt.date || ''}">
@@ -613,49 +643,64 @@ App.pages.appointments = {
             <label class="form-label">시간</label>
             <input type="time" id="f-time" value="${appt.time || ''}">
           </div>
-          <div class="form-group">
-            <label class="form-label">소요시간</label>
-            <select id="f-duration">
-              <option value="30" ${(appt.duration || 60) === 30 ? 'selected' : ''}>30분</option>
-              <option value="60" ${(appt.duration || 60) === 60 ? 'selected' : ''}>1시간</option>
-              <option value="90" ${appt.duration === 90 ? 'selected' : ''}>1시간 30분</option>
-              <option value="120" ${appt.duration === 120 ? 'selected' : ''}>2시간</option>
-              <option value="150" ${appt.duration === 150 ? 'selected' : ''}>2시간 30분</option>
-              <option value="180" ${appt.duration === 180 ? 'selected' : ''}>3시간</option>
-            </select>
-          </div>
-          <div class="form-group">
-            <label class="form-label">담당 미용사</label>
-            <select id="f-groomer">${await App.getGroomerOptions(appt.groomer)}</select>
-          </div>
         </div>
         <div class="form-group">
           <div id="f-services">
             ${serviceCheckboxes}
           </div>
         </div>
-        <div class="form-group">
-          <label class="form-label">상태</label>
-          <select id="f-status">
-            <option value="pending" ${appt.status === 'pending' ? 'selected' : ''}>대기</option>
-            <option value="confirmed" ${appt.status === 'confirmed' ? 'selected' : ''}>확정</option>
-            <option value="completed" ${appt.status === 'completed' ? 'selected' : ''}>완료</option>
-            <option value="cancelled" ${appt.status === 'cancelled' ? 'selected' : ''}>취소</option>
-          </select>
+
+        <!-- 상세 옵션 토글 -->
+        <div class="form-detail-divider" onclick="this.closest('.modal-body').querySelector('.form-detail-section').classList.toggle('open');this.classList.toggle('open')">
+          <span class="form-detail-divider-line"></span>
+          <span class="form-detail-divider-label">상세 옵션</span>
+          <span class="form-detail-divider-chevron">&#x25BC;</span>
+          <span class="form-detail-divider-line"></span>
         </div>
-        <div class="form-group">
-          <label class="form-label">메모</label>
-          <textarea id="f-memo" placeholder="예약 관련 메모">${App.escapeHtml(appt.memo || '')}</textarea>
+
+        <!-- 상세 옵션 영역 -->
+        <div class="form-detail-section">
+          <div class="form-row">
+            <div class="form-group">
+              <label class="form-label">담당 미용사</label>
+              <select id="f-groomer">${await App.getGroomerOptions(appt.groomer)}</select>
+            </div>
+            <div class="form-group">
+              <label class="form-label">소요시간</label>
+              <select id="f-duration">
+                <option value="30" ${(appt.duration || 60) === 30 ? 'selected' : ''}>30분</option>
+                <option value="60" ${(appt.duration || 60) === 60 ? 'selected' : ''}>1시간</option>
+                <option value="90" ${appt.duration === 90 ? 'selected' : ''}>1시간 30분</option>
+                <option value="120" ${appt.duration === 120 ? 'selected' : ''}>2시간</option>
+                <option value="150" ${appt.duration === 150 ? 'selected' : ''}>2시간 30분</option>
+                <option value="180" ${appt.duration === 180 ? 'selected' : ''}>3시간</option>
+              </select>
+            </div>
+          </div>
+          <div class="form-group">
+            <label class="form-label">상태</label>
+            <select id="f-status">
+              <option value="pending" ${appt.status === 'pending' ? 'selected' : ''}>대기</option>
+              <option value="confirmed" ${appt.status === 'confirmed' ? 'selected' : ''}>확정</option>
+              <option value="in_progress" ${appt.status === 'in_progress' ? 'selected' : ''}>미용중</option>
+              <option value="completed" ${appt.status === 'completed' ? 'selected' : ''}>완료</option>
+              <option value="cancelled" ${appt.status === 'cancelled' ? 'selected' : ''}>취소</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label class="form-label">메모</label>
+            <textarea id="f-memo" placeholder="예약 관련 메모">${App.escapeHtml(appt.memo || '')}</textarea>
+          </div>
+          ${!id ? `
+          <div class="form-group" style="margin-top:12px">
+            <label class="checkbox-label" style="background:var(--primary-light);border:1.5px solid var(--primary-lighter);border-radius:var(--radius);padding:10px 14px">
+              <input type="checkbox" id="f-autoRecord">
+              미용 기록도 함께 등록
+              <span style="color:var(--text-muted);font-size:0.78rem;margin-left:auto">저장 후 미용 기록 폼이 열립니다</span>
+            </label>
+          </div>
+          ` : ''}
         </div>
-        ${!id ? `
-        <div class="form-group" style="margin-top:12px">
-          <label class="checkbox-label" style="background:var(--primary-light);border:1.5px solid var(--primary-lighter);border-radius:var(--radius);padding:10px 14px">
-            <input type="checkbox" id="f-autoRecord">
-            미용 기록도 함께 등록
-            <span style="color:var(--text-muted);font-size:0.78rem;margin-left:auto">저장 후 미용 기록 폼이 열립니다</span>
-          </label>
-        </div>
-        ` : ''}
       `,
       onSave: () => this.saveAppointment(id)
     });
@@ -684,7 +729,15 @@ App.pages.appointments = {
 
     // 검색 가능한 고객 선택 렌더링
     await App.renderCustomerSelect('appt-customer-select', appt.customerId, async (cid) => {
-      document.getElementById('f-petId').innerHTML = '<option value="">반려견 선택</option>' + await App.getPetOptions(cid);
+      const petSelect = document.getElementById('f-petId');
+      petSelect.innerHTML = '<option value="">반려견 선택</option>' + await App.getPetOptions(cid);
+      // 반려견 1마리 자동 선택
+      if (cid) {
+        const cPets = await DB.getByIndex('pets', 'customerId', Number(cid));
+        if (cPets.length === 1) {
+          petSelect.value = cPets[0].id;
+        }
+      }
       // 노쇼 이력 경고
       const warn = document.getElementById('noshow-warning');
       if (warn) {
