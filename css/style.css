@@ -2610,64 +2610,6 @@ a.stat-card { display: flex; }
   .photo-lightbox { display: none !important; }
 }
 
-/* ========== Collapsible Dashboard Sections ========== */
-.collapsible-section {
-  margin-bottom: 16px;
-  border-radius: var(--radius-lg);
-  background: var(--bg-white);
-  box-shadow: var(--shadow);
-  overflow: hidden;
-}
-.collapsible-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 14px 20px;
-  cursor: pointer;
-  font-weight: 700;
-  font-size: 0.95rem;
-  color: var(--text-primary);
-  user-select: none;
-  -webkit-user-select: none;
-  transition: background var(--transition-fast);
-}
-.collapsible-header:hover {
-  background: var(--bg);
-}
-.collapsible-header > span:first-child {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-.collapsible-chevron {
-  font-size: 0.7rem;
-  color: var(--text-muted);
-  transition: transform var(--transition);
-}
-.collapsible-section:not(.open) .collapsible-chevron {
-  transform: rotate(-90deg);
-}
-.collapsible-body {
-  max-height: 0;
-  overflow: hidden;
-  transition: max-height var(--transition-slow);
-}
-.collapsible-section.open .collapsible-body {
-  max-height: 2000px;
-}
-.collapsible-section:not(.open) .collapsible-body {
-  max-height: 0;
-}
-/* Remove inner card margin when inside collapsible */
-.collapsible-body > .card {
-  border-radius: 0;
-  box-shadow: none;
-  margin-bottom: 0 !important;
-  margin-top: 0 !important;
-}
-.collapsible-body > .quick-actions {
-  padding: 0 16px 16px;
-}
 
 /* ========== Form Detail Divider & Toggle ========== */
 .form-detail-divider {
