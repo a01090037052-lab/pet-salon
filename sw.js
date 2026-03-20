@@ -1,4 +1,4 @@
-const CACHE_NAME = 'petsalon-v2';
+const CACHE_NAME = 'petsalon-v4';
 const ASSETS = [
   './',
   './index.html',
@@ -12,7 +12,9 @@ const ASSETS = [
   './js/pages/records.js',
   './js/pages/services.js',
   './js/pages/settings.js',
-  './manifest.json'
+  './js/pages/revenue.js',
+  './manifest.json',
+  './icon.svg'
 ];
 
 self.addEventListener('install', (e) => {
@@ -35,17 +37,16 @@ self.addEventListener('fetch', (e) => {
   if (url.pathname.includes('/api/')) {
     return;
   }
-  // Static assets: cache first, then network
+  // Network first, fall back to cache (항상 최신 버전 우선)
   e.respondWith(
-    caches.match(e.request).then(cached => {
-      const fetchPromise = fetch(e.request).then(response => {
-        if (response.ok) {
-          const clone = response.clone();
-          caches.open(CACHE_NAME).then(cache => cache.put(e.request, clone));
-        }
-        return response;
-      }).catch(() => cached);
-      return cached || fetchPromise;
+    fetch(e.request).then(response => {
+      if (response.ok) {
+        const clone = response.clone();
+        caches.open(CACHE_NAME).then(cache => cache.put(e.request, clone));
+      }
+      return response;
+    }).catch(() => {
+      return caches.match(e.request);
     })
   );
 });
