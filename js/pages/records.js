@@ -18,13 +18,12 @@ App.pages.records = {
     const today = App.getToday();
     const thisMonth = today.slice(0, 7);
     const monthRecords = records.filter(r => r.date && r.date.startsWith(thisMonth));
-    const getRevenue = (r) => Number(r.finalPrice != null ? r.finalPrice : r.totalPrice) || 0;
-    const monthRevenue = monthRecords.reduce((sum, r) => sum + getRevenue(r), 0);
-    const totalRevenue = records.reduce((sum, r) => sum + getRevenue(r), 0);
+    const monthRevenue = monthRecords.reduce((sum, r) => sum + App.getRecordAmount(r), 0);
+    const totalRevenue = records.reduce((sum, r) => sum + App.getRecordAmount(r), 0);
 
     // 오늘 매출
     const todayRecords = records.filter(r => r.date === today);
-    const todayRevenue = todayRecords.reduce((sum, r) => sum + getRevenue(r), 0);
+    const todayRevenue = todayRecords.reduce((sum, r) => sum + App.getRecordAmount(r), 0);
 
     // 이번 주 매출
     const nowDate = new Date();
@@ -38,7 +37,7 @@ App.pages.records = {
     const mondayStr = `${monday.getFullYear()}-${String(monday.getMonth() + 1).padStart(2, '0')}-${String(monday.getDate()).padStart(2, '0')}`;
     const sundayStr = `${sunday.getFullYear()}-${String(sunday.getMonth() + 1).padStart(2, '0')}-${String(sunday.getDate()).padStart(2, '0')}`;
     const weekRecords = records.filter(r => r.date >= mondayStr && r.date <= sundayStr);
-    const weekRevenue = weekRecords.reduce((sum, r) => sum + getRevenue(r), 0);
+    const weekRevenue = weekRecords.reduce((sum, r) => sum + App.getRecordAmount(r), 0);
 
     // 미수금 집계
     const unpaidRecs = records.filter(r => r.paymentMethod === 'unpaid');
@@ -54,8 +53,6 @@ App.pages.records = {
           <p class="page-subtitle">총 ${records.length}건</p>
         </div>
         <div class="page-actions">
-          <button class="btn btn-secondary" id="btn-export-csv">&#x1F4C4; 세무 자료 내보내기</button>
-          <button class="btn btn-secondary" id="btn-daily-report">&#x1F4CB; 일일 정산표</button>
           <button class="btn btn-primary" id="btn-add-record">+ 새 기록</button>
         </div>
       </div>
@@ -128,19 +125,17 @@ App.pages.records = {
                         data-search="${(customer?.name || '') + ' ' + (pet?.name || '')}"
                         data-payment="${r.paymentMethod || ''}"
                         style="${r.paymentMethod === 'unpaid' ? 'background:var(--warning-light);border-left:3px solid var(--danger)' : ''}">
-                      <td>${App.formatDate(r.date)}${r.status === 'in_progress' ? ' <span class="badge badge-warning" style="font-size:0.65rem">진행중</span>' : ''}</td>
+                      <td>${App.formatDate(r.date)}</td>
                       <td><a href="#customers/${r.customerId}" style="color:var(--primary)">${App.escapeHtml(customer?.name || '-')}</a></td>
                       <td><a href="#pets/${r.petId}" style="color:var(--primary)"><strong>&#x1F436; ${App.escapeHtml(pet?.name || '-')}</strong></a></td>
                       <td class="hide-mobile"><span style="font-size:0.85rem">${App.escapeHtml(serviceNames)}</span></td>
-                      <td><strong>${App.formatCurrency(r.finalPrice != null ? r.finalPrice : r.totalPrice)}</strong>${r.discount || r.extraCharge ? `<div style="font-size:0.7rem;color:var(--text-muted)">${r.discount ? '-' + App.formatCurrency(r.discount) : ''}${r.extraCharge ? '+' + App.formatCurrency(r.extraCharge) : ''}</div>` : ''}</td>
+                      <td><strong>${App.formatCurrency(App.getRecordAmount(r))}</strong>${r.discount || r.extraCharge ? `<div style="font-size:0.7rem;color:var(--text-muted)">${r.discount ? '-' + App.formatCurrency(r.discount) : ''}${r.extraCharge ? '+' + App.formatCurrency(r.extraCharge) : ''}</div>` : ''}</td>
                       <td class="hide-mobile">${App.escapeHtml(r.groomer || '-')}</td>
                       <td class="hide-mobile">${this.getPaymentLabel(r.paymentMethod)}</td>
                       <td class="hide-mobile" style="max-width:150px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${App.escapeHtml(r.memo || '')}">
                         ${App.escapeHtml(r.memo || '-')}
                       </td>
                       <td class="table-actions">
-                        ${r.status === 'in_progress' ? `<button class="btn-icon btn-complete-record" data-id="${r.id}" title="완료 처리" style="color:var(--warning);font-weight:800">&#x2705;</button>` : ''}
-                        ${r.satisfaction ? `<span title="만족도" style="font-size:1rem">${r.satisfaction === 'good' ? '&#x1F60A;' : r.satisfaction === 'neutral' ? '&#x1F610;' : '&#x1F61F;'}</span>` : ''}
                         <button class="btn-icon btn-photo-card" data-id="${r.id}" title="사진 카드 생성" style="color:var(--info)">&#x1F4F8;</button>
                         <button class="btn-icon btn-receipt-record" data-id="${r.id}" title="영수증" style="color:var(--success)">&#x1F9FE;</button>
                         <button class="btn-icon btn-edit-record" data-id="${r.id}" title="수정">&#x270F;</button>
@@ -169,7 +164,7 @@ App.pages.records = {
                    data-payment="${r.paymentMethod || ''}">
                 <div class="mobile-card-header">
                   <span class="mobile-card-date"><strong>${App.formatDate(r.date)}</strong>${r.status === 'in_progress' ? ' <span class="badge badge-warning" style="font-size:0.65rem">진행중</span>' : ''}</span>
-                  <span class="mobile-card-amount"><strong>${App.formatCurrency(r.finalPrice != null ? r.finalPrice : r.totalPrice)}</strong></span>
+                  <span class="mobile-card-amount"><strong>${App.formatCurrency(App.getRecordAmount(r))}</strong></span>
                 </div>
                 <div class="mobile-card-body">
                   <span class="mobile-card-info">&#x1F464; ${App.escapeHtml(customer?.name || '-')} &middot; &#x1F436; ${App.escapeHtml(pet?.name || '-')}</span>
@@ -180,8 +175,6 @@ App.pages.records = {
                   </div>
                 </div>
                 <div class="mobile-card-actions">
-                  ${r.status === 'in_progress' ? `<button class="btn btn-sm btn-warning btn-complete-record" data-id="${r.id}">&#x2705; 완료 처리</button>` : ''}
-                  ${r.satisfaction ? `<span style="font-size:1.1rem">${r.satisfaction === 'good' ? '&#x1F60A;' : r.satisfaction === 'neutral' ? '&#x1F610;' : '&#x1F61F;'}</span>` : ''}
                   <button class="btn btn-sm btn-info btn-photo-card" data-id="${r.id}">&#x1F4F8; 카드</button>
                   <button class="btn btn-sm btn-success btn-receipt-record" data-id="${r.id}">&#x1F9FE; 영수증</button>
                   <button class="btn btn-sm btn-secondary btn-edit-record" data-id="${r.id}">&#x270F; 수정</button>
@@ -194,15 +187,6 @@ App.pages.records = {
         </div>
       </div>
 
-      <!-- 전체 기록 - 월별 아카이브 -->
-      <div class="card" style="margin-top:20px">
-        <div class="card-header">
-          <span class="card-title">&#x1F4C6; 전체 기록 - 월별 아카이브</span>
-        </div>
-        <div class="card-body" id="monthly-archive">
-          ${this.renderMonthlyArchive(records)}
-        </div>
-      </div>
     `;
   },
 
@@ -306,8 +290,6 @@ App.pages.records = {
 
   async init() {
     document.getElementById('btn-add-record')?.addEventListener('click', () => this.showForm());
-    document.getElementById('btn-daily-report')?.addEventListener('click', () => this.showDailyReport());
-    document.getElementById('btn-export-csv')?.addEventListener('click', () => this.showExportModal());
 
     // 미수금 경고 카드 클릭 -> 미결제 필터
     document.getElementById('unpaid-warning-card')?.addEventListener('click', () => {
@@ -356,10 +338,6 @@ App.pages.records = {
       btn.addEventListener('click', () => this.deleteRecord(Number(btn.dataset.id)));
     });
 
-    // 완료 처리 버튼
-    document.querySelectorAll('.btn-complete-record').forEach(btn => {
-      btn.addEventListener('click', () => this.completeRecord(Number(btn.dataset.id)));
-    });
   },
 
   applyFilters() {
@@ -467,36 +445,6 @@ App.pages.records = {
             <option value="unpaid" ${record.paymentMethod === 'unpaid' ? 'selected' : ''}>미결제(외상)</option>
           </select>
         </div>
-        <div class="form-row">
-          <div class="form-group">
-            <label class="form-label">&#x1F4F7; 미용 전 사진</label>
-            <div style="display:flex;align-items:center;gap:12px">
-              <div id="f-photoBefore-preview" style="width:80px;height:80px;border-radius:var(--radius);background:var(--bg);display:flex;align-items:center;justify-content:center;overflow:hidden;border:1px dashed var(--border)">
-                ${record.photoBefore ? `<img src="${record.photoBefore}" style="width:100%;height:100%;object-fit:cover">` : '<span style="color:var(--text-muted);font-size:0.8rem">사진 없음</span>'}
-              </div>
-              <div>
-                <input type="file" id="f-photoBefore" accept="image/*" style="display:none">
-                <button type="button" class="btn btn-sm btn-secondary" onclick="document.getElementById('f-photoBefore').click()">선택</button>
-                ${record.photoBefore ? '<button type="button" class="btn btn-sm btn-danger" id="f-photoBefore-remove" style="margin-left:4px">삭제</button>' : ''}
-              </div>
-            </div>
-            <input type="hidden" id="f-photoBefore-data" value="">
-          </div>
-          <div class="form-group">
-            <label class="form-label">&#x1F4F7; 미용 후 사진</label>
-            <div style="display:flex;align-items:center;gap:12px">
-              <div id="f-photoAfter-preview" style="width:80px;height:80px;border-radius:var(--radius);background:var(--bg);display:flex;align-items:center;justify-content:center;overflow:hidden;border:1px dashed var(--border)">
-                ${record.photoAfter ? `<img src="${record.photoAfter}" style="width:100%;height:100%;object-fit:cover">` : '<span style="color:var(--text-muted);font-size:0.8rem">사진 없음</span>'}
-              </div>
-              <div>
-                <input type="file" id="f-photoAfter" accept="image/*" style="display:none">
-                <button type="button" class="btn btn-sm btn-secondary" onclick="document.getElementById('f-photoAfter').click()">선택</button>
-                ${record.photoAfter ? '<button type="button" class="btn btn-sm btn-danger" id="f-photoAfter-remove" style="margin-left:4px">삭제</button>' : ''}
-              </div>
-            </div>
-            <input type="hidden" id="f-photoAfter-data" value="">
-          </div>
-        </div>
 
         <!-- 상세 옵션 토글 -->
         <div class="form-detail-divider" onclick="this.closest('.modal-body').querySelector('.form-detail-section').classList.toggle('open');this.classList.toggle('open')">
@@ -508,14 +456,38 @@ App.pages.records = {
 
         <!-- 상세 옵션 영역 -->
         <div class="form-detail-section">
+          <div class="form-group">
+            <label class="form-label">담당 미용사</label>
+            <select id="f-groomer">${await App.getGroomerOptions(record.groomer)}</select>
+          </div>
           <div class="form-row">
             <div class="form-group">
-              <label class="form-label">담당 미용사</label>
-              <select id="f-groomer">${await App.getGroomerOptions(record.groomer)}</select>
+              <label class="form-label">&#x1F4F7; 미용 전 사진</label>
+              <div style="display:flex;align-items:center;gap:12px">
+                <div id="f-photoBefore-preview" style="width:80px;height:80px;border-radius:var(--radius);background:var(--bg);display:flex;align-items:center;justify-content:center;overflow:hidden;border:1px dashed var(--border)">
+                  ${record.photoBefore ? `<img src="${record.photoBefore}" style="width:100%;height:100%;object-fit:cover">` : '<span style="color:var(--text-muted);font-size:0.8rem">사진 없음</span>'}
+                </div>
+                <div>
+                  <input type="file" id="f-photoBefore" accept="image/*" style="display:none">
+                  <button type="button" class="btn btn-sm btn-secondary" onclick="document.getElementById('f-photoBefore').click()">선택</button>
+                  ${record.photoBefore ? '<button type="button" class="btn btn-sm btn-danger" id="f-photoBefore-remove" style="margin-left:4px">삭제</button>' : ''}
+                </div>
+              </div>
+              <input type="hidden" id="f-photoBefore-data" value="">
             </div>
             <div class="form-group">
-              <label class="form-label">다음 방문 권장일</label>
-              <input type="date" id="f-nextVisitDate" value="${record.nextVisitDate || ''}">
+              <label class="form-label">&#x1F4F7; 미용 후 사진</label>
+              <div style="display:flex;align-items:center;gap:12px">
+                <div id="f-photoAfter-preview" style="width:80px;height:80px;border-radius:var(--radius);background:var(--bg);display:flex;align-items:center;justify-content:center;overflow:hidden;border:1px dashed var(--border)">
+                  ${record.photoAfter ? `<img src="${record.photoAfter}" style="width:100%;height:100%;object-fit:cover">` : '<span style="color:var(--text-muted);font-size:0.8rem">사진 없음</span>'}
+                </div>
+                <div>
+                  <input type="file" id="f-photoAfter" accept="image/*" style="display:none">
+                  <button type="button" class="btn btn-sm btn-secondary" onclick="document.getElementById('f-photoAfter').click()">선택</button>
+                  ${record.photoAfter ? '<button type="button" class="btn btn-sm btn-danger" id="f-photoAfter-remove" style="margin-left:4px">삭제</button>' : ''}
+                </div>
+              </div>
+              <input type="hidden" id="f-photoAfter-data" value="">
             </div>
           </div>
           <div class="form-row">
@@ -528,37 +500,7 @@ App.pages.records = {
               <input type="number" id="f-extraCharge" value="${record.extraCharge || ''}" placeholder="0" min="0" step="1000">
             </div>
           </div>
-          <div class="form-group">
-            <label class="form-label">진행 상태</label>
-            <select id="f-status">
-              <option value="completed" ${(record.status || 'completed') === 'completed' ? 'selected' : ''}>완료</option>
-              <option value="in_progress" ${record.status === 'in_progress' ? 'selected' : ''}>진행중 (빠른 등록)</option>
-            </select>
-            <div class="form-hint">"진행중"으로 저장하면 나중에 금액/사진 등을 추가할 수 있습니다</div>
-          </div>
           <div id="reward-section-area"></div>
-          <div class="form-group">
-            <label class="form-label">고객 만족도</label>
-            <div style="display:flex;gap:12px" id="satisfaction-group">
-              <label class="satisfaction-option" style="flex:1;text-align:center;padding:10px;border:2px solid var(--border);border-radius:10px;cursor:pointer;transition:all 0.15s${record.satisfaction === 'good' ? ';border-color:var(--success);background:var(--success-light)' : ''}">
-                <input type="radio" name="satisfaction" value="good" style="display:none" ${record.satisfaction === 'good' ? 'checked' : ''}> &#x1F60A; 만족
-              </label>
-              <label class="satisfaction-option" style="flex:1;text-align:center;padding:10px;border:2px solid var(--border);border-radius:10px;cursor:pointer;transition:all 0.15s${record.satisfaction === 'neutral' ? ';border-color:var(--warning);background:var(--warning-light)' : ''}">
-                <input type="radio" name="satisfaction" value="neutral" style="display:none" ${record.satisfaction === 'neutral' ? 'checked' : ''}> &#x1F610; 보통
-              </label>
-              <label class="satisfaction-option" style="flex:1;text-align:center;padding:10px;border:2px solid var(--border);border-radius:10px;cursor:pointer;transition:all 0.15s${record.satisfaction === 'bad' ? ';border-color:var(--danger);background:var(--danger-light)' : ''}">
-                <input type="radio" name="satisfaction" value="bad" style="display:none" ${record.satisfaction === 'bad' ? 'checked' : ''}> &#x1F61F; 불만
-              </label>
-            </div>
-          </div>
-          <div class="form-group" id="dissatisfaction-reason-group" style="display:${record.satisfaction === 'bad' ? 'block' : 'none'}">
-            <label class="form-label">불만 사유</label>
-            <textarea id="f-dissatisfactionReason" placeholder="불만족 사유를 입력해주세요">${App.escapeHtml(record.dissatisfactionReason || '')}</textarea>
-          </div>
-          <div class="form-group">
-            <label class="form-label">컨디션 메모</label>
-            <textarea id="f-conditionMemo" placeholder="반려견 상태 기록 (예: 피부 양호, 왼쪽 귀 빨간점 발견, 털 엉킴 약간)">${App.escapeHtml(record.conditionMemo || '')}</textarea>
-          </div>
           <div class="form-group">
             <label class="form-label">메모</label>
             <textarea id="f-memo" placeholder="미용 중 특이사항, 다음 방문 시 참고할 내용 등">${App.escapeHtml(record.memo || '')}</textarea>
@@ -585,15 +527,6 @@ App.pages.records = {
           if (size) sizeSelect.value = size;
           // Trigger price recalculation
           sizeSelect.dispatchEvent(new Event('change'));
-        }
-        // Auto-calculate next visit date from grooming cycle
-        if (pet.groomingCycle) {
-          const nextVisitInput = document.getElementById('f-nextVisitDate');
-          if (nextVisitInput && !nextVisitInput.value) {
-            const today = new Date();
-            today.setDate(today.getDate() + pet.groomingCycle);
-            nextVisitInput.value = App.formatLocalDate(today);
-          }
         }
         // Show pet info box
         this.showPetInfoBox(pet);
@@ -690,28 +623,6 @@ App.pages.records = {
 
     this._setupPhotoUpload('photoBefore');
     this._setupPhotoUpload('photoAfter');
-
-    // Satisfaction toggle
-    document.querySelectorAll('#satisfaction-group label').forEach(label => {
-      label.addEventListener('click', () => {
-        document.querySelectorAll('#satisfaction-group label').forEach(l => {
-          l.style.borderColor = 'var(--border)';
-          l.style.background = 'transparent';
-        });
-        const radio = label.querySelector('input[type="radio"]');
-        if (radio) {
-          radio.checked = true;
-          const colors = { good: { border: 'var(--success)', bg: 'var(--success-light)' }, neutral: { border: 'var(--warning)', bg: 'var(--warning-light)' }, bad: { border: 'var(--danger)', bg: 'var(--danger-light)' } };
-          const c = colors[radio.value] || {};
-          label.style.borderColor = c.border || 'var(--border)';
-          label.style.background = c.bg || 'transparent';
-        }
-        // Show/hide dissatisfaction reason
-        const val = document.querySelector('input[name="satisfaction"]:checked')?.value;
-        const reasonGroup = document.getElementById('dissatisfaction-reason-group');
-        if (reasonGroup) reasonGroup.style.display = val === 'bad' ? 'block' : 'none';
-      });
-    });
 
     // Load reward section when customer is selected
     const loadRewardSection = async (customerId) => {
@@ -877,10 +788,22 @@ App.pages.records = {
       const petId = Number(document.getElementById('f-petId').value);
       const date = document.getElementById('f-date').value;
       const groomer = document.getElementById('f-groomer').value.trim();
-      const nextVisitDate = document.getElementById('f-nextVisitDate').value;
       const totalPrice = Number(document.getElementById('f-totalPrice').value) || 0;
       const memo = document.getElementById('f-memo').value.trim();
       const paymentMethod = document.getElementById('f-paymentMethod').value;
+
+      // Auto-calculate nextVisitDate from pet's groomingCycle
+      let nextVisitDate = '';
+      if (petId) {
+        try {
+          const pet = await DB.get('pets', petId);
+          if (pet && pet.groomingCycle) {
+            const baseDate = new Date(date || App.getToday());
+            baseDate.setDate(baseDate.getDate() + pet.groomingCycle);
+            nextVisitDate = App.formatLocalDate(baseDate);
+          }
+        } catch (e) { /* ignore */ }
+      }
 
       const serviceIds = [];
       document.querySelectorAll('input[name="serviceIds"]:checked').forEach(cb => {
@@ -897,14 +820,10 @@ App.pages.records = {
       const photoBefore = document.getElementById('f-photoBefore-data')?.value || '';
       const photoAfter = document.getElementById('f-photoAfter-data')?.value || '';
       const appointmentId = document.getElementById('f-appointmentId')?.value || null;
-      const satisfaction = document.querySelector('input[name="satisfaction"]:checked')?.value || '';
-      const dissatisfactionReason = satisfaction === 'bad' ? (document.getElementById('f-dissatisfactionReason')?.value.trim() || '') : '';
       const useStampReward = document.getElementById('f-useStampReward')?.checked || false;
-      const status = document.getElementById('f-status')?.value || 'completed';
+      const status = 'completed';
 
-      const conditionMemo = document.getElementById('f-conditionMemo')?.value.trim() || '';
-
-      const data = { customerId, petId, date, groomer, nextVisitDate, serviceIds, totalPrice, discount, extraCharge, finalPrice, memo, paymentMethod, photoBefore, photoAfter, appointmentId, satisfaction, dissatisfactionReason, status, conditionMemo };
+      const data = { customerId, petId, date, groomer, nextVisitDate, serviceIds, totalPrice, discount, extraCharge, finalPrice, memo, paymentMethod, photoBefore, photoAfter, appointmentId, status };
 
       if (id) {
         const existing = await DB.get('records', id);
@@ -950,29 +869,23 @@ App.pages.records = {
           console.warn('Reward processing error:', e);
         }
 
-        // 고객 자동 분류 (방문 횟수 기반)
+        // 고객 자동 분류 (방문 횟수 기반, 신규 0-2, 일반 3-9, 단골 10+)
         try {
-          const autoTagEnabled = await DB.getSetting('autoTagEnabled');
-          if (autoTagEnabled) {
-            const custRecords = await DB.getByIndex('records', 'customerId', customerId);
-            const visitCount = custRecords.length + 1; // 현재 저장 포함
-            const autoTagNewMax = (await DB.getSetting('autoTagNewMax')) || 2;
-            const autoTagNormalMax = (await DB.getSetting('autoTagNormalMax')) || 9;
-            const autoTagRegularMin = (await DB.getSetting('autoTagRegularMin')) || 10;
+          const custRecords = await DB.getByIndex('records', 'customerId', customerId);
+          const visitCount = custRecords.length + 1; // 현재 저장 포함
 
-            const cust = await DB.get('customers', customerId);
-            if (cust) {
-              const tags = (cust.tags || []).filter(t => t === 'vip' || t === 'caution');
-              if (visitCount <= autoTagNewMax) {
-                tags.push('new');
-              } else if (visitCount <= autoTagNormalMax) {
-                tags.push('normal');
-              } else if (visitCount >= autoTagRegularMin) {
-                tags.push('regular');
-              }
-              cust.tags = tags;
-              await DB.update('customers', cust);
+          const cust = await DB.get('customers', customerId);
+          if (cust) {
+            const tags = (cust.tags || []).filter(t => t === 'vip' || t === 'caution');
+            if (visitCount <= 2) {
+              tags.push('new');
+            } else if (visitCount <= 9) {
+              tags.push('normal');
+            } else {
+              tags.push('regular');
             }
+            cust.tags = tags;
+            await DB.update('customers', cust);
           }
         } catch (e) {
           console.warn('Auto-tag error:', e);
@@ -1018,7 +931,11 @@ App.pages.records = {
             '서비스': serviceNames !== '-' ? serviceNames : '',
             '금액': String(finalPrice)
           });
-          window.open(`sms:${customerPhone}?body=${encodeURIComponent(msg)}`);
+          const sep = /iP(hone|ad|od)/.test(navigator.userAgent) || /Mac/.test(navigator.userAgent) ? '&' : '?';
+          const smsUrl = `sms:${customerPhone}${sep}body=${encodeURIComponent(msg)}`;
+          const a = document.createElement('a');
+          a.href = smsUrl;
+          a.click();
           App.closeModal();
         });
         document.getElementById('post-save-close')?.addEventListener('click', () => {
@@ -1031,30 +948,6 @@ App.pages.records = {
     } catch (err) {
       console.error('saveRecord error:', err);
       App.showToast('저장 중 오류가 발생했습니다.', 'error');
-    }
-  },
-
-  async completeRecord(id) {
-    try {
-      const doComplete = await App.confirm('이 미용 기록을 완료 처리하시겠습니까?');
-      if (!doComplete) return;
-      // 수정 폼을 열어서 나머지 정보를 채울 수 있도록 함
-      const record = await DB.get('records', id);
-      if (record) {
-        record.status = 'completed';
-        await DB.update('records', record);
-        App.showToast('미용 기록이 완료 처리되었습니다.');
-        // 바로 수정 폼 열기 (추가 정보 입력 기회 제공)
-        const editMore = await App.confirm('추가 정보를 입력하시겠습니까?\n(금액, 사진, 만족도 등)');
-        if (editMore) {
-          this.showForm(id);
-          return;
-        }
-        App.handleRoute();
-      }
-    } catch (err) {
-      console.error('completeRecord error:', err);
-      App.showToast('완료 처리 중 오류가 발생했습니다.', 'error');
     }
   },
 
@@ -1120,52 +1013,13 @@ App.pages.records = {
     const existing = document.getElementById('pet-info-display');
     if (existing) existing.remove();
 
-    let warningHtml = '';
-    let conditionHtml = '';
-    // Check last record satisfaction and conditions
-    try {
-      const petRecords = await DB.getByIndex('records', 'petId', pet.id);
-      if (petRecords.length > 0) {
-        const sorted = petRecords.sort((a, b) => (b.date || '').localeCompare(a.date || ''));
-        const lastRecord = sorted[0];
-        if (lastRecord.satisfaction === 'bad') {
-          warningHtml = `
-            <div style="background:var(--danger-light);border:1.5px solid var(--danger);border-radius:var(--radius);padding:10px 14px;margin-bottom:8px">
-              <div style="font-weight:700;color:var(--danger)">&#x26A0; 지난 방문 시 불만족</div>
-              ${lastRecord.dissatisfactionReason ? `<div style="font-size:0.88rem;color:#991B1B;margin-top:4px">사유: ${App.escapeHtml(lastRecord.dissatisfactionReason)}</div>` : ''}
-            </div>`;
-        }
-        // Show conditionMemo from last visit
-        if (lastRecord.conditionMemo) {
-          conditionHtml = `
-            <div style="background:#FEF9C3;border:1.5px solid #EAB308;border-radius:var(--radius);padding:10px 14px;margin-bottom:8px">
-              <div style="font-weight:700;color:#854D0E">&#x1F4CB; 지난 컨디션 메모</div>
-              <div style="font-size:0.88rem;color:#854D0E;margin-top:4px">${App.escapeHtml(lastRecord.conditionMemo)}</div>
-            </div>`;
-        }
-      }
-    } catch (e) { /* ignore */ }
-
-    // Handover note (인수인계 메모)
-    let handoverHtml = '';
-    if (pet.handoverNote) {
-      handoverHtml = `
-        <div style="background:#DBEAFE;border:1.5px solid #3B82F6;border-radius:var(--radius);padding:10px 14px;margin-bottom:8px">
-          <div style="font-weight:700;color:#1D4ED8">&#x1F4CB; 인수인계 메모</div>
-          <div style="font-size:0.88rem;color:#1E40AF;margin-top:4px">${App.escapeHtml(pet.handoverNote)}</div>
-        </div>`;
-    }
-
-    const hasNotes = pet.temperament || pet.healthNotes || pet.allergies || pet.preferredStyle || warningHtml || conditionHtml || handoverHtml;
+    const hasNotes = pet.temperament || pet.healthNotes || pet.allergies || pet.preferredStyle;
     if (!hasNotes) return;
 
     const box = document.createElement('div');
     box.id = 'pet-info-display';
     box.className = 'pet-info-box';
     box.innerHTML = `
-      ${handoverHtml}
-      ${warningHtml}
-      ${conditionHtml}
       <div class="pet-info-title">&#x26A0; ${App.escapeHtml(pet.name)} 특이사항</div>
       ${pet.temperament ? `<div class="pet-info-row"><span class="pet-info-label">성격</span> ${App.escapeHtml(pet.temperament)}</div>` : ''}
       ${pet.healthNotes ? `<div class="pet-info-row"><span class="pet-info-label">건강</span> ${App.escapeHtml(pet.healthNotes)}</div>` : ''}
@@ -1515,172 +1369,384 @@ App.pages.records = {
     const bgColor = tplPreset.bgColor;
     const emoji = tplPreset.emoji;
     const fontFamily = '-apple-system, BlinkMacSystemFont, sans-serif';
-    const footerMessage = designSettings.footerMessage || '\uAC10\uC0AC\uD569\uB2C8\uB2E4 \u2665';
-    const layout = designSettings.layout || 'vertical';
+    const footerMessage = designSettings.footerMessage || '감사합니다 \u2665';
+    const layout = designSettings.layout || 'strip2';
     const s = designSettings; // shorthand
-
-    const footerParts = [shopName];
-    if (s.showShopPhone && shopPhone) footerParts.push(shopPhone);
-    footerParts.push(footerMessage);
 
     const infoLines = this._buildInfoLines(record, pet, serviceNames, s);
     const imgBefore = await this._loadImg(record.photoBefore);
     const imgAfter = await this._loadImg(record.photoAfter);
 
+    // Determine if dark background for text color decisions
+    const _isDark = (hex) => {
+      if (!hex) return false;
+      const c = hex.replace('#', '');
+      const r = parseInt(c.substr(0, 2), 16);
+      const g = parseInt(c.substr(2, 2), 16);
+      const b = parseInt(c.substr(4, 2), 16);
+      return (r * 0.299 + g * 0.587 + b * 0.114) < 140;
+    };
+    const darkBg = _isDark(bgColor);
+    const textColor = darkBg ? '#FFFFFF' : '#1a1a1a';
+    const textSub = darkBg ? 'rgba(255,255,255,0.6)' : '#64748B';
+    const borderColor = darkBg ? 'rgba(255,255,255,0.15)' : 'rgba(0,0,0,0.08)';
+
+    const petName = pet?.name || '';
+    const dateStr = App.formatDate(record.date);
+
+    // Build photo slots based on available images
+    const photos2 = [imgBefore || imgAfter, imgAfter || imgBefore];
+    const photos3 = [imgBefore || imgAfter, imgAfter || imgBefore, imgAfter || imgBefore];
+    const photos4 = [
+      imgBefore || imgAfter,
+      imgAfter || imgBefore,
+      imgBefore || imgAfter,
+      imgAfter || imgBefore
+    ];
+
+    // Helper: draw placeholder
+    const _placeholder = (ctx, x, y, w, h) => {
+      ctx.fillStyle = darkBg ? '#333333' : '#E2E8F0';
+      ctx.fillRect(x, y, w, h);
+      ctx.fillStyle = darkBg ? '#666666' : '#94A3B8';
+      ctx.font = '28px ' + fontFamily;
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText('📷', x + w / 2, y + h / 2);
+      ctx.textBaseline = 'alphabetic';
+    };
+
+    // Helper: draw image or placeholder into rect
+    const _drawPhoto = (ctx, img, x, y, w, h, radius) => {
+      ctx.save();
+      if (radius) { this._roundRect(ctx, x, y, w, h, radius); ctx.clip(); }
+      if (img) {
+        this._drawImageCover(ctx, img, x, y, w, h);
+      } else {
+        _placeholder(ctx, x, y, w, h);
+      }
+      ctx.restore();
+    };
+
     const canvas = document.createElement('canvas');
     let ctx;
 
-    // ===== Layout: vertical =====
-    if (layout === 'vertical') {
-      canvas.width = 600; canvas.height = 900;
+    // ===== Layout A: strip4 (4컷 가로 4:3 strip) =====
+    if (layout === 'strip4') {
+      const W = 400, H = 1200;
+      canvas.width = W; canvas.height = H;
       ctx = canvas.getContext('2d');
-      ctx.fillStyle = bgColor; ctx.fillRect(0, 0, 600, 900);
+      ctx.fillStyle = bgColor; ctx.fillRect(0, 0, W, H);
 
-      await this._drawHeader(ctx, 0, 0, 600, 70, shopName, emoji, mainColor, s.logo, fontFamily);
+      const pad = 30;
+      const photoW = W - pad * 2; // 340
+      const photoH = Math.round(photoW * 3 / 4); // 255 (4:3 landscape)
+      const gap = 12;
 
-      // Pet name & date
-      ctx.fillStyle = '#0F172A'; ctx.font = 'bold 22px ' + fontFamily; ctx.textAlign = 'center';
-      ctx.fillText((pet?.name || '') + '\uC758 \uBBF8\uC6A9 \uAE30\uB85D', 300, 108);
-      if (s.showDate) {
-        ctx.fillStyle = '#64748B'; ctx.font = '15px ' + fontFamily;
-        ctx.fillText(App.formatDate(record.date), 300, 132);
+      // Shop name at top
+      ctx.fillStyle = textSub; ctx.font = '14px ' + fontFamily; ctx.textAlign = 'center';
+      ctx.fillText(shopName, W / 2, 30);
+
+      let topY = 50;
+      for (let i = 0; i < 4; i++) {
+        _drawPhoto(ctx, photos4[i], pad, topY, photoW, photoH, 6);
+        topY += photoH + gap;
       }
 
-      // Before photo
-      const photoY = 155;
-      ctx.save();
-      this._roundRect(ctx, 100, photoY, 400, 250, 12); ctx.clip();
-      this._drawImageCover(ctx, imgBefore, 100, photoY, 400, 250);
-      ctx.restore();
-      ctx.fillStyle = mainColor; ctx.font = 'bold 13px ' + fontFamily; ctx.textAlign = 'center';
-      ctx.fillText('BEFORE', 300, photoY + 268);
+      // Pet name + date at bottom
+      const bottomY = topY + 10;
+      ctx.fillStyle = textColor; ctx.font = 'bold 18px ' + fontFamily; ctx.textAlign = 'center';
+      ctx.fillText(petName, W / 2, bottomY);
+      ctx.fillStyle = textSub; ctx.font = '13px ' + fontFamily;
+      ctx.fillText(dateStr, W / 2, bottomY + 22);
 
-      // Arrow
-      ctx.fillStyle = mainColor; ctx.font = 'bold 28px ' + fontFamily;
-      ctx.fillText('\u25BC', 300, photoY + 295);
-
-      // After photo
-      const afterY = photoY + 310;
-      ctx.save();
-      this._roundRect(ctx, 100, afterY, 400, 250, 12); ctx.clip();
-      this._drawImageCover(ctx, imgAfter, 100, afterY, 400, 250);
-      ctx.restore();
-      ctx.fillStyle = mainColor; ctx.font = 'bold 13px ' + fontFamily; ctx.textAlign = 'center';
-      ctx.fillText('AFTER', 300, afterY + 268);
-
-      // Info
-      let iy = afterY + 290;
-      ctx.fillStyle = '#0F172A'; ctx.font = '15px ' + fontFamily; ctx.textAlign = 'center';
-      infoLines.forEach(line => {
-        if (iy < 860) { ctx.fillText(this._truncText(ctx, line, 520), 300, iy); iy += 22; }
+      // Info lines
+      let iy = bottomY + 44;
+      ctx.font = '12px ' + fontFamily; ctx.fillStyle = textSub;
+      infoLines.slice(0, 3).forEach(line => {
+        ctx.fillText(this._truncText(ctx, line, photoW), W / 2, iy); iy += 18;
       });
-
-      this._drawFooter(ctx, 0, 850, 600, 50, footerParts, mainColor, fontFamily);
     }
 
-    // ===== Layout: photobooth4 (인생네컷 4컷) =====
-    else if (layout === 'photobooth4') {
-      canvas.width = 600; canvas.height = 1000;
+    // ===== Layout B: strip3 (3컷 정방형 strip) =====
+    else if (layout === 'strip3') {
+      const W = 400, H = 1200;
+      canvas.width = W; canvas.height = H;
       ctx = canvas.getContext('2d');
-      // White base
-      ctx.fillStyle = '#FFFFFF'; ctx.fillRect(0, 0, 600, 1000);
+      ctx.fillStyle = bgColor; ctx.fillRect(0, 0, W, H);
 
-      // Film strip borders
-      ctx.fillStyle = '#1a1a1a';
-      ctx.fillRect(0, 0, 30, 1000);
-      ctx.fillRect(570, 0, 30, 1000);
-      // Film holes
-      for (let fy = 30; fy < 1000; fy += 60) {
-        ctx.fillStyle = '#FFFFFF';
-        ctx.beginPath(); ctx.arc(15, fy, 6, 0, Math.PI * 2); ctx.fill();
-        ctx.beginPath(); ctx.arc(585, fy, 6, 0, Math.PI * 2); ctx.fill();
+      const pad = 30;
+      const photoS = W - pad * 2; // 340 square
+      const gap = 12;
+
+      // Shop name
+      ctx.fillStyle = textSub; ctx.font = '14px ' + fontFamily; ctx.textAlign = 'center';
+      ctx.fillText(shopName, W / 2, 30);
+
+      let topY = 50;
+      for (let i = 0; i < 3; i++) {
+        _drawPhoto(ctx, photos3[i], pad, topY, photoS, photoS, 6);
+        topY += photoS + gap;
       }
 
-      // Header
-      ctx.fillStyle = mainColor; ctx.font = 'bold 22px ' + fontFamily; ctx.textAlign = 'center';
-      ctx.fillText(emoji + ' ' + shopName, 300, 40);
-
-      // 4 photo grid (2x2)
-      const gx = 50, gy = 60, gw = 240, gh = 240, gap = 20;
-      // Top-left: before
-      ctx.save(); this._roundRect(ctx, gx, gy, gw, gh, 8); ctx.clip();
-      this._drawImageCover(ctx, imgBefore, gx, gy, gw, gh); ctx.restore();
-      // Top-right: before (or after if only 1 before)
-      ctx.save(); this._roundRect(ctx, gx + gw + gap, gy, gw, gh, 8); ctx.clip();
-      this._drawImageCover(ctx, imgBefore || imgAfter, gx + gw + gap, gy, gw, gh); ctx.restore();
-      // Bottom-left: after
-      ctx.save(); this._roundRect(ctx, gx, gy + gh + gap, gw, gh, 8); ctx.clip();
-      this._drawImageCover(ctx, imgAfter, gx, gy + gh + gap, gw, gh); ctx.restore();
-      // Bottom-right: after (or before)
-      ctx.save(); this._roundRect(ctx, gx + gw + gap, gy + gh + gap, gw, gh, 8); ctx.clip();
-      this._drawImageCover(ctx, imgAfter || imgBefore, gx + gw + gap, gy + gh + gap, gw, gh); ctx.restore();
-
-      // Labels
-      ctx.fillStyle = '#FFFFFF'; ctx.font = 'bold 12px ' + fontFamily; ctx.textAlign = 'center';
-      ctx.fillStyle = 'rgba(0,0,0,0.5)';
-      ctx.fillRect(gx, gy + gh - 24, gw, 24);
-      ctx.fillRect(gx + gw + gap, gy + gh - 24, gw, 24);
-      ctx.fillRect(gx, gy + 2 * gh + gap - 24, gw, 24);
-      ctx.fillRect(gx + gw + gap, gy + 2 * gh + gap - 24, gw, 24);
-      ctx.fillStyle = '#FFFFFF';
-      ctx.fillText('BEFORE', gx + gw / 2, gy + gh - 7);
-      ctx.fillText('BEFORE', gx + gw + gap + gw / 2, gy + gh - 7);
-      ctx.fillText('AFTER', gx + gw / 2, gy + 2 * gh + gap - 7);
-      ctx.fillText('AFTER', gx + gw + gap + gw / 2, gy + 2 * gh + gap - 7);
-
-      // Info area
-      let iy = gy + 2 * gh + gap + 35;
-      ctx.fillStyle = '#0F172A'; ctx.font = 'bold 20px ' + fontFamily; ctx.textAlign = 'center';
-      ctx.fillText((pet?.name || '') + ' \u2665', 300, iy); iy += 28;
-      ctx.font = '14px ' + fontFamily; ctx.fillStyle = '#64748B';
-      infoLines.forEach(line => {
-        if (iy < 960) { ctx.fillText(this._truncText(ctx, line, 460), 300, iy); iy += 20; }
-      });
-
-      this._drawFooter(ctx, 30, 955, 540, 40, footerParts, mainColor, fontFamily);
+      // Pet name + date
+      const bottomY = topY + 10;
+      ctx.fillStyle = textColor; ctx.font = 'bold 18px ' + fontFamily; ctx.textAlign = 'center';
+      ctx.fillText(petName, W / 2, bottomY);
+      ctx.fillStyle = textSub; ctx.font = '13px ' + fontFamily;
+      ctx.fillText(dateStr, W / 2, bottomY + 22);
     }
 
-    // ===== Layout: minimal =====
-    else if (layout === 'minimal') {
-      canvas.width = 600; canvas.height = 700;
+    // ===== Layout C: circle (원형) =====
+    else if (layout === 'circle') {
+      const W = 500, H = 600;
+      canvas.width = W; canvas.height = H;
       ctx = canvas.getContext('2d');
-      ctx.fillStyle = '#FFFFFF'; ctx.fillRect(0, 0, 600, 700);
+      ctx.fillStyle = bgColor; ctx.fillRect(0, 0, W, H);
 
-      // Before
-      ctx.save(); this._roundRect(ctx, 30, 30, 540, 270, 12); ctx.clip();
-      this._drawImageCover(ctx, imgBefore, 30, 30, 540, 270); ctx.restore();
+      // Shop name
+      ctx.fillStyle = textSub; ctx.font = '14px ' + fontFamily; ctx.textAlign = 'center';
+      ctx.fillText(shopName, W / 2, 36);
 
-      // After
-      ctx.save(); this._roundRect(ctx, 30, 320, 540, 270, 12); ctx.clip();
-      this._drawImageCover(ctx, imgAfter, 30, 320, 540, 270); ctx.restore();
+      // Circular photo
+      const radius = 150;
+      const cx = W / 2, cy = 230;
+      const mainImg = imgAfter || imgBefore;
 
-      // Labels
-      ctx.fillStyle = 'rgba(0,0,0,0.45)';
-      this._roundRect(ctx, 40, 260, 70, 28, 6); ctx.fill();
-      ctx.fillStyle = '#FFFFFF'; ctx.font = 'bold 12px ' + fontFamily; ctx.textAlign = 'center';
-      ctx.fillText('BEFORE', 75, 279);
+      // Circle border
+      ctx.beginPath();
+      ctx.arc(cx, cy, radius + 4, 0, Math.PI * 2);
+      ctx.fillStyle = mainColor;
+      ctx.fill();
 
-      ctx.fillStyle = 'rgba(0,0,0,0.45)';
-      this._roundRect(ctx, 40, 550, 60, 28, 6); ctx.fill();
-      ctx.fillStyle = '#FFFFFF'; ctx.font = 'bold 12px ' + fontFamily;
-      ctx.fillText('AFTER', 70, 569);
+      // Clip and draw
+      ctx.save();
+      ctx.beginPath();
+      ctx.arc(cx, cy, radius, 0, Math.PI * 2);
+      ctx.clip();
+      if (mainImg) {
+        this._drawImageCover(ctx, mainImg, cx - radius, cy - radius, radius * 2, radius * 2);
+      } else {
+        _placeholder(ctx, cx - radius, cy - radius, radius * 2, radius * 2);
+      }
+      ctx.restore();
 
-      // Minimal info
-      ctx.fillStyle = '#0F172A'; ctx.font = 'bold 18px ' + fontFamily; ctx.textAlign = 'center';
-      ctx.fillText((pet?.name || '') + '  |  ' + App.formatDate(record.date), 300, 630);
+      // Pet name + date
+      const infoY = cy + radius + 40;
+      ctx.fillStyle = textColor; ctx.font = 'bold 20px ' + fontFamily; ctx.textAlign = 'center';
+      ctx.fillText(petName, W / 2, infoY);
+      ctx.fillStyle = textSub; ctx.font = '14px ' + fontFamily;
+      ctx.fillText(dateStr, W / 2, infoY + 26);
 
+      // Service + groomer
+      let iy = infoY + 50;
+      ctx.font = '13px ' + fontFamily; ctx.fillStyle = textSub;
+      const shortInfo = [];
+      if (s.showService && serviceNames) shortInfo.push(serviceNames);
+      if (s.showGroomer && record.groomer) shortInfo.push(record.groomer);
+      if (shortInfo.length) {
+        ctx.fillText(shortInfo.join(' | '), W / 2, iy);
+      }
+
+      // Footer message
       ctx.fillStyle = mainColor; ctx.font = '13px ' + fontFamily;
-      ctx.fillText(footerMessage, 300, 660);
+      ctx.fillText(footerMessage, W / 2, H - 30);
+    }
+
+    // ===== Layout D: single (1컷 증명사진) =====
+    else if (layout === 'single') {
+      const W = 450, H = 650;
+      canvas.width = W; canvas.height = H;
+      ctx = canvas.getContext('2d');
+      ctx.fillStyle = bgColor; ctx.fillRect(0, 0, W, H);
+
+      const pad = 25;
+      const photoW = W - pad * 2; // 400
+      const photoH = 500;
+      const mainImg = imgAfter || imgBefore;
+
+      _drawPhoto(ctx, mainImg, pad, pad, photoW, photoH, 8);
+
+      // Pet name + date at bottom
+      const bottomY = pad + photoH + 28;
+      ctx.fillStyle = textColor; ctx.font = 'bold 18px ' + fontFamily; ctx.textAlign = 'center';
+      const labelParts = [petName];
+      if (s.showDate) labelParts.push(dateStr);
+      ctx.fillText(labelParts.join(' | '), W / 2, bottomY);
+
+      ctx.fillStyle = textSub; ctx.font = '13px ' + fontFamily;
+      ctx.fillText(shopName, W / 2, bottomY + 24);
+    }
+
+    // ===== Layout E: polaroid (폴라로이드) =====
+    else if (layout === 'polaroid') {
+      const W = 480, H = 620;
+      canvas.width = W; canvas.height = H;
+      ctx = canvas.getContext('2d');
+
+      // Outer background (slight gray for shadow effect)
+      ctx.fillStyle = darkBg ? bgColor : '#F0F0F0';
+      ctx.fillRect(0, 0, W, H);
+
+      // Polaroid card with drop shadow
+      const cardX = 20, cardY = 15, cardW = W - 40, cardH = H - 30;
+
+      // Shadow
+      ctx.save();
+      ctx.shadowColor = 'rgba(0,0,0,0.25)';
+      ctx.shadowBlur = 20;
+      ctx.shadowOffsetX = 0;
+      ctx.shadowOffsetY = 4;
+      this._roundRect(ctx, cardX, cardY, cardW, cardH, 4);
+      ctx.fillStyle = '#FFFFFF';
+      ctx.fill();
+      ctx.restore();
+
+      // Photo area (square, inside the card)
+      const photoPad = 24;
+      const photoX = cardX + photoPad;
+      const photoY = cardY + photoPad;
+      const photoS = cardW - photoPad * 2; // ~392
+      const mainImg = imgAfter || imgBefore;
+
+      _drawPhoto(ctx, mainImg, photoX, photoY, photoS, photoS, 0);
+
+      // Bottom text area (polaroid style - thick bottom margin)
+      const textAreaY = photoY + photoS + 16;
+      ctx.fillStyle = '#1a1a1a'; ctx.font = 'bold 18px ' + fontFamily; ctx.textAlign = 'left';
+      ctx.fillText(petName + ' \u2665', cardX + photoPad + 4, textAreaY + 6);
+
+      ctx.fillStyle = '#64748B'; ctx.font = '13px ' + fontFamily;
+      ctx.fillText(dateStr, cardX + photoPad + 4, textAreaY + 28);
+
+      ctx.fillStyle = '#94A3B8'; ctx.font = '12px ' + fontFamily;
+      ctx.fillText(shopName, cardX + photoPad + 4, textAreaY + 48);
+
+      // Footer message on the right
+      ctx.fillStyle = mainColor; ctx.font = '12px ' + fontFamily; ctx.textAlign = 'right';
+      ctx.fillText(footerMessage, cardX + cardW - photoPad - 4, textAreaY + 48);
+      ctx.textAlign = 'center';
+    }
+
+    // ===== Layout F: strip2 (2컷 스트립) =====
+    else if (layout === 'strip2') {
+      const W = 400, H = 900;
+      canvas.width = W; canvas.height = H;
+      ctx = canvas.getContext('2d');
+      ctx.fillStyle = bgColor; ctx.fillRect(0, 0, W, H);
+
+      const pad = 30;
+      const photoS = W - pad * 2; // 340
+      const gap = 12;
+
+      // Shop name
+      ctx.fillStyle = textSub; ctx.font = '14px ' + fontFamily; ctx.textAlign = 'center';
+      ctx.fillText(shopName, W / 2, 30);
+
+      const topY = 50;
+      // Photo 1 (Before)
+      _drawPhoto(ctx, photos2[0], pad, topY, photoS, photoS, 6);
+      // Before label
+      ctx.fillStyle = 'rgba(0,0,0,0.5)';
+      this._roundRect(ctx, pad + 8, topY + 8, 64, 24, 6); ctx.fill();
+      ctx.fillStyle = '#FFFFFF'; ctx.font = 'bold 11px ' + fontFamily; ctx.textAlign = 'center';
+      ctx.fillText('BEFORE', pad + 40, topY + 24);
+
+      // Photo 2 (After)
+      const afterY = topY + photoS + gap;
+      _drawPhoto(ctx, photos2[1], pad, afterY, photoS, photoS, 6);
+      // After label
+      ctx.fillStyle = mainColor;
+      this._roundRect(ctx, pad + 8, afterY + 8, 56, 24, 6); ctx.fill();
+      ctx.fillStyle = '#FFFFFF'; ctx.font = 'bold 11px ' + fontFamily; ctx.textAlign = 'center';
+      ctx.fillText('AFTER', pad + 36, afterY + 24);
+
+      // Pet name + date
+      const bottomY = afterY + photoS + 28;
+      ctx.fillStyle = textColor; ctx.font = 'bold 18px ' + fontFamily; ctx.textAlign = 'center';
+      ctx.fillText(petName, W / 2, bottomY);
+      ctx.fillStyle = textSub; ctx.font = '13px ' + fontFamily;
+      ctx.fillText(dateStr, W / 2, bottomY + 22);
+
+      // Info lines
+      let iy = bottomY + 46;
+      ctx.font = '12px ' + fontFamily; ctx.fillStyle = textSub;
+      infoLines.slice(0, 3).forEach(line => {
+        ctx.fillText(this._truncText(ctx, line, photoS), W / 2, iy); iy += 18;
+      });
+
+      // Footer message
+      ctx.fillStyle = mainColor; ctx.font = '12px ' + fontFamily;
+      ctx.fillText(footerMessage, W / 2, H - 20);
+    }
+
+    // ===== Layout G: grid4 (4컷 2x2 그리드) =====
+    else if (layout === 'grid4') {
+      const W = 600, H = 750;
+      canvas.width = W; canvas.height = H;
+      ctx = canvas.getContext('2d');
+      ctx.fillStyle = bgColor; ctx.fillRect(0, 0, W, H);
+
+      const pad = 30;
+      const gap = 10;
+      const cellW = (W - pad * 2 - gap) / 2; // ~265
+      const cellH = cellW; // square cells
+
+      // Shop name
+      ctx.fillStyle = textSub; ctx.font = '14px ' + fontFamily; ctx.textAlign = 'center';
+      ctx.fillText(shopName, W / 2, 30);
+
+      const topY = 50;
+      // Top-left
+      _drawPhoto(ctx, photos4[0], pad, topY, cellW, cellH, 6);
+      // Top-right
+      _drawPhoto(ctx, photos4[1], pad + cellW + gap, topY, cellW, cellH, 6);
+      // Bottom-left
+      _drawPhoto(ctx, photos4[2], pad, topY + cellH + gap, cellW, cellH, 6);
+      // Bottom-right
+      _drawPhoto(ctx, photos4[3], pad + cellW + gap, topY + cellH + gap, cellW, cellH, 6);
+
+      // Labels on photos
+      const labelPositions = [
+        { x: pad + 8, y: topY + 8, text: 'BEFORE' },
+        { x: pad + cellW + gap + 8, y: topY + 8, text: 'AFTER' },
+        { x: pad + 8, y: topY + cellH + gap + 8, text: 'BEFORE' },
+        { x: pad + cellW + gap + 8, y: topY + cellH + gap + 8, text: 'AFTER' }
+      ];
+      labelPositions.forEach((lbl, i) => {
+        ctx.fillStyle = i % 2 === 0 ? 'rgba(0,0,0,0.5)' : mainColor;
+        const lw = lbl.text === 'BEFORE' ? 64 : 56;
+        this._roundRect(ctx, lbl.x, lbl.y, lw, 22, 5); ctx.fill();
+        ctx.fillStyle = '#FFFFFF'; ctx.font = 'bold 10px ' + fontFamily; ctx.textAlign = 'center';
+        ctx.fillText(lbl.text, lbl.x + lw / 2, lbl.y + 16);
+      });
+
+      // Pet name + date
+      const bottomY = topY + cellH * 2 + gap + 32;
+      ctx.fillStyle = textColor; ctx.font = 'bold 18px ' + fontFamily; ctx.textAlign = 'center';
+      ctx.fillText(petName + ' \u2665', W / 2, bottomY);
+      ctx.fillStyle = textSub; ctx.font = '13px ' + fontFamily;
+      ctx.fillText(dateStr, W / 2, bottomY + 22);
+
+      // Info lines
+      let iy = bottomY + 46;
+      ctx.font = '12px ' + fontFamily; ctx.fillStyle = textSub;
+      infoLines.slice(0, 2).forEach(line => {
+        ctx.fillText(this._truncText(ctx, line, W - pad * 2), W / 2, iy); iy += 18;
+      });
+
+      // Footer message
+      ctx.fillStyle = mainColor; ctx.font = '12px ' + fontFamily;
+      ctx.fillText(footerMessage, W / 2, H - 20);
     }
 
     // Fallback
     else {
-      // Default to vertical
-      canvas.width = 600; canvas.height = 800;
+      canvas.width = 400; canvas.height = 900;
       ctx = canvas.getContext('2d');
-      ctx.fillStyle = bgColor; ctx.fillRect(0, 0, 600, 800);
-      ctx.fillStyle = '#0F172A'; ctx.font = 'bold 20px -apple-system, sans-serif'; ctx.textAlign = 'center';
-      ctx.fillText('Photo Card', 300, 400);
+      ctx.fillStyle = bgColor; ctx.fillRect(0, 0, 400, 900);
+      ctx.fillStyle = textColor; ctx.font = 'bold 20px ' + fontFamily; ctx.textAlign = 'center';
+      ctx.fillText('Photo Card', 200, 450);
     }
 
     return canvas;
@@ -1702,7 +1768,7 @@ App.pages.records = {
       const ds = designRaw || {};
       const os = oldRaw || {};
       const designSettings = {
-        layout: ds.layout || 'vertical',
+        layout: ds.layout || 'strip2',
         template: ds.template || os.template || 'default',
         mainColor: ds.mainColor || os.mainColor || '#6366F1',
         showService: ds.showService !== false,
@@ -1959,7 +2025,7 @@ App.pages.records = {
           customer?.name || '',
           pet?.name || '',
           serviceNames,
-          Number(r.totalPrice) || 0,
+          App.getRecordAmount(r),
           Number(r.discount) || 0,
           Number(r.extraCharge) || 0,
           App.getRecordAmount(r),

@@ -166,21 +166,6 @@ App.pages.pets = {
         </div>
       </div>
 
-      ${pet.handoverNote ? `
-      <div style="background:#DBEAFE;border:1.5px solid #3B82F6;border-radius:var(--radius-lg);padding:14px 18px;margin-bottom:16px">
-        <div style="font-weight:700;color:#1D4ED8;margin-bottom:4px">&#x1F4CB; 인수인계 메모</div>
-        <div style="font-size:0.95rem;color:#1E40AF">${App.escapeHtml(pet.handoverNote)}</div>
-      </div>
-      ` : ''}
-
-      ${(() => {
-        // Show last condition memo
-        const lastRec = records[0];
-        if (lastRec && lastRec.conditionMemo) {
-          return '<div style="background:var(--bg);border-radius:var(--radius-lg);padding:14px 18px;margin-bottom:16px"><div style="font-weight:700;margin-bottom:8px">&#x1F4CB; 최근 컨디션 메모 (' + App.formatDate(lastRec.date) + ')</div><div style="font-size:0.9rem;color:var(--text-secondary)">' + App.escapeHtml(lastRec.conditionMemo) + '</div></div>';
-        }
-        return '';
-      })()}
 
       <div class="detail-section">
         <h3 class="detail-section-title">특이사항</h3>
@@ -370,11 +355,6 @@ App.pages.pets = {
           <textarea id="f-preferredStyle" placeholder="예: 곰돌이 컷, 몸통 5mm, 다리 가위컷, 얼굴 둥글게">${App.escapeHtml(pet.preferredStyle || '')}</textarea>
         </div>
         <div class="form-group">
-          <label class="form-label">인수인계 메모</label>
-          <textarea id="f-handoverNote" placeholder="다음 미용사에게 전달할 사항 (예: 왼쪽 앞다리 만지면 물려고 함)">${App.escapeHtml(pet.handoverNote || '')}</textarea>
-          <div class="form-hint">미용 기록 작성 시 자동으로 표시됩니다</div>
-        </div>
-        <div class="form-group">
           <label class="form-label">권장 미용 주기 (일)</label>
           <select id="f-groomingCycle">
             <option value="">미설정</option>
@@ -457,14 +437,13 @@ App.pages.pets = {
       const allergies = document.getElementById('f-allergies').value.trim();
       const memo = document.getElementById('f-memo').value.trim();
       const preferredStyle = document.getElementById('f-preferredStyle')?.value.trim() || '';
-      const handoverNote = document.getElementById('f-handoverNote')?.value.trim() || '';
       const groomingCycle = Number(document.getElementById('f-groomingCycle')?.value) || null;
       const photo = document.getElementById('f-photo-data')?.value || '';
 
       if (!customerId) { App.showToast('보호자를 선택해주세요.', 'error'); App.highlightField('f-customerId'); return; }
       if (!name) { App.showToast('이름을 입력해주세요.', 'error'); App.highlightField('f-name'); return; }
 
-      const data = { customerId, name, breed, weight, gender, birthDate, neutered, size, temperament, healthNotes, allergies, memo, preferredStyle, handoverNote, groomingCycle, photo };
+      const data = { customerId, name, breed, weight, gender, birthDate, neutered, size, temperament, healthNotes, allergies, memo, preferredStyle, groomingCycle, photo };
 
       if (id) {
         const existing = await DB.get('pets', id);

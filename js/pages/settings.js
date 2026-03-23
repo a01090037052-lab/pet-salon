@@ -10,6 +10,7 @@ App.pages.settings = {
     const notifEnabled = await DB.getSetting('notifEnabled');
     const notifMinutes = await DB.getSetting('notifMinutes');
     const closedDays = await DB.getSetting('closedDays') || [];
+    const themeColor = await DB.getSetting('themeColor') || '#6366F1';
 
     const DEFAULT_TEMPLATES = {
       revisit: '[{매장명}] {고객명}님 안녕하세요! {반려견명}의 마지막 미용 후 {경과일수}일이 지났습니다. 예약 문의: {전화번호}',
@@ -42,11 +43,9 @@ App.pages.settings = {
 
       <!-- Tab Navigation -->
       <div class="settings-tabs" id="settings-tabs">
-        <button class="settings-tab active" data-tab="shop">🏪 매장 관리</button>
-        <button class="settings-tab" data-tab="notify">💬 알림·메시지</button>
-        <button class="settings-tab" data-tab="marketing">🎯 마케팅</button>
-        <button class="settings-tab" data-tab="photocard">🖼 사진 카드</button>
-        <button class="settings-tab" data-tab="data">💾 데이터</button>
+        <button class="settings-tab active" data-tab="shop">&#x1F3EA; 매장 관리</button>
+        <button class="settings-tab" data-tab="operation">&#x2699; 운영 설정</button>
+        <button class="settings-tab" data-tab="data">&#x1F4BE; 데이터</button>
       </div>
 
       <!-- Tab 1: 매장 관리 -->
@@ -124,16 +123,35 @@ App.pages.settings = {
             </div>
           </div>
         </div>
+
+        <!-- Theme Color -->
+        <div class="card" style="margin-top:16px">
+          <div class="card-header">
+            <span class="card-title">&#x1F3A8; 테마 색상</span>
+          </div>
+          <div class="card-body">
+            <div class="form-group">
+              <label class="form-label">매장 테마 컬러</label>
+              <div id="theme-color-picker" style="display:flex;gap:10px;flex-wrap:wrap;margin-top:8px">
+                ${['#6366F1','#EC4899','#10B981','#F59E0B','#3B82F6','#8B5CF6','#EF4444','#14B8A6'].map(c => `
+                  <button type="button" class="theme-color-btn${(themeColor || '#6366F1') === c ? ' active' : ''}" data-color="${c}" style="background:${c}" title="${c}"></button>
+                `).join('')}
+              </div>
+              <div class="form-hint">선택한 색상이 앱 전체 테마에 적용됩니다</div>
+            </div>
+          </div>
+        </div>
+
         <button class="btn btn-primary btn-lg" id="btn-save-tab-shop" style="width:100%;margin-top:20px">매장 관리 설정 저장</button>
       </div>
 
-      <!-- Tab 2: 알림·메시지 -->
-      <div class="settings-tab-content" id="tab-notify" style="display:none">
+      <!-- Tab 2: 운영 설정 -->
+      <div class="settings-tab-content" id="tab-operation" style="display:none">
         <div class="grid-2">
           <!-- 예약 알림 설정 -->
           <div class="card">
             <div class="card-header">
-              <span class="card-title">&#x1F514; 예약 알림 설정</span>
+              <span class="card-title">&#x1F514; 알림 설정</span>
             </div>
             <div class="card-body">
               <div class="form-group">
@@ -151,188 +169,93 @@ App.pages.settings = {
                   <option value="60" ${notifMinutes == 60 ? 'selected' : ''}>1시간 전</option>
                   <option value="120" ${notifMinutes == 120 ? 'selected' : ''}>2시간 전</option>
                 </select>
-                <div class="form-hint">예약 시간 기준으로 미리 알림을 보냅니다</div>
+              </div>
+            </div>
+          </div>
+
+          <!-- 매출 목표 -->
+          <div class="card">
+            <div class="card-header">
+              <span class="card-title">&#x1F3AF; 매출 목표</span>
+            </div>
+            <div class="card-body">
+              <div class="form-group">
+                <label class="form-label">일일 매출 목표</label>
+                <input type="number" id="s-dailyGoal" value="${(await DB.getSetting('dailyGoal')) || ''}" placeholder="예: 500000" min="0" step="10000">
+                <div class="form-hint">대시보드에 목표 대비 달성률이 표시됩니다</div>
+              </div>
+            </div>
+          </div>
+
+          <!-- 매장 고정비 -->
+          <div class="card">
+            <div class="card-header">
+              <span class="card-title">&#x1F4B0; 고정비</span>
+            </div>
+            <div class="card-body">
+              <div class="form-group">
+                <label class="form-label">월 고정비 (만원)</label>
+                <input type="number" id="s-fixedCost" value="${Math.round((Number(await DB.getSetting('monthlyFixedCost')) || 0) / 10000)}" placeholder="예: 350" min="0" step="10">
+                <div class="form-hint">임대료 + 인건비 + 공과금 + 보험 등 합산 금액</div>
+              </div>
+            </div>
+          </div>
+
+          <!-- 스탬프 적립 -->
+          <div class="card">
+            <div class="card-header">
+              <span class="card-title">&#x2B50; 스탬프 적립</span>
+            </div>
+            <div class="card-body">
+              <div class="form-group">
+                <label class="checkbox-label">
+                  <input type="checkbox" id="s-stampEnabled" ${rewardSettings.type !== 'none' ? 'checked' : ''}>
+                  스탬프 적립 사용
+                </label>
+              </div>
+              <div class="form-group">
+                <label class="form-label">무료 서비스 기준 (N회 방문)</label>
+                <input type="number" id="s-stampGoal" value="${rewardSettings.stampGoal || 10}" min="2" max="50" placeholder="10">
+                <div class="form-hint">이 횟수만큼 스탬프가 모이면 무료 서비스가 제공됩니다</div>
               </div>
             </div>
           </div>
         </div>
 
-        <!-- 메시지 템플릿 관리 -->
+        <!-- 메시지 템플릿 (접이식) -->
         <div class="card" style="margin-top:20px">
-          <div class="card-header">
-            <span class="card-title">&#x1F4AC; 메시지 템플릿 관리</span>
+          <div class="card-header" style="cursor:pointer" onclick="this.parentElement.querySelector('.card-body').classList.toggle('hidden');this.querySelector('.toggle-icon').textContent=this.parentElement.querySelector('.card-body').classList.contains('hidden')?'&#x25B6;':'&#x25BC;'">
+            <span class="card-title">&#x1F4AC; 메시지 템플릿 <span class="toggle-icon" style="font-size:0.75rem">&#x25B6;</span></span>
           </div>
-          <div class="card-body">
+          <div class="card-body hidden">
             <p style="color:var(--text-secondary);font-size:0.85rem;margin-bottom:16px">
               문자 발송 시 사용되는 메시지를 수정할 수 있습니다.<br>
-              사용 가능한 변수: <code>{매장명}</code> <code>{고객명}</code> <code>{반려견명}</code> <code>{경과일수}</code> <code>{날짜}</code> <code>{시간}</code> <code>{서비스}</code> <code>{금액}</code> <code>{미용사}</code> <code>{전화번호}</code>            </p>
+              사용 가능한 변수: <code>{매장명}</code> <code>{고객명}</code> <code>{반려견명}</code> <code>{경과일수}</code> <code>{날짜}</code> <code>{시간}</code> <code>{서비스}</code> <code>{금액}</code> <code>{미용사}</code> <code>{전화번호}</code>
+            </p>
             <div class="form-group">
               <label class="form-label">재방문 알림 문자</label>
               <textarea id="tpl-revisit" rows="3">${App.escapeHtml(revisitTpl)}</textarea>
-              <div class="form-hint">재방문 알림에서 "문자" 버튼 클릭 시 사용</div>
             </div>
             <div class="form-group">
               <label class="form-label">예약 확인 문자</label>
               <textarea id="tpl-appointment" rows="3">${App.escapeHtml(appointmentTpl)}</textarea>
-              <div class="form-hint">예약 등록 후 고객에게 확인 문자 발송 시 사용</div>
             </div>
             <div class="form-group">
               <label class="form-label">생일 축하 문자</label>
               <textarea id="tpl-birthday" rows="3">${App.escapeHtml(birthdayTpl)}</textarea>
-              <div class="form-hint">생일 알림에서 "축하 문자" 버튼 클릭 시 사용</div>
             </div>
             <div class="form-group">
               <label class="form-label">미용 완료 안내 문자</label>
               <textarea id="tpl-complete" rows="3">${App.escapeHtml(completeTpl)}</textarea>
-              <div class="form-hint">미용 기록 저장 후 고객에게 안내 문자 발송 시 사용</div>
             </div>
             <button class="btn btn-secondary" id="btn-reset-templates">기본값 복원</button>
           </div>
         </div>
-        <button class="btn btn-primary btn-lg" id="btn-save-tab-notify" style="width:100%;margin-top:20px">알림·메시지 설정 저장</button>
+
+        <button class="btn btn-primary btn-lg" id="btn-save-tab-operation" style="width:100%;margin-top:20px">운영 설정 저장</button>
       </div>
 
-      <!-- Tab 3: 마케팅 -->
-      <div class="settings-tab-content" id="tab-marketing" style="display:none">
-        <!-- 일일 매출 목표 -->
-        <div class="card" style="margin-bottom:20px">
-          <div class="card-header">
-            <span class="card-title">&#x1F3AF; 일일 매출 목표</span>
-          </div>
-          <div class="card-body">
-            <div class="form-group">
-              <label class="form-label">일일 매출 목표</label>
-              <input type="number" id="s-dailyGoal" value="${(await DB.getSetting('dailyGoal')) || ''}" placeholder="예: 500000" min="0" step="10000">
-              <div class="form-hint">대시보드에 목표 대비 달성률이 표시됩니다</div>
-            </div>
-          </div>
-        </div>
-
-        <!-- 스탬프 적립 설정 -->
-        <div class="card">
-          <div class="card-header">
-            <span class="card-title">&#x2B50; 스탬프 적립 설정</span>
-          </div>
-          <div class="card-body">
-            <div class="form-group">
-              <label class="form-label">무료 서비스 기준 (N회 방문)</label>
-              <input type="number" id="s-stampGoal" value="${rewardSettings.stampGoal || 10}" min="2" max="50" placeholder="10">
-              <div class="form-hint">이 횟수만큼 스탬프가 모이면 무료 서비스가 제공됩니다</div>
-            </div>
-            <div class="form-group">
-              <label class="checkbox-label">
-                <input type="checkbox" id="s-stampEnabled" ${rewardSettings.type !== 'none' ? 'checked' : ''}>
-                스탬프 적립 사용
-              </label>
-            </div>
-          </div>
-        </div>
-
-        <!-- 고객 자동 분류 설정 -->
-        <div class="card" style="margin-top:20px">
-          <div class="card-header">
-            <span class="card-title">&#x1F3F7; 고객 자동 분류</span>
-          </div>
-          <div class="card-body">
-            <p style="color:var(--text-secondary);font-size:0.85rem;margin-bottom:16px">
-              미용 기록 저장 시 방문 횟수에 따라 고객 분류를 자동으로 업데이트합니다.<br>
-              VIP와 주의 태그는 수동으로만 지정됩니다.
-            </p>
-            <div class="form-group">
-              <label class="checkbox-label">
-                <input type="checkbox" id="s-autoTagEnabled" ${(await DB.getSetting('autoTagEnabled')) ? 'checked' : ''}>
-                자동 분류 사용
-              </label>
-            </div>
-            <div class="form-row three">
-              <div class="form-group">
-                <label class="form-label">신규 기준 (최대 방문 수)</label>
-                <input type="number" id="s-autoTagNew" value="${(await DB.getSetting('autoTagNewMax')) || 2}" min="0" max="100" placeholder="2">
-                <div class="form-hint">0~이 횟수까지 '신규' 태그</div>
-              </div>
-              <div class="form-group">
-                <label class="form-label">일반 기준 (최대 방문 수)</label>
-                <input type="number" id="s-autoTagNormal" value="${(await DB.getSetting('autoTagNormalMax')) || 9}" min="1" max="200" placeholder="9">
-                <div class="form-hint">신규 초과~이 횟수까지 '일반' 태그</div>
-              </div>
-              <div class="form-group">
-                <label class="form-label">단골 기준 (최소 방문 수)</label>
-                <input type="number" id="s-autoTagRegular" value="${(await DB.getSetting('autoTagRegularMin')) || 10}" min="2" max="200" placeholder="10">
-                <div class="form-hint">이 횟수 이상이면 '단골' 태그</div>
-              </div>
-            </div>
-          </div>
-        </div>
-        <button class="btn btn-primary btn-lg" id="btn-save-tab-marketing" style="width:100%;margin-top:20px">마케팅 설정 저장</button>
-      </div>
-
-      <!-- Tab 4: 사진 카드 -->
-      <div class="settings-tab-content" id="tab-photocard" style="display:none">
-        <!-- 사진 카드 디자인 -->
-        <div class="card">
-          <div class="card-header">
-            <span class="card-title">&#x1F5BC; 사진 카드 디자인</span>
-          </div>
-          <div class="card-body" id="card-design-body">
-            <p style="color:var(--text-secondary);font-size:0.85rem;margin-bottom:16px">
-              미용 전후 사진 카드의 디자인을 자유롭게 커스터마이징할 수 있습니다.
-            </p>
-
-            <!-- 레이아웃 선택 -->
-            <div class="form-group">
-              <label class="form-label">레이아웃</label>
-              <div id="card-layout-list" class="card-design-grid"></div>
-            </div>
-
-            <!-- 시즌 테마 -->
-            <div class="form-group">
-              <label class="form-label">시즌 테마</label>
-              <div id="card-template-list" class="card-template-grid"></div>
-            </div>
-
-            <!-- 메인 색상 -->
-            <div class="form-group">
-              <label class="form-label">메인 색상</label>
-              <div style="display:flex;align-items:center;gap:12px">
-                <input type="color" id="card-color" value="#6366F1" style="width:60px;height:40px;padding:2px;cursor:pointer">
-                <span id="card-color-hex" style="font-size:0.85rem;color:var(--text-secondary)">#6366F1</span>
-              </div>
-            </div>
-
-            <!-- 표시 정보 -->
-            <div class="form-group">
-              <label class="form-label">표시 정보</label>
-              <div id="card-info-toggles" style="display:flex;flex-wrap:wrap;gap:6px"></div>
-            </div>
-
-            <!-- 매장 로고 -->
-            <div class="form-group">
-              <label class="form-label">매장 로고</label>
-              <div style="display:flex;align-items:center;gap:12px">
-                <div id="card-logo-preview" style="width:60px;height:60px;border-radius:8px;border:2px dashed var(--border);display:flex;align-items:center;justify-content:center;overflow:hidden;font-size:0.75rem;color:var(--text-muted);flex-shrink:0">없음</div>
-                <div style="display:flex;flex-direction:column;gap:6px">
-                  <input type="file" id="card-logo-input" accept="image/*" style="display:none">
-                  <button class="btn btn-sm btn-secondary" id="btn-upload-logo">업로드</button>
-                  <button class="btn btn-sm btn-ghost" id="btn-remove-logo" style="display:none;font-size:0.75rem;color:var(--danger)">삭제</button>
-                </div>
-              </div>
-            </div>
-
-            <!-- 하단 인사말 -->
-            <div class="form-group">
-              <label class="form-label">하단 인사말</label>
-              <input type="text" id="card-footer-msg" value="" placeholder="감사합니다 ♥">
-            </div>
-
-            <div style="display:flex;gap:10px;margin-top:8px">
-              <button class="btn btn-primary" id="btn-save-card-settings">저장</button>
-              <button class="btn btn-secondary" id="btn-preview-card">미리보기</button>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      <!-- Tab 5: 데이터 -->
+      <!-- Tab 3: 데이터 -->
       <div class="settings-tab-content" id="tab-data" style="display:none">
         <div class="grid-2">
           <!-- Data Stats -->
@@ -445,6 +368,12 @@ App.pages.settings = {
       const checks = document.querySelectorAll('input[name="closedDay"]:checked');
       const closedDays = Array.from(checks).map(cb => Number(cb.value));
       await DB.setSetting('closedDays', closedDays);
+      // 테마 색상
+      const activeColor = document.querySelector('.theme-color-btn.active');
+      if (activeColor) {
+        await DB.setSetting('themeColor', activeColor.dataset.color);
+        App.applyTheme(activeColor.dataset.color);
+      }
       App.showToast('매장 관리 설정이 저장되었습니다.');
     });
 
@@ -468,8 +397,16 @@ App.pages.settings = {
 
     this.bindGroomerRemove();
 
-    // Tab 2: 알림·메시지 전체 저장
-    document.getElementById('btn-save-tab-notify')?.addEventListener('click', async () => {
+    // Theme color picker
+    document.querySelectorAll('.theme-color-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        document.querySelectorAll('.theme-color-btn').forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+      });
+    });
+
+    // Tab 2: 운영 설정 전체 저장
+    document.getElementById('btn-save-tab-operation')?.addEventListener('click', async () => {
       // 알림 설정
       const enabled = document.getElementById('s-notifEnabled').checked;
       const minutes = Number(document.getElementById('s-notifMinutes').value) || 30;
@@ -483,14 +420,30 @@ App.pages.settings = {
       }
       App.setupNotificationChecker();
       // 메시지 템플릿
-      const tpls = {
-        revisit: document.getElementById('tpl-revisit').value,
-        appointment: document.getElementById('tpl-appointment').value,
-        birthday: document.getElementById('tpl-birthday').value,
-        complete: document.getElementById('tpl-complete').value
-      };
-      await DB.setSetting('messageTemplates', tpls);
-      App.showToast('알림·메시지 설정이 저장되었습니다.');
+      const tplRevisit = document.getElementById('tpl-revisit');
+      const tplAppointment = document.getElementById('tpl-appointment');
+      const tplBirthday = document.getElementById('tpl-birthday');
+      const tplComplete = document.getElementById('tpl-complete');
+      if (tplRevisit && tplAppointment && tplBirthday && tplComplete) {
+        await DB.setSetting('messageTemplates', {
+          revisit: tplRevisit.value,
+          appointment: tplAppointment.value,
+          birthday: tplBirthday.value,
+          complete: tplComplete.value
+        });
+      }
+      // 매출 목표
+      const goal = Number(document.getElementById('s-dailyGoal').value) || 0;
+      await DB.setSetting('dailyGoal', goal);
+      // 월 고정비
+      const fixedCostMan = Number(document.getElementById('s-fixedCost').value) || 0;
+      await DB.setSetting('monthlyFixedCost', fixedCostMan * 10000);
+      // 스탬프 설정
+      const stampEnabled = document.getElementById('s-stampEnabled')?.checked;
+      const stampGoal = Number(document.getElementById('s-stampGoal')?.value) || 10;
+      const stampType = stampEnabled ? 'stamp' : 'none';
+      await DB.setSetting('rewardSettings', { type: stampType, stampGoal });
+      App.showToast('운영 설정이 저장되었습니다.');
     });
 
     // Reset templates to defaults
@@ -508,27 +461,6 @@ App.pages.settings = {
       document.getElementById('tpl-complete').value = defaults.complete;
       App.showToast('기본값으로 복원되었습니다.');
     });
-
-    // Tab 3: 마케팅 전체 저장
-    document.getElementById('btn-save-tab-marketing')?.addEventListener('click', async () => {
-      // 일일 매출 목표
-      const goal = Number(document.getElementById('s-dailyGoal').value) || 0;
-      await DB.setSetting('dailyGoal', goal);
-      // 스탬프 설정
-      const stampEnabled = document.getElementById('s-stampEnabled')?.checked;
-      const stampGoal = Number(document.getElementById('s-stampGoal')?.value) || 10;
-      const stampType = stampEnabled ? 'stamp' : 'none';
-      await DB.setSetting('rewardSettings', { type: stampType, stampGoal });
-      // 고객 자동 분류
-      await DB.setSetting('autoTagEnabled', document.getElementById('s-autoTagEnabled').checked);
-      await DB.setSetting('autoTagNewMax', Number(document.getElementById('s-autoTagNew').value) || 2);
-      await DB.setSetting('autoTagNormalMax', Number(document.getElementById('s-autoTagNormal').value) || 9);
-      await DB.setSetting('autoTagRegularMin', Number(document.getElementById('s-autoTagRegular').value) || 10);
-      App.showToast('마케팅 설정이 저장되었습니다.');
-    });
-
-    // 사진 카드 템플릿 설정
-    this.setupCardTemplates();
 
     // Revenue CSV export
     document.getElementById('btn-export-revenue-csv')?.addEventListener('click', () => {
@@ -630,9 +562,13 @@ App.pages.settings = {
   },
 
   CARD_LAYOUTS: {
-    vertical: { name: '\uC138\uB85C\uD615 (\uAE30\uBCF8)', desc: 'Before\u2192After \uC138\uB85C \uBC30\uCE58', icon: '\u2B07' },
-    photobooth4: { name: '\uC778\uC0DD\uB124\uCEF7 (4\uCEF7)', desc: '4\uCEF7 \uD3EC\uD1A0\uBD80\uC2A4 \uC2A4\uD0C0\uC77C', icon: '\uD83C\uDFAC' },
-    minimal: { name: '\uBBF8\uB2C8\uB9D0', desc: '\uC0AC\uC9C4\uB9CC \uAE54\uB054\uD558\uAC8C', icon: '\u2728' }
+    strip4: { name: '4컷 가로', desc: '4장 세로 스트립', icon: '🎞' },
+    strip3: { name: '3컷 정방형', desc: '3장 정사각 스트립', icon: '🖼' },
+    circle: { name: '원형', desc: '원형 프레임', icon: '⭕' },
+    single: { name: '1컷 증명', desc: '1장 크게', icon: '📷' },
+    polaroid: { name: '폴라로이드', desc: '폴라로이드 스타일', icon: '📸' },
+    strip2: { name: '2컷', desc: '2장 세로 스트립', icon: '🎬' },
+    grid4: { name: '4컷 그리드', desc: '2x2 그리드', icon: '⊞' }
   },
 
   _cardDesignLogo: null,
@@ -643,7 +579,7 @@ App.pages.settings = {
     const oldSettings = await DB.getSetting('cardTemplateSettings') || {};
     const designSettings = await DB.getSetting('cardDesignSettings') || {};
     const settings = {
-      layout: designSettings.layout || 'vertical',
+      layout: designSettings.layout || 'strip2',
       template: designSettings.template || oldSettings.template || 'default',
       mainColor: designSettings.mainColor || oldSettings.mainColor || '#6366F1',
       showService: designSettings.showService !== false,
@@ -798,7 +734,7 @@ App.pages.settings = {
     });
 
     return {
-      layout: layoutEl ? layoutEl.dataset.key : 'vertical',
+      layout: layoutEl ? layoutEl.dataset.key : 'strip2',
       template: tplEl ? tplEl.dataset.template : 'default',
       mainColor: colorInput ? colorInput.value : '#6366F1',
       showService: infoChecks.showService !== false,

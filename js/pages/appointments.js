@@ -660,46 +660,14 @@ App.pages.appointments = {
 
         <!-- 상세 옵션 영역 -->
         <div class="form-detail-section">
-          <div class="form-row">
-            <div class="form-group">
-              <label class="form-label">담당 미용사</label>
-              <select id="f-groomer">${await App.getGroomerOptions(appt.groomer)}</select>
-            </div>
-            <div class="form-group">
-              <label class="form-label">소요시간</label>
-              <select id="f-duration">
-                <option value="30" ${(appt.duration || 60) === 30 ? 'selected' : ''}>30분</option>
-                <option value="60" ${(appt.duration || 60) === 60 ? 'selected' : ''}>1시간</option>
-                <option value="90" ${appt.duration === 90 ? 'selected' : ''}>1시간 30분</option>
-                <option value="120" ${appt.duration === 120 ? 'selected' : ''}>2시간</option>
-                <option value="150" ${appt.duration === 150 ? 'selected' : ''}>2시간 30분</option>
-                <option value="180" ${appt.duration === 180 ? 'selected' : ''}>3시간</option>
-              </select>
-            </div>
-          </div>
           <div class="form-group">
-            <label class="form-label">상태</label>
-            <select id="f-status">
-              <option value="pending" ${appt.status === 'pending' ? 'selected' : ''}>대기</option>
-              <option value="confirmed" ${appt.status === 'confirmed' ? 'selected' : ''}>확정</option>
-              <option value="in_progress" ${appt.status === 'in_progress' ? 'selected' : ''}>미용중</option>
-              <option value="completed" ${appt.status === 'completed' ? 'selected' : ''}>완료</option>
-              <option value="cancelled" ${appt.status === 'cancelled' ? 'selected' : ''}>취소</option>
-            </select>
+            <label class="form-label">담당 미용사</label>
+            <select id="f-groomer">${await App.getGroomerOptions(appt.groomer)}</select>
           </div>
           <div class="form-group">
             <label class="form-label">메모</label>
             <textarea id="f-memo" placeholder="예약 관련 메모">${App.escapeHtml(appt.memo || '')}</textarea>
           </div>
-          ${!id ? `
-          <div class="form-group" style="margin-top:12px">
-            <label class="checkbox-label" style="background:var(--primary-light);border:1.5px solid var(--primary-lighter);border-radius:var(--radius);padding:10px 14px">
-              <input type="checkbox" id="f-autoRecord">
-              미용 기록도 함께 등록
-              <span style="color:var(--text-muted);font-size:0.78rem;margin-left:auto">저장 후 미용 기록 폼이 열립니다</span>
-            </label>
-          </div>
-          ` : ''}
         </div>
       `,
       onSave: () => this.saveAppointment(id)
@@ -790,9 +758,8 @@ App.pages.appointments = {
     const petId = Number(document.getElementById('f-petId').value);
     const date = document.getElementById('f-date').value;
     const time = document.getElementById('f-time').value;
-    const duration = Number(document.getElementById('f-duration')?.value) || 60;
+    const duration = 60;
     const groomer = document.getElementById('f-groomer').value.trim();
-    const status = document.getElementById('f-status').value;
     const memo = document.getElementById('f-memo').value.trim();
 
     const serviceIds = [];
@@ -825,10 +792,8 @@ App.pages.appointments = {
       }
     }
 
-    // 미용 기록 자동 등록 체크 여부
-    const autoRecord = !id && document.getElementById('f-autoRecord')?.checked;
-
     try {
+      const status = id ? (await DB.get('appointments', id)).status : 'pending';
       const data = { customerId, petId, date, time, duration, groomer, status, serviceIds, memo };
 
       if (id) {
@@ -839,18 +804,6 @@ App.pages.appointments = {
       } else {
         const newId = await DB.add('appointments', data);
         App.showToast('새 예약이 등록되었습니다.');
-
-        // 미용 기록 자동 등록
-        if (autoRecord) {
-          App.closeModal();
-          setTimeout(() => {
-            App.pages.records.showForm(null, {
-              id: newId,
-              customerId, petId, date, groomer, serviceIds
-            });
-          }, 300);
-          return;
-        }
 
         // 예약 확인 문자 발송 제안
         const customer = await DB.get('customers', customerId);
@@ -868,7 +821,10 @@ App.pages.appointments = {
               '시간': time || '',
               '미용사': groomer || ''
             });
-            window.open(`sms:${phone}?body=${encodeURIComponent(msg)}`);
+            const sep = /iP(hone|ad|od)/.test(navigator.userAgent) || /Mac/.test(navigator.userAgent) ? '&' : '?';
+            const a = document.createElement('a');
+            a.href = `sms:${phone}${sep}body=${encodeURIComponent(msg)}`;
+            a.click();
           }
           return;
         }

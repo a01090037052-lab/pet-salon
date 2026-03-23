@@ -23,7 +23,6 @@ App.pages.services = {
               <thead>
                 <tr>
                   <th>서비스명</th>
-                  <th>설명</th>
                   <th>소형견</th>
                   <th>중형견</th>
                   <th>대형견</th>
@@ -33,7 +32,7 @@ App.pages.services = {
               </thead>
               <tbody>
                 ${services.length === 0 ? `
-                  <tr><td colspan="7">
+                  <tr><td colspan="6">
                     <div class="empty-state">
                       <div class="empty-state-icon">&#x1F4CB;</div>
                       <div class="empty-state-text">등록된 서비스가 없습니다</div>
@@ -49,7 +48,6 @@ App.pages.services = {
                   .map(s => `
                   <tr data-id="${s.id}" style="${s.isActive === false ? 'opacity:0.5' : ''}">
                     <td><strong>${App.escapeHtml(s.name)}</strong></td>
-                    <td style="font-size:0.85rem;color:var(--text-secondary)">${App.escapeHtml(s.description || '-')}</td>
                     <td>${App.formatCurrency(s.priceSmall)}</td>
                     <td>${App.formatCurrency(s.priceMedium)}</td>
                     <td>${App.formatCurrency(s.priceLarge)}</td>
@@ -112,10 +110,6 @@ App.pages.services = {
           <label class="form-label">서비스명 <span class="required">*</span></label>
           <input type="text" id="f-name" value="${App.escapeHtml(service.name || '')}" placeholder="예: 전체 미용, 부분 목욕">
         </div>
-        <div class="form-group">
-          <label class="form-label">설명</label>
-          <textarea id="f-description" placeholder="서비스 상세 설명">${App.escapeHtml(service.description || '')}</textarea>
-        </div>
         <div class="form-row three">
           <div class="form-group">
             <label class="form-label">소형견 가격 (원)</label>
@@ -138,14 +132,13 @@ App.pages.services = {
 
   async saveService(id) {
     const name = document.getElementById('f-name').value.trim();
-    const description = document.getElementById('f-description').value.trim();
     const priceSmall = Number(document.getElementById('f-priceSmall').value) || 0;
     const priceMedium = Number(document.getElementById('f-priceMedium').value) || 0;
     const priceLarge = Number(document.getElementById('f-priceLarge').value) || 0;
 
-    if (!name) { App.showToast('서비스명을 입력해주세요.', 'error'); return; }
+    if (!name) { App.highlightField('f-name'); App.showToast('서비스명을 입력해주세요.', 'error'); return; }
 
-    const data = { name, description, priceSmall, priceMedium, priceLarge, isActive: true };
+    const data = { name, priceSmall, priceMedium, priceLarge, isActive: true };
 
     if (id) {
       const existing = await DB.get('services', id);

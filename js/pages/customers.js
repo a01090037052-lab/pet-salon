@@ -443,6 +443,21 @@ App.pages.customers = {
           <label class="form-label">메모</label>
           <textarea id="f-memo" placeholder="특이사항, 메모 등">${App.escapeHtml(customer.memo || '')}</textarea>
         </div>
+        ${!id ? `
+        <div style="border-top:1px dashed var(--border);margin-top:16px;padding-top:16px">
+          <div style="font-weight:700;margin-bottom:10px;font-size:0.95rem">&#x1F436; 반려견 함께 등록 <span style="font-weight:400;color:var(--text-muted);font-size:0.85rem">(선택)</span></div>
+          <div class="form-row">
+            <div class="form-group">
+              <label class="form-label">반려견 이름</label>
+              <input type="text" id="f-petName" placeholder="반려견 이름">
+            </div>
+            <div class="form-group">
+              <label class="form-label">견종</label>
+              <input type="text" id="f-petBreed" placeholder="예: 말티즈, 푸들">
+            </div>
+          </div>
+        </div>
+        ` : ''}
       `,
       onSave: () => this.saveCustomer(id)
     });
@@ -481,6 +496,18 @@ App.pages.customers = {
       } else {
         newId = await DB.add('customers', data);
         App.showToast('새 고객이 등록되었습니다.');
+
+        // 인라인 반려견 등록 (이름이 입력된 경우)
+        const petName = (document.getElementById('f-petName')?.value || '').trim();
+        const petBreed = (document.getElementById('f-petBreed')?.value || '').trim();
+        if (petName) {
+          try {
+            await DB.add('pets', { name: petName, breed: petBreed, customerId: newId });
+            App.showToast(`반려견 "${petName}"도 함께 등록되었습니다.`);
+          } catch (e) {
+            console.warn('Inline pet registration error:', e);
+          }
+        }
       }
 
       App.closeModal();
@@ -490,11 +517,6 @@ App.pages.customers = {
       this._afterSaveCallback = null;
       if (callback) {
         callback(newId, name);
-        // 반려견도 함께 등록할지 확인
-        const addPet = await App.confirm('반려견도 함께 등록하시겠습니까?');
-        if (addPet) {
-          App.pages.pets?.showForm(null, newId);
-        }
         return;
       }
 
@@ -568,8 +590,4 @@ App.pages.customers = {
     });
   },
 
-  filterTable(query) {
-    this._searchQuery = query;
-    this.applyFilters();
-  }
 };

@@ -19,6 +19,7 @@ const App = {
       window.addEventListener('hashchange', () => this.handleRoute());
       await this.updateBadges();
       await this.applyShopName();
+      await this.applyTheme();
       // 예약 알림 체커 시작
       await this.setupNotificationChecker();
       // Hide loading screen
@@ -70,49 +71,7 @@ const App = {
   },
 
   setupFAB() {
-    const fabBtn = document.getElementById('fab-btn');
-    const fabMenu = document.getElementById('fab-menu');
-    let isOpen = false;
-
-    fabBtn.addEventListener('click', () => {
-      isOpen = !isOpen;
-      fabBtn.classList.toggle('open', isOpen);
-      fabMenu.classList.toggle('open', isOpen);
-    });
-
-    // Close FAB when clicking outside
-    document.addEventListener('click', (e) => {
-      if (isOpen && !e.target.closest('.fab-container')) {
-        isOpen = false;
-        fabBtn.classList.remove('open');
-        fabMenu.classList.remove('open');
-      }
-    });
-
-    // FAB menu items
-    document.querySelectorAll('.fab-menu-item').forEach(item => {
-      item.addEventListener('click', () => {
-        const action = item.dataset.action;
-        isOpen = false;
-        fabBtn.classList.remove('open');
-        fabMenu.classList.remove('open');
-
-        switch (action) {
-          case 'customer':
-            this.pages.customers?.showForm();
-            break;
-          case 'pet':
-            this.pages.pets?.showForm();
-            break;
-          case 'appointment':
-            this.pages.appointments?.showForm();
-            break;
-          case 'record':
-            this.pages.records?.showForm();
-            break;
-        }
-      });
-    });
+    // FAB removed - bottom nav "+" button replaces this
   },
 
   setupKeyboard() {
@@ -690,6 +649,31 @@ const App = {
     document.title = `${display} - 애견 미용 고객 관리`;
     const logo = document.querySelector('.logo');
     if (logo) logo.innerHTML = `&#x2702; ${this.escapeHtml(display)}`;
+  },
+
+  async applyTheme(color) {
+    if (!color) color = await DB.getSetting('themeColor');
+    if (!color) return;
+    const r = document.documentElement;
+    r.style.setProperty('--primary', color);
+    // Derive hover (darken by ~10%)
+    const hex = color.replace('#', '');
+    const num = parseInt(hex, 16);
+    const dr = Math.max(0, ((num >> 16) & 0xFF) - 25);
+    const dg = Math.max(0, ((num >> 8) & 0xFF) - 25);
+    const db = Math.max(0, (num & 0xFF) - 25);
+    r.style.setProperty('--primary-hover', `#${((1 << 24) + (dr << 16) + (dg << 8) + db).toString(16).slice(1)}`);
+    // Derive light (mix with white ~90%)
+    const lr = Math.round(((num >> 16) & 0xFF) * 0.1 + 255 * 0.9);
+    const lg = Math.round(((num >> 8) & 0xFF) * 0.1 + 255 * 0.9);
+    const lb = Math.round((num & 0xFF) * 0.1 + 255 * 0.9);
+    r.style.setProperty('--primary-light', `#${((1 << 24) + (lr << 16) + (lg << 8) + lb).toString(16).slice(1)}`);
+    r.style.setProperty('--primary-lighter', `#${((1 << 24) + (Math.round(lr * 0.97) << 16) + (Math.round(lg * 0.97) << 8) + Math.round(lb * 0.97)).toString(16).slice(1)}`);
+    // Sidebar active
+    r.style.setProperty('--sidebar-active', color);
+    // Meta theme-color
+    const meta = document.querySelector('meta[name="theme-color"]');
+    if (meta) meta.setAttribute('content', color);
   },
 
   // ========== 예약 알림 시스템 ==========

@@ -22,7 +22,7 @@ App.pages.dashboard = {
         DB.count('customers')
       ]);
 
-      // All records needed for revisit alerts and dissatisfied tracking
+      // All records needed for revisit alerts
       const allRecords = await DB.getAll('records');
 
       // Build lookup maps once
@@ -70,23 +70,6 @@ App.pages.dashboard = {
         }
       }
       revisitAlerts.sort((a, b) => b.days - a.days);
-
-      // 고객 만족도 '불만' 관리 필요 고객
-      const dissatisfiedCustomers = [];
-      const customerLastRecord = {};
-      allRecords.forEach(r => {
-        if (!customerLastRecord[r.customerId] || (r.date || '') > (customerLastRecord[r.customerId].date || '')) {
-          customerLastRecord[r.customerId] = r;
-        }
-      });
-      for (const [cid, rec] of Object.entries(customerLastRecord)) {
-        if (rec.satisfaction === 'bad') {
-          const customer = customerMap[Number(cid)];
-          if (customer) {
-            dissatisfiedCustomers.push({ customer, record: rec, pet: petMap[rec.petId] });
-          }
-        }
-      }
 
       // 미수금(외상) 집계
       const unpaidRecords = allRecords.filter(r => r.paymentMethod === 'unpaid');
@@ -180,7 +163,7 @@ App.pages.dashboard = {
               <div class="onboarding-step" style="display:flex;align-items:center;gap:12px;padding:10px 14px;background:var(--bg-white);border-radius:var(--radius);border:1px solid var(--border-light)">
                 <span style="width:28px;height:28px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:0.8rem;font-weight:700;${serviceCount > 0 ? 'background:var(--success);color:#fff' : 'background:var(--bg);color:var(--text-muted);border:1.5px solid var(--border)'}">${serviceCount > 0 ? '&#x2713;' : '3'}</span>
                 <div style="flex:1"><strong>서비스 등록</strong><div style="font-size:0.8rem;color:var(--text-muted)">미용 서비스 및 가격 설정</div></div>
-                ${serviceCount === 0 ? '<a href="#settings" class="btn btn-sm btn-primary">설정</a>' : '<span class="badge badge-success">완료</span>'}
+                ${serviceCount === 0 ? '<a href="#services" class="btn btn-sm btn-primary">설정</a>' : '<span class="badge badge-success">완료</span>'}
               </div>
               <div class="onboarding-step" style="display:flex;align-items:center;gap:12px;padding:10px 14px;background:var(--bg-white);border-radius:var(--radius);border:1px solid var(--border-light)">
                 <span style="width:28px;height:28px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:0.8rem;font-weight:700;background:var(--bg);color:var(--text-muted);border:1.5px solid var(--border)">4</span>
@@ -212,22 +195,6 @@ App.pages.dashboard = {
                 const c = customerMap[a.customerId];
                 return (a.time || '--:--') + ' ' + App.escapeHtml(c?.name || '?');
               }).join('<br>')}${todayAppointments.length > 3 ? '<br>...' : ''}</div>` : ''}
-            </div>
-          </a>
-          <a href="#records" class="stat-card gradient-green" style="text-decoration:none;color:inherit">
-            <div class="stat-icon green">&#x1F4B0;</div>
-            <div>
-              <div class="stat-value" style="font-size:1.3rem">${App.formatCurrency(monthRevenue)}</div>
-              <div class="stat-label">이번 달 매출 &rarr;
-                ${revenueChange !== null ? `<span style="color:${revenueChange >= 0 ? 'var(--success)' : 'var(--danger)'};font-weight:700;margin-left:4px">${revenueChange >= 0 ? '+' : ''}${revenueChange}%</span>` : ''}
-              </div>
-            </div>
-          </a>
-          <a href="#customers" class="stat-card gradient-yellow" style="text-decoration:none;color:inherit">
-            <div class="stat-icon yellow">&#x1F464;</div>
-            <div>
-              <div class="stat-value">${customerCount}<span style="font-size:0.9rem;font-weight:500;color:var(--text-secondary)">명</span></div>
-              <div class="stat-label">총 고객 &rarr;</div>
             </div>
           </a>
           <div class="stat-card gradient-purple" style="cursor:pointer" onclick="App.pages.records?.showDailyReport()">
@@ -349,50 +316,6 @@ App.pages.dashboard = {
         </div>
         ` : ''}
 
-        ${dissatisfiedCustomers.length > 0 ? `
-        <div class="card" style="margin-bottom:20px;border:1.5px solid var(--danger)">
-          <div class="card-header" style="background:var(--danger-light)">
-            <span class="card-title" style="color:var(--danger)">&#x1F61F; 관리 필요 고객 (최근 불만족)</span>
-            <span class="badge badge-danger">${dissatisfiedCustomers.length}명</span>
-          </div>
-          <div class="card-body">
-            ${dissatisfiedCustomers.map(d => {
-              const phoneClean = (d.customer.phone || '').replace(/\D/g, '');
-              return `
-                <div class="alert-item">
-                  <div style="flex:1">
-                    <strong>${App.escapeHtml(d.customer.name)}</strong>${d.pet ? ' / ' + App.escapeHtml(d.pet.name) : ''}
-                    <div style="font-size:0.78rem;color:var(--danger);margin-top:2px">
-                      ${d.record.dissatisfactionReason ? '사유: ' + App.escapeHtml(d.record.dissatisfactionReason) : '사유 미기록'}
-                    </div>
-                    <div style="font-size:0.75rem;color:var(--text-muted);margin-top:2px">${App.formatDate(d.record.date)}</div>
-                  </div>
-                  <div style="display:flex;gap:4px;flex-shrink:0">
-                    ${phoneClean ? `<a href="tel:${App.escapeHtml(phoneClean)}" class="btn btn-sm btn-secondary" onclick="event.stopPropagation()">전화</a>` : ''}
-                    ${phoneClean ? `<a href="sms:${App.escapeHtml(phoneClean)}" class="btn btn-sm btn-success" onclick="event.stopPropagation()">문자</a>` : ''}
-                  </div>
-                </div>`;
-            }).join('')}
-          </div>
-        </div>
-        ` : ''}
-
-        <!-- 빠른 작업 -->
-        <div class="quick-actions" style="margin-bottom:24px">
-          <button class="quick-action-btn" onclick="App.pages.customers.showForm()">
-            <span class="qa-icon">&#x1F464;</span> 새 고객
-          </button>
-          <button class="quick-action-btn" onclick="App.pages.pets.showForm()">
-            <span class="qa-icon">&#x1F436;</span> 새 반려견
-          </button>
-          <button class="quick-action-btn" onclick="App.pages.appointments.showForm()">
-            <span class="qa-icon">&#x1F4C5;</span> 새 예약
-          </button>
-          <button class="quick-action-btn" onclick="App.pages.records.showForm()">
-            <span class="qa-icon">&#x2702;</span> 새 미용기록
-          </button>
-        </div>
-
         <div id="storage-quota-banner"></div>
       `;
 
@@ -439,7 +362,7 @@ App.pages.dashboard = {
           <div class="appointment-info">
             <div class="name">${dateLabel}<a href="#customers/${appt.customerId}" onclick="event.stopPropagation()" style="color:inherit;font-weight:700">${App.escapeHtml(customer?.name || '?')}</a> <span style="color:var(--text-muted)">/</span> <a href="#pets/${appt.petId}" onclick="event.stopPropagation()" style="color:inherit">${App.escapeHtml(pet?.name || '?')}</a></div>
             <div class="detail">${App.escapeHtml(serviceNames || '서비스 미지정')}${appt.groomer ? ' &middot; ' + App.escapeHtml(appt.groomer) : ''}</div>
-            ${(() => { const w = [pet?.temperament, pet?.healthNotes, pet?.handoverNote, pet?.allergies].filter(Boolean); if (!w.length) return ''; const s = w.join(', '); return '<div style="font-size:0.75rem;color:var(--danger);margin-top:2px">&#x26A0; ' + App.escapeHtml(s.length > 50 ? s.slice(0, 50) + '...' : s) + '</div>'; })()}
+            ${(() => { const w = [pet?.temperament, pet?.healthNotes, pet?.allergies].filter(Boolean); if (!w.length) return ''; const s = w.join(', '); return '<div style="font-size:0.75rem;color:var(--danger);margin-top:2px">&#x26A0; ' + App.escapeHtml(s.length > 50 ? s.slice(0, 50) + '...' : s) + '</div>'; })()}
           </div>
           <div style="display:flex;align-items:center;gap:6px;flex-shrink:0">
             <span class="badge badge-${this.getStatusBadge(appt.status)}">${this.getStatusLabel(appt.status)}</span>
