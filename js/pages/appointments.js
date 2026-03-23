@@ -660,9 +660,22 @@ App.pages.appointments = {
 
         <!-- 상세 옵션 영역 -->
         <div class="form-detail-section">
-          <div class="form-group">
-            <label class="form-label">담당 미용사</label>
-            <select id="f-groomer">${await App.getGroomerOptions(appt.groomer)}</select>
+          <div class="form-row">
+            <div class="form-group">
+              <label class="form-label">담당 미용사</label>
+              <select id="f-groomer">${await App.getGroomerOptions(appt.groomer)}</select>
+            </div>
+            <div class="form-group">
+              <label class="form-label">예상 소요시간</label>
+              <select id="f-duration">
+                <option value="30" ${appt.duration == 30 ? 'selected' : ''}>30분</option>
+                <option value="60" ${!appt.duration || appt.duration == 60 ? 'selected' : ''}>1시간</option>
+                <option value="90" ${appt.duration == 90 ? 'selected' : ''}>1시간 30분</option>
+                <option value="120" ${appt.duration == 120 ? 'selected' : ''}>2시간</option>
+                <option value="150" ${appt.duration == 150 ? 'selected' : ''}>2시간 30분</option>
+                <option value="180" ${appt.duration == 180 ? 'selected' : ''}>3시간</option>
+              </select>
+            </div>
           </div>
           <div class="form-group">
             <label class="form-label">메모</label>
@@ -758,7 +771,7 @@ App.pages.appointments = {
     const petId = Number(document.getElementById('f-petId').value);
     const date = document.getElementById('f-date').value;
     const time = document.getElementById('f-time').value;
-    const duration = 60;
+    const duration = Number(document.getElementById('f-duration')?.value) || 60;
     const groomer = document.getElementById('f-groomer').value.trim();
     const memo = document.getElementById('f-memo').value.trim();
 

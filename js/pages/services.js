@@ -47,7 +47,7 @@ App.pages.services = {
                   })
                   .map(s => `
                   <tr data-id="${s.id}" style="${s.isActive === false ? 'opacity:0.5' : ''}">
-                    <td><strong>${App.escapeHtml(s.name)}</strong></td>
+                    <td><strong>${App.escapeHtml(s.name)}</strong>${s.description ? `<div style="font-size:0.78rem;color:var(--text-muted);margin-top:2px">${App.escapeHtml(s.description)}</div>` : ''}</td>
                     <td>${App.formatCurrency(s.priceSmall)}</td>
                     <td>${App.formatCurrency(s.priceMedium)}</td>
                     <td>${App.formatCurrency(s.priceLarge)}</td>
