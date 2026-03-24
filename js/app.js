@@ -470,12 +470,16 @@ const App = {
 
   getGreeting() {
     const h = new Date().getHours();
-    if (h < 6) return '새벽에도 수고하세요';
-    if (h < 12) return '좋은 아침이에요';
-    if (h < 14) return '점심 맛있게 드세요';
-    if (h < 18) return '오후도 화이팅';
-    if (h < 22) return '오늘 하루도 수고했어요';
-    return '늦은 시간까지 고생이에요';
+    const day = new Date().getDay();
+    const dayNames = ['일요일', '월요일', '화요일', '수요일', '목요일', '금요일', '토요일'];
+    const todayName = dayNames[day];
+    if (h < 6) return '새벽에도 수고하세요 🌙';
+    if (h < 9) return `${todayName} 아침, 오늘도 화이팅!`;
+    if (h < 12) return '좋은 오전이에요 ☀️';
+    if (h < 14) return '맛있는 점심 드세요 🍽';
+    if (h < 18) return '오후도 힘내세요 💪';
+    if (h < 21) return '오늘 하루 수고했어요 ✨';
+    return '편안한 밤 보내세요 🌙';
   },
 
   escapeHtml(str) {
