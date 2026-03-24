@@ -2694,3 +2694,47 @@ a.stat-card { display: flex; }
 .onboarding-card .onboarding-step:hover {
   box-shadow: var(--shadow);
 }
+
+/* ========== Payment Chip Buttons ========== */
+.payment-chip {
+  padding: 8px 16px;
+  border-radius: 20px;
+  font-size: 0.85rem;
+  font-weight: 600;
+  border: 1.5px solid var(--border);
+  background: var(--bg-white);
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: all 0.15s;
+}
+.payment-chip:hover {
+  border-color: var(--primary);
+  color: var(--primary);
+}
+.payment-chip.active {
+  background: var(--primary);
+  color: #fff;
+  border-color: var(--primary);
+}
+
+.card-pick-btn {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  padding: 10px 14px;
+  border-radius: 10px;
+  border: 2px solid var(--border);
+  background: var(--bg-white);
+  cursor: pointer;
+  transition: all 0.15s;
+  min-width: 60px;
+}
+.card-pick-btn:hover {
+  border-color: var(--primary);
+}
+.card-pick-btn.active {
+  border-color: var(--primary);
+  background: var(--primary-light);
+  box-shadow: 0 0 0 2px rgba(99,102,241,0.2);
+}

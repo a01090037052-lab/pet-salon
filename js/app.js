@@ -344,8 +344,8 @@ const App = {
     toast.innerHTML = `<span>${message}</span><button class="toast-dismiss" onclick="this.parentElement.style.animation='toastOut 0.3s ease forwards';setTimeout(()=>this.parentElement.remove(),300)">&times;</button>`;
     container.appendChild(toast);
 
-    // Duration based on type: success=1.5s, info=2s, error=5s
-    const duration = type === 'error' ? 5000 : type === 'info' ? 2000 : 1500;
+    // Duration based on type: success=2.5s, info=2s, error=5s
+    const duration = type === 'error' ? 5000 : type === 'info' ? 2000 : 2500;
     setTimeout(() => {
       if (toast.parentElement) {
         toast.style.animation = 'toastOut 0.3s ease forwards';
@@ -356,6 +356,7 @@ const App = {
     // Update badges after data changes
     if (type === 'success') {
       setTimeout(() => this.updateBadges(), 200);
+      App._dashboardDirty = true;
     }
   },
 
@@ -535,7 +536,13 @@ const App = {
       dropdown.classList.add('open');
     };
 
-    input.addEventListener('focus', () => renderOptions(input.value));
+    input.addEventListener('focus', () => {
+      renderOptions(input.value);
+      // Scroll input into view above keyboard on mobile
+      setTimeout(() => {
+        input.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      }, 300);
+    });
     input.addEventListener('input', () => {
       hidden.value = '';
       renderOptions(input.value);
@@ -914,11 +921,12 @@ const App = {
       return `
         <div class="gs-result-item" tabindex="0" data-customer-id="${c.id}">
           <div class="gs-result-avatar">${this.escapeHtml(initial)}</div>
-          <div class="gs-result-info">
+          <div class="gs-result-info" style="flex:1">
             <div class="gs-result-name">${this.escapeHtml(c.name)}</div>
             <div class="gs-result-phone">${this.formatPhone(c.phone)}</div>
             ${petNames ? `<div class="gs-result-pets">${this.escapeHtml(petNames)}</div>` : ''}
           </div>
+          <button class="btn-icon" onclick="event.stopPropagation();App.closeSearch();App.pages.appointments.showForm(null,${c.id})" title="예약" style="color:var(--primary);font-size:1.1rem;flex-shrink:0">&#x1F4C5;</button>
           <div class="gs-result-arrow">&#x276F;</div>
         </div>`;
     }).join('');

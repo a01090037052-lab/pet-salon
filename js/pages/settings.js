@@ -24,7 +24,6 @@ App.pages.settings = {
     const birthdayTpl = savedTemplates.birthday || DEFAULT_TEMPLATES.birthday;
     const completeTpl = savedTemplates.complete || DEFAULT_TEMPLATES.complete;
 
-    const rewardSettings = await DB.getSetting('rewardSettings') || { type: 'stamp', stampGoal: 10, pointRate: 5, minUsePoints: 1000 };
     const [customers, pets, appointments, records, services] = await Promise.all([
       DB.count('customers'),
       DB.count('pets'),
@@ -201,25 +200,6 @@ App.pages.settings = {
             </div>
           </div>
 
-          <!-- 스탬프 적립 -->
-          <div class="card">
-            <div class="card-header">
-              <span class="card-title">&#x2B50; 스탬프 적립</span>
-            </div>
-            <div class="card-body">
-              <div class="form-group">
-                <label class="checkbox-label">
-                  <input type="checkbox" id="s-stampEnabled" ${rewardSettings.type !== 'none' ? 'checked' : ''}>
-                  스탬프 적립 사용
-                </label>
-              </div>
-              <div class="form-group">
-                <label class="form-label">무료 서비스 기준 (N회 방문)</label>
-                <input type="number" id="s-stampGoal" value="${rewardSettings.stampGoal || 10}" min="2" max="50" placeholder="10">
-                <div class="form-hint">이 횟수만큼 스탬프가 모이면 무료 서비스가 제공됩니다</div>
-              </div>
-            </div>
-          </div>
         </div>
 
         <!-- 메시지 템플릿 (접이식) -->
@@ -341,14 +321,33 @@ App.pages.settings = {
   },
 
   async init() {
-    // Tab switching
+    // Tab switching with unsaved changes warning
     document.querySelectorAll('.settings-tab').forEach(tab => {
-      tab.addEventListener('click', () => {
+      tab.addEventListener('click', async () => {
+        // Check for unsaved changes in current tab
+        const currentTab = document.querySelector('.settings-tab-content:not([style*="display: none"])') || document.querySelector('.settings-tab-content:not([style*="display:none"])');
+        if (currentTab && currentTab._modified) {
+          const proceed = await App.confirm('저장하지 않은 변경사항이 있습니다. 이동하시겠습니까?');
+          if (!proceed) return;
+          currentTab._modified = false;
+        }
         document.querySelectorAll('.settings-tab').forEach(t => t.classList.remove('active'));
         document.querySelectorAll('.settings-tab-content').forEach(c => c.style.display = 'none');
         tab.classList.add('active');
         const tabId = 'tab-' + tab.dataset.tab;
         document.getElementById(tabId).style.display = 'block';
+      });
+    });
+
+    // Mark tab as modified when any input changes
+    document.querySelectorAll('.settings-tab-content input, .settings-tab-content select, .settings-tab-content textarea').forEach(el => {
+      el.addEventListener('change', () => {
+        const tabContent = el.closest('.settings-tab-content');
+        if (tabContent) tabContent._modified = true;
+      });
+      el.addEventListener('input', () => {
+        const tabContent = el.closest('.settings-tab-content');
+        if (tabContent) tabContent._modified = true;
       });
     });
 
@@ -374,6 +373,8 @@ App.pages.settings = {
         await DB.setSetting('themeColor', activeColor.dataset.color);
         App.applyTheme(activeColor.dataset.color);
       }
+      const currentTabShop = document.getElementById('tab-shop');
+      if (currentTabShop) currentTabShop._modified = false;
       App.showToast('매장 관리 설정이 저장되었습니다.');
     });
 
@@ -438,11 +439,8 @@ App.pages.settings = {
       // 월 고정비
       const fixedCostMan = Number(document.getElementById('s-fixedCost').value) || 0;
       await DB.setSetting('monthlyFixedCost', fixedCostMan * 10000);
-      // 스탬프 설정
-      const stampEnabled = document.getElementById('s-stampEnabled')?.checked;
-      const stampGoal = Number(document.getElementById('s-stampGoal')?.value) || 10;
-      const stampType = stampEnabled ? 'stamp' : 'none';
-      await DB.setSetting('rewardSettings', { type: stampType, stampGoal });
+      const currentTabOp = document.getElementById('tab-operation');
+      if (currentTabOp) currentTabOp._modified = false;
       App.showToast('운영 설정이 저장되었습니다.');
     });
 
@@ -549,271 +547,6 @@ App.pages.settings = {
       btn.onclick = () => btn.parentElement.remove();
     });
   },
-
-  // ========== 사진 카드 디자인 설정 ==========
-  CARD_TEMPLATES: {
-    default: { name: '기본', color: '#6366F1', bgColor: '#F8FAFC', emoji: '\u2702', footerBg: '#6366F1' },
-    spring: { name: '봄 \uD83C\uDF38', color: '#EC4899', bgColor: '#FDF2F8', emoji: '\uD83C\uDF38', footerBg: '#EC4899' },
-    summer: { name: '여름 \uD83C\uDF0A', color: '#06B6D4', bgColor: '#ECFEFF', emoji: '\uD83C\uDF0A', footerBg: '#06B6D4' },
-    autumn: { name: '가을 \uD83C\uDF42', color: '#D97706', bgColor: '#FFFBEB', emoji: '\uD83C\uDF42', footerBg: '#D97706' },
-    winter: { name: '겨울 \u2744', color: '#3B82F6', bgColor: '#EFF6FF', emoji: '\u2744', footerBg: '#3B82F6' },
-    minimal: { name: '미니멀', color: '#374151', bgColor: '#FFFFFF', emoji: '\u2702', footerBg: '#374151' },
-    cute: { name: '귀여운 \uD83D\uDC3E', color: '#F472B6', bgColor: '#FFF1F2', emoji: '\uD83D\uDC3E', footerBg: '#F472B6' }
-  },
-
-  CARD_LAYOUTS: {
-    strip4: { name: '4컷 가로', desc: '4장 세로 스트립', icon: '🎞' },
-    strip3: { name: '3컷 정방형', desc: '3장 정사각 스트립', icon: '🖼' },
-    circle: { name: '원형', desc: '원형 프레임', icon: '⭕' },
-    single: { name: '1컷 증명', desc: '1장 크게', icon: '📷' },
-    polaroid: { name: '폴라로이드', desc: '폴라로이드 스타일', icon: '📸' },
-    strip2: { name: '2컷', desc: '2장 세로 스트립', icon: '🎬' },
-    grid4: { name: '4컷 그리드', desc: '2x2 그리드', icon: '⊞' }
-  },
-
-  _cardDesignLogo: null,
-  _cardDesignBg: null,
-
-  async setupCardTemplates() {
-    // Load combined settings (backward compatible)
-    const oldSettings = await DB.getSetting('cardTemplateSettings') || {};
-    const designSettings = await DB.getSetting('cardDesignSettings') || {};
-    const settings = {
-      layout: designSettings.layout || 'strip2',
-      template: designSettings.template || oldSettings.template || 'default',
-      mainColor: designSettings.mainColor || oldSettings.mainColor || '#6366F1',
-      showService: designSettings.showService !== false,
-      showPrice: designSettings.showPrice !== false,
-      showGroomer: designSettings.showGroomer !== false,
-      showNextVisit: designSettings.showNextVisit !== false,
-      showDate: designSettings.showDate !== false,
-      showPetInfo: designSettings.showPetInfo !== false,
-      showShopPhone: designSettings.showShopPhone !== false,
-      footerMessage: designSettings.footerMessage || oldSettings.footerMessage || '\uAC10\uC0AC\uD569\uB2C8\uB2E4 \u2665',
-      logo: designSettings.logo || null
-    };
-
-    this._cardDesignLogo = settings.logo;
-    this._cardDesignBg = settings.bgImage;
-
-    const body = document.getElementById('card-design-body');
-    if (!body) return;
-
-    // -- Layout selection --
-    const layoutList = document.getElementById('card-layout-list');
-    if (layoutList) {
-      let lhtml = '';
-      for (const [key, lay] of Object.entries(this.CARD_LAYOUTS)) {
-        const sel = settings.layout === key;
-        lhtml += '<div class="card-design-item' + (sel ? ' selected' : '') + '" data-key="' + key + '">'
-          + '<span class="card-design-item-icon">' + lay.icon + '</span>'
-          + '<span class="card-design-item-name">' + lay.name + '</span>'
-          + '</div>';
-      }
-      layoutList.innerHTML = lhtml;
-      this._bindSelectionGroup(layoutList, '.card-design-item', 'data-key');
-    }
-
-    // -- Season theme --
-    const tplList = document.getElementById('card-template-list');
-    if (tplList) {
-      let thtml = '';
-      for (const [key, tpl] of Object.entries(this.CARD_TEMPLATES)) {
-        const sel = settings.template === key;
-        thtml += '<div class="card-tpl-item' + (sel ? ' selected' : '') + '" data-template="' + key + '" style="background:' + tpl.bgColor + '">'
-          + '<span class="tpl-emoji">' + tpl.emoji + '</span>'
-          + '<span style="color:' + tpl.color + '">' + tpl.name + '</span>'
-          + '</div>';
-      }
-      tplList.innerHTML = thtml;
-      const colorInput = document.getElementById('card-color');
-      tplList.querySelectorAll('.card-tpl-item').forEach(item => {
-        item.addEventListener('click', () => {
-          tplList.querySelectorAll('.card-tpl-item').forEach(i => i.classList.remove('selected'));
-          item.classList.add('selected');
-          const tplKey = item.dataset.template;
-          const tpl = this.CARD_TEMPLATES[tplKey];
-          if (tpl && colorInput) {
-            colorInput.value = tpl.color;
-            const hex = document.getElementById('card-color-hex');
-            if (hex) hex.textContent = tpl.color;
-          }
-        });
-      });
-    }
-
-    // -- Color --
-    const colorInput = document.getElementById('card-color');
-    const colorHex = document.getElementById('card-color-hex');
-    if (colorInput) {
-      colorInput.value = settings.mainColor;
-      if (colorHex) colorHex.textContent = settings.mainColor;
-      colorInput.addEventListener('input', () => {
-        if (colorHex) colorHex.textContent = colorInput.value;
-      });
-    }
-
-    // -- Info toggles --
-    const infoToggles = document.getElementById('card-info-toggles');
-    if (infoToggles) {
-      const infos = [
-        { key: 'showService', label: '\uC11C\uBE44\uC2A4 \uB0B4\uC5ED' },
-        { key: 'showPrice', label: '\uAE08\uC561' },
-        { key: 'showGroomer', label: '\uB2F4\uB2F9 \uBBF8\uC6A9\uC0AC' },
-        { key: 'showNextVisit', label: '\uB2E4\uC74C \uBC29\uBB38 \uAD8C\uC7A5\uC77C' },
-        { key: 'showDate', label: '\uBBF8\uC6A9 \uB0A0\uC9DC' },
-        { key: 'showPetInfo', label: '\uBC18\uB824\uACAC \uC815\uBCF4' },
-        { key: 'showShopPhone', label: '\uB9E4\uC7A5 \uC804\uD654\uBC88\uD638' }
-      ];
-      infoToggles.innerHTML = infos.map(i =>
-        '<label class="checkbox-label" style="min-width:auto;padding:6px 12px"><input type="checkbox" name="cardInfo" value="' + i.key + '"' + (settings[i.key] !== false ? ' checked' : '') + '> ' + i.label + '</label>'
-      ).join('');
-    }
-
-    // -- Logo upload --
-    const logoPreview = document.getElementById('card-logo-preview');
-    const logoInput = document.getElementById('card-logo-input');
-    const removeLogoBtn = document.getElementById('btn-remove-logo');
-    if (settings.logo && logoPreview) {
-      logoPreview.innerHTML = '<img src="' + settings.logo + '" style="width:100%;height:100%;object-fit:contain">';
-      if (removeLogoBtn) removeLogoBtn.style.display = 'inline-flex';
-    }
-    document.getElementById('btn-upload-logo')?.addEventListener('click', () => logoInput?.click());
-    logoInput?.addEventListener('change', async (e) => {
-      const file = e.target.files[0];
-      if (!file) return;
-      const base64 = await this._compressImage(file, 200, 0.8);
-      this._cardDesignLogo = base64;
-      if (logoPreview) logoPreview.innerHTML = '<img src="' + base64 + '" style="width:100%;height:100%;object-fit:contain">';
-      if (removeLogoBtn) removeLogoBtn.style.display = 'inline-flex';
-      e.target.value = '';
-    });
-    removeLogoBtn?.addEventListener('click', () => {
-      this._cardDesignLogo = null;
-      if (logoPreview) logoPreview.innerHTML = '\uC5C6\uC74C';
-      removeLogoBtn.style.display = 'none';
-    });
-
-    // -- Footer message --
-    const footerInput = document.getElementById('card-footer-msg');
-    if (footerInput) footerInput.value = settings.footerMessage;
-
-    // -- Save --
-    document.getElementById('btn-save-card-settings')?.addEventListener('click', async () => {
-      const data = this._collectCardDesignSettings();
-      // Also keep backward compat with old key
-      await DB.setSetting('cardDesignSettings', data);
-      await DB.setSetting('cardTemplateSettings', { template: data.template, mainColor: data.mainColor, footerMessage: data.footerMessage });
-      App.showToast('\uC0AC\uC9C4 \uCE74\uB4DC \uC124\uC815\uC774 \uC800\uC7A5\uB418\uC5C8\uC2B5\uB2C8\uB2E4.');
-    });
-
-    // -- Preview --
-    document.getElementById('btn-preview-card')?.addEventListener('click', async () => {
-      await this._showCardPreview();
-    });
-  },
-
-  _bindSelectionGroup(container, selector, attrName) {
-    container.querySelectorAll(selector).forEach(item => {
-      item.addEventListener('click', () => {
-        container.querySelectorAll(selector).forEach(i => i.classList.remove('selected'));
-        item.classList.add('selected');
-      });
-    });
-  },
-
-  _collectCardDesignSettings() {
-    const layoutEl = document.querySelector('#card-layout-list .card-design-item.selected');
-    const tplEl = document.querySelector('#card-template-list .card-tpl-item.selected');
-    const colorInput = document.getElementById('card-color');
-    const footerInput = document.getElementById('card-footer-msg');
-
-    const infoChecks = {};
-    document.querySelectorAll('input[name="cardInfo"]').forEach(cb => {
-      infoChecks[cb.value] = cb.checked;
-    });
-
-    return {
-      layout: layoutEl ? layoutEl.dataset.key : 'strip2',
-      template: tplEl ? tplEl.dataset.template : 'default',
-      mainColor: colorInput ? colorInput.value : '#6366F1',
-      showService: infoChecks.showService !== false,
-      showPrice: infoChecks.showPrice !== false,
-      showGroomer: infoChecks.showGroomer !== false,
-      showNextVisit: infoChecks.showNextVisit !== false,
-      showDate: infoChecks.showDate !== false,
-      showPetInfo: infoChecks.showPetInfo !== false,
-      showShopPhone: infoChecks.showShopPhone !== false,
-      footerMessage: footerInput ? footerInput.value.trim() : '\uAC10\uC0AC\uD569\uB2C8\uB2E4 \u2665',
-      logo: this._cardDesignLogo || null
-    };
-  },
-
-  async _compressImage(file, maxSize, quality) {
-    return new Promise((resolve) => {
-      const reader = new FileReader();
-      reader.onload = (e) => {
-        const img = new Image();
-        img.onload = () => {
-          const canvas = document.createElement('canvas');
-          let w = img.width, h = img.height;
-          if (w > maxSize || h > maxSize) {
-            if (w > h) { h = Math.round(h * maxSize / w); w = maxSize; }
-            else { w = Math.round(w * maxSize / h); h = maxSize; }
-          }
-          canvas.width = w;
-          canvas.height = h;
-          const ctx = canvas.getContext('2d');
-          ctx.drawImage(img, 0, 0, w, h);
-          resolve(canvas.toDataURL('image/jpeg', quality));
-        };
-        img.onerror = () => resolve(null);
-        img.src = e.target.result;
-      };
-      reader.onerror = () => resolve(null);
-      reader.readAsDataURL(file);
-    });
-  },
-
-  async _showCardPreview() {
-    const data = this._collectCardDesignSettings();
-    // Build dummy record data for preview
-    const shopName = await DB.getSetting('shopName') || '\uD3AB\uC0B4\uB871';
-    const shopPhone = await DB.getSetting('shopPhone') || '010-1234-5678';
-    const dummyRecord = {
-      date: App.getToday(),
-      photoBefore: null,
-      photoAfter: null,
-      serviceIds: [],
-      groomer: '\uBC15\uBBF8\uC6A9',
-      nextVisitDate: (() => { const d = new Date(); d.setDate(d.getDate() + 28); return App.formatLocalDate(d); })(),
-      totalPrice: 50000,
-      finalPrice: 50000
-    };
-    const dummyPet = { name: '\uCF54\uCF54', breed: '\uD478\uB4E4' };
-    const dummyCustomer = { name: '\uD64D\uAE38\uB3D9' };
-    const dummyServiceNames = '\uC804\uCCB4\uBBF8\uC6A9';
-
-    // Generate the card using records.js generatePhotoCard logic
-    if (App.pages.records && App.pages.records._generateCardCanvas) {
-      try {
-        const canvas = await App.pages.records._generateCardCanvas(dummyRecord, dummyCustomer, dummyPet, shopName, shopPhone, dummyServiceNames, data);
-        const dataUrl = canvas.toDataURL('image/png');
-        App.showModal({
-          title: '\uC0AC\uC9C4 \uCE74\uB4DC \uBBF8\uB9AC\uBCF4\uAE30',
-          hideFooter: true,
-          content: '<div style="text-align:center"><img src="' + dataUrl + '" style="max-width:100%;border-radius:8px;box-shadow:0 4px 12px rgba(0,0,0,0.15)"><p style="margin-top:12px;font-size:0.85rem;color:var(--text-secondary)">\uC2E4\uC81C \uCE74\uB4DC\uC5D0\uB294 \uBBF8\uC6A9 \uC804\uD6C4 \uC0AC\uC9C4\uC774 \uD3EC\uD568\uB429\uB2C8\uB2E4</p></div>'
-        });
-      } catch (err) {
-        console.error('Preview error:', err);
-        App.showToast('\uBBF8\uB9AC\uBCF4\uAE30 \uC0DD\uC131 \uC911 \uC624\uB958\uAC00 \uBC1C\uC0DD\uD588\uC2B5\uB2C8\uB2E4.', 'error');
-      }
-    } else {
-      App.showToast('\uBBF8\uB9AC\uBCF4\uAE30 \uAE30\uB2A5\uC744 \uC0AC\uC6A9\uD560 \uC218 \uC5C6\uC2B5\uB2C8\uB2E4.', 'error');
-    }
-  },
-
-  // setupRewardSettings is now handled by btn-save-tab-marketing
 
   async directBackup() {
     try {

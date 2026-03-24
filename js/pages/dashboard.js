@@ -1,6 +1,13 @@
 // ========== Dashboard Page ==========
 App.pages.dashboard = {
   async render(container) {
+    // Skip re-render if recent and no data changed
+    if (this._lastRender && Date.now() - this._lastRender < 5000 && !App._dashboardDirty) {
+      return;
+    }
+    this._lastRender = Date.now();
+    App._dashboardDirty = false;
+
     try {
       const today = App.getToday();
       const thisMonth = today.slice(0, 7);
@@ -364,11 +371,13 @@ App.pages.dashboard = {
             <div class="detail">${App.escapeHtml(serviceNames || '서비스 미지정')}${appt.groomer ? ' &middot; ' + App.escapeHtml(appt.groomer) : ''}</div>
             ${(() => { const w = [pet?.temperament, pet?.healthNotes, pet?.allergies].filter(Boolean); if (!w.length) return ''; const s = w.join(', '); return '<div style="font-size:0.75rem;color:var(--danger);margin-top:2px">&#x26A0; ' + App.escapeHtml(s.length > 50 ? s.slice(0, 50) + '...' : s) + '</div>'; })()}
           </div>
-          <div style="display:flex;align-items:center;gap:6px;flex-shrink:0">
+          <div style="flex-shrink:0">
             <span class="badge badge-${this.getStatusBadge(appt.status)}">${this.getStatusLabel(appt.status)}</span>
-            ${appt.status !== 'completed' ? `<button class="btn btn-sm btn-success" onclick="event.stopPropagation();App.pages.appointments.completeToRecord(${appt.id})" title="미용 기록 작성">기록</button>` : ''}
           </div>
         </div>
+        ${appt.status !== 'completed' ? `<div style="margin-top:8px;display:flex;gap:6px">
+          <button class="btn btn-sm btn-success" onclick="event.stopPropagation();App.pages.appointments.completeToRecord(${appt.id})" style="flex:1;min-height:40px;font-size:0.88rem">&#x2702; 미용 완료</button>
+        </div>` : ''}
       `;
     }).join('');
   },

@@ -438,13 +438,13 @@ App.pages.records = {
         </div>
         <div class="form-group">
           <label class="form-label">결제 수단</label>
-          <select id="f-paymentMethod">
-            <option value="" ${record.paymentMethod === '' ? 'selected' : ''}>선택 안 함</option>
-            <option value="cash" ${record.paymentMethod === 'cash' ? 'selected' : ''}>현금</option>
-            <option value="card" ${(!record.paymentMethod && !id) || record.paymentMethod === 'card' ? 'selected' : ''}>카드</option>
-            <option value="transfer" ${record.paymentMethod === 'transfer' ? 'selected' : ''}>계좌이체</option>
-            <option value="unpaid" ${record.paymentMethod === 'unpaid' ? 'selected' : ''}>미결제(외상)</option>
-          </select>
+          <div id="f-paymentMethod-chips" style="display:flex;gap:6px;flex-wrap:wrap">
+            <button type="button" class="payment-chip${(!record.paymentMethod && !id) || record.paymentMethod === 'card' ? ' active' : ''}" data-value="card">카드</button>
+            <button type="button" class="payment-chip${record.paymentMethod === 'cash' ? ' active' : ''}" data-value="cash">현금</button>
+            <button type="button" class="payment-chip${record.paymentMethod === 'transfer' ? ' active' : ''}" data-value="transfer">이체</button>
+            <button type="button" class="payment-chip${record.paymentMethod === 'unpaid' ? ' active' : ''}" data-value="unpaid">미결제</button>
+          </div>
+          <input type="hidden" id="f-paymentMethod" value="${(!record.paymentMethod && !id) ? 'card' : (record.paymentMethod || 'card')}">
         </div>
 
         <!-- 상세 옵션 토글 -->
@@ -501,7 +501,6 @@ App.pages.records = {
               <input type="number" id="f-extraCharge" value="${record.extraCharge || ''}" placeholder="0" min="0" step="1000">
             </div>
           </div>
-          <div id="reward-section-area"></div>
           <div class="form-group">
             <label class="form-label">메모</label>
             <textarea id="f-memo" placeholder="미용 중 특이사항, 다음 방문 시 참고할 내용 등">${App.escapeHtml(record.memo || '')}</textarea>
@@ -625,52 +624,15 @@ App.pages.records = {
     this._setupPhotoUpload('photoBefore');
     this._setupPhotoUpload('photoAfter');
 
-    // Load reward section when customer is selected
-    const loadRewardSection = async (customerId) => {
-      const area = document.getElementById('reward-section-area');
-      if (!area || !customerId) { if (area) area.innerHTML = ''; return; }
-      const rewardSettings = await DB.getSetting('rewardSettings') || { type: 'none' };
-      if (rewardSettings.type === 'none') { area.innerHTML = ''; return; }
-      const customer = await DB.get('customers', Number(customerId));
-      if (!customer) { area.innerHTML = ''; return; }
+    // Payment chip buttons
+    document.querySelectorAll('.payment-chip').forEach(chip => {
+      chip.addEventListener('click', () => {
+        document.querySelectorAll('.payment-chip').forEach(c => c.classList.remove('active'));
+        chip.classList.add('active');
+        document.getElementById('f-paymentMethod').value = chip.dataset.value;
+      });
+    });
 
-      if (rewardSettings.type === 'stamp') {
-        const stamps = customer.stamps || 0;
-        const goal = rewardSettings.stampGoal || 10;
-        const canRedeem = stamps >= goal;
-        area.innerHTML = `
-          <div style="background:var(--primary-light);border:1.5px solid var(--primary-lighter);border-radius:var(--radius);padding:12px 16px;margin-bottom:12px">
-            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
-              <span style="font-weight:700">&#x2B50; 스탬프 적립</span>
-              <span style="font-weight:800;color:var(--primary)">${stamps} / ${goal}</span>
-            </div>
-            <div style="background:var(--border);border-radius:6px;height:8px;overflow:hidden">
-              <div style="background:var(--primary);height:100%;width:${Math.min(100, (stamps/goal)*100)}%;border-radius:6px;transition:width 0.3s"></div>
-            </div>
-            ${canRedeem ? `
-              <div style="margin-top:8px">
-                <label class="checkbox-label" style="background:var(--success-light);border:1.5px solid var(--success);border-radius:var(--radius);padding:8px 12px">
-                  <input type="checkbox" id="f-useStampReward"> &#x1F389; 무료 서비스 적용 (스탬프 ${goal}개 사용)
-                </label>
-              </div>
-            ` : ''}
-          </div>`;
-        // Stamp reward: zero price
-        document.getElementById('f-useStampReward')?.addEventListener('change', (e) => {
-          if (e.target.checked) {
-            document.getElementById('f-discount').value = Number(document.getElementById('f-totalPrice').value) || 0;
-            const evt = new Event('input', { bubbles: true });
-            document.getElementById('f-discount').dispatchEvent(evt);
-          } else {
-            document.getElementById('f-discount').value = 0;
-            const evt = new Event('input', { bubbles: true });
-            document.getElementById('f-discount').dispatchEvent(evt);
-          }
-        });
-      }
-    };
-
-    // Trigger reward load on customer change
     const origCustomerOnChange = async (cid) => {
       const petSelect = document.getElementById('f-petId');
       petSelect.innerHTML = '<option value="">반려견 선택</option>' + await App.getPetOptions(cid);
@@ -682,14 +644,10 @@ App.pages.records = {
           petSelect.dispatchEvent(new Event('change'));
         }
       }
-      await loadRewardSection(cid);
     };
 
     // Re-render customer select with enhanced onChange
     await App.renderCustomerSelect('record-customer-select', record.customerId, origCustomerOnChange);
-
-    // Load reward for pre-selected customer
-    if (record.customerId) await loadRewardSection(record.customerId);
 
     // Fix 5: Pre-check services when coming from appointment
     if (record.serviceIds && record.serviceIds.length > 0) {
@@ -821,7 +779,6 @@ App.pages.records = {
       const photoBefore = document.getElementById('f-photoBefore-data')?.value || '';
       const photoAfter = document.getElementById('f-photoAfter-data')?.value || '';
       const appointmentId = document.getElementById('f-appointmentId')?.value || null;
-      const useStampReward = document.getElementById('f-useStampReward')?.checked || false;
       const status = 'completed';
 
       const data = { customerId, petId, date, groomer, nextVisitDate, serviceIds, totalPrice, discount, extraCharge, finalPrice, memo, paymentMethod, photoBefore, photoAfter, appointmentId, status };
@@ -846,29 +803,6 @@ App.pages.records = {
           } catch (e) {
             console.warn('Failed to update appointment status:', e);
           }
-        }
-
-        // 스탬프 적립 처리
-        try {
-          const rewardSettings = await DB.getSetting('rewardSettings') || { type: 'none' };
-          if (rewardSettings.type === 'stamp') {
-            const customer = await DB.get('customers', customerId);
-            if (customer) {
-              customer.stamps = (customer.stamps || 0) + 1;
-              if (useStampReward) {
-                customer.stamps = customer.stamps - (rewardSettings.stampGoal || 10);
-                if (customer.stamps < 0) customer.stamps = 0;
-                App.showToast('&#x1F389; 스탬프 적립 완료! 무료 서비스가 제공되었습니다.', 'success');
-              } else if (customer.stamps >= (rewardSettings.stampGoal || 10)) {
-                App.showToast('&#x1F389; 스탬프 적립 완료! 다음 방문 시 무료 서비스를 받을 수 있습니다.', 'success');
-              } else {
-                App.showToast('스탬프 1개 적립! (현재 ' + customer.stamps + '/' + (rewardSettings.stampGoal || 10) + ')', 'success');
-              }
-              await DB.update('customers', customer);
-            }
-          }
-        } catch (e) {
-          console.warn('Reward processing error:', e);
         }
 
         // 고객 자동 분류 (방문 횟수 기반, 신규 0-2, 일반 3-9, 단골 10+)
@@ -938,7 +872,9 @@ App.pages.records = {
           const a = document.createElement('a');
           a.href = smsUrl;
           a.click();
-          App.closeModal();
+          // Don't close modal - just update button to show sent
+          const btn = document.getElementById('post-save-sms');
+          if (btn) { btn.textContent = '\u2713 발송됨'; btn.disabled = true; btn.style.opacity = '0.6'; }
         });
         document.getElementById('post-save-close')?.addEventListener('click', () => {
           App.closeModal();
@@ -1755,23 +1691,110 @@ App.pages.records = {
   },
 
   async generatePhotoCard(recordId) {
+    const record = await DB.get('records', recordId);
+    if (!record) { App.showToast('기록을 찾을 수 없습니다.', 'error'); return; }
+
+    // Load saved preferences (last used settings)
+    const saved = await DB.getSetting('cardDesignSettings') || {};
+    const LAYOUTS = {
+      strip2: { name: '2컷', icon: '🎬' },
+      strip3: { name: '3컷', icon: '🖼' },
+      strip4: { name: '4컷 가로', icon: '🎞' },
+      grid4: { name: '4컷 그리드', icon: '⊞' },
+      single: { name: '1컷', icon: '📷' },
+      polaroid: { name: '폴라로이드', icon: '📸' },
+      circle: { name: '원형', icon: '⭕' }
+    };
+    const THEMES = {
+      default: { name: '기본', color: '#6366F1', emoji: '✂' },
+      spring: { name: '봄', color: '#EC4899', emoji: '🌸' },
+      summer: { name: '여름', color: '#06B6D4', emoji: '🌊' },
+      autumn: { name: '가을', color: '#D97706', emoji: '🍂' },
+      winter: { name: '겨울', color: '#3B82F6', emoji: '❄' },
+      minimal: { name: '미니멀', color: '#374151', emoji: '✂' },
+      cute: { name: '귀여운', color: '#F472B6', emoji: '🐾' }
+    };
+
+    const selectedLayout = saved.layout || 'strip2';
+    const selectedTheme = saved.template || 'default';
+
+    App.showModal({
+      title: '사진 카드 만들기',
+      saveText: '카드 생성',
+      content: `
+        <div class="form-group">
+          <label class="form-label">레이아웃</label>
+          <div id="card-pick-layout" style="display:flex;gap:8px;flex-wrap:wrap">
+            ${Object.entries(LAYOUTS).map(([key, l]) => `
+              <button type="button" class="card-pick-btn${key === selectedLayout ? ' active' : ''}" data-key="${key}">
+                <span style="font-size:1.3rem">${l.icon}</span>
+                <span style="font-size:0.75rem">${l.name}</span>
+              </button>
+            `).join('')}
+          </div>
+        </div>
+        <div class="form-group">
+          <label class="form-label">테마</label>
+          <div id="card-pick-theme" style="display:flex;gap:8px;flex-wrap:wrap">
+            ${Object.entries(THEMES).map(([key, t]) => `
+              <button type="button" class="card-pick-btn${key === selectedTheme ? ' active' : ''}" data-key="${key}" style="border-color:${t.color}">
+                <span style="font-size:1.1rem">${t.emoji}</span>
+                <span style="font-size:0.7rem;color:${t.color}">${t.name}</span>
+              </button>
+            `).join('')}
+          </div>
+        </div>
+      `,
+      onSave: async () => {
+        const layout = document.querySelector('#card-pick-layout .card-pick-btn.active')?.dataset.key || 'strip2';
+        const theme = document.querySelector('#card-pick-theme .card-pick-btn.active')?.dataset.key || 'default';
+
+        // Save preferences for next time
+        const settings = await DB.getSetting('cardDesignSettings') || {};
+        settings.layout = layout;
+        settings.template = theme;
+        await DB.setSetting('cardDesignSettings', settings);
+
+        App.closeModal();
+
+        // Now generate the card with selected options
+        await this._doGenerateCard(recordId, layout, theme);
+      }
+    });
+
+    // Wire up toggle buttons
+    setTimeout(() => {
+      document.querySelectorAll('#card-pick-layout .card-pick-btn').forEach(btn => {
+        btn.addEventListener('click', () => {
+          document.querySelectorAll('#card-pick-layout .card-pick-btn').forEach(b => b.classList.remove('active'));
+          btn.classList.add('active');
+        });
+      });
+      document.querySelectorAll('#card-pick-theme .card-pick-btn').forEach(btn => {
+        btn.addEventListener('click', () => {
+          document.querySelectorAll('#card-pick-theme .card-pick-btn').forEach(b => b.classList.remove('active'));
+          btn.classList.add('active');
+        });
+      });
+    }, 100);
+  },
+
+  async _doGenerateCard(recordId, layout, theme) {
     try {
       const record = await DB.get('records', recordId);
-      if (!record) { App.showToast('\uAE30\uB85D\uC744 \uCC3E\uC744 \uC218 \uC5C6\uC2B5\uB2C8\uB2E4.', 'error'); return; }
+      if (!record) { App.showToast('기록을 찾을 수 없습니다.', 'error'); return; }
       const customer = await DB.get('customers', record.customerId);
       const pet = await DB.get('pets', record.petId);
-      const shopName = await DB.getSetting('shopName') || '\uD3AB\uC0B4\uB871';
+      const shopName = await DB.getSetting('shopName') || '펫살롱';
       const shopPhone = await DB.getSetting('shopPhone') || '';
       const serviceNames = await App.getServiceNames(record.serviceIds);
 
-      // Load design settings (new format first, fallback to old)
-      const designRaw = await DB.getSetting('cardDesignSettings');
-      const oldRaw = await DB.getSetting('cardTemplateSettings');
-      const ds = designRaw || {};
-      const os = oldRaw || {};
+      // Merge picker selections with saved detail settings
+      const ds = await DB.getSetting('cardDesignSettings') || {};
+      const os = await DB.getSetting('cardTemplateSettings') || {};
       const designSettings = {
-        layout: ds.layout || 'strip2',
-        template: ds.template || os.template || 'default',
+        layout: layout,
+        template: theme,
         mainColor: ds.mainColor || os.mainColor || '#6366F1',
         showService: ds.showService !== false,
         showPrice: ds.showPrice !== false,
@@ -1780,19 +1803,19 @@ App.pages.records = {
         showDate: ds.showDate !== false,
         showPetInfo: ds.showPetInfo !== false,
         showShopPhone: ds.showShopPhone !== false,
-        footerMessage: ds.footerMessage || os.footerMessage || '\uAC10\uC0AC\uD569\uB2C8\uB2E4 \u2665',
+        footerMessage: ds.footerMessage || os.footerMessage || '감사합니다 ♥',
         logo: ds.logo || null
       };
 
       const canvas = await this._generateCardCanvas(record, customer, pet, shopName, shopPhone, serviceNames, designSettings);
 
       canvas.toBlob(blob => {
-        if (!blob) { App.showToast('\uCE74\uB4DC \uC0DD\uC131\uC5D0 \uC2E4\uD328\uD588\uC2B5\uB2C8\uB2E4.', 'error'); return; }
+        if (!blob) { App.showToast('카드 생성에 실패했습니다.', 'error'); return; }
         const url = URL.createObjectURL(blob);
-        const fileName = (pet?.name || 'pet') + '_\uBBF8\uC6A9\uCE74\uB4DC_' + record.date + '.png';
+        const fileName = (pet?.name || 'pet') + '_미용카드_' + record.date + '.png';
         if (navigator.share && navigator.canShare) {
           const file = new File([blob], fileName, { type: 'image/png' });
-          navigator.share({ files: [file], title: (pet?.name || '') + ' \uBBF8\uC6A9 \uCE74\uB4DC' }).catch(() => {
+          navigator.share({ files: [file], title: (pet?.name || '') + ' 미용 카드' }).catch(() => {
             const a = document.createElement('a');
             a.href = url; a.download = fileName; a.click();
             URL.revokeObjectURL(url);
@@ -1802,11 +1825,11 @@ App.pages.records = {
           a.href = url; a.download = fileName; a.click();
           URL.revokeObjectURL(url);
         }
-        App.showToast('\uC0AC\uC9C4 \uCE74\uB4DC\uAC00 \uC0DD\uC131\uB418\uC5C8\uC2B5\uB2C8\uB2E4.');
+        App.showToast('사진 카드가 생성되었습니다.');
       }, 'image/png');
     } catch (err) {
       console.error('Photo card generation error:', err);
-      App.showToast('\uCE74\uB4DC \uC0DD\uC131 \uC911 \uC624\uB958\uAC00 \uBC1C\uC0DD\uD588\uC2B5\uB2C8\uB2E4.', 'error');
+      App.showToast('카드 생성 중 오류가 발생했습니다.', 'error');
     }
   },
 

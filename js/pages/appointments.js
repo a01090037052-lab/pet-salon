@@ -326,6 +326,7 @@ App.pages.appointments = {
       if (cal) {
         const isHidden = cal.style.display === 'none';
         cal.style.display = isHidden ? 'block' : 'none';
+        sessionStorage.setItem('calendarOpen', isHidden ? 'true' : 'false');
         if (isHidden) {
           this._calYear = new Date().getFullYear();
           this._calMonth = new Date().getMonth();
@@ -334,6 +335,18 @@ App.pages.appointments = {
         }
       }
     });
+
+    // Restore calendar view state
+    if (sessionStorage.getItem('calendarOpen') === 'true') {
+      const cal = document.getElementById('calendar-container');
+      if (cal) {
+        cal.style.display = 'block';
+        this._calYear = new Date().getFullYear();
+        this._calMonth = new Date().getMonth();
+        this._closedDays = null;
+        this.renderCalendar();
+      }
+    }
 
     // 타임테이블 토글
     this._ttDate = App.getToday();

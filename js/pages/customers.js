@@ -212,27 +212,6 @@ App.pages.customers = {
         </div>
       </div>
 
-      ${await (async () => {
-        const rewardSettings = await DB.getSetting('rewardSettings') || { type: 'none' };
-        let rewardHtml = '';
-        if (rewardSettings.type === 'stamp') {
-          const stamps = customer.stamps || 0;
-          const goal = rewardSettings.stampGoal || 10;
-          rewardHtml = `
-            <div style="background:var(--primary-light);border:1.5px solid var(--primary-lighter);border-radius:var(--radius);padding:14px 18px;margin-bottom:16px">
-              <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
-                <span style="font-weight:700;font-size:1rem">&#x2B50; 스탬프</span>
-                <span style="font-weight:800;color:var(--primary);font-size:1.2rem">${stamps} / ${goal}</span>
-              </div>
-              <div style="background:var(--border);border-radius:6px;height:10px;overflow:hidden">
-                <div style="background:var(--primary);height:100%;width:${Math.min(100, (stamps/goal)*100)}%;border-radius:6px"></div>
-              </div>
-              ${stamps >= goal ? '<div style="color:var(--success);font-weight:700;margin-top:6px;font-size:0.9rem">&#x1F389; 무료 서비스 제공 가능!</div>' : ''}
-            </div>`;
-        }
-        return rewardHtml;
-      })()}
-
       ${visitCount > 0 ? (() => {
         const avgSpend = Math.round(totalSpend / visitCount);
         const firstVisit = records.length > 0 ? records[records.length - 1].date : null;
