@@ -225,7 +225,8 @@ App.pages.pets = {
 
   async init(params) {
     document.getElementById('btn-add-pet')?.addEventListener('click', () => this.showForm());
-    document.getElementById('pet-search')?.addEventListener('input', (e) => this.filterTable(e.target.value));
+    const _debouncedPetFilter = App.debounce((val) => this.filterTable(val), 300);
+    document.getElementById('pet-search')?.addEventListener('input', (e) => _debouncedPetFilter(e.target.value));
 
     document.querySelectorAll('.clickable-row').forEach(row => {
       row.addEventListener('click', (e) => {

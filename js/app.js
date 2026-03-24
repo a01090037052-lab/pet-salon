@@ -405,6 +405,11 @@ const App = {
   },
 
   // ========== Utility Functions ==========
+  debounce(fn, ms = 300) {
+    let timer;
+    return (...args) => { clearTimeout(timer); timer = setTimeout(() => fn(...args), ms); };
+  },
+
   getRecordAmount(r) {
     return Number(r.finalPrice != null ? r.finalPrice : r.totalPrice) || 0;
   },

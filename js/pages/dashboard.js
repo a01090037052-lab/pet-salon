@@ -238,12 +238,15 @@ App.pages.dashboard = {
         <!-- 알림 섹션 (데이터가 있을 때만 렌더) -->
 
         ${unpaidRecords.length > 0 ? `
-        <div class="card" style="margin-bottom:20px;border:1.5px solid var(--danger)">
-          <div class="card-header" style="background:var(--danger-light)">
-            <span class="card-title" style="color:var(--danger)">&#x1F4B8; 미수금(외상) 현황</span>
-            <span class="badge badge-danger">${unpaidRecords.length}건 / ${App.formatCurrency(unpaidTotal)}</span>
+        <div class="card dash-accordion" style="margin-bottom:20px;border:1.5px solid var(--danger)">
+          <div class="card-header dash-accordion-toggle" style="background:var(--danger-light);cursor:pointer;user-select:none" data-target="dash-unpaid">
+            <span class="card-title" style="color:var(--danger)">&#x1F4B8; 미수금 현황</span>
+            <div style="display:flex;align-items:center;gap:8px">
+              <span class="badge badge-danger">${unpaidRecords.length}건 / ${App.formatCurrency(unpaidTotal)}</span>
+              <span class="dash-chevron" style="transition:transform 0.2s;font-size:0.8rem">&#x25BC;</span>
+            </div>
           </div>
-          <div class="card-body">
+          <div class="card-body" id="dash-unpaid" style="display:none">
             ${unpaidRecords.sort((a, b) => (b.date || '').localeCompare(a.date || '')).slice(0, 10).map(r => {
               const customer = customerMap[r.customerId];
               const pet = petMap[r.petId];
@@ -266,12 +269,15 @@ App.pages.dashboard = {
         ` : ''}
 
         ${revisitAlerts.length > 0 ? `
-        <div class="card" style="margin-bottom:20px">
-          <div class="card-header">
-            <span class="card-title">&#x1F514; 재방문 알림 (${revisitDays}일 기준)</span>
-            <span class="badge badge-warning">${revisitAlerts.length}건</span>
+        <div class="card dash-accordion" style="margin-bottom:20px">
+          <div class="card-header dash-accordion-toggle" style="cursor:pointer;user-select:none" data-target="dash-revisit">
+            <span class="card-title">&#x1F514; 재방문 알림</span>
+            <div style="display:flex;align-items:center;gap:8px">
+              <span class="badge badge-warning">${revisitAlerts.length}건</span>
+              <span class="dash-chevron" style="transition:transform 0.2s;font-size:0.8rem">&#x25BC;</span>
+            </div>
           </div>
-          <div class="card-body">
+          <div class="card-body" id="dash-revisit" style="display:none">
             ${revisitAlerts.slice(0, 8).map(a => `
               <div class="alert-item">
                 <span class="days">${a.days}일</span>
@@ -295,12 +301,15 @@ App.pages.dashboard = {
         ` : ''}
 
         ${upcomingBirthdays.length > 0 ? `
-        <div class="card" style="margin-bottom:20px">
-          <div class="card-header">
+        <div class="card dash-accordion" style="margin-bottom:20px">
+          <div class="card-header dash-accordion-toggle" style="cursor:pointer;user-select:none" data-target="dash-birthday">
             <span class="card-title">&#x1F382; 생일 알림</span>
-            <span class="badge badge-info">${upcomingBirthdays.length}건</span>
+            <div style="display:flex;align-items:center;gap:8px">
+              <span class="badge badge-info">${upcomingBirthdays.length}건</span>
+              <span class="dash-chevron" style="transition:transform 0.2s;font-size:0.8rem">&#x25BC;</span>
+            </div>
           </div>
-          <div class="card-body">
+          <div class="card-body" id="dash-birthday" style="display:none">
             ${upcomingBirthdays.map(b => {
               const phoneClean = (b.phone || '').replace(/\D/g, '');
               const daysLabel = b.daysUntil === 0 ? '오늘!' : b.daysUntil + '일 후';
@@ -394,6 +403,19 @@ App.pages.dashboard = {
   },
 
   async init() {
+    // Accordion toggles for alert sections
+    document.querySelectorAll('.dash-accordion-toggle').forEach(header => {
+      header.addEventListener('click', () => {
+        const targetId = header.dataset.target;
+        const body = document.getElementById(targetId);
+        if (!body) return;
+        const isOpen = body.style.display !== 'none';
+        body.style.display = isOpen ? 'none' : 'block';
+        const chevron = header.querySelector('.dash-chevron');
+        if (chevron) chevron.style.transform = isOpen ? '' : 'rotate(180deg)';
+      });
+    });
+
     // Unpaid record payment buttons
     document.querySelectorAll('.btn-pay-unpaid').forEach(btn => {
       btn.addEventListener('click', async () => {

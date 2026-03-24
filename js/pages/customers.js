@@ -323,9 +323,10 @@ App.pages.customers = {
     });
 
     // Search
+    const _debouncedFilter = App.debounce(() => this.applyFilters(), 300);
     document.getElementById('customer-search')?.addEventListener('input', (e) => {
       this._searchQuery = e.target.value;
-      this.applyFilters();
+      _debouncedFilter();
     });
 
     // Restore saved filter state

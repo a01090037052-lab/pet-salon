@@ -299,7 +299,8 @@ App.pages.records = {
       this.applyFilters();
     });
 
-    document.getElementById('record-search')?.addEventListener('input', () => this.applyFilters());
+    const _debouncedRecFilter = App.debounce(() => this.applyFilters(), 300);
+    document.getElementById('record-search')?.addEventListener('input', _debouncedRecFilter);
     document.getElementById('filter-month')?.addEventListener('change', () => this.applyFilters());
     document.getElementById('filter-payment')?.addEventListener('change', () => this.applyFilters());
     document.getElementById('btn-clear-filter')?.addEventListener('click', () => {

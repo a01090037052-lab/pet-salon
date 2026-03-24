@@ -418,7 +418,8 @@ App.pages.appointments = {
     });
 
     // Filters
-    document.getElementById('appt-search')?.addEventListener('input', () => this.applyFilters());
+    const _debouncedApptFilter = App.debounce(() => this.applyFilters(), 300);
+    document.getElementById('appt-search')?.addEventListener('input', _debouncedApptFilter);
     document.getElementById('filter-status')?.addEventListener('change', () => this.applyFilters());
     document.getElementById('filter-date')?.addEventListener('change', () => this.applyFilters());
     document.getElementById('btn-clear-filter')?.addEventListener('click', () => {
