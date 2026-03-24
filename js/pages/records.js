@@ -299,15 +299,17 @@ App.pages.records = {
       this.applyFilters();
     });
 
-    const _debouncedRecFilter = App.debounce(() => this.applyFilters(), 300);
+    const resetLimit = () => { this._visibleLimit = this._PAGE_SIZE; };
+    const _debouncedRecFilter = App.debounce(() => { resetLimit(); this.applyFilters(); }, 300);
     document.getElementById('record-search')?.addEventListener('input', _debouncedRecFilter);
-    document.getElementById('filter-month')?.addEventListener('change', () => this.applyFilters());
-    document.getElementById('filter-payment')?.addEventListener('change', () => this.applyFilters());
+    document.getElementById('filter-month')?.addEventListener('change', () => { resetLimit(); this.applyFilters(); });
+    document.getElementById('filter-payment')?.addEventListener('change', () => { resetLimit(); this.applyFilters(); });
     document.getElementById('btn-clear-filter')?.addEventListener('click', () => {
       document.getElementById('record-search').value = '';
       document.getElementById('filter-month').value = '';
       document.getElementById('filter-payment').value = '';
       sessionStorage.removeItem('record-filter');
+      resetLimit();
       this.applyFilters();
     });
 
@@ -341,34 +343,64 @@ App.pages.records = {
 
   },
 
+  _PAGE_SIZE: 50,
+
   applyFilters() {
     const search = (document.getElementById('record-search')?.value || '').toLowerCase();
     const month = document.getElementById('filter-month')?.value || '';
     const payment = document.getElementById('filter-payment')?.value || '';
 
-    // Save filter state to sessionStorage
     sessionStorage.setItem('record-filter', JSON.stringify({
       search: document.getElementById('record-search')?.value || '',
       month,
       payment
     }));
 
+    // Filter + limit visible rows
+    let visibleCount = 0;
+    this._visibleLimit = this._visibleLimit || this._PAGE_SIZE;
+
     document.querySelectorAll('#record-tbody tr').forEach(row => {
       if (!row.dataset.id) return;
       const matchSearch = !search || (row.dataset.search || '').toLowerCase().includes(search);
       const matchMonth = !month || (row.dataset.month || '') === month;
       const matchPayment = !payment || (row.dataset.payment || '') === payment;
-      row.style.display = (matchSearch && matchMonth && matchPayment) ? '' : 'none';
+      const match = matchSearch && matchMonth && matchPayment;
+      if (match) visibleCount++;
+      row.style.display = (match && visibleCount <= this._visibleLimit) ? '' : 'none';
     });
 
-    // Also filter mobile cards
+    let mobileCount = 0;
     document.querySelectorAll('#record-card-list .mobile-card').forEach(card => {
       if (!card.dataset.id) return;
       const matchSearch = !search || (card.dataset.search || '').toLowerCase().includes(search);
       const matchMonth = !month || (card.dataset.month || '') === month;
       const matchPayment = !payment || (card.dataset.payment || '') === payment;
-      card.style.display = (matchSearch && matchMonth && matchPayment) ? '' : 'none';
+      const match = matchSearch && matchMonth && matchPayment;
+      if (match) mobileCount++;
+      card.style.display = (match && mobileCount <= this._visibleLimit) ? '' : 'none';
     });
+
+    // "더 보기" button
+    const total = Math.max(visibleCount, mobileCount);
+    let loadMoreBtn = document.getElementById('records-load-more');
+    if (total > this._visibleLimit) {
+      if (!loadMoreBtn) {
+        loadMoreBtn = document.createElement('button');
+        loadMoreBtn.id = 'records-load-more';
+        loadMoreBtn.className = 'btn btn-secondary';
+        loadMoreBtn.style.cssText = 'width:100%;margin-top:12px;padding:14px';
+        loadMoreBtn.addEventListener('click', () => {
+          this._visibleLimit += this._PAGE_SIZE;
+          this.applyFilters();
+        });
+        document.getElementById('record-card-list')?.parentElement?.appendChild(loadMoreBtn);
+      }
+      loadMoreBtn.textContent = `더 보기 (${this._visibleLimit}/${total}건)`;
+      loadMoreBtn.style.display = '';
+    } else if (loadMoreBtn) {
+      loadMoreBtn.style.display = 'none';
+    }
   },
 
   async showForm(id, fromAppointment) {
@@ -804,6 +836,17 @@ App.pages.records = {
           } catch (e) {
             console.warn('Failed to update appointment status:', e);
           }
+        }
+
+        // pet.lastVisitDate 캐싱 (대시보드 재방문 알림 성능 최적화)
+        try {
+          const pet = await DB.get('pets', petId);
+          if (pet && (!pet.lastVisitDate || date >= pet.lastVisitDate)) {
+            pet.lastVisitDate = date;
+            await DB.update('pets', pet);
+          }
+        } catch (e) {
+          console.warn('Pet lastVisitDate update error:', e);
         }
 
         // 고객 자동 분류 (방문 횟수 기반, 신규 0-2, 일반 3-9, 단골 10+)

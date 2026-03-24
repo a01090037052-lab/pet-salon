@@ -251,7 +251,7 @@ App.pages.customers = {
               return `
               <div class="pet-card" onclick="App.navigate('pets/${p.id}')">
                 ${p.photo
-                  ? `<img src="${p.photo}" class="photo-viewable" data-caption="${App.escapeHtml(p.name)}" style="width:48px;height:48px;object-fit:cover;border-radius:var(--radius);flex-shrink:0" alt="${App.escapeHtml(p.name)}" onclick="event.stopPropagation()">`
+                  ? `<img src="${p.photo}" class="photo-viewable" data-caption="${App.escapeHtml(p.name)}" style="width:48px;height:48px;object-fit:cover;border-radius:var(--radius);flex-shrink:0" alt="${App.escapeHtml(p.name)}" loading="lazy" onclick="event.stopPropagation()">`
                   : `<div class="pet-avatar">&#x1F436;</div>`
                 }
                 <div>
@@ -323,7 +323,7 @@ App.pages.customers = {
     });
 
     // Search
-    const _debouncedFilter = App.debounce(() => this.applyFilters(), 300);
+    const _debouncedFilter = App.debounce(() => { this._visibleLimit = this._PAGE_SIZE; this.applyFilters(); }, 300);
     document.getElementById('customer-search')?.addEventListener('input', (e) => {
       this._searchQuery = e.target.value;
       _debouncedFilter();
@@ -544,11 +544,13 @@ App.pages.customers = {
   _searchQuery: '',
   _tagFilter: '',
 
+  _PAGE_SIZE: 50,
+
   applyFilters() {
     const q = (this._searchQuery || '').toLowerCase();
     const tag = this._tagFilter || '';
+    this._visibleLimit = this._visibleLimit || this._PAGE_SIZE;
 
-    // Save filter state to sessionStorage
     sessionStorage.setItem('customer-filter', JSON.stringify({
       search: this._searchQuery || '',
       tag,
@@ -561,13 +563,37 @@ App.pages.customers = {
       return textMatch && tagMatch;
     };
 
+    let count = 0;
     document.querySelectorAll('#customer-table tbody tr').forEach(row => {
-      row.style.display = matchesFilter(row) ? '' : 'none';
+      if (!row.dataset.id) return;
+      const match = matchesFilter(row);
+      if (match) count++;
+      row.style.display = (match && count <= this._visibleLimit) ? '' : 'none';
     });
 
+    let mCount = 0;
     document.querySelectorAll('#customer-card-list .mobile-card').forEach(card => {
-      card.style.display = matchesFilter(card) ? '' : 'none';
+      const match = matchesFilter(card);
+      if (match) mCount++;
+      card.style.display = (match && mCount <= this._visibleLimit) ? '' : 'none';
     });
+
+    const total = Math.max(count, mCount);
+    let btn = document.getElementById('customers-load-more');
+    if (total > this._visibleLimit) {
+      if (!btn) {
+        btn = document.createElement('button');
+        btn.id = 'customers-load-more';
+        btn.className = 'btn btn-secondary';
+        btn.style.cssText = 'width:100%;margin-top:12px;padding:14px';
+        btn.addEventListener('click', () => { this._visibleLimit += this._PAGE_SIZE; this.applyFilters(); });
+        document.getElementById('customer-card-list')?.parentElement?.appendChild(btn);
+      }
+      btn.textContent = `더 보기 (${this._visibleLimit}/${total}명)`;
+      btn.style.display = '';
+    } else if (btn) {
+      btn.style.display = 'none';
+    }
   },
 
 };
