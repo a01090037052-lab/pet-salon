@@ -1634,15 +1634,38 @@ a.stat-card { display: flex; }
 }
 
 @media print {
-  .sidebar, .toast-container, .fab-container, .bottom-nav, .global-search-btn, .global-search-overlay { display: none !important; }
-  .main-content { margin-left: 0; display: none; }
-  body { background: #fff; }
-  .card { box-shadow: none; border: 1px solid #ddd; }
+  /* Hide navigation & overlays */
+  .sidebar, .toast-container, .fab-container, .bottom-nav,
+  .global-search-btn, .global-search-overlay, .confirm-modal,
+  #loading-screen { display: none !important; }
+
+  body { background: #fff !important; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+  .card { box-shadow: none !important; border: 1px solid #ddd; break-inside: avoid; }
+  .badge { border: 1px solid currentColor; }
+
+  /* Page content: show when no modal is open */
+  .main-content { margin-left: 0 !important; padding: 0 !important; }
+  .page-content { padding: 0 !important; }
+  .page-actions, .btn, button:not(.no-print-hide) { display: none !important; }
+  .page-header { margin-bottom: 12px; }
+  .page-title { font-size: 1.2rem; }
+  a { color: inherit !important; text-decoration: none !important; }
+
+  /* Modal printing (정산표 등) */
   .modal-overlay { position: static !important; background: none !important; display: block !important; }
   .modal-overlay.hidden { display: none !important; }
-  .modal { max-width: 100% !important; box-shadow: none !important; max-height: none !important; overflow: visible !important; }
+  .modal { max-width: 100% !important; box-shadow: none !important; max-height: none !important; overflow: visible !important; position: static !important; transform: none !important; }
   .modal-body { max-height: none !important; overflow: visible !important; }
-  #modal-close, #modal-footer { display: none !important; }
+  .modal-header { border-bottom: 2px solid #333; padding-bottom: 8px; }
+  #modal-close, #modal-footer, .modal-close { display: none !important; }
+
+  /* When modal is open, hide page content behind it */
+  .modal-overlay:not(.hidden) ~ .main-content { display: none !important; }
+
+  /* Tables */
+  .data-table { font-size: 0.85rem; }
+  .data-table th { background: #f3f4f6 !important; }
+  .table-container { overflow: visible !important; }
 }
 
 /* ========== Theme Color Picker ========== */

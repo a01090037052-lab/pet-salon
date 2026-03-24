@@ -699,6 +699,26 @@ App.pages.appointments = {
             <label class="form-label">메모</label>
             <textarea id="f-memo" placeholder="예약 관련 메모">${App.escapeHtml(appt.memo || '')}</textarea>
           </div>
+          ${!id ? `<div class="form-group">
+            <label class="form-label">반복 예약</label>
+            <div class="form-row">
+              <select id="f-repeat-cycle" style="flex:1">
+                <option value="0">반복 없음</option>
+                <option value="7">매주</option>
+                <option value="14">2주마다</option>
+                <option value="28">4주마다</option>
+              </select>
+              <select id="f-repeat-count" style="flex:1;display:none">
+                <option value="2">2회</option>
+                <option value="3">3회</option>
+                <option value="4" selected>4회</option>
+                <option value="6">6회</option>
+                <option value="8">8회</option>
+                <option value="12">12회</option>
+              </select>
+            </div>
+            <div class="form-hint" id="repeat-hint" style="display:none"></div>
+          </div>` : ''}
         </div>
       `,
       onSave: () => this.saveAppointment(id)
@@ -725,6 +745,28 @@ App.pages.appointments = {
       const btn = document.getElementById('btn-toggle-services');
       if (btn) btn.textContent = allChecked ? '전체 선택' : '전체 해제';
     });
+
+    // 반복 예약 UI 토글
+    const repeatCycle = document.getElementById('f-repeat-cycle');
+    const repeatCount = document.getElementById('f-repeat-count');
+    const repeatHint = document.getElementById('repeat-hint');
+    if (repeatCycle) {
+      const updateRepeatHint = () => {
+        const cycle = Number(repeatCycle.value);
+        if (cycle === 0) {
+          repeatCount.style.display = 'none';
+          repeatHint.style.display = 'none';
+        } else {
+          repeatCount.style.display = '';
+          repeatHint.style.display = '';
+          const cnt = Number(repeatCount.value);
+          const labels = { 7: '매주', 14: '2주마다', 28: '4주마다' };
+          repeatHint.textContent = `${labels[cycle]} ${cnt}회 예약이 생성됩니다 (총 ${cnt}건)`;
+        }
+      };
+      repeatCycle.addEventListener('change', updateRepeatHint);
+      repeatCount.addEventListener('change', updateRepeatHint);
+    }
 
     // 검색 가능한 고객 선택 렌더링
     await App.renderCustomerSelect('appt-customer-select', appt.customerId, async (cid) => {
@@ -840,7 +882,26 @@ App.pages.appointments = {
         App.showToast('예약이 수정되었습니다.');
       } else {
         const newId = await DB.add('appointments', data);
-        App.showToast('새 예약이 등록되었습니다.');
+
+        // 반복 예약 생성
+        const repeatCycleEl = document.getElementById('f-repeat-cycle');
+        const repeatCountEl = document.getElementById('f-repeat-count');
+        const cycle = Number(repeatCycleEl?.value) || 0;
+        const count = Number(repeatCountEl?.value) || 0;
+        if (cycle > 0 && count > 1) {
+          let created = 1;
+          for (let i = 1; i < count; i++) {
+            const baseDate = new Date(date);
+            baseDate.setDate(baseDate.getDate() + cycle * i);
+            const nextDate = App.formatLocalDate(baseDate);
+            const repeatData = { ...data, date: nextDate };
+            await DB.add('appointments', repeatData);
+            created++;
+          }
+          App.showToast(`반복 예약 ${created}건이 등록되었습니다.`);
+        } else {
+          App.showToast('새 예약이 등록되었습니다.');
+        }
 
         // 예약 확인 문자 발송 제안
         const customer = await DB.get('customers', customerId);
