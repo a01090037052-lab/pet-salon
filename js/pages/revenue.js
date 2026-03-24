@@ -63,22 +63,6 @@ App.pages.revenue = {
     const groomerStatList = Object.entries(groomerStats).sort((a, b) => b[1].revenue - a[1].revenue);
     const groomerMaxRev = groomerStatList.length > 0 ? groomerStatList[0][1].revenue || 1 : 1;
 
-    // 손익 데이터
-    const fixedCost = Number(await DB.getSetting('monthlyFixedCost')) || 0;
-    const variableCosts = await DB.getSetting('variableCosts') || {};
-    const variableCost = variableCosts[thisMonth] || 0;
-    const totalCost = fixedCost + variableCost;
-    const profit = monthRevenue - totalCost;
-    const profitMargin = monthRevenue > 0 ? Math.round((profit / monthRevenue) * 100) : 0;
-
-    // 지난달 비교
-    const lastMonthDate = new Date(year, month - 1, 1);
-    const lastMonth = `${lastMonthDate.getFullYear()}-${String(lastMonthDate.getMonth() + 1).padStart(2, '0')}`;
-    const lastMonthRevenue = records.filter(r => r.date && r.date.startsWith(lastMonth)).reduce((sum, r) => sum + App.getRecordAmount(r), 0);
-    const lastMonthVariableCost = variableCosts[lastMonth] || 0;
-    const lastMonthProfit = lastMonthRevenue - fixedCost - lastMonthVariableCost;
-    const monthChange = lastMonthRevenue > 0 ? Math.round(((monthRevenue - lastMonthRevenue) / lastMonthRevenue) * 100) : 0;
-
     // 매출 데이터 캐시
     this._records = records;
 
@@ -99,6 +83,22 @@ App.pages.revenue = {
     const now = new Date();
     const year = now.getFullYear();
     const month = now.getMonth();
+
+    // 손익 데이터
+    const fixedCost = Number(await DB.getSetting('monthlyFixedCost')) || 0;
+    const variableCosts = await DB.getSetting('variableCosts') || {};
+    const variableCost = variableCosts[thisMonth] || 0;
+    const totalCost = fixedCost + variableCost;
+    const profit = monthRevenue - totalCost;
+    const profitMargin = monthRevenue > 0 ? Math.round((profit / monthRevenue) * 100) : 0;
+
+    // 지난달 비교
+    const lastMonthDate = new Date(year, month - 1, 1);
+    const lastMonth = `${lastMonthDate.getFullYear()}-${String(lastMonthDate.getMonth() + 1).padStart(2, '0')}`;
+    const lastMonthRevenue = records.filter(r => r.date && r.date.startsWith(lastMonth)).reduce((sum, r) => sum + App.getRecordAmount(r), 0);
+    const lastMonthVariableCost = variableCosts[lastMonth] || 0;
+    const lastMonthProfit = lastMonthRevenue - fixedCost - lastMonthVariableCost;
+    const monthChange = lastMonthRevenue > 0 ? Math.round(((monthRevenue - lastMonthRevenue) / lastMonthRevenue) * 100) : 0;
     const daysInMonth = new Date(year, month + 1, 0).getDate();
     const monthData = [];
     let monthMax = 1;
