@@ -11,6 +11,7 @@ App.pages.settings = {
     const notifMinutes = await DB.getSetting('notifMinutes');
     const closedDays = await DB.getSetting('closedDays') || [];
     const themeColor = await DB.getSetting('themeColor') || '#6366F1';
+    const darkMode = await DB.getSetting('darkMode') || 'auto';
 
     const DEFAULT_TEMPLATES = {
       revisit: '[{매장명}] {고객명}님 안녕하세요! {반려견명}의 마지막 미용 후 {경과일수}일이 지났습니다. 예약 문의: {전화번호}',
@@ -137,6 +138,21 @@ App.pages.settings = {
                 `).join('')}
               </div>
               <div class="form-hint">선택한 색상이 앱 전체 테마에 적용됩니다</div>
+            </div>
+          </div>
+        </div>
+
+        <div class="card" style="margin-top:16px">
+          <div class="card-header">
+            <span class="card-title">&#x1F319; 다크모드</span>
+          </div>
+          <div class="card-body">
+            <div class="form-group">
+              <select id="s-darkMode">
+                <option value="auto" ${darkMode === 'auto' ? 'selected' : ''}>시스템 설정 따르기</option>
+                <option value="light" ${darkMode === 'light' ? 'selected' : ''}>항상 라이트</option>
+                <option value="dark" ${darkMode === 'dark' ? 'selected' : ''}>항상 다크</option>
+              </select>
             </div>
           </div>
         </div>
@@ -390,6 +406,10 @@ App.pages.settings = {
         await DB.setSetting('themeColor', activeColor.dataset.color);
         App.applyTheme(activeColor.dataset.color);
       }
+      // 다크모드
+      const darkModeVal = document.getElementById('s-darkMode')?.value || 'auto';
+      await DB.setSetting('darkMode', darkModeVal);
+      App.applyDarkMode(darkModeVal);
       const currentTabShop = document.getElementById('tab-shop');
       if (currentTabShop) currentTabShop._modified = false;
       App.showToast('매장 관리 설정이 저장되었습니다.');

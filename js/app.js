@@ -1,5 +1,6 @@
 // ========== Main Application Controller ==========
 const App = {
+  VERSION: '5.2',
   currentPage: 'dashboard',
   pages: {},
 
@@ -20,6 +21,9 @@ const App = {
       await this.updateBadges();
       await this.applyShopName();
       await this.applyTheme();
+      await this.applyDarkMode();
+      const verEl = document.getElementById('sidebar-version');
+      if (verEl) verEl.textContent = `v${this.VERSION} \u00B7 오프라인 전용`;
       // 예약 알림 체커 시작
       await this.setupNotificationChecker();
       // Hide loading screen
@@ -690,6 +694,18 @@ const App = {
     // Meta theme-color
     const meta = document.querySelector('meta[name="theme-color"]');
     if (meta) meta.setAttribute('content', color);
+  },
+
+  async applyDarkMode(mode) {
+    if (!mode) mode = await DB.getSetting('darkMode') || 'auto';
+    const root = document.documentElement;
+    if (mode === 'dark') {
+      root.setAttribute('data-theme', 'dark');
+    } else if (mode === 'light') {
+      root.setAttribute('data-theme', 'light');
+    } else {
+      root.removeAttribute('data-theme');
+    }
   },
 
   // ========== 예약 알림 시스템 ==========

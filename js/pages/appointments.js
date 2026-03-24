@@ -860,8 +860,13 @@ App.pages.appointments = {
       });
       if (conflict) {
         const conflictPet = await DB.get('pets', conflict.petId);
-        App.showToast(`시간이 겹치는 예약이 있습니다 (${conflictPet?.name || '알 수 없음'}, ${conflict.time})`, 'error');
-        return;
+        const conflictCustomer = await DB.get('customers', conflict.customerId);
+        const forceOk = await App.confirm(
+          `<strong>시간이 겹치는 예약이 있습니다</strong><br>` +
+          `${App.escapeHtml(conflictCustomer?.name || '?')} / ${App.escapeHtml(conflictPet?.name || '?')} (${conflict.time})<br><br>` +
+          `그래도 예약을 등록하시겠습니까?`
+        );
+        if (!forceOk) return;
       }
     }
 

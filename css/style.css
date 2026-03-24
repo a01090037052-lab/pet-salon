@@ -43,6 +43,66 @@
   --transition-slow: 0.35s ease;
 }
 
+/* ========== Dark Mode ========== */
+[data-theme="dark"] {
+  --bg: #0F1117;
+  --bg-white: #1A1D27;
+  --sidebar-bg: #0A0C12;
+
+  --text-primary: #E8EAED;
+  --text-secondary: #9AA0A9;
+  --text-muted: #6B7280;
+  --border: #2D3140;
+  --border-light: #232635;
+
+  --primary-light: #1E1B4B;
+  --primary-lighter: #2E2A6E;
+  --success-light: #064E3B;
+  --warning-light: #78350F;
+  --danger-light: #7F1D1D;
+  --info-light: #1E3A5F;
+
+  --shadow-xs: 0 1px 2px rgba(0,0,0,0.3);
+  --shadow: 0 1px 3px rgba(0,0,0,0.4);
+  --shadow-md: 0 4px 6px rgba(0,0,0,0.4);
+  --shadow-lg: 0 10px 15px rgba(0,0,0,0.5);
+  --shadow-xl: 0 20px 25px rgba(0,0,0,0.5);
+}
+[data-theme="dark"] .card { background: var(--bg-white); }
+[data-theme="dark"] input, [data-theme="dark"] select, [data-theme="dark"] textarea {
+  background: var(--bg) !important; color: var(--text-primary) !important; border-color: var(--border) !important;
+}
+[data-theme="dark"] .modal { background: var(--bg-white); }
+[data-theme="dark"] .stat-card { color: #fff; }
+[data-theme="dark"] .badge { border-color: transparent; }
+[data-theme="dark"] .bottom-nav { background: var(--bg-white); border-color: var(--border); }
+[data-theme="dark"] .data-table th { background: var(--bg); }
+[data-theme="dark"] .data-table tr:hover { background: rgba(99,102,241,0.08); }
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #0F1117;
+    --bg-white: #1A1D27;
+    --sidebar-bg: #0A0C12;
+    --text-primary: #E8EAED;
+    --text-secondary: #9AA0A9;
+    --text-muted: #6B7280;
+    --border: #2D3140;
+    --border-light: #232635;
+    --primary-light: #1E1B4B;
+    --primary-lighter: #2E2A6E;
+    --success-light: #064E3B;
+    --warning-light: #78350F;
+    --danger-light: #7F1D1D;
+    --info-light: #1E3A5F;
+    --shadow-xs: 0 1px 2px rgba(0,0,0,0.3);
+    --shadow: 0 1px 3px rgba(0,0,0,0.4);
+    --shadow-md: 0 4px 6px rgba(0,0,0,0.4);
+    --shadow-lg: 0 10px 15px rgba(0,0,0,0.5);
+    --shadow-xl: 0 20px 25px rgba(0,0,0,0.5);
+  }
+}
+
 /* ========== Reset ========== */
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; touch-action: manipulation; }
 html { font-size: 14px; scroll-behavior: smooth; }
