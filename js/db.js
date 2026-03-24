@@ -110,7 +110,8 @@ const DB = {
     });
   },
 
-  async getAll(storeName) {
+  // Internal: returns ALL items including soft-deleted (for export/trash)
+  async _getAllRaw(storeName) {
     if (this.mode === 'server') {
       const res = await fetch(`/api/${storeName}`);
       return await res.json() || [];
@@ -120,6 +121,11 @@ const DB = {
       req.onsuccess = () => resolve(req.result || []);
       req.onerror = () => reject(req.error);
     });
+  },
+
+  async getAll(storeName) {
+    const all = await this._getAllRaw(storeName);
+    return all.filter(item => !item.deletedAt);
   },
 
   async update(storeName, data) {
@@ -161,12 +167,13 @@ const DB = {
   async getByIndex(storeName, indexName, value) {
     if (this.mode === 'server') {
       const res = await fetch(`/api/${storeName}?indexName=${encodeURIComponent(indexName)}&indexValue=${encodeURIComponent(value)}`);
-      return await res.json() || [];
+      const data = await res.json() || [];
+      return data.filter(item => !item.deletedAt);
     }
     return new Promise((resolve, reject) => {
       const index = this._idbStore(storeName, 'readonly').index(indexName);
       const req = index.getAll(value);
-      req.onsuccess = () => resolve(req.result || []);
+      req.onsuccess = () => resolve((req.result || []).filter(item => !item.deletedAt));
       req.onerror = () => reject(req.error);
     });
   },
@@ -177,9 +184,17 @@ const DB = {
       const data = await res.json();
       return data.count;
     }
+    // IDB cursor count: O(n) scan but no memory allocation (doesn't load full objects)
     return new Promise((resolve, reject) => {
-      const req = this._idbStore(storeName, 'readonly').count();
-      req.onsuccess = () => resolve(req.result);
+      const store = this._idbStore(storeName, 'readonly');
+      let count = 0;
+      const req = store.openCursor();
+      req.onsuccess = (e) => {
+        const cursor = e.target.result;
+        if (!cursor) { resolve(count); return; }
+        if (!cursor.value.deletedAt) count++;
+        cursor.continue();
+      };
       req.onerror = () => reject(req.error);
     });
   },
@@ -255,6 +270,7 @@ const DB = {
           });
           return;
         }
+        if (cursor.value.deletedAt) { cursor.continue(); return; }
         if (filterFn && !filterFn(cursor.value)) {
           cursor.continue();
           return;
@@ -283,17 +299,8 @@ const DB = {
 
   // Count by index value
   async countByIndex(storeName, indexName, value) {
-    if (this.mode === 'server') {
-      const res = await fetch(`/api/${storeName}?indexName=${encodeURIComponent(indexName)}&indexValue=${encodeURIComponent(value)}&count=true`);
-      const data = await res.json();
-      return typeof data.count === 'number' ? data.count : (Array.isArray(data) ? data.length : 0);
-    }
-    return new Promise((resolve, reject) => {
-      const index = this._idbStore(storeName, 'readonly').index(indexName);
-      const req = index.count(IDBKeyRange.only(value));
-      req.onsuccess = () => resolve(req.result);
-      req.onerror = () => reject(req.error);
-    });
+    const items = await this.getByIndex(storeName, indexName, value);
+    return items.length;
   },
 
   // Get records by date range (uses IDBKeyRange.bound for efficient querying)
@@ -304,7 +311,8 @@ const DB = {
       if (endDate) params.set('dateTo', endDate);
       params.set('dateIndex', indexName);
       const res = await fetch(`/api/${storeName}?${params.toString()}`);
-      return await res.json() || [];
+      const data = await res.json() || [];
+      return data.filter(item => !item.deletedAt);
     }
     return new Promise((resolve, reject) => {
       const index = this._idbStore(storeName, 'readonly').index(indexName);
@@ -317,7 +325,7 @@ const DB = {
         range = IDBKeyRange.upperBound(endDate);
       }
       const req = index.getAll(range);
-      req.onsuccess = () => resolve(req.result || []);
+      req.onsuccess = () => resolve((req.result || []).filter(item => !item.deletedAt));
       req.onerror = () => reject(req.error);
     });
   },
@@ -447,7 +455,7 @@ const DB = {
     for (const storeName of Object.keys(this.stores)) {
       // photos 스토어는 별도 처리 (Blob을 base64로 변환)
       if (storeName === 'photos') {
-        const photos = await this.getAll('photos');
+        const photos = await this._getAllRaw('photos');
         const exportPhotos = [];
         for (const p of photos) {
           if (p.data instanceof Blob) {
@@ -465,7 +473,7 @@ const DB = {
         data[storeName] = exportPhotos;
         continue;
       }
-      data[storeName] = await this.getAll(storeName);
+      data[storeName] = await this._getAllRaw(storeName);
     }
     data._exportDate = new Date().toISOString();
     data._version = this.version;
@@ -559,5 +567,97 @@ const DB = {
       return;
     }
     return this.update('settings', { key, value, updatedAt: new Date().toISOString() });
+  },
+
+  // ========== Soft Delete ==========
+
+  async softDelete(storeName, id) {
+    const item = await this.get(storeName, id);
+    if (!item) return;
+    item.deletedAt = new Date().toISOString();
+    await this.update(storeName, item);
+  },
+
+  // Cascade soft delete in a single IDB transaction (all-or-nothing)
+  async softDeleteCascade(storeItemPairs) {
+    if (this.mode === 'server') {
+      for (const [store, id] of storeItemPairs) await this.softDelete(store, id);
+      return;
+    }
+    const storeNames = [...new Set(storeItemPairs.map(([s]) => s))];
+    const tx = this.db.transaction(storeNames, 'readwrite');
+    const now = new Date().toISOString();
+
+    const promises = storeItemPairs.map(([storeName, id]) => {
+      return new Promise((resolve, reject) => {
+        const store = tx.objectStore(storeName);
+        const req = store.get(id);
+        req.onsuccess = () => {
+          const item = req.result;
+          if (!item) { resolve(); return; }
+          item.deletedAt = now;
+          item.updatedAt = now;
+          const putReq = store.put(item);
+          putReq.onsuccess = () => resolve();
+          putReq.onerror = () => reject(putReq.error);
+        };
+        req.onerror = () => reject(req.error);
+      });
+    });
+
+    await Promise.all(promises);
+    return new Promise((resolve, reject) => {
+      tx.oncomplete = () => resolve();
+      tx.onerror = () => reject(tx.error);
+      tx.onabort = () => reject(tx.error || new Error('Transaction aborted'));
+    });
+  },
+
+  async getDeleted(storeName) {
+    const all = await this._getAllRaw(storeName);
+    return all.filter(item => item.deletedAt);
+  },
+
+  async restoreItem(storeName, id) {
+    if (this.mode === 'server') return;
+    return new Promise((resolve, reject) => {
+      const store = this._idbStore(storeName, 'readwrite');
+      const req = store.get(id);
+      req.onsuccess = () => {
+        const item = req.result;
+        if (!item) { resolve(); return; }
+        delete item.deletedAt;
+        item.updatedAt = new Date().toISOString();
+        const putReq = store.put(item);
+        putReq.onsuccess = () => resolve();
+        putReq.onerror = () => reject(putReq.error);
+      };
+      req.onerror = () => reject(req.error);
+    });
+  },
+
+  async emptyTrash(storeName) {
+    const deleted = await this.getDeleted(storeName);
+    for (const item of deleted) {
+      await this.delete(storeName, item.id || item.key);
+    }
+    return deleted.length;
+  },
+
+  async emptyAllTrash() {
+    let total = 0;
+    for (const name of ['customers', 'pets', 'appointments', 'records', 'services']) {
+      total += await this.emptyTrash(name);
+    }
+    return total;
+  },
+
+  async getTrashCounts() {
+    const counts = {};
+    for (const name of ['customers', 'pets', 'appointments', 'records', 'services']) {
+      counts[name] = (await this.getDeleted(name)).length;
+    }
+    counts.total = Object.values(counts).reduce((a, b) => a + b, 0);
+    return counts;
   }
 };

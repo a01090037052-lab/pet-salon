@@ -304,6 +304,23 @@ App.pages.settings = {
           </div>
         </div>
 
+        <!-- Trash (휴지통) -->
+        <div class="card" style="margin-top:20px">
+          <div class="card-header">
+            <span class="card-title">&#x1F5D1; 휴지통</span>
+            <span class="badge badge-secondary" id="trash-total-badge">0</span>
+          </div>
+          <div class="card-body" id="trash-section">
+            <p style="color:var(--text-secondary);font-size:0.9rem;margin-bottom:12px">
+              삭제된 항목은 여기에 보관됩니다. 복원하거나 완전히 삭제할 수 있습니다.
+            </p>
+            <div id="trash-list" style="margin-bottom:12px"></div>
+            <div style="display:flex;gap:8px">
+              <button class="btn btn-danger btn-sm" id="btn-empty-trash">휴지통 비우기</button>
+            </div>
+          </div>
+        </div>
+
         <!-- Danger Zone -->
         <div class="card" style="margin-top:20px;border:1px solid var(--danger)">
           <div class="card-header" style="background:var(--danger-light)">
@@ -498,7 +515,7 @@ App.pages.settings = {
       const file = e.target.files[0];
       if (!file) return;
 
-      const confirmed = await App.confirm('데이터를 복원하면 현재 데이터가 모두 덮어쓰기됩니다.<br>계속하시겠습니까?');
+      const confirmed = await App.confirm('데이터를 복원하면 현재 데이터가 모두 덮어쓰기됩니다.<br>복원 전 현재 데이터가 자동 백업됩니다.<br>계속하시겠습니까?');
       if (!confirmed) {
         e.target.value = '';
         return;
@@ -513,14 +530,56 @@ App.pages.settings = {
           return;
         }
 
+        // 자동 백업: import 전 현재 데이터를 IndexedDB에 보관
+        try {
+          const currentData = await DB.exportAll();
+          await DB.setSetting('_autoBackupBeforeImport', {
+            data: currentData,
+            date: new Date().toISOString(),
+            reason: 'before-import'
+          });
+        } catch (backupErr) {
+          console.warn('Auto-backup before import failed:', backupErr);
+          const proceed = await App.confirm('자동 백업에 실패했습니다. 그래도 복원을 진행하시겠습니까?');
+          if (!proceed) { e.target.value = ''; return; }
+        }
+
         await DB.importAll(data);
-        App.showToast('데이터가 복원되었습니다.');
+        App.showToast('데이터가 복원되었습니다. (이전 데이터 자동 백업 완료)');
         App.handleRoute();
       } catch (err) {
         console.error('Import error:', err);
-        App.showToast('복원 중 오류가 발생했습니다. 파일을 확인해주세요.', 'error');
+        // import 실패 시 자동 백업에서 복원 제안
+        const autoBackup = await DB.getSetting('_autoBackupBeforeImport');
+        if (autoBackup && autoBackup.data) {
+          const restore = await App.confirm('복원에 실패했습니다. 자동 백업에서 이전 데이터를 되돌리시겠습니까?');
+          if (restore) {
+            try {
+              await DB.importAll(autoBackup.data);
+              App.showToast('이전 데이터로 되돌렸습니다.');
+              App.handleRoute();
+            } catch (restoreErr) {
+              App.showToast('되돌리기에도 실패했습니다. 수동 백업 파일을 사용해주세요.', 'error');
+            }
+          }
+        } else {
+          App.showToast('복원 중 오류가 발생했습니다. 파일을 확인해주세요.', 'error');
+        }
       }
       e.target.value = '';
+    });
+
+    // Trash management
+    this.loadTrash();
+
+    document.getElementById('btn-empty-trash')?.addEventListener('click', async () => {
+      const counts = await DB.getTrashCounts();
+      if (counts.total === 0) { App.showToast('휴지통이 비어있습니다.', 'info'); return; }
+      const confirmed = await App.confirm(`휴지통의 ${counts.total}개 항목을 완전히 삭제하시겠습니까?<br><strong>이 작업은 되돌릴 수 없습니다.</strong>`);
+      if (!confirmed) return;
+      await DB.emptyAllTrash();
+      App.showToast('휴지통을 비웠습니다.');
+      this.loadTrash();
     });
 
     // Clear all
@@ -539,6 +598,56 @@ App.pages.settings = {
         console.error('Clear error:', err);
         App.showToast('초기화 중 오류가 발생했습니다.', 'error');
       }
+    });
+  },
+
+  async loadTrash() {
+    const counts = await DB.getTrashCounts();
+    const badge = document.getElementById('trash-total-badge');
+    if (badge) badge.textContent = counts.total;
+
+    const list = document.getElementById('trash-list');
+    if (!list) return;
+
+    if (counts.total === 0) {
+      list.innerHTML = '<p style="color:var(--text-muted);text-align:center;padding:16px">휴지통이 비어있습니다.</p>';
+      return;
+    }
+
+    const labels = { customers: '고객', pets: '반려견', appointments: '예약', records: '미용 기록', services: '서비스' };
+    const icons = { customers: '&#x1F464;', pets: '&#x1F436;', appointments: '&#x1F4C5;', records: '&#x2702;', services: '&#x1F4CB;' };
+    let html = '';
+
+    for (const [store, count] of Object.entries(counts)) {
+      if (store === 'total' || count === 0) continue;
+      const deleted = await DB.getDeleted(store);
+      html += `<div style="margin-bottom:12px">
+        <div style="font-weight:700;margin-bottom:6px">${icons[store]} ${labels[store]} (${count}건)</div>
+        <div style="display:flex;flex-direction:column;gap:4px">
+          ${deleted.slice(0, 10).map(item => {
+            const name = item.name || item.date || item.key || `#${item.id}`;
+            const deletedDate = item.deletedAt ? App.formatDate(item.deletedAt.slice(0, 10)) : '';
+            return `<div style="display:flex;align-items:center;gap:8px;padding:6px 10px;background:var(--bg);border-radius:var(--radius);font-size:0.88rem">
+              <span style="flex:1">${App.escapeHtml(name)}</span>
+              <span style="color:var(--text-muted);font-size:0.78rem">${deletedDate}</span>
+              <button class="btn btn-sm btn-secondary btn-restore-item" data-store="${store}" data-id="${item.id}" style="padding:4px 10px;font-size:0.78rem">복원</button>
+            </div>`;
+          }).join('')}
+          ${deleted.length > 10 ? `<div style="color:var(--text-muted);font-size:0.82rem;padding:4px">외 ${deleted.length - 10}건...</div>` : ''}
+        </div>
+      </div>`;
+    }
+    list.innerHTML = html;
+
+    // Restore buttons
+    list.querySelectorAll('.btn-restore-item').forEach(btn => {
+      btn.addEventListener('click', async () => {
+        const store = btn.dataset.store;
+        const id = Number(btn.dataset.id);
+        await DB.restoreItem(store, id);
+        App.showToast('항목이 복원되었습니다.');
+        this.loadTrash();
+      });
     });
   },
 
