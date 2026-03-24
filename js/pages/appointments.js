@@ -438,6 +438,7 @@ App.pages.appointments = {
         const id = Number(e.target.dataset.id);
         const newStatus = e.target.value;
         const appt = await DB.get('appointments', id);
+        if (!appt) { App.showToast('예약을 찾을 수 없습니다.', 'error'); return; }
         appt.status = newStatus;
         await DB.update('appointments', appt);
         // Update row data-status for filtering
@@ -605,6 +606,7 @@ App.pages.appointments = {
 
   async showForm(id, preCustomerId, prefill) {
     let appt = id ? await DB.get('appointments', id) : { date: App.getToday(), status: 'pending', customerId: preCustomerId || null, petId: (prefill && prefill.petId) || null };
+    if (id && !appt) { App.showToast('예약을 찾을 수 없습니다.', 'error'); App.closeModal(); return; }
     // Apply prefill data from records page (F8)
     if (prefill && !id) {
       if (prefill.date) appt.date = prefill.date;
@@ -806,11 +808,17 @@ App.pages.appointments = {
     }
 
     try {
-      const status = id ? (await DB.get('appointments', id)).status : 'pending';
+      let status = 'pending';
+      if (id) {
+        const existCheck = await DB.get('appointments', id);
+        if (!existCheck) { App.showToast('예약을 찾을 수 없습니다.', 'error'); return; }
+        status = existCheck.status || 'pending';
+      }
       const data = { customerId, petId, date, time, duration, groomer, status, serviceIds, memo };
 
       if (id) {
         const existing = await DB.get('appointments', id);
+        if (!existing) { App.showToast('예약을 찾을 수 없습니다.', 'error'); return; }
         Object.assign(existing, data);
         await DB.update('appointments', existing);
         App.showToast('예약이 수정되었습니다.');

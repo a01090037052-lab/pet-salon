@@ -372,6 +372,7 @@ App.pages.records = {
 
   async showForm(id, fromAppointment) {
     let record = id ? await DB.get('records', id) : {};
+    if (id && !record) { App.showToast('기록을 찾을 수 없습니다.', 'error'); App.closeModal(); return; }
 
     // Pre-fill from appointment if provided
     if (fromAppointment && !id) {
@@ -827,6 +828,7 @@ App.pages.records = {
 
       if (id) {
         const existing = await DB.get('records', id);
+        if (!existing) { App.showToast('기록을 찾을 수 없습니다.', 'error'); return; }
         Object.assign(existing, data);
         await DB.update('records', existing);
         App.showToast('미용 기록이 수정되었습니다.');
