@@ -191,17 +191,19 @@ App.pages.appointments = {
                   <span class="mobile-card-info">&#x1F464; ${App.escapeHtml(customer?.name || '-')} &middot; &#x1F436; ${App.escapeHtml(pet?.name || '-')}</span>
                   ${a.memo ? `<div style="font-size:0.8rem;color:var(--text-secondary);margin-top:4px">&#x1F4DD; ${App.escapeHtml(a.memo.length > 40 ? a.memo.slice(0, 40) + '...' : a.memo)}</div>` : ''}
                 </div>
-                <div class="mobile-card-actions">
-                  <select class="status-select" data-id="${a.id}" style="flex:1;padding:8px 10px;font-size:0.8rem;min-width:70px;min-height:48px">
+                <div class="mobile-card-actions" style="flex-direction:column;gap:6px">
+                  <select class="status-select" data-id="${a.id}" style="width:100%;padding:8px 10px;font-size:0.8rem;min-width:70px;min-height:48px">
                     <option value="pending" ${a.status === 'pending' ? 'selected' : ''}>대기</option>
                     <option value="confirmed" ${a.status === 'confirmed' ? 'selected' : ''}>확정</option>
+                    <option value="in_progress" ${a.status === 'in_progress' ? 'selected' : ''}>미용중</option>
                     <option value="completed" ${a.status === 'completed' ? 'selected' : ''}>완료</option>
                     <option value="cancelled" ${a.status === 'cancelled' ? 'selected' : ''}>취소</option>
                     <option value="noshow" ${a.status === 'noshow' ? 'selected' : ''}>노쇼</option>
                   </select>
-                  <button class="btn btn-sm btn-secondary btn-edit-appt" data-id="${a.id}">&#x270F; 수정</button>
-                  <button class="btn btn-sm btn-success btn-complete-appt" data-id="${a.id}">&#x2714; 기록</button>
-                  <button class="btn btn-sm btn-danger btn-delete-appt" data-id="${a.id}">&#x1F5D1; 삭제</button>
+                  <div style="display:flex;gap:6px">
+                    <button class="btn btn-sm btn-secondary btn-edit-appt" data-id="${a.id}" style="flex:1">&#x270F; 수정</button>
+                    <button class="btn btn-sm btn-success btn-complete-appt" data-id="${a.id}" style="flex:1">&#x2702; 미용 완료</button>
+                  </div>
                 </div>
               </div>`;
             }).join('')}

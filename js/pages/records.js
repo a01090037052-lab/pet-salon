@@ -446,6 +446,10 @@ App.pages.records = {
           </div>
           <input type="hidden" id="f-paymentMethod" value="${(!record.paymentMethod && !id) ? 'card' : (record.paymentMethod || 'card')}">
         </div>
+        <div class="form-group">
+          <label class="form-label">담당 미용사</label>
+          <select id="f-groomer">${await App.getGroomerOptions(record.groomer)}</select>
+        </div>
 
         <!-- 상세 옵션 토글 -->
         <div class="form-detail-divider" onclick="this.closest('.modal-body').querySelector('.form-detail-section').classList.toggle('open');this.classList.toggle('open')">
@@ -457,10 +461,6 @@ App.pages.records = {
 
         <!-- 상세 옵션 영역 -->
         <div class="form-detail-section">
-          <div class="form-group">
-            <label class="form-label">담당 미용사</label>
-            <select id="f-groomer">${await App.getGroomerOptions(record.groomer)}</select>
-          </div>
           <div class="form-row">
             <div class="form-group">
               <label class="form-label">&#x1F4F7; 미용 전 사진</label>

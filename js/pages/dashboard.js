@@ -9,6 +9,7 @@ App.pages.dashboard = {
     App._dashboardDirty = false;
 
     try {
+      const smsSep = /iP(hone|ad|od)/.test(navigator.userAgent) || /Mac/.test(navigator.userAgent) ? '&' : '?';
       const today = App.getToday();
       const thisMonth = today.slice(0, 7);
       const lastMonthDate = new Date();
@@ -282,8 +283,8 @@ App.pages.dashboard = {
                     ${a.pet.groomingCycle ? ` | 미용 주기 ${a.cycleDays}일 초과` : ''}
                   </div>
                 </div>
-                <div style="display:flex;gap:4px;flex-shrink:0">
-                  <a href="sms:${App.escapeHtml((a.customer.phone || '').replace(/\D/g, ''))}?body=${a._smsBody}" class="btn btn-sm btn-success" onclick="event.stopPropagation()" title="문자 보내기">문자</a>
+                <div class="alert-item-actions" style="display:flex;gap:4px;flex-shrink:0">
+                  <a href="sms:${App.escapeHtml((a.customer.phone || '').replace(/\D/g, ''))}${smsSep}body=${a._smsBody}" class="btn btn-sm btn-success" onclick="event.stopPropagation()" title="문자 보내기">문자</a>
                   <a href="tel:${App.escapeHtml((a.customer.phone || '').replace(/\D/g, ''))}" class="btn btn-sm btn-secondary" onclick="event.stopPropagation()" title="전화 걸기">전화</a>
                   <button class="btn btn-sm btn-primary" onclick="App.pages.appointments.showForm(null, ${a.customer.id}, {petId:${a.pet.id}})" style="flex-shrink:0">예약</button>
                 </div>
@@ -315,7 +316,7 @@ App.pages.dashboard = {
                     </div>
                   </div>
                   <div style="display:flex;gap:4px;flex-shrink:0;margin-left:auto">
-                    ${phoneClean ? `<a href="sms:${App.escapeHtml(phoneClean)}?body=${b._smsBody}" class="btn btn-sm btn-success" onclick="event.stopPropagation()">축하 문자</a>` : ''}
+                    ${phoneClean ? `<a href="sms:${App.escapeHtml(phoneClean)}${smsSep}body=${b._smsBody}" class="btn btn-sm btn-success" onclick="event.stopPropagation()">축하 문자</a>` : ''}
                   </div>
                 </div>`;
             }).join('')}

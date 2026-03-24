@@ -17,7 +17,7 @@ App.pages.services = {
       </div>
 
       <div class="card">
-        <div class="card-body no-padding keep-table">
+        <div class="card-body no-padding">
           <div class="table-container">
             <table class="data-table" id="service-table">
               <thead>
@@ -67,6 +67,55 @@ App.pages.services = {
                 `).join('')}
               </tbody>
             </table>
+          </div>
+          <!-- Mobile card list for services -->
+          <div class="mobile-card-list">
+            ${services.length === 0 ? `
+              <div class="empty-state" style="padding:40px 20px">
+                <div class="empty-state-icon">&#x1F4CB;</div>
+                <div class="empty-state-text">등록된 서비스가 없습니다</div>
+                <button class="btn btn-primary" onclick="document.getElementById('btn-add-service').click()">첫 서비스 등록하기</button>
+              </div>
+            ` : services
+              .sort((a, b) => {
+                if (a.isActive === false && b.isActive !== false) return 1;
+                if (a.isActive !== false && b.isActive === false) return -1;
+                return a.name.localeCompare(b.name, 'ko');
+              })
+              .map(s => `
+              <div class="mobile-card" data-id="${s.id}" style="${s.isActive === false ? 'opacity:0.5' : ''}">
+                <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:8px">
+                  <div>
+                    <strong style="font-size:0.95rem">${App.escapeHtml(s.name)}</strong>
+                    ${s.description ? `<div style="font-size:0.78rem;color:var(--text-muted);margin-top:2px">${App.escapeHtml(s.description)}</div>` : ''}
+                  </div>
+                  <span class="badge ${s.isActive !== false ? 'badge-success' : 'badge-secondary'}" style="flex-shrink:0;margin-left:8px">
+                    ${s.isActive !== false ? '활성' : '비활성'}
+                  </span>
+                </div>
+                <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:10px;font-size:0.82rem">
+                  <div style="text-align:center;background:var(--bg);border-radius:var(--radius);padding:8px 4px">
+                    <div style="color:var(--text-muted);font-size:0.72rem;margin-bottom:2px">소형견</div>
+                    <div style="font-weight:700">${App.formatCurrency(s.priceSmall)}</div>
+                  </div>
+                  <div style="text-align:center;background:var(--bg);border-radius:var(--radius);padding:8px 4px">
+                    <div style="color:var(--text-muted);font-size:0.72rem;margin-bottom:2px">중형견</div>
+                    <div style="font-weight:700">${App.formatCurrency(s.priceMedium)}</div>
+                  </div>
+                  <div style="text-align:center;background:var(--bg);border-radius:var(--radius);padding:8px 4px">
+                    <div style="color:var(--text-muted);font-size:0.72rem;margin-bottom:2px">대형견</div>
+                    <div style="font-weight:700">${App.formatCurrency(s.priceLarge)}</div>
+                  </div>
+                </div>
+                <div style="display:flex;gap:6px;justify-content:flex-end">
+                  <button class="btn-icon btn-toggle-service" data-id="${s.id}" title="${s.isActive !== false ? '비활성화' : '활성화'}">
+                    ${s.isActive !== false ? '&#x1F7E2;' : '&#x26AA;'}
+                  </button>
+                  <button class="btn-icon btn-edit-service" data-id="${s.id}" title="수정">&#x270F;</button>
+                  <button class="btn-icon btn-delete-service" data-id="${s.id}" title="삭제" style="color:var(--danger)">&#x1F5D1;</button>
+                </div>
+              </div>
+            `).join('')}
           </div>
         </div>
       </div>

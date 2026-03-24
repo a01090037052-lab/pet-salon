@@ -1096,11 +1096,11 @@ a.stat-card { display: flex; }
 .bottom-nav-item.active { color: var(--primary); }
 .bottom-nav-item.active .bottom-nav-icon { transform: scale(1.1); }
 .bottom-nav-icon {
-  font-size: 1.25rem;
+  font-size: 1.4rem;
   transition: transform var(--transition-fast);
   line-height: 1;
 }
-.bottom-nav-label { letter-spacing: -0.2px; }
+.bottom-nav-label { font-size: 0.72rem; letter-spacing: -0.2px; }
 .bottom-nav-badge {
   position: absolute;
   top: 0;
@@ -1542,9 +1542,10 @@ a.stat-card { display: flex; }
   .detail-header > div:last-child { margin-left: 0; }
   .detail-meta { justify-content: center; }
   .fab-container { bottom: 80px; right: 16px; }
-  .welcome-section { padding: 20px; border-radius: var(--radius-lg); }
-  .welcome-title { font-size: 1.2rem; }
-  .filter-bar { padding: 10px 12px; flex-direction: column; }
+  .welcome-section { padding: 14px 16px; border-radius: var(--radius-lg); }
+  .welcome-title { font-size: 1rem; }
+  .welcome-subtitle { font-size: 0.8rem; }
+  .filter-bar { padding: 8px 10px; flex-direction: column; gap: 6px; }
   .filter-bar > * { width: 100% !important; min-width: 0 !important; }
   .data-table th, .data-table td { padding: 10px 12px; font-size: 0.82rem; }
   .btn { padding: 10px 16px; }
@@ -2056,12 +2057,12 @@ a.stat-card { display: flex; }
   top: 16px;
   right: 24px;
   z-index: 800;
-  width: 44px;
-  height: 44px;
+  width: 46px;
+  height: 46px;
   border-radius: 50%;
   background: linear-gradient(135deg, var(--primary), #8B5CF6);
   color: #fff;
-  font-size: 1.15rem;
+  font-size: 1.2rem;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -2469,7 +2470,7 @@ a.stat-card { display: flex; }
 /* Action buttons */
 .gs-card-actions {
   display: grid;
-  grid-template-columns: repeat(4, 1fr);
+  grid-template-columns: repeat(5, 1fr);
   gap: 8px;
   padding: 14px 18px;
   border-top: 1px solid var(--border-light);
@@ -2535,8 +2536,70 @@ a.stat-card { display: flex; }
   /* Show mobile cards, hide tables (only in card-body that contains mobile-card-list) */
   .mobile-card-list { display: block; }
   .card-body.no-padding > .table-container { display: none; }
-  /* Exception: keep table visible when no mobile cards exist (e.g. services page) */
-  .card-body.no-padding.keep-table > .table-container { display: block; overflow-x: auto; }
+  /* Services mobile cards use mobile-card-list like other pages */
+
+  /* #1 예약 필터 바 2줄 압축 */
+  .filter-bar {
+    padding: 8px 10px;
+    gap: 6px;
+  }
+  .quick-filters {
+    overflow-x: auto;
+    flex-wrap: nowrap;
+    -webkit-overflow-scrolling: touch;
+    padding-bottom: 4px;
+  }
+  .quick-filter-btn {
+    flex-shrink: 0;
+  }
+
+  /* #5 웰컴 배너 모바일 축소 */
+  .welcome-section { padding: 14px 16px; }
+  .welcome-title { font-size: 1rem; }
+  .welcome-subtitle { font-size: 0.8rem; }
+
+  /* #6 재방문 알림 버튼 줄바꿈 */
+  .alert-item {
+    flex-wrap: wrap;
+  }
+  .alert-item-actions {
+    width: 100%;
+    display: flex;
+    gap: 6px;
+    margin-top: 8px;
+  }
+
+  /* #9 설정 저장 버튼 하단 고정 + 탭 글씨 확대 */
+  .settings-tab { font-size: 0.82rem; padding: 10px 8px; }
+  #btn-save-tab-shop, #btn-save-tab-operation, #btn-save-tab-notify, #btn-save-tab-marketing {
+    position: sticky;
+    bottom: 70px;
+    z-index: 10;
+    box-shadow: 0 -4px 12px rgba(0,0,0,0.1);
+  }
+
+  /* #11 고객 상세 헤더 정리 */
+  .detail-meta {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 6px;
+    font-size: 0.82rem;
+  }
+
+  /* #13 모달 키보드 대응 */
+  .modal {
+    max-height: 75vh;
+    padding-bottom: env(safe-area-inset-bottom);
+  }
+
+  /* #14 예약 상단 버튼 모바일 아이콘화 */
+  .page-actions {
+    gap: 6px;
+  }
+  .page-actions .btn {
+    padding: 8px 10px;
+    font-size: 0.78rem;
+  }
 }
 
 /* ========== Export Period Buttons ========== */
