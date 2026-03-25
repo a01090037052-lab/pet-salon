@@ -111,7 +111,7 @@ App.pages.appointments = {
               </thead>
               <tbody id="appt-tbody">
                 ${sorted.length === 0 ? `
-                  <tr><td colspan="8">
+                  <tr><td colspan="9">
                     <div class="empty-state">
                       <div class="empty-state-icon">&#x1F4C5;</div>
                       <div class="empty-state-text">등록된 예약이 없습니다</div>
