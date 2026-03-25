@@ -218,8 +218,8 @@ App.pages.services = {
     if (!service) return;
     const confirmed = await App.confirm(`"${App.escapeHtml(service.name)}" 서비스를 삭제하시겠습니까?`);
     if (!confirmed) return;
-    await DB.softDelete('services', id);
-    App.showToast('서비스가 휴지통으로 이동되었습니다.');
+    await DB.delete('services', id);
+    App.showToast('서비스가 삭제되었습니다.');
     App.handleRoute();
   },
 

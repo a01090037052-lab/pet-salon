@@ -511,22 +511,18 @@ App.pages.customers = {
     const customer = await DB.get('customers', id);
     if (!customer) return;
 
-    const confirmed = await App.confirm(`"${App.escapeHtml(customer.name)}" 고객을 삭제하시겠습니까?<br>관련 반려견, 예약, 미용 기록도 함께 휴지통으로 이동됩니다.<br><small style="color:var(--text-muted)">설정 &gt; 데이터에서 복원할 수 있습니다.</small>`);
+    const confirmed = await App.confirm(`"${App.escapeHtml(customer.name)}" 고객을 삭제하시겠습니까?<br>관련 반려견, 예약, 미용 기록도 함께 삭제됩니다.`);
     if (!confirmed) return;
 
     try {
       const pets = await DB.getByIndex('pets', 'customerId', id);
+      for (const pet of pets) await DB.delete('pets', pet.id);
       const appointments = await DB.getByIndex('appointments', 'customerId', id);
+      for (const appt of appointments) await DB.delete('appointments', appt.id);
       const records = await DB.getByIndex('records', 'customerId', id);
-
-      const pairs = [
-        ...pets.map(p => ['pets', p.id]),
-        ...appointments.map(a => ['appointments', a.id]),
-        ...records.map(r => ['records', r.id]),
-        ['customers', id]
-      ];
-      await DB.softDeleteCascade(pairs);
-      App.showToast('고객이 휴지통으로 이동되었습니다.');
+      for (const rec of records) await DB.delete('records', rec.id);
+      await DB.delete('customers', id);
+      App.showToast('고객이 삭제되었습니다.');
       App.navigate('customers');
     } catch (err) {
       console.error('Delete customer error:', err);

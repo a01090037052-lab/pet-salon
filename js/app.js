@@ -322,6 +322,10 @@ const App = {
 
   confirm(message) {
     return new Promise((resolve) => {
+      if (this._confirmResolve) {
+        this._confirmResolve(false);
+        this._confirmResolve = null;
+      }
       this._confirmResolve = resolve;
       document.getElementById('confirm-body').innerHTML = `<p>${message}</p>`;
       const overlay = document.getElementById('confirm-overlay');

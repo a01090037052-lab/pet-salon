@@ -856,7 +856,8 @@ App.pages.records = {
 
           const cust = await DB.get('customers', customerId);
           if (cust) {
-            const tags = (cust.tags || []).filter(t => t === 'vip' || t === 'caution');
+            const autoTags = ['new', 'normal', 'regular'];
+            const tags = (cust.tags || []).filter(t => !autoTags.includes(t));
             if (visitCount <= 2) {
               tags.push('new');
             } else if (visitCount <= 9) {
@@ -937,8 +938,8 @@ App.pages.records = {
     try {
       const confirmed = await App.confirm('이 미용 기록을 삭제하시겠습니까?');
       if (!confirmed) return;
-      await DB.softDelete('records', id);
-      App.showToast('미용 기록이 휴지통으로 이동되었습니다.');
+      await DB.delete('records', id);
+      App.showToast('미용 기록이 삭제되었습니다.');
       App.handleRoute();
     } catch (err) {
       console.error('deleteRecord error:', err);

@@ -320,23 +320,6 @@ App.pages.settings = {
           </div>
         </div>
 
-        <!-- Trash (휴지통) -->
-        <div class="card" style="margin-top:20px">
-          <div class="card-header">
-            <span class="card-title">&#x1F5D1; 휴지통</span>
-            <span class="badge badge-secondary" id="trash-total-badge">0</span>
-          </div>
-          <div class="card-body" id="trash-section">
-            <p style="color:var(--text-secondary);font-size:0.9rem;margin-bottom:12px">
-              삭제된 항목은 여기에 보관됩니다. 복원하거나 완전히 삭제할 수 있습니다.
-            </p>
-            <div id="trash-list" style="margin-bottom:12px"></div>
-            <div style="display:flex;gap:8px">
-              <button class="btn btn-danger btn-sm" id="btn-empty-trash">휴지통 비우기</button>
-            </div>
-          </div>
-        </div>
-
         <!-- Danger Zone -->
         <div class="card" style="margin-top:20px;border:1px solid var(--danger)">
           <div class="card-header" style="background:var(--danger-light)">
@@ -589,19 +572,6 @@ App.pages.settings = {
       e.target.value = '';
     });
 
-    // Trash management
-    this.loadTrash();
-
-    document.getElementById('btn-empty-trash')?.addEventListener('click', async () => {
-      const counts = await DB.getTrashCounts();
-      if (counts.total === 0) { App.showToast('휴지통이 비어있습니다.', 'info'); return; }
-      const confirmed = await App.confirm(`휴지통의 ${counts.total}개 항목을 완전히 삭제하시겠습니까?<br><strong>이 작업은 되돌릴 수 없습니다.</strong>`);
-      if (!confirmed) return;
-      await DB.emptyAllTrash();
-      App.showToast('휴지통을 비웠습니다.');
-      this.loadTrash();
-    });
-
     // Clear all
     document.getElementById('btn-clear-all')?.addEventListener('click', async () => {
       const confirmed = await App.confirm('정말로 모든 데이터를 삭제하시겠습니까?<br><strong>이 작업은 되돌릴 수 없습니다!</strong>');
@@ -618,56 +588,6 @@ App.pages.settings = {
         console.error('Clear error:', err);
         App.showToast('초기화 중 오류가 발생했습니다.', 'error');
       }
-    });
-  },
-
-  async loadTrash() {
-    const counts = await DB.getTrashCounts();
-    const badge = document.getElementById('trash-total-badge');
-    if (badge) badge.textContent = counts.total;
-
-    const list = document.getElementById('trash-list');
-    if (!list) return;
-
-    if (counts.total === 0) {
-      list.innerHTML = '<p style="color:var(--text-muted);text-align:center;padding:16px">휴지통이 비어있습니다.</p>';
-      return;
-    }
-
-    const labels = { customers: '고객', pets: '반려견', appointments: '예약', records: '미용 기록', services: '서비스' };
-    const icons = { customers: '&#x1F464;', pets: '&#x1F436;', appointments: '&#x1F4C5;', records: '&#x2702;', services: '&#x1F4CB;' };
-    let html = '';
-
-    for (const [store, count] of Object.entries(counts)) {
-      if (store === 'total' || count === 0) continue;
-      const deleted = await DB.getDeleted(store);
-      html += `<div style="margin-bottom:12px">
-        <div style="font-weight:700;margin-bottom:6px">${icons[store]} ${labels[store]} (${count}건)</div>
-        <div style="display:flex;flex-direction:column;gap:4px">
-          ${deleted.slice(0, 10).map(item => {
-            const name = item.name || item.date || item.key || `#${item.id}`;
-            const deletedDate = item.deletedAt ? App.formatDate(item.deletedAt.slice(0, 10)) : '';
-            return `<div style="display:flex;align-items:center;gap:8px;padding:6px 10px;background:var(--bg);border-radius:var(--radius);font-size:0.88rem">
-              <span style="flex:1">${App.escapeHtml(name)}</span>
-              <span style="color:var(--text-muted);font-size:0.78rem">${deletedDate}</span>
-              <button class="btn btn-sm btn-secondary btn-restore-item" data-store="${store}" data-id="${item.id}" style="padding:4px 10px;font-size:0.78rem">복원</button>
-            </div>`;
-          }).join('')}
-          ${deleted.length > 10 ? `<div style="color:var(--text-muted);font-size:0.82rem;padding:4px">외 ${deleted.length - 10}건...</div>` : ''}
-        </div>
-      </div>`;
-    }
-    list.innerHTML = html;
-
-    // Restore buttons
-    list.querySelectorAll('.btn-restore-item').forEach(btn => {
-      btn.addEventListener('click', async () => {
-        const store = btn.dataset.store;
-        const id = Number(btn.dataset.id);
-        await DB.restoreItem(store, id);
-        App.showToast('항목이 복원되었습니다.');
-        this.loadTrash();
-      });
     });
   },
 
