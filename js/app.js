@@ -526,10 +526,23 @@ const App = {
 
     const renderOptions = (query) => {
       const q = (query || '').toLowerCase();
-      const filtered = q ? sorted.filter(c =>
+      // 입력 없으면 목록 안 보여줌 (이름 입력 시작해야 검색)
+      if (!q) {
+        dropdown.innerHTML = `
+          <div class="search-select-option"><span style="color:var(--text-muted)">고객 이름 또는 전화번호를 입력하세요</span></div>
+          <div class="search-select-option" style="color:var(--primary);font-weight:700;border-top:1px solid var(--border);text-align:center" id="btn-inline-new-cust">+ 새 고객 등록</div>
+        `;
+        dropdown.classList.add('open');
+        document.getElementById('btn-inline-new-cust')?.addEventListener('click', (ev) => {
+          ev.stopPropagation();
+          App._showInlineCustomerForm(dropdown, hidden, input, onChange, '');
+        });
+        return;
+      }
+      const filtered = sorted.filter(c =>
         (c.name || '').toLowerCase().startsWith(q) ||
         (c.phone || '').replace(/\D/g, '').includes(q.replace(/\D/g, ''))
-      ) : sorted;
+      );
 
       if (filtered.length === 0 && q) {
         // 인라인 폼이 이미 표시 중이면 이름만 업데이트
