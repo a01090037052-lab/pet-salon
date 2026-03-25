@@ -415,7 +415,7 @@ App.pages.records = {
         date: fromAppointment.date,
         groomer: fromAppointment.groomer,
         serviceIds: fromAppointment.serviceIds || [],
-        appointmentId: fromAppointment.id
+        appointmentId: fromAppointment.id || null
       };
     }
 
@@ -811,7 +811,8 @@ App.pages.records = {
       const finalPrice = totalPrice - discount + extraCharge;
       const photoBefore = document.getElementById('f-photoBefore-data')?.value || '';
       const photoAfter = document.getElementById('f-photoAfter-data')?.value || '';
-      const appointmentId = document.getElementById('f-appointmentId')?.value || null;
+      const appointmentIdRaw = document.getElementById('f-appointmentId')?.value;
+      const appointmentId = appointmentIdRaw && !isNaN(Number(appointmentIdRaw)) ? Number(appointmentIdRaw) : null;
       const status = 'completed';
 
       const data = { customerId, petId, date, groomer, nextVisitDate, serviceIds, totalPrice, discount, extraCharge, finalPrice, memo, paymentMethod, photoBefore, photoAfter, appointmentId, status };
@@ -935,10 +936,25 @@ App.pages.records = {
   },
 
   async deleteRecord(id) {
+    const confirmed = await App.confirm('이 미용 기록을 삭제하시겠습니까?');
+    if (!confirmed) return;
     try {
-      const confirmed = await App.confirm('이 미용 기록을 삭제하시겠습니까?');
-      if (!confirmed) return;
+      const record = await DB.get('records', id);
       await DB.delete('records', id);
+      // Recalculate pet's lastVisitDate
+      if (record && record.petId) {
+        try {
+          const petRecords = await DB.getByIndex('records', 'petId', record.petId);
+          const pet = await DB.get('pets', record.petId);
+          if (pet) {
+            const latest = petRecords.sort((a, b) => (b.date || '').localeCompare(a.date || ''))[0];
+            pet.lastVisitDate = latest ? latest.date : null;
+            await DB.update('pets', pet);
+          }
+        } catch (e) {
+          console.warn('lastVisitDate recalc error:', e);
+        }
+      }
       App.showToast('미용 기록이 삭제되었습니다.');
       App.handleRoute();
     } catch (err) {

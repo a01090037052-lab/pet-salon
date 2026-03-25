@@ -52,6 +52,7 @@ const App = {
   setupSidebar() {
     const toggle = document.getElementById('sidebar-toggle');
     const sidebar = document.getElementById('sidebar');
+    if (!toggle || !sidebar) return;
     toggle.addEventListener('click', () => {
       sidebar.classList.toggle('collapsed');
       localStorage.setItem('sidebar-collapsed', sidebar.classList.contains('collapsed'));
@@ -63,15 +64,15 @@ const App = {
   },
 
   setupModal() {
-    document.getElementById('modal-close').addEventListener('click', () => this.closeModal());
-    document.getElementById('modal-cancel').addEventListener('click', () => this.closeModal());
-    document.getElementById('modal-overlay').addEventListener('click', (e) => {
+    document.getElementById('modal-close')?.addEventListener('click', () => this.closeModal());
+    document.getElementById('modal-cancel')?.addEventListener('click', () => this.closeModal());
+    document.getElementById('modal-overlay')?.addEventListener('click', (e) => {
       if (e.target === e.currentTarget) this.closeModal();
     });
-    document.getElementById('confirm-overlay').addEventListener('click', (e) => {
+    document.getElementById('confirm-overlay')?.addEventListener('click', (e) => {
       if (e.target === e.currentTarget) this.closeConfirm(false);
     });
-    document.getElementById('confirm-cancel').addEventListener('click', () => this.closeConfirm(false));
+    document.getElementById('confirm-cancel')?.addEventListener('click', () => this.closeConfirm(false));
   },
 
   setupFAB() {
@@ -882,7 +883,7 @@ const App = {
 
   closeSearch() {
     const overlay = document.getElementById('global-search-overlay');
-    if (!overlay) return;
+    if (!overlay || overlay.classList.contains('hidden')) return;
     overlay.classList.add('hidden');
     overlay.classList.remove('animate-in');
     this._searchData = null;
@@ -890,6 +891,10 @@ const App = {
     if (this._searchPopHandler) {
       window.removeEventListener('popstate', this._searchPopHandler);
       this._searchPopHandler = null;
+      // Remove the history entry we pushed
+      if (history.state && history.state.searchOpen) {
+        history.back();
+      }
     }
   },
 
@@ -1066,7 +1071,7 @@ const App = {
       <div class="gs-customer-card">
         ${showBack ? `<button class="gs-back-link" id="gs-back-btn">&#x2190; 검색 결과로 돌아가기</button>` : ''}
         <div class="gs-card-header">
-          <span class="gs-card-name">${this.escapeHtml(customer.name)}${this.pages.customers.getTagBadges(customer.tags)}</span>
+          <span class="gs-card-name">${this.escapeHtml(customer.name)}${this.pages.customers?.getTagBadges?.(customer.tags) || ''}</span>
           <a href="tel:${this.escapeHtml(phoneClean)}" class="gs-card-phone">${this.formatPhone(customer.phone)}</a>
         </div>
         <div class="gs-card-body">
@@ -1121,7 +1126,7 @@ const App = {
       const petId = cPets.length === 1 ? cPets[0].id : undefined;
       this.closeSearch();
       if (this.pages.records?.showForm) {
-        this.pages.records.showForm(null, { customerId: customer.id, petId: petId || undefined });
+        this.pages.records.showForm(null, { customerId: customer.id, petId: petId || null, date: App.getToday(), id: null });
       }
     });
 
@@ -1157,10 +1162,10 @@ const App = {
   _lightboxIndex: 0,
 
   setupLightbox() {
-    document.getElementById('lightbox-close').addEventListener('click', () => this.closeLightbox());
-    document.querySelector('.lightbox-backdrop').addEventListener('click', () => this.closeLightbox());
-    document.getElementById('lightbox-prev').addEventListener('click', () => this.lightboxNav(-1));
-    document.getElementById('lightbox-next').addEventListener('click', () => this.lightboxNav(1));
+    document.getElementById('lightbox-close')?.addEventListener('click', () => this.closeLightbox());
+    document.querySelector('.lightbox-backdrop')?.addEventListener('click', () => this.closeLightbox());
+    document.getElementById('lightbox-prev')?.addEventListener('click', () => this.lightboxNav(-1));
+    document.getElementById('lightbox-next')?.addEventListener('click', () => this.lightboxNav(1));
 
     // Global click handler for photos with .photo-viewable class
     document.addEventListener('click', (e) => {

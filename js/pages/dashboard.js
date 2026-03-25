@@ -433,6 +433,7 @@ App.pages.dashboard = {
                 await DB.update('records', record);
                 App.showToast('결제가 완료 처리되었습니다.');
                 App.closeModal();
+                App._dashboardDirty = true;
                 App.handleRoute();
               }
             } catch (err) {

@@ -521,6 +521,17 @@ App.pages.customers = {
       for (const appt of appointments) await DB.delete('appointments', appt.id);
       const records = await DB.getByIndex('records', 'customerId', id);
       for (const rec of records) await DB.delete('records', rec.id);
+      // Clean up orphaned photos
+      try {
+        for (const rec of records) {
+          const photos = await DB.getByIndex('photos', 'ownerId', rec.id);
+          for (const p of photos) await DB.delete('photos', p.id);
+        }
+        for (const pet of pets) {
+          const photos = await DB.getByIndex('photos', 'ownerId', pet.id);
+          for (const p of photos) await DB.delete('photos', p.id);
+        }
+      } catch(e) { /* photos store may not exist */ }
       await DB.delete('customers', id);
       App.showToast('고객이 삭제되었습니다.');
       App.navigate('customers');

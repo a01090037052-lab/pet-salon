@@ -482,6 +482,15 @@ App.pages.pets = {
       for (const a of appointments) await DB.delete('appointments', a.id);
       const records = await DB.getByIndex('records', 'petId', id);
       for (const r of records) await DB.delete('records', r.id);
+      // Clean up orphaned photos
+      try {
+        for (const r of records) {
+          const photos = await DB.getByIndex('photos', 'ownerId', r.id);
+          for (const p of photos) await DB.delete('photos', p.id);
+        }
+        const petPhotos = await DB.getByIndex('photos', 'ownerId', id);
+        for (const p of petPhotos) await DB.delete('photos', p.id);
+      } catch(e) { /* photos store may not exist */ }
       await DB.delete('pets', id);
       App.showToast('반려견이 삭제되었습니다.');
       App.navigate('pets');
