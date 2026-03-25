@@ -614,7 +614,17 @@ App.pages.appointments = {
   },
 
   async showForm(id, preCustomerId, prefill) {
-    let appt = id ? await DB.get('appointments', id) : { date: App.getToday(), status: 'pending', customerId: preCustomerId || null, petId: (prefill && prefill.petId) || null };
+    // 시간 기본값: 새 예약일 때 다음 정시로 설정
+    let defaultTime = '';
+    if (!id) {
+      const now = new Date();
+      let defaultHour = now.getHours() + 1;
+      if (defaultHour > 18) defaultHour = 10;
+      if (defaultHour < 9) defaultHour = 10;
+      defaultTime = String(defaultHour).padStart(2, '0') + ':00';
+    }
+
+    let appt = id ? await DB.get('appointments', id) : { date: App.getToday(), time: defaultTime, status: 'pending', customerId: preCustomerId || null, petId: (prefill && prefill.petId) || null };
     if (id && !appt) { App.showToast('예약을 찾을 수 없습니다.', 'error'); App.closeModal(); return; }
     // Apply prefill data from records page (F8)
     if (prefill && !id) {
@@ -631,19 +641,17 @@ App.pages.appointments = {
       size: 'lg',
       content: `
         <!-- 필수 입력 영역 -->
-        <div class="form-row">
-          <div class="form-group">
-            <label class="form-label">고객 <span class="required">*</span></label>
-            <div id="appt-customer-select"></div>
-            <div id="noshow-warning"></div>
-          </div>
-          <div class="form-group">
-            <label class="form-label">반려견 <span class="required">*</span></label>
-            <select id="f-petId">
-              <option value="">반려견 선택</option>
-              ${petOptions}
-            </select>
-          </div>
+        <div class="form-group">
+          <label class="form-label">고객 <span class="required">*</span></label>
+          <div id="appt-customer-select"></div>
+          <div id="noshow-warning"></div>
+        </div>
+        <div class="form-group">
+          <label class="form-label">반려견 <span class="required">*</span></label>
+          <select id="f-petId">
+            <option value="">반려견 선택</option>
+            ${petOptions}
+          </select>
         </div>
         <div class="form-row">
           <div class="form-group">
@@ -655,6 +663,12 @@ App.pages.appointments = {
             <input type="time" id="f-time" value="${appt.time || ''}">
           </div>
         </div>
+
+        <!-- 선택사항 구분선 -->
+        <div style="margin:12px 0;padding:8px 0;border-top:1px dashed var(--border);color:var(--text-muted);font-size:0.82rem">
+          선택사항
+        </div>
+
         <div class="form-group">
           <div id="f-services">
             ${serviceCheckboxes}
@@ -886,44 +900,40 @@ App.pages.appointments = {
         const repeatCountEl = document.getElementById('f-repeat-count');
         const cycle = Number(repeatCycleEl?.value) || 0;
         const count = Number(repeatCountEl?.value) || 0;
+        let isRepeat = false;
         if (cycle > 0 && count > 1) {
-          let created = 1;
+          isRepeat = true;
           for (let i = 1; i < count; i++) {
             const baseDate = new Date(date);
             baseDate.setDate(baseDate.getDate() + cycle * i);
             const nextDate = App.formatLocalDate(baseDate);
             const repeatData = { ...data, date: nextDate };
             await DB.add('appointments', repeatData);
-            created++;
           }
-          App.showToast(`반복 예약 ${created}건이 등록되었습니다.`);
-        } else {
-          App.showToast('새 예약이 등록되었습니다.');
         }
 
-        // 예약 확인 문자 발송 제안
+        // 저장 후 바로 완료 (SMS 팝업 대신 인라인 링크 토스트)
         const customer = await DB.get('customers', customerId);
         const pet = await DB.get('pets', petId);
+        App.closeModal();
+        App.handleRoute();
         const phone = (customer?.phone || '').replace(/\D/g, '');
-        if (phone) {
-          App.closeModal();
-          App.handleRoute();
-          const sendSms = await App.confirm('고객에게 예약 확인 문자를 보내시겠습니까?');
-          if (sendSms) {
-            const msg = await App.buildSms('appointment', {
-              '고객명': customer.name || '',
-              '반려견명': pet?.name || '',
-              '날짜': date,
-              '시간': time || '',
-              '미용사': groomer || ''
-            });
-            const sep = /iP(hone|ad|od)/.test(navigator.userAgent) || /Mac/.test(navigator.userAgent) ? '&' : '?';
-            const a = document.createElement('a');
-            a.href = `sms:${phone}${sep}body=${encodeURIComponent(msg)}`;
-            a.click();
-          }
-          return;
+        if (isRepeat) {
+          App.showToast(`반복 예약 ${count}건이 등록되었습니다.`);
+        } else if (phone) {
+          const msg = await App.buildSms('appointment', {
+            '고객명': customer.name || '',
+            '반려견명': pet?.name || '',
+            '날짜': date,
+            '시간': time || '',
+            '미용사': groomer || ''
+          });
+          const sep = /iPhone|iPad|Mac/i.test(navigator.userAgent) ? '&' : '?';
+          App.showToast(`예약 등록 완료! <a href="sms:${phone}${sep}body=${encodeURIComponent(msg)}" style="color:#fff;text-decoration:underline;margin-left:6px">문자 보내기</a>`, 'success');
+        } else {
+          App.showToast('예약이 등록되었습니다.');
         }
+        return;
       }
 
       App.closeModal();

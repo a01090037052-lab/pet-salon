@@ -570,15 +570,48 @@ const App = {
     dropdown.addEventListener('click', (e) => {
       const addOpt = e.target.closest('.search-select-add');
       if (addOpt) {
-        dropdown.classList.remove('open');
-        // afterSaveCallback: 고객 저장 후 선택 필드에 자동 반영
-        App.pages.customers?.showForm(null, async (newCustomerId) => {
-          const newCustomer = await DB.get('customers', newCustomerId);
-          if (newCustomer) {
-            hidden.value = newCustomerId;
-            input.value = App.escapeHtml(newCustomer.name) + ' (' + App.formatPhone(newCustomer.phone) + ')';
-            if (onChange) onChange(newCustomerId);
+        // 인라인 빠른 고객 등록 (모달 파괴 방지)
+        dropdown.innerHTML = `
+          <div style="padding:12px">
+            <div style="font-weight:700;margin-bottom:10px">빠른 고객 등록</div>
+            <input type="text" id="quick-cust-name" placeholder="고객 이름" style="margin-bottom:8px">
+            <input type="tel" id="quick-cust-phone" placeholder="전화번호" style="margin-bottom:8px">
+            <div style="display:flex;gap:6px">
+              <button class="btn btn-sm btn-primary" id="quick-cust-save" style="flex:1">등록</button>
+              <button class="btn btn-sm btn-secondary" id="quick-cust-cancel" style="flex:1">취소</button>
+            </div>
+          </div>
+        `;
+        dropdown.classList.add('open');
+        // Auto-format phone input
+        setTimeout(() => App.setupPhoneInputs(), 50);
+        setTimeout(() => document.getElementById('quick-cust-name')?.focus(), 100);
+
+        document.getElementById('quick-cust-save')?.addEventListener('click', async () => {
+          const name = document.getElementById('quick-cust-name').value.trim();
+          const phone = document.getElementById('quick-cust-phone').value.trim();
+          if (!name) { App.showToast('이름을 입력해주세요.', 'error'); return; }
+          if (!phone) { App.showToast('전화번호를 입력해주세요.', 'error'); return; }
+
+          // Check phone duplicate
+          const allCustomers = await DB.getAll('customers');
+          const dup = allCustomers.find(c => (c.phone || '').replace(/\D/g, '') === phone.replace(/\D/g, ''));
+          if (dup) { App.showToast(`이미 등록된 번호입니다 (${dup.name})`, 'error'); return; }
+
+          try {
+            const newId = await DB.add('customers', { name, phone });
+            hidden.value = newId;
+            input.value = name + ' (' + App.formatPhone(phone) + ')';
+            dropdown.classList.remove('open');
+            if (onChange) onChange(newId);
+            App.showToast(`${name} 고객이 등록되었습니다.`);
+          } catch(err) {
+            App.showToast('등록 중 오류가 발생했습니다.', 'error');
           }
+        });
+
+        document.getElementById('quick-cust-cancel')?.addEventListener('click', () => {
+          renderOptions(input.value);
         });
         return;
       }
@@ -934,8 +967,11 @@ const App = {
         App.closeSearch();
         App.pages.customers?.showForm(null, async (newCustomerId) => {
           const newCustomer = await DB.get('customers', newCustomerId);
-          const customerName = newCustomer ? newCustomer.name : '';
-          App.showToast(`${customerName} 고객이 등록되었습니다.`);
+          App.showToast(`${newCustomer?.name || ''} 고객이 등록되었습니다.`);
+          // 바로 예약 폼 열기
+          setTimeout(() => {
+            App.pages.appointments.showForm(null, newCustomerId);
+          }, 300);
         });
       });
       return;
@@ -1088,10 +1124,15 @@ const App = {
               <span class="gs-action-btn-icon">&#x1F4AC;</span>
               <span>문자</span>
             </a>
-            <button class="gs-action-btn" id="gs-action-appt" data-customer-id="${customer.id}">
+            ${cPets.length > 1 ? cPets.map(p =>
+              `<button class="gs-action-btn gs-appt-pet" data-customer-id="${customer.id}" data-pet-id="${p.id}">
+                <span class="gs-action-btn-icon">&#x1F4C5;</span>
+                <span>${App.escapeHtml(p.name)}</span>
+              </button>`
+            ).join('') : `<button class="gs-action-btn" id="gs-action-appt" data-customer-id="${customer.id}">
               <span class="gs-action-btn-icon">&#x1F4C5;</span>
               <span>예약</span>
-            </button>
+            </button>`}
             <button class="gs-action-btn" id="gs-action-record" data-customer-id="${customer.id}">
               <span class="gs-action-btn-icon">&#x2702;</span>
               <span>미용기록</span>
@@ -1110,7 +1151,7 @@ const App = {
       if (q) this.performSearch(q);
     });
 
-    // Appointment button
+    // Appointment button (single pet or no pets)
     document.getElementById('gs-action-appt')?.addEventListener('click', () => {
       const petId = cPets.length === 1 ? cPets[0].id : undefined;
       this.closeSearch();
@@ -1119,6 +1160,14 @@ const App = {
       } else {
         this.navigate('appointments');
       }
+    });
+
+    // Per-pet appointment buttons (multiple pets)
+    document.querySelectorAll('.gs-appt-pet').forEach(btn => {
+      btn.addEventListener('click', () => {
+        this.closeSearch();
+        this.pages.appointments.showForm(null, Number(btn.dataset.customerId), { petId: Number(btn.dataset.petId) });
+      });
     });
 
     // Record button
