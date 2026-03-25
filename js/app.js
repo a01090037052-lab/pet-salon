@@ -571,14 +571,15 @@ const App = {
       const addOpt = e.target.closest('.search-select-add');
       if (addOpt) {
         // 인라인 빠른 고객 등록 (모달 파괴 방지)
+        dropdown.style.maxHeight = 'none';
         dropdown.innerHTML = `
-          <div style="padding:12px">
-            <div style="font-weight:700;margin-bottom:10px">빠른 고객 등록</div>
-            <input type="text" id="quick-cust-name" placeholder="고객 이름" style="margin-bottom:8px">
-            <input type="tel" id="quick-cust-phone" placeholder="전화번호" style="margin-bottom:8px">
-            <div style="display:flex;gap:6px">
-              <button class="btn btn-sm btn-primary" id="quick-cust-save" style="flex:1">등록</button>
-              <button class="btn btn-sm btn-secondary" id="quick-cust-cancel" style="flex:1">취소</button>
+          <div style="padding:14px">
+            <div style="font-weight:700;margin-bottom:10px;font-size:0.95rem">빠른 고객 등록</div>
+            <input type="text" id="quick-cust-name" placeholder="고객 이름" style="margin-bottom:8px;width:100%;box-sizing:border-box">
+            <input type="tel" id="quick-cust-phone" placeholder="전화번호" style="margin-bottom:10px;width:100%;box-sizing:border-box">
+            <div style="display:flex;gap:8px">
+              <button class="btn btn-primary" id="quick-cust-save" style="flex:1;min-height:44px">등록</button>
+              <button class="btn btn-secondary" id="quick-cust-cancel" style="flex:1;min-height:44px">취소</button>
             </div>
           </div>
         `;
@@ -602,6 +603,7 @@ const App = {
             const newId = await DB.add('customers', { name, phone });
             hidden.value = newId;
             input.value = name + ' (' + App.formatPhone(phone) + ')';
+            dropdown.style.maxHeight = '';
             dropdown.classList.remove('open');
             if (onChange) onChange(newId);
             App.showToast(`${name} 고객이 등록되었습니다.`);
@@ -611,6 +613,7 @@ const App = {
         });
 
         document.getElementById('quick-cust-cancel')?.addEventListener('click', () => {
+          dropdown.style.maxHeight = '';
           renderOptions(input.value);
         });
         return;
