@@ -251,7 +251,7 @@ App.pages.customers = {
               return `
               <div class="pet-card" onclick="App.navigate('pets/${p.id}')">
                 ${p.photo
-                  ? `<img src="${p.photo}" class="photo-viewable" data-caption="${App.escapeHtml(p.name)}" style="width:48px;height:48px;object-fit:cover;border-radius:var(--radius);flex-shrink:0" alt="${App.escapeHtml(p.name)}" loading="lazy" onclick="event.stopPropagation()">`
+                  ? `<img src="${p.photo}" class="photo-viewable" data-caption="${App.escapeHtml(p.name)}" style="width:48px;height:48px;object-fit:cover;border-radius:var(--radius);flex-shrink:0" alt="${App.escapeHtml(p.name)}" onclick="event.stopPropagation()">`
                   : `<div class="pet-avatar">&#x1F436;</div>`
                 }
                 <div>
@@ -323,7 +323,7 @@ App.pages.customers = {
     });
 
     // Search
-    const _debouncedFilter = App.debounce(() => { this._visibleLimit = this._PAGE_SIZE; this.applyFilters(); }, 300);
+    const _debouncedFilter = App.debounce(() => this.applyFilters(), 300);
     document.getElementById('customer-search')?.addEventListener('input', (e) => {
       this._searchQuery = e.target.value;
       _debouncedFilter();
@@ -511,29 +511,22 @@ App.pages.customers = {
     const customer = await DB.get('customers', id);
     if (!customer) return;
 
-    const confirmed = await App.confirm(`"${App.escapeHtml(customer.name)}" 고객을 삭제하시겠습니까?<br>관련 반려견, 예약, 미용 기록도 함께 삭제됩니다.`);
+    const confirmed = await App.confirm(`"${App.escapeHtml(customer.name)}" 고객을 삭제하시겠습니까?<br>관련 반려견, 예약, 미용 기록도 함께 휴지통으로 이동됩니다.<br><small style="color:var(--text-muted)">설정 &gt; 데이터에서 복원할 수 있습니다.</small>`);
     if (!confirmed) return;
 
     try {
       const pets = await DB.getByIndex('pets', 'customerId', id);
-      for (const pet of pets) await DB.delete('pets', pet.id);
       const appointments = await DB.getByIndex('appointments', 'customerId', id);
-      for (const appt of appointments) await DB.delete('appointments', appt.id);
       const records = await DB.getByIndex('records', 'customerId', id);
-      for (const rec of records) await DB.delete('records', rec.id);
-      // Clean up orphaned photos
-      try {
-        for (const rec of records) {
-          const photos = await DB.getByIndex('photos', 'ownerId', rec.id);
-          for (const p of photos) await DB.delete('photos', p.id);
-        }
-        for (const pet of pets) {
-          const photos = await DB.getByIndex('photos', 'ownerId', pet.id);
-          for (const p of photos) await DB.delete('photos', p.id);
-        }
-      } catch(e) { /* photos store may not exist */ }
-      await DB.delete('customers', id);
-      App.showToast('고객이 삭제되었습니다.');
+
+      const pairs = [
+        ...pets.map(p => ['pets', p.id]),
+        ...appointments.map(a => ['appointments', a.id]),
+        ...records.map(r => ['records', r.id]),
+        ['customers', id]
+      ];
+      await DB.softDeleteCascade(pairs);
+      App.showToast('고객이 휴지통으로 이동되었습니다.');
       App.navigate('customers');
     } catch (err) {
       console.error('Delete customer error:', err);
@@ -551,13 +544,11 @@ App.pages.customers = {
   _searchQuery: '',
   _tagFilter: '',
 
-  _PAGE_SIZE: 50,
-
   applyFilters() {
     const q = (this._searchQuery || '').toLowerCase();
     const tag = this._tagFilter || '';
-    this._visibleLimit = this._visibleLimit || this._PAGE_SIZE;
 
+    // Save filter state to sessionStorage
     sessionStorage.setItem('customer-filter', JSON.stringify({
       search: this._searchQuery || '',
       tag,
@@ -570,37 +561,13 @@ App.pages.customers = {
       return textMatch && tagMatch;
     };
 
-    let count = 0;
     document.querySelectorAll('#customer-table tbody tr').forEach(row => {
-      if (!row.dataset.id) return;
-      const match = matchesFilter(row);
-      if (match) count++;
-      row.style.display = (match && count <= this._visibleLimit) ? '' : 'none';
+      row.style.display = matchesFilter(row) ? '' : 'none';
     });
 
-    let mCount = 0;
     document.querySelectorAll('#customer-card-list .mobile-card').forEach(card => {
-      const match = matchesFilter(card);
-      if (match) mCount++;
-      card.style.display = (match && mCount <= this._visibleLimit) ? '' : 'none';
+      card.style.display = matchesFilter(card) ? '' : 'none';
     });
-
-    const total = Math.max(count, mCount);
-    let btn = document.getElementById('customers-load-more');
-    if (total > this._visibleLimit) {
-      if (!btn) {
-        btn = document.createElement('button');
-        btn.id = 'customers-load-more';
-        btn.className = 'btn btn-secondary';
-        btn.style.cssText = 'width:100%;margin-top:12px;padding:14px';
-        btn.addEventListener('click', () => { this._visibleLimit += this._PAGE_SIZE; this.applyFilters(); });
-        document.getElementById('customer-card-list')?.parentElement?.appendChild(btn);
-      }
-      btn.textContent = `더 보기 (${this._visibleLimit}/${total}명)`;
-      btn.style.display = '';
-    } else if (btn) {
-      btn.style.display = 'none';
-    }
   },
 
 };

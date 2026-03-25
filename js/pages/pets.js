@@ -67,7 +67,7 @@ App.pages.pets = {
                   const owner = customerMap[p.customerId];
                   return `
                     <tr data-id="${p.id}" class="clickable-row" style="cursor:pointer">
-                      <td><strong>${p.photo ? `<img src="${p.photo}" class="pet-list-photo photo-viewable" data-caption="${App.escapeHtml(p.name)}" style="width:40px;height:40px;object-fit:cover;border-radius:8px" alt="" loading="lazy">` : '&#x1F436;'} ${App.escapeHtml(p.name)}</strong></td>
+                      <td><strong>${p.photo ? `<img src="${p.photo}" class="pet-list-photo photo-viewable" data-caption="${App.escapeHtml(p.name)}" style="width:40px;height:40px;object-fit:cover;border-radius:8px" alt="">` : '&#x1F436;'} ${App.escapeHtml(p.name)}</strong></td>
                       <td>${App.escapeHtml(p.breed || '-')}</td>
                       <td class="hide-mobile">${p.weight ? p.weight + 'kg' : '-'}</td>
                       <td class="hide-mobile">${this.getGenderLabel(p.gender)}${p.neutered ? ' (중성화)' : ''}</td>
@@ -97,7 +97,7 @@ App.pages.pets = {
               <div class="mobile-card" data-id="${p.id}" style="cursor:pointer"
                    data-search="${(p.name || '') + ' ' + (p.breed || '') + ' ' + (owner?.name || '')}">
                 <div class="mobile-card-header">
-                  <span style="font-weight:700;font-size:1rem">${p.photo ? `<img src="${p.photo}" class="photo-viewable" data-caption="${App.escapeHtml(p.name)}" style="width:28px;height:28px;border-radius:8px;object-fit:cover;vertical-align:middle;margin-right:4px" loading="lazy">` : '&#x1F436;'} ${App.escapeHtml(p.name)}</span>
+                  <span style="font-weight:700;font-size:1rem">${p.photo ? `<img src="${p.photo}" class="photo-viewable" data-caption="${App.escapeHtml(p.name)}" style="width:28px;height:28px;border-radius:8px;object-fit:cover;vertical-align:middle;margin-right:4px">` : '&#x1F436;'} ${App.escapeHtml(p.name)}</span>
                   <span style="color:var(--text-secondary);font-size:0.85rem">${App.escapeHtml(p.breed || '-')}</span>
                 </div>
                 <div class="mobile-card-body">
@@ -225,7 +225,7 @@ App.pages.pets = {
 
   async init(params) {
     document.getElementById('btn-add-pet')?.addEventListener('click', () => this.showForm());
-    const _debouncedPetFilter = App.debounce((val) => { this._visibleLimit = this._PAGE_SIZE; this.filterTable(val); }, 300);
+    const _debouncedPetFilter = App.debounce((val) => this.filterTable(val), 300);
     document.getElementById('pet-search')?.addEventListener('input', (e) => _debouncedPetFilter(e.target.value));
 
     document.querySelectorAll('.clickable-row').forEach(row => {
@@ -475,24 +475,19 @@ App.pages.pets = {
       const pet = await DB.get('pets', id);
       if (!pet) return;
 
-      const confirmed = await App.confirm(`"${App.escapeHtml(pet.name)}"을(를) 삭제하시겠습니까?<br>관련 예약과 미용 기록도 함께 삭제됩니다.`);
+      const confirmed = await App.confirm(`"${App.escapeHtml(pet.name)}"을(를) 삭제하시겠습니까?<br>관련 예약과 미용 기록도 함께 휴지통으로 이동됩니다.`);
       if (!confirmed) return;
 
       const appointments = await DB.getByIndex('appointments', 'petId', id);
-      for (const a of appointments) await DB.delete('appointments', a.id);
       const records = await DB.getByIndex('records', 'petId', id);
-      for (const r of records) await DB.delete('records', r.id);
-      // Clean up orphaned photos
-      try {
-        for (const r of records) {
-          const photos = await DB.getByIndex('photos', 'ownerId', r.id);
-          for (const p of photos) await DB.delete('photos', p.id);
-        }
-        const petPhotos = await DB.getByIndex('photos', 'ownerId', id);
-        for (const p of petPhotos) await DB.delete('photos', p.id);
-      } catch(e) { /* photos store may not exist */ }
-      await DB.delete('pets', id);
-      App.showToast('반려견이 삭제되었습니다.');
+
+      const pairs = [
+        ...appointments.map(a => ['appointments', a.id]),
+        ...records.map(r => ['records', r.id]),
+        ['pets', id]
+      ];
+      await DB.softDeleteCascade(pairs);
+      App.showToast('반려견이 휴지통으로 이동되었습니다.');
       App.navigate('pets');
     } catch (err) {
       console.error('deletePet error:', err);
@@ -528,43 +523,19 @@ App.pages.pets = {
     return `${months}개월`;
   },
 
-  _PAGE_SIZE: 50,
-
   filterTable(query) {
-    const q = (query || '').toLowerCase();
-    this._visibleLimit = this._visibleLimit || this._PAGE_SIZE;
-
-    let count = 0;
-    document.querySelectorAll('#pet-table tbody tr').forEach(row => {
-      if (!row.dataset.id) return;
-      const match = !q || row.textContent.toLowerCase().includes(q);
-      if (match) count++;
-      row.style.display = (match && count <= this._visibleLimit) ? '' : 'none';
+    const q = query.toLowerCase();
+    // Filter table rows
+    const rows = document.querySelectorAll('#pet-table tbody tr');
+    rows.forEach(row => {
+      const text = row.textContent.toLowerCase();
+      row.style.display = text.includes(q) ? '' : 'none';
     });
-
-    let mCount = 0;
+    // Filter mobile cards
     document.querySelectorAll('#pet-card-list .mobile-card').forEach(card => {
-      const match = !q || (card.dataset.search || '').toLowerCase().includes(q);
-      if (match) mCount++;
-      card.style.display = (match && mCount <= this._visibleLimit) ? '' : 'none';
+      const search = (card.dataset.search || '').toLowerCase();
+      card.style.display = search.includes(q) ? '' : 'none';
     });
-
-    const total = Math.max(count, mCount);
-    let btn = document.getElementById('pets-load-more');
-    if (total > this._visibleLimit) {
-      if (!btn) {
-        btn = document.createElement('button');
-        btn.id = 'pets-load-more';
-        btn.className = 'btn btn-secondary';
-        btn.style.cssText = 'width:100%;margin-top:12px;padding:14px';
-        btn.addEventListener('click', () => { this._visibleLimit += this._PAGE_SIZE; this.filterTable(document.getElementById('pet-search')?.value); });
-        document.getElementById('pet-card-list')?.parentElement?.appendChild(btn);
-      }
-      btn.textContent = `더 보기 (${this._visibleLimit}/${total}마리)`;
-      btn.style.display = '';
-    } else if (btn) {
-      btn.style.display = 'none';
-    }
   },
 
   resizeImage(dataUrl, callback) {

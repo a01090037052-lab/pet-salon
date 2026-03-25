@@ -30,6 +30,9 @@ App.pages.dashboard = {
         DB.count('customers')
       ]);
 
+      // All records needed for revisit alerts
+      const allRecords = await DB.getAll('records');
+
       // Build lookup maps once
       const customerMap = {};
       customers.forEach(c => { customerMap[c.id] = c; });
@@ -54,24 +57,30 @@ App.pages.dashboard = {
       const todayRecords = recentRecords.filter(r => r.date === today);
       const todayRevenue = todayRecords.reduce((sum, r) => sum + App.getRecordAmount(r), 0);
 
-      // Revisit alerts (pet.lastVisitDate 기반 - allRecords 로드 불필요)
+      // Revisit alerts
       const revisitDays = await DB.getSetting('revisitDays') || 30;
+      const petLastVisit = {};
+      allRecords.forEach(r => {
+        if (!petLastVisit[r.petId] || (r.date || '') > (petLastVisit[r.petId].date || '')) {
+          petLastVisit[r.petId] = r;
+        }
+      });
       const revisitAlerts = [];
-      for (const pet of pets) {
-        if (!pet.lastVisitDate) continue;
-        const days = App.getDaysAgo(pet.lastVisitDate);
-        const cycleDays = pet.groomingCycle || revisitDays;
+      for (const [petId, record] of Object.entries(petLastVisit)) {
+        const days = App.getDaysAgo(record.date);
+        const pet = petMap[Number(petId)];
+        const cycleDays = (pet && pet.groomingCycle) ? pet.groomingCycle : revisitDays;
         if (days >= cycleDays) {
-          const customer = customerMap[pet.customerId];
-          if (customer) {
-            revisitAlerts.push({ pet, customer, days, lastDate: pet.lastVisitDate, cycleDays });
+          const customer = pet ? customerMap[pet.customerId] : null;
+          if (pet && customer) {
+            revisitAlerts.push({ pet, customer, days, lastDate: record.date, cycleDays });
           }
         }
       }
       revisitAlerts.sort((a, b) => b.days - a.days);
 
-      // 미수금(외상) 집계 (최근 기록 기반)
-      const unpaidRecords = recentRecords.filter(r => r.paymentMethod === 'unpaid');
+      // 미수금(외상) 집계
+      const unpaidRecords = allRecords.filter(r => r.paymentMethod === 'unpaid');
       const unpaidTotal = unpaidRecords.reduce((sum, r) => sum + App.getRecordAmount(r), 0);
 
       // 생일 알림 (7일 이내)
@@ -308,7 +317,7 @@ App.pages.dashboard = {
               return `
                 <div class="alert-item">
                   <div style="display:flex;align-items:center;gap:8px">
-                    ${b.photo ? `<img src="${b.photo}" style="width:36px;height:36px;border-radius:10px;object-fit:cover" loading="lazy">` : `<span style="font-size:1.3rem">${icon}</span>`}
+                    ${b.photo ? `<img src="${b.photo}" style="width:36px;height:36px;border-radius:10px;object-fit:cover">` : `<span style="font-size:1.3rem">${icon}</span>`}
                     <div>
                       <strong>${App.escapeHtml(b.name)}</strong>
                       ${b.type === 'pet' ? `<span style="color:var(--text-muted);font-size:0.8rem"> (${App.escapeHtml(b.ownerName)}님)</span>` : ''}
@@ -433,7 +442,6 @@ App.pages.dashboard = {
                 await DB.update('records', record);
                 App.showToast('결제가 완료 처리되었습니다.');
                 App.closeModal();
-                App._dashboardDirty = true;
                 App.handleRoute();
               }
             } catch (err) {
