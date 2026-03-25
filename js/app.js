@@ -541,14 +541,30 @@ const App = {
       ) : sorted;
 
       if (filtered.length === 0 && q) {
-        // 검색 결과 없으면 바로 인라인 등록 폼 표시 (이름 자동 채움)
+        // 이미 인라인 폼이 표시 중이면 재생성 방지
+        if (document.getElementById('quick-cust-phone')) {
+          // 이름만 업데이트
+          const nameEl = document.getElementById('quick-cust-name-val');
+          const labelEl = document.getElementById('quick-cust-label');
+          if (nameEl) nameEl.value = q;
+          if (labelEl) labelEl.textContent = `"${q}" 새 고객 등록`;
+          return;
+        }
+        // 검색 결과 없으면 바로 인라인 등록 폼 표시 (이름 자동 채움 + 반려견)
         dropdown.style.maxHeight = 'none';
         dropdown.innerHTML = `
           <div style="padding:14px">
-            <div style="font-weight:700;margin-bottom:4px;font-size:0.95rem">"${App.escapeHtml(q)}" 새 고객 등록</div>
-            <div style="font-size:0.8rem;color:var(--text-muted);margin-bottom:10px">전화번호만 입력하면 바로 등록됩니다</div>
+            <div id="quick-cust-label" style="font-weight:700;margin-bottom:4px;font-size:0.95rem">"${App.escapeHtml(q)}" 새 고객 등록</div>
+            <div style="font-size:0.8rem;color:var(--text-muted);margin-bottom:10px">전화번호를 입력하면 바로 등록됩니다</div>
             <input type="hidden" id="quick-cust-name-val" value="${App.escapeHtml(q)}">
-            <input type="tel" id="quick-cust-phone" placeholder="전화번호" style="margin-bottom:10px;width:100%;box-sizing:border-box">
+            <input type="tel" id="quick-cust-phone" placeholder="전화번호" style="margin-bottom:8px;width:100%;box-sizing:border-box">
+            <div style="border-top:1px dashed var(--border);padding-top:8px;margin-top:4px;margin-bottom:8px">
+              <div style="font-size:0.82rem;color:var(--text-muted);margin-bottom:6px">반려견 정보 (선택)</div>
+              <div style="display:flex;gap:6px">
+                <input type="text" id="quick-pet-name" placeholder="반려견 이름" style="flex:1;box-sizing:border-box">
+                <input type="text" id="quick-pet-breed" placeholder="견종" style="flex:1;box-sizing:border-box">
+              </div>
+            </div>
             <div style="display:flex;gap:8px">
               <button class="btn btn-primary" id="quick-cust-save" style="flex:1;min-height:44px">등록</button>
               <button class="btn btn-secondary" id="quick-cust-cancel" style="flex:1;min-height:44px">취소</button>
@@ -567,6 +583,13 @@ const App = {
           if (dup) { App.showToast(`이미 등록된 번호입니다 (${dup.name})`, 'error'); return; }
           try {
             const newId = await DB.add('customers', { name, phone });
+            // 반려견도 함께 등록
+            const petName = document.getElementById('quick-pet-name')?.value.trim();
+            const petBreed = document.getElementById('quick-pet-breed')?.value.trim();
+            let newPetId = null;
+            if (petName) {
+              newPetId = await DB.add('pets', { customerId: newId, name: petName, breed: petBreed || '' });
+            }
             hidden.value = newId;
             input.value = name + ' (' + App.formatPhone(phone) + ')';
             dropdown.style.maxHeight = '';
