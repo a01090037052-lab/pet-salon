@@ -621,7 +621,14 @@ App.pages.appointments = {
   },
 
   async showForm(id, preCustomerId, prefill) {
-    let appt = id ? await DB.get('appointments', id) : { date: App.getToday(), status: 'pending', customerId: preCustomerId || null, petId: (prefill && prefill.petId) || null };
+    // 새 예약 시 다음 정시를 기본 시간으로
+    let defaultTime = '';
+    if (!id) {
+      const h = new Date().getHours();
+      const nextH = h < 9 ? 10 : h >= 18 ? 10 : h + 1;
+      defaultTime = String(nextH).padStart(2, '0') + ':00';
+    }
+    let appt = id ? await DB.get('appointments', id) : { date: App.getToday(), time: defaultTime, status: 'pending', customerId: preCustomerId || null, petId: (prefill && prefill.petId) || null };
     if (id && !appt) { App.showToast('예약을 찾을 수 없습니다.', 'error'); App.closeModal(); return; }
     // Apply prefill data from records page (F8)
     if (prefill && !id) {
@@ -662,6 +669,8 @@ App.pages.appointments = {
             <input type="time" id="f-time" value="${appt.time || ''}">
           </div>
         </div>
+        <!-- 선택사항 -->
+        <div style="margin:12px 0 8px;padding-top:10px;border-top:1px dashed var(--border);font-size:0.82rem;color:var(--text-muted)">선택사항</div>
         <div class="form-group">
           <div id="f-services">
             ${serviceCheckboxes}
@@ -900,18 +909,11 @@ App.pages.appointments = {
           }
           App.showToast(`반복 예약 ${created}건이 등록되었습니다.`);
         } else {
-          App.showToast('새 예약이 등록되었습니다.');
-        }
-
-        // 예약 확인 문자 발송 제안
-        const customer = await DB.get('customers', customerId);
-        const pet = await DB.get('pets', petId);
-        const phone = (customer?.phone || '').replace(/\D/g, '');
-        if (phone) {
-          App.closeModal();
-          App.handleRoute();
-          const sendSms = await App.confirm('고객에게 예약 확인 문자를 보내시겠습니까?');
-          if (sendSms) {
+          // 전화번호 있으면 SMS 링크 포함 토스트, 없으면 일반 토스트
+          const customer = await DB.get('customers', customerId);
+          const phone = (customer?.phone || '').replace(/\D/g, '');
+          if (phone) {
+            const pet = await DB.get('pets', petId);
             const msg = await App.buildSms('appointment', {
               '고객명': customer.name || '',
               '반려견명': pet?.name || '',
@@ -920,11 +922,10 @@ App.pages.appointments = {
               '미용사': groomer || ''
             });
             const sep = /iP(hone|ad|od)/.test(navigator.userAgent) || /Mac/.test(navigator.userAgent) ? '&' : '?';
-            const a = document.createElement('a');
-            a.href = `sms:${phone}${sep}body=${encodeURIComponent(msg)}`;
-            a.click();
+            App.showToast(`예약 완료 <a href="sms:${phone}${sep}body=${encodeURIComponent(msg)}" style="color:#fff;text-decoration:underline;margin-left:6px" onclick="event.stopPropagation()">문자 보내기</a>`, 'info');
+          } else {
+            App.showToast('새 예약이 등록되었습니다.');
           }
-          return;
         }
       }
 
