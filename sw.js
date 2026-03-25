@@ -1,4 +1,4 @@
-const CACHE_NAME = 'petsalon-20260325d';
+const CACHE_NAME = 'petsalon-offline';
 const ASSETS = [
   './',
   './index.html',
@@ -33,20 +33,10 @@ self.addEventListener('activate', (e) => {
 
 self.addEventListener('fetch', (e) => {
   const url = new URL(e.request.url);
-  // API requests: network only
-  if (url.pathname.includes('/api/')) {
-    return;
-  }
-  // Network first, fall back to cache (항상 최신 버전 우선)
+  if (url.pathname.includes('/api/')) return;
+
+  // 항상 네트워크에서 가져옴. 오프라인일 때만 캐시 사용.
   e.respondWith(
-    fetch(e.request).then(response => {
-      if (response.ok) {
-        const clone = response.clone();
-        caches.open(CACHE_NAME).then(cache => cache.put(e.request, clone));
-      }
-      return response;
-    }).catch(() => {
-      return caches.match(e.request);
-    })
+    fetch(e.request).catch(() => caches.match(e.request))
   );
 });
