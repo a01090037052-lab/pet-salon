@@ -527,7 +527,7 @@ const App = {
     const renderOptions = (query) => {
       const q = (query || '').toLowerCase();
       const filtered = q ? sorted.filter(c =>
-        (c.name || '').toLowerCase().includes(q) ||
+        (c.name || '').toLowerCase().startsWith(q) ||
         (c.phone || '').replace(/\D/g, '').includes(q.replace(/\D/g, ''))
       ) : sorted;
 
