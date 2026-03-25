@@ -540,8 +540,49 @@ const App = {
         (c.phone || '').replace(/\D/g, '').includes(q.replace(/\D/g, ''))
       ) : sorted;
 
-      if (filtered.length === 0) {
-        dropdown.innerHTML = '<div class="search-select-option"><span style="color:var(--text-muted)">검색 결과 없음</span></div>';
+      if (filtered.length === 0 && q) {
+        // 검색 결과 없으면 바로 인라인 등록 폼 표시 (이름 자동 채움)
+        dropdown.style.maxHeight = 'none';
+        dropdown.innerHTML = `
+          <div style="padding:14px">
+            <div style="font-weight:700;margin-bottom:4px;font-size:0.95rem">"${App.escapeHtml(q)}" 새 고객 등록</div>
+            <div style="font-size:0.8rem;color:var(--text-muted);margin-bottom:10px">전화번호만 입력하면 바로 등록됩니다</div>
+            <input type="hidden" id="quick-cust-name-val" value="${App.escapeHtml(q)}">
+            <input type="tel" id="quick-cust-phone" placeholder="전화번호" style="margin-bottom:10px;width:100%;box-sizing:border-box">
+            <div style="display:flex;gap:8px">
+              <button class="btn btn-primary" id="quick-cust-save" style="flex:1;min-height:44px">등록</button>
+              <button class="btn btn-secondary" id="quick-cust-cancel" style="flex:1;min-height:44px">취소</button>
+            </div>
+          </div>
+        `;
+        setTimeout(() => App.setupPhoneInputs(), 50);
+        setTimeout(() => document.getElementById('quick-cust-phone')?.focus(), 100);
+
+        document.getElementById('quick-cust-save')?.addEventListener('click', async () => {
+          const name = document.getElementById('quick-cust-name-val').value.trim();
+          const phone = document.getElementById('quick-cust-phone').value.trim();
+          if (!phone) { App.showToast('전화번호를 입력해주세요.', 'error'); return; }
+          const allCusts = await DB.getAll('customers');
+          const dup = allCusts.find(c => (c.phone || '').replace(/\D/g, '') === phone.replace(/\D/g, ''));
+          if (dup) { App.showToast(`이미 등록된 번호입니다 (${dup.name})`, 'error'); return; }
+          try {
+            const newId = await DB.add('customers', { name, phone });
+            hidden.value = newId;
+            input.value = name + ' (' + App.formatPhone(phone) + ')';
+            dropdown.style.maxHeight = '';
+            dropdown.classList.remove('open');
+            if (onChange) onChange(newId);
+            App.showToast(`${name} 고객이 등록되었습니다.`);
+          } catch(err) {
+            App.showToast('등록 중 오류가 발생했습니다.', 'error');
+          }
+        });
+        document.getElementById('quick-cust-cancel')?.addEventListener('click', () => {
+          dropdown.style.maxHeight = '';
+          renderOptions('');
+        });
+      } else if (filtered.length === 0) {
+        dropdown.innerHTML = '<div class="search-select-option"><span style="color:var(--text-muted)">고객 이름 또는 전화번호를 입력하세요</span></div>';
       } else {
         dropdown.innerHTML = filtered.slice(0, 20).map(c =>
           `<div class="search-select-option" data-id="${c.id}" data-name="${this.escapeHtml(c.name)} (${this.formatPhone(c.phone)})">
@@ -549,8 +590,6 @@ const App = {
           </div>`
         ).join('');
       }
-      // Add "new customer" option at the bottom
-      dropdown.innerHTML += '<div class="search-select-option search-select-add" style="color:var(--primary);font-weight:700;border-top:1px solid var(--border)">+ 새 고객 등록</div>';
       dropdown.classList.add('open');
     };
 
@@ -568,57 +607,7 @@ const App = {
     });
 
     dropdown.addEventListener('click', (e) => {
-      const addOpt = e.target.closest('.search-select-add');
-      if (addOpt) {
-        e.stopPropagation(); // outsideClickHandler가 드롭다운 닫는 것 방지
-        // 인라인 빠른 고객 등록 (모달 파괴 방지)
-        dropdown.style.maxHeight = 'none';
-        dropdown.innerHTML = `
-          <div style="padding:14px">
-            <div style="font-weight:700;margin-bottom:10px;font-size:0.95rem">빠른 고객 등록</div>
-            <input type="text" id="quick-cust-name" placeholder="고객 이름" style="margin-bottom:8px;width:100%;box-sizing:border-box">
-            <input type="tel" id="quick-cust-phone" placeholder="전화번호" style="margin-bottom:10px;width:100%;box-sizing:border-box">
-            <div style="display:flex;gap:8px">
-              <button class="btn btn-primary" id="quick-cust-save" style="flex:1;min-height:44px">등록</button>
-              <button class="btn btn-secondary" id="quick-cust-cancel" style="flex:1;min-height:44px">취소</button>
-            </div>
-          </div>
-        `;
-        dropdown.classList.add('open');
-        // Auto-format phone input
-        setTimeout(() => App.setupPhoneInputs(), 50);
-        setTimeout(() => document.getElementById('quick-cust-name')?.focus(), 100);
-
-        document.getElementById('quick-cust-save')?.addEventListener('click', async () => {
-          const name = document.getElementById('quick-cust-name').value.trim();
-          const phone = document.getElementById('quick-cust-phone').value.trim();
-          if (!name) { App.showToast('이름을 입력해주세요.', 'error'); return; }
-          if (!phone) { App.showToast('전화번호를 입력해주세요.', 'error'); return; }
-
-          // Check phone duplicate
-          const allCustomers = await DB.getAll('customers');
-          const dup = allCustomers.find(c => (c.phone || '').replace(/\D/g, '') === phone.replace(/\D/g, ''));
-          if (dup) { App.showToast(`이미 등록된 번호입니다 (${dup.name})`, 'error'); return; }
-
-          try {
-            const newId = await DB.add('customers', { name, phone });
-            hidden.value = newId;
-            input.value = name + ' (' + App.formatPhone(phone) + ')';
-            dropdown.style.maxHeight = '';
-            dropdown.classList.remove('open');
-            if (onChange) onChange(newId);
-            App.showToast(`${name} 고객이 등록되었습니다.`);
-          } catch(err) {
-            App.showToast('등록 중 오류가 발생했습니다.', 'error');
-          }
-        });
-
-        document.getElementById('quick-cust-cancel')?.addEventListener('click', () => {
-          dropdown.style.maxHeight = '';
-          renderOptions(input.value);
-        });
-        return;
-      }
+      e.stopPropagation(); // outsideClickHandler가 드롭다운 닫는 것 방지
       const opt = e.target.closest('.search-select-option');
       if (opt && opt.dataset.id) {
         hidden.value = opt.dataset.id;
