@@ -570,6 +570,7 @@ const App = {
     dropdown.addEventListener('click', (e) => {
       const addOpt = e.target.closest('.search-select-add');
       if (addOpt) {
+        e.stopPropagation(); // outsideClickHandler가 드롭다운 닫는 것 방지
         // 인라인 빠른 고객 등록 (모달 파괴 방지)
         dropdown.style.maxHeight = 'none';
         dropdown.innerHTML = `
