@@ -540,61 +540,16 @@ const App = {
           if (labelEl) labelEl.textContent = `"${q}" 새 고객 등록`;
           return;
         }
-        // 검색 결과 없으면 바로 인라인 등록 폼 표시
-        dropdown.style.maxHeight = 'none';
+        // 검색 결과 없음 + 새 고객 등록 버튼 (자동 폼 표시 안 함)
         dropdown.innerHTML = `
-          <div style="padding:14px">
-            <div id="quick-cust-label" style="font-weight:700;margin-bottom:4px;font-size:0.95rem">"${App.escapeHtml(q)}" 새 고객 등록</div>
-            <div style="font-size:0.8rem;color:var(--text-muted);margin-bottom:10px">전화번호를 입력하면 바로 등록됩니다</div>
-            <input type="hidden" id="quick-cust-name-val" value="${App.escapeHtml(q)}">
-            <input type="tel" id="quick-cust-phone" placeholder="전화번호" style="margin-bottom:8px;width:100%;box-sizing:border-box">
-            <div style="border-top:1px dashed var(--border);padding-top:8px;margin-top:4px;margin-bottom:8px">
-              <div style="font-size:0.82rem;color:var(--text-muted);margin-bottom:6px">반려견 정보 (선택)</div>
-              <div style="display:flex;gap:6px">
-                <input type="text" id="quick-pet-name" placeholder="반려견 이름" style="flex:1;box-sizing:border-box">
-                <input type="text" id="quick-pet-breed" placeholder="견종" style="flex:1;box-sizing:border-box">
-              </div>
-            </div>
-            <div style="display:flex;gap:8px">
-              <button class="btn btn-primary" id="quick-cust-save" style="flex:1;min-height:44px">등록</button>
-              <button class="btn btn-secondary" id="quick-cust-cancel" style="flex:1;min-height:44px">취소</button>
-            </div>
-          </div>
+          <div class="search-select-option"><span style="color:var(--text-muted)">검색 결과 없음</span></div>
+          <div class="search-select-option" style="color:var(--primary);font-weight:700;border-top:1px solid var(--border);text-align:center" id="btn-inline-new-cust-empty">+ "${App.escapeHtml(q)}" 새 고객 등록</div>
         `;
-        setTimeout(() => App.setupPhoneInputs(), 50);
-        setTimeout(() => document.getElementById('quick-cust-phone')?.focus(), 100);
-
-        document.getElementById('quick-cust-save')?.addEventListener('click', async (ev) => {
+        document.getElementById('btn-inline-new-cust-empty')?.addEventListener('click', (ev) => {
           ev.stopPropagation();
-          const name = document.getElementById('quick-cust-name-val').value.trim();
-          const phone = document.getElementById('quick-cust-phone').value.trim();
-          if (!phone) { App.showToast('전화번호를 입력해주세요.', 'error'); return; }
-          const allCusts = await DB.getAll('customers');
-          const dup = allCusts.find(c => (c.phone || '').replace(/\D/g, '') === phone.replace(/\D/g, ''));
-          if (dup) { App.showToast(`이미 등록된 번호입니다 (${dup.name})`, 'error'); return; }
-          try {
-            const newId = await DB.add('customers', { name, phone });
-            const petName = document.getElementById('quick-pet-name')?.value.trim();
-            const petBreed = document.getElementById('quick-pet-breed')?.value.trim();
-            if (petName) {
-              await DB.add('pets', { customerId: newId, name: petName, breed: petBreed || '' });
-            }
-            hidden.value = newId;
-            input.value = name + ' (' + App.formatPhone(phone) + ')';
-            dropdown.style.maxHeight = '';
-            dropdown.classList.remove('open');
-            if (onChange) onChange(newId);
-            App.showToast(`${name} 고객이 등록되었습니다.`);
-          } catch(err) {
-            App.showToast('등록 중 오류가 발생했습니다.', 'error');
-          }
+          const currentQ = input.value.trim();
+          App._showInlineCustomerForm(dropdown, hidden, input, onChange, currentQ);
         });
-        document.getElementById('quick-cust-cancel')?.addEventListener('click', (ev) => {
-          ev.stopPropagation();
-          dropdown.style.maxHeight = '';
-          renderOptions('');
-        });
-        return; // dropdown.classList.add('open')은 이미 열려있으므로 스킵
       } else if (filtered.length === 0) {
         dropdown.innerHTML = '<div class="search-select-option"><span style="color:var(--text-muted)">고객 이름 또는 전화번호를 입력하세요</span></div>';
       } else {
@@ -613,60 +568,7 @@ const App = {
       // "새 고객 등록" 버튼 클릭 시 인라인 폼 표시
       document.getElementById('btn-inline-new-cust')?.addEventListener('click', (ev) => {
         ev.stopPropagation();
-        const currentQ = input.value.trim();
-        dropdown.style.maxHeight = 'none';
-        dropdown.innerHTML = `
-          <div style="padding:14px">
-            <div id="quick-cust-label" style="font-weight:700;margin-bottom:4px;font-size:0.95rem">"${App.escapeHtml(currentQ)}" 새 고객 등록</div>
-            <div style="font-size:0.8rem;color:var(--text-muted);margin-bottom:10px">전화번호를 입력하면 바로 등록됩니다</div>
-            <input type="hidden" id="quick-cust-name-val" value="${App.escapeHtml(currentQ)}">
-            <input type="tel" id="quick-cust-phone" placeholder="전화번호" style="margin-bottom:8px;width:100%;box-sizing:border-box">
-            <div style="border-top:1px dashed var(--border);padding-top:8px;margin-top:4px;margin-bottom:8px">
-              <div style="font-size:0.82rem;color:var(--text-muted);margin-bottom:6px">반려견 정보 (선택)</div>
-              <div style="display:flex;gap:6px">
-                <input type="text" id="quick-pet-name" placeholder="반려견 이름" style="flex:1;box-sizing:border-box">
-                <input type="text" id="quick-pet-breed" placeholder="견종" style="flex:1;box-sizing:border-box">
-              </div>
-            </div>
-            <div style="display:flex;gap:8px">
-              <button class="btn btn-primary" id="quick-cust-save" style="flex:1;min-height:44px">등록</button>
-              <button class="btn btn-secondary" id="quick-cust-cancel" style="flex:1;min-height:44px">취소</button>
-            </div>
-          </div>
-        `;
-        setTimeout(() => App.setupPhoneInputs(), 50);
-        setTimeout(() => document.getElementById('quick-cust-phone')?.focus(), 100);
-
-        document.getElementById('quick-cust-save')?.addEventListener('click', async (e2) => {
-          e2.stopPropagation();
-          const name = document.getElementById('quick-cust-name-val').value.trim();
-          const phone = document.getElementById('quick-cust-phone').value.trim();
-          if (!phone) { App.showToast('전화번호를 입력해주세요.', 'error'); return; }
-          const allCusts = await DB.getAll('customers');
-          const dup = allCusts.find(c => (c.phone || '').replace(/\D/g, '') === phone.replace(/\D/g, ''));
-          if (dup) { App.showToast(`이미 등록된 번호입니다 (${dup.name})`, 'error'); return; }
-          try {
-            const newId = await DB.add('customers', { name, phone });
-            const petName = document.getElementById('quick-pet-name')?.value.trim();
-            const petBreed = document.getElementById('quick-pet-breed')?.value.trim();
-            if (petName) {
-              await DB.add('pets', { customerId: newId, name: petName, breed: petBreed || '' });
-            }
-            hidden.value = newId;
-            input.value = name + ' (' + App.formatPhone(phone) + ')';
-            dropdown.style.maxHeight = '';
-            dropdown.classList.remove('open');
-            if (onChange) onChange(newId);
-            App.showToast(`${name} 고객이 등록되었습니다.`);
-          } catch(err) {
-            App.showToast('등록 중 오류가 발생했습니다.', 'error');
-          }
-        });
-        document.getElementById('quick-cust-cancel')?.addEventListener('click', (e2) => {
-          e2.stopPropagation();
-          dropdown.style.maxHeight = '';
-          renderOptions(input.value);
-        });
+        App._showInlineCustomerForm(dropdown, hidden, input, onChange, input.value.trim());
       });
     };
 
@@ -702,6 +604,64 @@ const App = {
     }
     container._outsideClickHandler = outsideClickHandler;
     document.addEventListener('click', outsideClickHandler);
+  },
+
+  // 인라인 빠른 고객 등록 폼 표시
+  _showInlineCustomerForm(dropdown, hidden, input, onChange, nameVal) {
+    dropdown.style.maxHeight = 'none';
+    dropdown.innerHTML = `
+      <div style="padding:14px">
+        <div id="quick-cust-label" style="font-weight:700;margin-bottom:4px;font-size:0.95rem">"${App.escapeHtml(nameVal)}" 새 고객 등록</div>
+        <div style="font-size:0.8rem;color:var(--text-muted);margin-bottom:10px">전화번호를 입력하면 바로 등록됩니다</div>
+        <input type="hidden" id="quick-cust-name-val" value="${App.escapeHtml(nameVal)}">
+        <input type="tel" id="quick-cust-phone" placeholder="전화번호" style="margin-bottom:8px;width:100%;box-sizing:border-box">
+        <div style="border-top:1px dashed var(--border);padding-top:8px;margin-top:4px;margin-bottom:8px">
+          <div style="font-size:0.82rem;color:var(--text-muted);margin-bottom:6px">반려견 정보 (선택)</div>
+          <div style="display:flex;gap:6px">
+            <input type="text" id="quick-pet-name" placeholder="반려견 이름" style="flex:1;box-sizing:border-box">
+            <input type="text" id="quick-pet-breed" placeholder="견종" style="flex:1;box-sizing:border-box">
+          </div>
+        </div>
+        <div style="display:flex;gap:8px">
+          <button class="btn btn-primary" id="quick-cust-save" style="flex:1;min-height:44px">등록</button>
+          <button class="btn btn-secondary" id="quick-cust-cancel" style="flex:1;min-height:44px">취소</button>
+        </div>
+      </div>
+    `;
+    setTimeout(() => App.setupPhoneInputs(), 50);
+    setTimeout(() => document.getElementById('quick-cust-phone')?.focus(), 100);
+
+    document.getElementById('quick-cust-save')?.addEventListener('click', async (ev) => {
+      ev.stopPropagation();
+      const name = document.getElementById('quick-cust-name-val').value.trim();
+      const phone = document.getElementById('quick-cust-phone').value.trim();
+      if (!name) { App.showToast('이름을 입력해주세요.', 'error'); return; }
+      if (!phone) { App.showToast('전화번호를 입력해주세요.', 'error'); return; }
+      const allCusts = await DB.getAll('customers');
+      const dup = allCusts.find(c => (c.phone || '').replace(/\D/g, '') === phone.replace(/\D/g, ''));
+      if (dup) { App.showToast(`이미 등록된 번호입니다 (${dup.name})`, 'error'); return; }
+      try {
+        const newId = await DB.add('customers', { name, phone });
+        const petName = document.getElementById('quick-pet-name')?.value.trim();
+        const petBreed = document.getElementById('quick-pet-breed')?.value.trim();
+        if (petName) {
+          await DB.add('pets', { customerId: newId, name: petName, breed: petBreed || '' });
+        }
+        hidden.value = newId;
+        input.value = name + ' (' + App.formatPhone(phone) + ')';
+        dropdown.style.maxHeight = '';
+        dropdown.classList.remove('open');
+        if (onChange) onChange(newId);
+        App.showToast(`${name} 고객이 등록되었습니다.`);
+      } catch(err) {
+        App.showToast('등록 중 오류가 발생했습니다.', 'error');
+      }
+    });
+    document.getElementById('quick-cust-cancel')?.addEventListener('click', (ev) => {
+      ev.stopPropagation();
+      dropdown.style.maxHeight = '';
+      dropdown.classList.remove('open');
+    });
   },
 
   async getPetOptions(customerId, selectedId) {
