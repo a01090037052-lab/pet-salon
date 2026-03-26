@@ -682,8 +682,20 @@ const App = {
     const pets = await DB.getByIndex('pets', 'customerId', Number(customerId));
     if (pets.length === 0) return '<option value="">등록된 반려견이 없습니다</option>';
     return pets
-      .map(p => `<option value="${p.id}" ${p.id === selectedId ? 'selected' : ''}>${this.escapeHtml(p.name)} (${this.escapeHtml(p.breed || '')})</option>`)
+      .map(p => {
+        const age = p.birthYear ? (new Date().getFullYear() - p.birthYear) + '살' : (p.birthDate ? this.calculatePetAge(p.birthDate) : '');
+        const info = [p.breed, age].filter(Boolean).join(', ');
+        return `<option value="${p.id}" ${p.id === selectedId ? 'selected' : ''}>${this.escapeHtml(p.name)}${info ? ' (' + this.escapeHtml(info) + ')' : ''}</option>`;
+      })
       .join('');
+  },
+
+  calculatePetAge(birthDate) {
+    const birth = new Date(birthDate);
+    const now = new Date();
+    let years = now.getFullYear() - birth.getFullYear();
+    if (now.getMonth() < birth.getMonth()) years--;
+    return years > 0 ? years + '살' : '1살 미만';
   },
 
   // 가격을 축약 표시 (예: 50000 -> "5만", 15000 -> "1.5만")

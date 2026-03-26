@@ -205,22 +205,15 @@ App.pages.revenue = {
                 <div style="font-size:1.6rem;font-weight:800;color:var(--primary)">${App.formatCurrency(weekRevenue)}</div>
               </div>
               <div style="display:flex;align-items:flex-end;gap:8px;height:200px;padding:0 4px">
-                ${(() => {
-                  const nonZero = weekData.filter(d => d.rev > 0);
-                  const wMin = nonZero.length > 1 ? Math.min(...nonZero.map(d => d.rev)) : 0;
-                  const wBase = wMin * 0.7;
-                  const wRange = weekMax - wBase || 1;
-                  return weekData.map(d => {
-                    const pct = d.rev > 0 ? Math.max(8, Math.round(((d.rev - wBase) / wRange) * 100)) : 0;
-                    const intensity = d.rev > 0 ? (0.5 + 0.5 * (d.rev / weekMax)) : 0;
-                    const isToday = d.date === today;
-                    return `<div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:4px" title="${d.date}: ${App.formatCurrency(d.rev)}">
-                      <span style="font-size:0.75rem;color:var(--text-secondary);font-weight:700">${d.rev > 0 ? (d.rev >= 10000 ? Math.round(d.rev / 10000) + '만' : App.formatCurrency(d.rev)) : ''}</span>
-                      <div style="width:100%;background:${isToday ? 'linear-gradient(to top,var(--success),#34D399)' : `linear-gradient(to top,var(--primary),rgba(129,140,248,${intensity}))`};border-radius:6px 6px 0 0;min-height:4px;height:${pct}%"></div>
-                      <span style="font-size:0.78rem;font-weight:${isToday ? '800' : '500'};color:${isToday ? 'var(--primary)' : 'var(--text-muted)'}">${d.label}</span>
-                    </div>`;
-                  }).join('');
-                })()}
+                ${weekData.map(d => {
+                  const pct = d.rev > 0 ? Math.max(5, Math.round((d.rev / weekMax) * 100)) : 0;
+                  const isToday = d.date === today;
+                  return `<div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:4px" title="${d.date}: ${App.formatCurrency(d.rev)}">
+                    <span style="font-size:0.75rem;color:var(--text-secondary);font-weight:700">${d.rev > 0 ? (d.rev >= 10000 ? Math.round(d.rev / 10000) + '만' : App.formatCurrency(d.rev)) : ''}</span>
+                    <div style="width:100%;background:${isToday ? 'linear-gradient(to top,var(--success),#34D399)' : 'linear-gradient(to top,var(--primary),#818CF8)'};border-radius:6px 6px 0 0;min-height:4px;height:${pct}%"></div>
+                    <span style="font-size:0.78rem;font-weight:${isToday ? '800' : '500'};color:${isToday ? 'var(--primary)' : 'var(--text-muted)'}">${d.label}</span>
+                  </div>`;
+                }).join('')}
               </div>
             </div>
           </div>
@@ -260,21 +253,14 @@ App.pages.revenue = {
               <div style="font-size:1.6rem;font-weight:800;color:var(--primary)">${App.formatCurrency(monthRevenue)}</div>
             </div>
             <div style="display:flex;align-items:flex-end;gap:2px;height:200px;padding:0;overflow-x:auto">
-              ${(() => {
-                const mNonZero = monthData.filter(d => d.rev > 0);
-                const mMin = mNonZero.length > 1 ? Math.min(...mNonZero.map(d => d.rev)) : 0;
-                const mBase = mMin * 0.7;
-                const mRange = monthMax - mBase || 1;
-                return monthData.map(d => {
-                  const pct = d.rev > 0 ? Math.max(6, Math.round(((d.rev - mBase) / mRange) * 100)) : 0;
-                  const intensity = d.rev > 0 ? (0.4 + 0.6 * (d.rev / monthMax)) : 0;
+              ${monthData.map(d => {
+                  const pct = d.rev > 0 ? Math.max(5, Math.round((d.rev / monthMax) * 100)) : 0;
                   const isToday = d.date === today;
                   return `<div style="flex:1;min-width:14px;display:flex;flex-direction:column;align-items:center;gap:2px" title="${d.date}: ${App.formatCurrency(d.rev)}">
-                    <div style="width:100%;background:${isToday ? 'linear-gradient(to top,var(--success),#34D399)' : `linear-gradient(to top,var(--primary),rgba(129,140,248,${intensity}))`};border-radius:4px 4px 0 0;min-height:2px;height:${pct}%"></div>
+                    <div style="width:100%;background:${isToday ? 'linear-gradient(to top,var(--success),#34D399)' : 'linear-gradient(to top,var(--primary),#818CF8)'};border-radius:4px 4px 0 0;min-height:2px;height:${pct}%"></div>
                     <span style="font-size:0.55rem;color:${isToday ? 'var(--primary)' : 'var(--text-muted)'};font-weight:${isToday ? '800' : '400'}">${d.day % 5 === 1 || isToday ? d.day : ''}</span>
                   </div>`;
-                }).join('');
-              })()}
+                }).join('')}
             </div>
           </div>
         </div>
@@ -289,24 +275,18 @@ App.pages.revenue = {
           </div>
           <div class="card-body">
             <div style="display:flex;align-items:flex-end;gap:12px;height:220px;padding:0 8px">
-              ${(() => {
-                const tNonZero = monthlyTrend.filter(m => m.rev > 0);
-                const tMin = tNonZero.length > 1 ? Math.min(...tNonZero.map(m => m.rev)) : 0;
-                const tBase = tMin * 0.7;
-                const tRange = trendMax - tBase || 1;
-                return monthlyTrend.map(m => {
-                  const pct = m.rev > 0 ? Math.max(10, Math.round(((m.rev - tBase) / tRange) * 100)) : 0;
-                  const intensity = m.rev > 0 ? (0.5 + 0.5 * (m.rev / trendMax)) : 0;
+              ${monthlyTrend.map(m => {
+                  const pct = m.rev > 0 ? Math.max(5, Math.round((m.rev / trendMax) * 100)) : 0;
                   const isCurrent = m.month === thisMonth;
                   return `<div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:6px" title="${m.month}: ${App.formatCurrency(m.rev)} (${m.count}건)">
                     <span style="font-size:0.75rem;color:var(--text-secondary);font-weight:700">${m.rev >= 10000 ? Math.round(m.rev / 10000) + '만' : (m.rev > 0 ? App.formatCurrency(m.rev) : '')}</span>
-                    <div style="width:100%;background:${isCurrent ? 'linear-gradient(to top,var(--success),#34D399)' : `linear-gradient(to top,var(--primary),rgba(129,140,248,${intensity}))`};border-radius:8px 8px 0 0;min-height:4px;height:${pct}%"></div>
+                    <div style="width:100%;background:${isCurrent ? 'linear-gradient(to top,var(--success),#34D399)' : 'linear-gradient(to top,var(--primary),#818CF8)'};border-radius:8px 8px 0 0;min-height:4px;height:${pct}%"></div>
                     <div style="text-align:center">
                       <div style="font-size:0.78rem;font-weight:${isCurrent ? '800' : '500'};color:${isCurrent ? 'var(--primary)' : 'var(--text-muted)'}">${m.label}</div>
                       <div style="font-size:0.65rem;color:var(--text-muted)">${m.count}건</div>
                     </div>
                   </div>`;
-                }).join('');
+                }).join('')
               })()}
             </div>
           </div>

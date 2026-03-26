@@ -129,7 +129,7 @@ App.pages.pets = {
     const customer = await DB.get('customers', pet.customerId);
     const records = (await DB.getByIndex('records', 'petId', petId)).sort((a, b) => (b.date || '').localeCompare(a.date || ''));
 
-    const age = pet.birthDate ? this.calculateAge(pet.birthDate) : '-';
+    const age = pet.birthYear ? (new Date().getFullYear() - pet.birthYear) + '살' : (pet.birthDate ? this.calculateAge(pet.birthDate) : '-');
 
     container.innerHTML = `
       <div class="back-link" onclick="App.navigate('pets')">&#x2190; 반려견 목록</div>
@@ -160,7 +160,7 @@ App.pages.pets = {
         <div class="info-grid">
           <div class="info-item"><label>견종</label><span>${App.escapeHtml(pet.breed || '-')}</span></div>
           <div class="info-item"><label>몸무게</label><span>${pet.weight ? pet.weight + 'kg' : '-'}</span></div>
-          <div class="info-item"><label>생년월일</label><span>${pet.birthDate ? App.formatDate(pet.birthDate) + ' (' + age + ')' : '-'}</span></div>
+          <div class="info-item"><label>나이</label><span>${age}</span></div>
           <div class="info-item"><label>성별</label><span>${this.getGenderLabel(pet.gender)} ${pet.neutered ? '(중성화 완료)' : ''}</span></div>
           <div class="info-item"><label>사이즈</label><span>${this.getSizeLabel(pet.size, pet.weight)}</span></div>
         </div>
@@ -313,8 +313,9 @@ App.pages.pets = {
             </select>
           </div>
           <div class="form-group">
-            <label class="form-label">생년월일</label>
-            <input type="date" id="f-birthDate" value="${pet.birthDate || ''}">
+            <label class="form-label">나이 (살)</label>
+            <input type="number" id="f-age" value="${pet.birthYear ? (new Date().getFullYear() - pet.birthYear) : (pet.birthDate ? (new Date().getFullYear() - new Date(pet.birthDate).getFullYear()) : '')}" placeholder="예: 3" min="0" max="30" step="1">
+            <div class="form-hint">입력한 나이는 매년 자동으로 업데이트됩니다</div>
           </div>
         </div>
         <div class="form-group">
@@ -430,7 +431,9 @@ App.pages.pets = {
       const breed = document.getElementById('f-breed').value.trim();
       const weight = parseFloat(document.getElementById('f-weight').value) || null;
       const gender = document.getElementById('f-gender').value;
-      const birthDate = document.getElementById('f-birthDate').value;
+      const ageInput = Number(document.getElementById('f-age')?.value);
+      const birthYear = ageInput > 0 ? (new Date().getFullYear() - ageInput) : null;
+      const birthDate = birthYear ? `${birthYear}-01-01` : '';
       const neutered = document.getElementById('f-neutered').checked;
       const size = document.getElementById('f-size').value;
       const temperament = document.getElementById('f-temperament').value.trim();
@@ -444,7 +447,7 @@ App.pages.pets = {
       if (!customerId) { App.showToast('보호자를 선택해주세요.', 'error'); App.highlightField('f-customerId'); return; }
       if (!name) { App.showToast('이름을 입력해주세요.', 'error'); App.highlightField('f-name'); return; }
 
-      const data = { customerId, name, breed, weight, gender, birthDate, neutered, size, temperament, healthNotes, allergies, memo, preferredStyle, groomingCycle, photo };
+      const data = { customerId, name, breed, weight, gender, birthDate, birthYear, neutered, size, temperament, healthNotes, allergies, memo, preferredStyle, groomingCycle, photo };
 
       if (id) {
         const existing = await DB.get('pets', id);

@@ -806,17 +806,18 @@ App.pages.records = {
           }
         }
 
-        // 고객 자동 분류 (방문 횟수 기반, 신규 0-2, 일반 3-9, 단골 10+)
+        // 고객 자동 분류 (방문 횟수 기반, 신규 1-3, 일반 4-10, 단골 11+)
         try {
           const custRecords = await DB.getByIndex('records', 'customerId', customerId);
           const visitCount = custRecords.length + 1; // 현재 저장 포함
 
           const cust = await DB.get('customers', customerId);
           if (cust) {
-            const tags = (cust.tags || []).filter(t => t === 'vip' || t === 'caution');
-            if (visitCount <= 2) {
+            const autoTags = ['new', 'normal', 'regular'];
+            const tags = (cust.tags || []).filter(t => !autoTags.includes(t));
+            if (visitCount <= 3) {
               tags.push('new');
-            } else if (visitCount <= 9) {
+            } else if (visitCount <= 10) {
               tags.push('normal');
             } else {
               tags.push('regular');

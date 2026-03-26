@@ -100,28 +100,7 @@ App.pages.customers = {
                       <button class="btn btn-primary" onclick="document.getElementById('btn-add-customer').click()">첫 고객 등록하기</button>
                     </div>
                   </td></tr>
-                ` : sorted.map(c => {
-                  const initial = c.name ? c.name.charAt(0) : '?';
-                  const daysAgo = lastVisit[c.id] ? App.getDaysAgo(lastVisit[c.id]) : null;
-                  const absenceBadge = daysAgo >= 60 ? '<span class="badge badge-danger" style="margin-left:6px;font-size:0.65rem">60일+</span>' : daysAgo >= 30 ? '<span class="badge badge-warning" style="margin-left:6px;font-size:0.65rem">30일+</span>' : '';
-                  return `
-                  <tr data-id="${c.id}" data-tags="${(c.tags || []).join(',')}" class="clickable-row" style="cursor:pointer">
-                    <td>
-                      <div style="display:flex;align-items:center;gap:10px">
-                        <div style="width:34px;height:34px;border-radius:10px;background:linear-gradient(135deg,var(--primary-light),#E0E7FF);display:flex;align-items:center;justify-content:center;font-weight:800;color:var(--primary);font-size:0.85rem;flex-shrink:0">${App.escapeHtml(initial)}</div>
-                        <strong>${App.escapeHtml(c.name)}</strong>${this.getTagBadges(c.tags)}${absenceBadge}
-                      </div>
-                    </td>
-                    <td><a href="tel:${App.escapeHtml((c.phone || '').replace(/\D/g, ''))}" style="color:var(--primary)" onclick="event.stopPropagation()">${App.formatPhone(c.phone)}</a></td>
-                    <td><span class="badge badge-info">${petCount[c.id] || 0}마리</span></td>
-                    <td>${lastVisit[c.id] ? App.getRelativeTime(lastVisit[c.id]) : '-'}</td>
-                    <td>${App.formatDate(c.createdAt)}</td>
-                    <td class="table-actions">
-                      <button class="btn-icon btn-edit-customer" data-id="${c.id}" title="수정">&#x270F;</button>
-                      <button class="btn-icon btn-delete-customer" data-id="${c.id}" title="삭제" style="color:var(--danger)">&#x1F5D1;</button>
-                    </td>
-                  </tr>`;
-                }).join('')}
+                ` : sorted.slice(0, 20).map(c => this._renderCustomerRow(c, petCount, lastVisit)).join('')}
               </tbody>
             </table>
           </div>
@@ -134,34 +113,20 @@ App.pages.customers = {
                 <div class="empty-state-text">등록된 고객이 없습니다</div>
                 <button class="btn btn-primary" onclick="document.getElementById('btn-add-customer').click()">첫 고객 등록하기</button>
               </div>
-            ` : sorted.map(c => {
-              const initial = c.name ? c.name.charAt(0) : '?';
-              const daysAgoM = lastVisit[c.id] ? App.getDaysAgo(lastVisit[c.id]) : null;
-              const absenceBadgeM = daysAgoM >= 60 ? '<span class="badge badge-danger" style="margin-left:6px;font-size:0.65rem">60일+</span>' : daysAgoM >= 30 ? '<span class="badge badge-warning" style="margin-left:6px;font-size:0.65rem">30일+</span>' : '';
-              return `
-              <div class="mobile-card clickable-row" data-id="${c.id}" data-tags="${(c.tags || []).join(',')}" style="cursor:pointer">
-                <div class="mobile-card-header">
-                  <div style="display:flex;align-items:center;gap:10px">
-                    <div class="mobile-card-avatar">${App.escapeHtml(initial)}</div>
-                    <strong>${App.escapeHtml(c.name)}</strong>${this.getTagBadges(c.tags)}${absenceBadgeM}
-                  </div>
-                  <span class="badge badge-info">${petCount[c.id] || 0}마리</span>
-                </div>
-                <div class="mobile-card-body">
-                  <a href="tel:${App.escapeHtml((c.phone || '').replace(/\D/g, ''))}" class="mobile-card-phone" onclick="event.stopPropagation()">&#x1F4DE; ${App.formatPhone(c.phone)}</a>
-                  <span class="mobile-card-meta-text">${lastVisit[c.id] ? '최근 방문: ' + App.getRelativeTime(lastVisit[c.id]) : '방문 기록 없음'}</span>
-                  <div style="display:flex;gap:4px;margin-top:8px;border-top:1px solid var(--border-light);padding-top:8px">
-                    <button class="btn btn-sm btn-secondary btn-edit-customer" data-id="${c.id}" style="flex:1" onclick="event.stopPropagation()">수정</button>
-                    <button class="btn btn-sm btn-danger btn-delete-customer" data-id="${c.id}" style="flex:1" onclick="event.stopPropagation()">삭제</button>
-                  </div>
-                </div>
-              </div>`;
-            }).join('')}
+            ` : sorted.slice(0, 20).map(c => this._renderCustomerCard(c, petCount, lastVisit)).join('')}
           </div>
+
+          ${sorted.length > 20 ? `<div style="text-align:center;padding:16px"><button class="btn btn-secondary" id="btn-load-more-customers" style="min-width:200px">더 보기 (${sorted.length - 20}명 남음)</button></div>` : ''}
 
         </div>
       </div>
     `;
+
+    // 더 보기 데이터 캐시
+    this._sortedCustomers = sorted;
+    this._petCount = petCount;
+    this._lastVisit = lastVisit;
+    this._loadedCount = 20;
   },
 
   async renderDetail(container, customerId) {
@@ -304,6 +269,30 @@ App.pages.customers = {
   async init(params) {
     // Add customer button
     document.getElementById('btn-add-customer')?.addEventListener('click', () => this.showForm());
+
+    // 더 보기 버튼
+    document.getElementById('btn-load-more-customers')?.addEventListener('click', () => {
+      if (!this._sortedCustomers) return;
+      const next = this._sortedCustomers.slice(this._loadedCount, this._loadedCount + 20);
+      if (next.length === 0) return;
+      // 테이블에 추가
+      const tbody = document.querySelector('#customer-table tbody');
+      if (tbody) tbody.insertAdjacentHTML('beforeend', next.map(c => this._renderCustomerRow(c, this._petCount, this._lastVisit)).join(''));
+      // 모바일 카드에 추가
+      const cardList = document.getElementById('customer-card-list');
+      if (cardList) cardList.insertAdjacentHTML('beforeend', next.map(c => this._renderCustomerCard(c, this._petCount, this._lastVisit)).join(''));
+      this._loadedCount += next.length;
+      // 이벤트 재바인딩
+      this._bindRowEvents();
+      // 더 보기 버튼 업데이트
+      const btn = document.getElementById('btn-load-more-customers');
+      const remaining = this._sortedCustomers.length - this._loadedCount;
+      if (remaining <= 0) {
+        btn?.remove();
+      } else {
+        if (btn) btn.textContent = `더 보기 (${remaining}명 남음)`;
+      }
+    });
 
     // Sort
     document.getElementById('customer-sort')?.addEventListener('change', (e) => {
@@ -532,6 +521,52 @@ App.pages.customers = {
       console.error('Delete customer error:', err);
       App.showToast('삭제 중 오류가 발생했습니다.', 'error');
     }
+  },
+
+  _renderCustomerRow(c, petCount, lastVisit) {
+    const initial = c.name ? c.name.charAt(0) : '?';
+    const daysAgo = lastVisit[c.id] ? App.getDaysAgo(lastVisit[c.id]) : null;
+    const absenceBadge = daysAgo >= 60 ? '<span class="badge badge-danger" style="margin-left:6px;font-size:0.65rem">60일+</span>' : daysAgo >= 30 ? '<span class="badge badge-warning" style="margin-left:6px;font-size:0.65rem">30일+</span>' : '';
+    return `<tr data-id="${c.id}" data-tags="${(c.tags || []).join(',')}" class="clickable-row" style="cursor:pointer">
+      <td><div style="display:flex;align-items:center;gap:10px"><div style="width:34px;height:34px;border-radius:10px;background:linear-gradient(135deg,var(--primary-light),#E0E7FF);display:flex;align-items:center;justify-content:center;font-weight:800;color:var(--primary);font-size:0.85rem;flex-shrink:0">${App.escapeHtml(initial)}</div><strong>${App.escapeHtml(c.name)}</strong>${this.getTagBadges(c.tags)}${absenceBadge}</div></td>
+      <td><a href="tel:${App.escapeHtml((c.phone || '').replace(/\D/g, ''))}" style="color:var(--primary)" onclick="event.stopPropagation()">${App.formatPhone(c.phone)}</a></td>
+      <td><span class="badge badge-info">${petCount[c.id] || 0}마리</span></td>
+      <td>${lastVisit[c.id] ? App.getRelativeTime(lastVisit[c.id]) : '-'}</td>
+      <td>${App.formatDate(c.createdAt)}</td>
+      <td class="table-actions"><button class="btn-icon btn-edit-customer" data-id="${c.id}" title="수정">&#x270F;</button><button class="btn-icon btn-delete-customer" data-id="${c.id}" title="삭제" style="color:var(--danger)">&#x1F5D1;</button></td>
+    </tr>`;
+  },
+
+  _renderCustomerCard(c, petCount, lastVisit) {
+    const initial = c.name ? c.name.charAt(0) : '?';
+    const daysAgo = lastVisit[c.id] ? App.getDaysAgo(lastVisit[c.id]) : null;
+    const absenceBadge = daysAgo >= 60 ? '<span class="badge badge-danger" style="margin-left:6px;font-size:0.65rem">60일+</span>' : daysAgo >= 30 ? '<span class="badge badge-warning" style="margin-left:6px;font-size:0.65rem">30일+</span>' : '';
+    return `<div class="mobile-card clickable-row" data-id="${c.id}" data-tags="${(c.tags || []).join(',')}" style="cursor:pointer">
+      <div class="mobile-card-header"><div style="display:flex;align-items:center;gap:10px"><div class="mobile-card-avatar">${App.escapeHtml(initial)}</div><strong>${App.escapeHtml(c.name)}</strong>${this.getTagBadges(c.tags)}${absenceBadge}</div><span class="badge badge-info">${petCount[c.id] || 0}마리</span></div>
+      <div class="mobile-card-body"><a href="tel:${App.escapeHtml((c.phone || '').replace(/\D/g, ''))}" class="mobile-card-phone" onclick="event.stopPropagation()">&#x1F4DE; ${App.formatPhone(c.phone)}</a><span class="mobile-card-meta-text">${lastVisit[c.id] ? '최근 방문: ' + App.getRelativeTime(lastVisit[c.id]) : '방문 기록 없음'}</span>
+      <div style="display:flex;gap:4px;margin-top:8px;border-top:1px solid var(--border-light);padding-top:8px"><button class="btn btn-sm btn-secondary btn-edit-customer" data-id="${c.id}" style="flex:1" onclick="event.stopPropagation()">수정</button><button class="btn btn-sm btn-danger btn-delete-customer" data-id="${c.id}" style="flex:1" onclick="event.stopPropagation()">삭제</button></div></div>
+    </div>`;
+  },
+
+  _bindRowEvents() {
+    document.querySelectorAll('.clickable-row').forEach(row => {
+      if (row._bound) return;
+      row._bound = true;
+      row.addEventListener('click', (e) => {
+        if (e.target.closest('.table-actions') || e.target.closest('.btn-edit-customer') || e.target.closest('.btn-delete-customer')) return;
+        App.navigate('customers/' + row.dataset.id);
+      });
+    });
+    document.querySelectorAll('.btn-edit-customer').forEach(btn => {
+      if (btn._bound) return;
+      btn._bound = true;
+      btn.addEventListener('click', (e) => { e.stopPropagation(); this.showForm(Number(btn.dataset.id)); });
+    });
+    document.querySelectorAll('.btn-delete-customer').forEach(btn => {
+      if (btn._bound) return;
+      btn._bound = true;
+      btn.addEventListener('click', (e) => { e.stopPropagation(); this.deleteCustomer(Number(btn.dataset.id)); });
+    });
   },
 
   getTagBadges(tags) {
