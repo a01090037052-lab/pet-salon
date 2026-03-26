@@ -718,28 +718,9 @@ App.pages.records = {
     }
   },
 
-  // 이미지 리사이즈 (Canvas API, max 800px, JPEG 0.7)
+  // 이미지 리사이즈 - App.resizeImage() 공유 유틸 사용
   _resizeImage(dataUrl, callback) {
-    const img = new Image();
-    img.onload = () => {
-      const MAX = 800;
-      let { width, height } = img;
-      if (width > MAX || height > MAX) {
-        if (width >= height) {
-          height = Math.round((height * MAX) / width);
-          width = MAX;
-        } else {
-          width = Math.round((width * MAX) / height);
-          height = MAX;
-        }
-      }
-      const canvas = document.createElement('canvas');
-      canvas.width = width;
-      canvas.height = height;
-      canvas.getContext('2d').drawImage(img, 0, 0, width, height);
-      callback(canvas.toDataURL('image/jpeg', 0.7));
-    };
-    img.src = dataUrl;
+    App.resizeImage(dataUrl, callback);
   },
 
   async saveRecord(id) {

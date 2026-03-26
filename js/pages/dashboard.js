@@ -1,5 +1,33 @@
 // ========== Dashboard Page ==========
 App.pages.dashboard = {
+
+  _computeRevisitAlerts(allRecords, petMap, customerMap, revisitDays) {
+    const petLastVisit = {};
+    allRecords.forEach(r => {
+      if (!petLastVisit[r.petId] || (r.date || '') > (petLastVisit[r.petId].date || '')) {
+        petLastVisit[r.petId] = r;
+      }
+    });
+    const alerts = [];
+    for (const [petId, record] of Object.entries(petLastVisit)) {
+      const days = App.getDaysAgo(record.date);
+      const pet = petMap[Number(petId)];
+      const cycleDays = (pet && pet.groomingCycle) ? pet.groomingCycle : revisitDays;
+      if (days >= cycleDays) {
+        const customer = pet ? customerMap[pet.customerId] : null;
+        if (pet && customer) {
+          alerts.push({ pet, customer, days, lastDate: record.date, cycleDays });
+        }
+      }
+    }
+    return alerts.sort((a, b) => b.days - a.days);
+  },
+
+  _computeUnpaid(allRecords) {
+    const unpaid = allRecords.filter(r => r.paymentMethod === 'unpaid');
+    return { records: unpaid, total: unpaid.reduce((sum, r) => sum + App.getRecordAmount(r), 0) };
+  },
+
   async render(container) {
     // Skip re-render if recent and no data changed
     if (this._lastRender && Date.now() - this._lastRender < 5000 && !App._dashboardDirty) {
@@ -59,29 +87,10 @@ App.pages.dashboard = {
 
       // Revisit alerts
       const revisitDays = await DB.getSetting('revisitDays') || 30;
-      const petLastVisit = {};
-      allRecords.forEach(r => {
-        if (!petLastVisit[r.petId] || (r.date || '') > (petLastVisit[r.petId].date || '')) {
-          petLastVisit[r.petId] = r;
-        }
-      });
-      const revisitAlerts = [];
-      for (const [petId, record] of Object.entries(petLastVisit)) {
-        const days = App.getDaysAgo(record.date);
-        const pet = petMap[Number(petId)];
-        const cycleDays = (pet && pet.groomingCycle) ? pet.groomingCycle : revisitDays;
-        if (days >= cycleDays) {
-          const customer = pet ? customerMap[pet.customerId] : null;
-          if (pet && customer) {
-            revisitAlerts.push({ pet, customer, days, lastDate: record.date, cycleDays });
-          }
-        }
-      }
-      revisitAlerts.sort((a, b) => b.days - a.days);
+      const revisitAlerts = this._computeRevisitAlerts(allRecords, petMap, customerMap, revisitDays);
 
       // 미수금(외상) 집계
-      const unpaidRecords = allRecords.filter(r => r.paymentMethod === 'unpaid');
-      const unpaidTotal = unpaidRecords.reduce((sum, r) => sum + App.getRecordAmount(r), 0);
+      const { records: unpaidRecords, total: unpaidTotal } = this._computeUnpaid(allRecords);
 
       // 생일 알림 (7일 이내)
       const upcomingBirthdays = [];

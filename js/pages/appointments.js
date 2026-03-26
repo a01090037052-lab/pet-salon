@@ -640,6 +640,7 @@ App.pages.appointments = {
     const petOptions = await App.getPetOptions(appt.customerId, appt.petId);
     const serviceCheckboxes = await App.getServiceCheckboxes(appt.serviceIds || []);
 
+    // ========== Form HTML ==========
     App.showModal({
       title: id ? '예약 수정' : '새 예약',
       size: 'lg',
@@ -733,6 +734,7 @@ App.pages.appointments = {
       onSave: () => this.saveAppointment(id)
     });
 
+    // ========== Event Handlers ==========
     // 서비스 칩 토글 (checked 클래스)
     document.querySelectorAll('.service-chip input[type="checkbox"]').forEach(cb => {
       cb.addEventListener('change', () => {
@@ -835,6 +837,7 @@ App.pages.appointments = {
     }
   },
 
+  // ========== Validation & Save ==========
   async saveAppointment(id) {
     const customerId = Number(document.getElementById('appt-customer-select-value')?.value || document.getElementById('f-customerId')?.value);
     const petId = Number(document.getElementById('f-petId').value);

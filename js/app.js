@@ -1337,6 +1337,25 @@ const App = {
     }, 150);
   },
 
+  // ========== Shared Image Resize Utility ==========
+  resizeImage(dataUrl, callback, maxSize = 800, quality = 0.7) {
+    const img = new Image();
+    img.onload = () => {
+      const canvas = document.createElement('canvas');
+      let w = img.width, h = img.height;
+      if (w > maxSize || h > maxSize) {
+        if (w > h) { h = Math.round(h * maxSize / w); w = maxSize; }
+        else { w = Math.round(w * maxSize / h); h = maxSize; }
+      }
+      canvas.width = w;
+      canvas.height = h;
+      canvas.getContext('2d').drawImage(img, 0, 0, w, h);
+      callback(canvas.toDataURL('image/jpeg', quality));
+    };
+    img.onerror = () => callback(null);
+    img.src = dataUrl;
+  },
+
   async buildSms(type, vars) {
     let tpl = await this.getSmsTemplate(type);
     const shopName = await DB.getSetting('shopName') || '펫살롱';

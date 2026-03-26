@@ -542,25 +542,6 @@ App.pages.pets = {
   },
 
   resizeImage(dataUrl, callback) {
-    const img = new Image();
-    img.onload = () => {
-      const MAX = 800;
-      let { width, height } = img;
-      if (width > MAX || height > MAX) {
-        if (width >= height) {
-          height = Math.round((height * MAX) / width);
-          width = MAX;
-        } else {
-          width = Math.round((width * MAX) / height);
-          height = MAX;
-        }
-      }
-      const canvas = document.createElement('canvas');
-      canvas.width = width;
-      canvas.height = height;
-      canvas.getContext('2d').drawImage(img, 0, 0, width, height);
-      callback(canvas.toDataURL('image/jpeg', 0.7));
-    };
-    img.src = dataUrl;
+    App.resizeImage(dataUrl, callback);
   }
 };
