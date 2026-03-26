@@ -324,7 +324,7 @@ App.pages.settings = {
         <!-- Danger Zone -->
         <div class="card" style="margin-top:20px;border:1px solid var(--danger)">
           <div class="card-header" style="background:var(--danger-light)">
-            <span class="card-title" class="text-danger">&#x26A0; 위험 영역</span>
+            <span class="card-title text-danger">&#x26A0; 위험 영역</span>
           </div>
           <div class="card-body">
             <p style="color:var(--text-secondary);font-size:0.9rem;margin-bottom:12px">

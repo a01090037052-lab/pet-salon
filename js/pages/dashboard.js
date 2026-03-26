@@ -239,7 +239,7 @@ App.pages.dashboard = {
         ${unpaidRecords.length > 0 ? `
         <div class="card dash-accordion" style="margin-bottom:20px;border:1.5px solid var(--danger)">
           <div class="card-header dash-accordion-toggle" style="background:var(--danger-light);cursor:pointer;user-select:none" data-target="dash-unpaid">
-            <span class="card-title" class="text-danger">&#x1F4B8; 미수금 현황</span>
+            <span class="card-title text-danger">&#x1F4B8; 미수금 현황</span>
             <div style="display:flex;align-items:center;gap:8px">
               <span class="badge badge-danger">${unpaidRecords.length}건 / ${App.formatCurrency(unpaidTotal)}</span>
               <span class="dash-chevron" style="transition:transform 0.2s;font-size:0.8rem">&#x25BC;</span>

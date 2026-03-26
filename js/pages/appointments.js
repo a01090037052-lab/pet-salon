@@ -111,7 +111,7 @@ App.pages.appointments = {
               </thead>
               <tbody id="appt-tbody">
                 ${sorted.length === 0 ? `
-                  <tr><td colspan="8">
+                  <tr><td colspan="9">
                     <div class="empty-state">
                       <div class="empty-state-icon">&#x1F4C5;</div>
                       <div class="empty-state-text">등록된 예약이 없습니다</div>
@@ -152,7 +152,7 @@ App.pages.appointments = {
                       <td class="table-actions">
                         <button class="btn-icon btn-edit-appt" data-id="${a.id}" title="수정">&#x270F;</button>
                         <button class="btn-icon btn-complete-appt" data-id="${a.id}" title="미용 기록 작성" style="color:var(--success)">&#x2714;</button>
-                        <button class="btn-icon btn-delete-appt" data-id="${a.id}" title="삭제" class="text-danger">&#x1F5D1;</button>
+                        <button class="btn-icon btn-delete-appt text-danger" data-id="${a.id}" title="삭제">&#x1F5D1;</button>
                       </td>
                     </tr>`;
                 }).join('')}

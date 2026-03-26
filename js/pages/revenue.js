@@ -158,6 +158,7 @@ App.pages.revenue = {
           <div>
             <div class="stat-value" style="font-size:1.4rem">${App.formatCurrency(todayRevenue)}</div>
             <div class="stat-label">오늘 매출 (${todayRecords.length}건)</div>
+            ${unpaidRecs.some(r => r.date === today) ? '<div style="font-size:0.7rem;color:var(--text-muted)">(미수금 포함)</div>' : ''}
           </div>
         </div>
         <div class="stat-card gradient-blue">
@@ -165,6 +166,7 @@ App.pages.revenue = {
           <div>
             <div class="stat-value" style="font-size:1.4rem">${App.formatCurrency(weekRevenue)}</div>
             <div class="stat-label">이번 주 매출 (${weekRecords.length}건)</div>
+            ${unpaidRecs.some(r => r.date >= mondayStr && r.date <= sundayStr) ? '<div style="font-size:0.7rem;color:var(--text-muted)">(미수금 포함)</div>' : ''}
           </div>
         </div>
         <div class="stat-card gradient-green">
@@ -172,6 +174,7 @@ App.pages.revenue = {
           <div>
             <div class="stat-value" style="font-size:1.4rem">${App.formatCurrency(monthRevenue)}</div>
             <div class="stat-label">이번 달 매출 (${monthRecords.length}건)</div>
+            ${unpaidRecs.some(r => r.date && r.date.startsWith(thisMonth)) ? '<div style="font-size:0.7rem;color:var(--text-muted)">(미수금 포함)</div>' : ''}
           </div>
         </div>
       </div>

@@ -139,7 +139,7 @@ App.pages.records = {
                         <button class="btn-icon btn-photo-card" data-id="${r.id}" title="사진 카드 생성" style="color:var(--info)">&#x1F4F8;</button>
                         <button class="btn-icon btn-receipt-record" data-id="${r.id}" title="영수증" style="color:var(--success)">&#x1F9FE;</button>
                         <button class="btn-icon btn-edit-record" data-id="${r.id}" title="수정">&#x270F;</button>
-                        <button class="btn-icon btn-delete-record" data-id="${r.id}" title="삭제" class="text-danger">&#x1F5D1;</button>
+                        <button class="btn-icon btn-delete-record text-danger" data-id="${r.id}" title="삭제">&#x1F5D1;</button>
                       </td>
                     </tr>`;
                 }).join('')}
@@ -714,6 +714,17 @@ App.pages.records = {
 
       }
 
+      // 반려건 lastVisitDate 업데이트
+      try {
+        const pet = await DB.get('pets', petId);
+        if (pet) {
+          if (!pet.lastVisitDate || date > pet.lastVisitDate) {
+            pet.lastVisitDate = date;
+            await DB.update('pets', pet);
+          }
+        }
+      } catch(e) { /* ignore */ }
+
       App.closeModal();
 
       // 신규 기록: 완료 모달 (다음 예약 + 문자 발송 버튼 통합)
@@ -1023,7 +1034,7 @@ App.pages.records = {
           }).join('') : '<div style="color:var(--text-muted)">서비스 미지정</div>'}
           <hr class="receipt-divider">
           <div class="receipt-row"><span>소계</span><span>${App.formatCurrency(totalPrice)}</span></div>
-          ${discount > 0 ? `<div class="receipt-row" class="text-danger"><span>할인</span><span>-${App.formatCurrency(discount)}</span></div>` : ''}
+          ${discount > 0 ? `<div class="receipt-row text-danger"><span>할인</span><span>-${App.formatCurrency(discount)}</span></div>` : ''}
           ${extraCharge > 0 ? `<div class="receipt-row"><span>추가요금</span><span>+${App.formatCurrency(extraCharge)}</span></div>` : ''}
           <div class="receipt-row total"><span>합계</span><span>${App.formatCurrency(finalPrice)}</span></div>
           ${record.paymentMethod ? `<div class="receipt-row"><span>결제</span><span>${this.getPaymentLabel(record.paymentMethod)}</span></div>` : ''}
