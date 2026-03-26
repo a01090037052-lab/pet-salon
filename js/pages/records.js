@@ -1548,6 +1548,7 @@ App.pages.records = {
     return canvas;
   },
 
+  // ========== Photo Card System (사진 카드) ==========
   async generatePhotoCard(recordId) {
     const record = await DB.get('records', recordId);
     if (!record) { App.showToast('기록을 찾을 수 없습니다.', 'error'); return; }

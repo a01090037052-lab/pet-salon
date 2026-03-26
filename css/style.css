@@ -407,7 +407,7 @@ a.stat-card { display: flex; }
 .stat-icon.pink { background: rgba(239,68,68,0.15); }
 .stat-icon.purple { background: rgba(99,102,241,0.15); }
 .stat-value { font-size: 1.7rem; font-weight: 800; letter-spacing: -0.5px; }
-.stat-label { font-size: 0.85rem; color: var(--text-secondary); margin-top: 2px; font-weight: 500; }
+.stat-label { font-size: 0.82rem; color: var(--text-secondary); margin-top: 2px; font-weight: 500; }
 
 /* Grid Layouts */
 .grid-2 { display: grid; grid-template-columns: repeat(auto-fit, minmax(400px, 1fr)); gap: 20px; }
@@ -568,7 +568,7 @@ a.stat-card { display: flex; }
   align-items: center;
   padding: 3px 10px;
   border-radius: 20px;
-  font-size: 0.73rem;
+  font-size: 0.75rem;
   font-weight: 700;
   letter-spacing: 0.2px;
 }
@@ -1609,7 +1609,10 @@ a.stat-card { display: flex; }
   .filter-bar { overflow: hidden; }
   .filter-bar select, .filter-bar input { max-width: 100%; min-width: 0; }
   .card { overflow: hidden; max-width: 100%; }
-  .card-body { overflow: hidden; word-break: break-word; }
+  .card-body { overflow: hidden; word-break: break-word; padding: 16px; }
+  .card-header { padding: 14px 16px; }
+  .modal .search-select-dropdown { max-height: 40vh; }
+  .modal .search-select-dropdown.open { overflow-y: auto; -webkit-overflow-scrolling: touch; }
   .welcome-section { overflow: hidden; word-break: break-word; }
   .mobile-card { overflow: hidden; word-break: break-word; }
   .mobile-card-actions { flex-wrap: wrap; }

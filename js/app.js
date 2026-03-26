@@ -589,7 +589,7 @@ const App = {
       renderOptions(input.value);
       // Scroll input into view above keyboard on mobile
       setTimeout(() => {
-        input.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        input.scrollIntoView({ behavior: 'smooth', block: 'center' });
       }, 300);
     });
     input.addEventListener('input', () => {
