@@ -1,31 +1,22 @@
 // ========== Dashboard Page ==========
 App.pages.dashboard = {
 
-  _computeRevisitAlerts(allRecords, petMap, customerMap, revisitDays) {
-    const petLastVisit = {};
-    allRecords.forEach(r => {
-      if (!petLastVisit[r.petId] || (r.date || '') > (petLastVisit[r.petId].date || '')) {
-        petLastVisit[r.petId] = r;
-      }
-    });
+  _computeRevisitAlerts(pets, customerMap, revisitDays) {
+    // pets의 lastVisitDate를 직접 사용 (records 전체 로드 불필요)
     const alerts = [];
-    for (const [petId, record] of Object.entries(petLastVisit)) {
-      const days = App.getDaysAgo(record.date);
-      const pet = petMap[Number(petId)];
-      const cycleDays = (pet && pet.groomingCycle) ? pet.groomingCycle : revisitDays;
+    pets.forEach(pet => {
+      if (!pet.lastVisitDate) return;
+      const days = App.getDaysAgo(pet.lastVisitDate);
+      if (days === null) return;
+      const cycleDays = pet.groomingCycle || revisitDays;
       if (days >= cycleDays) {
-        const customer = pet ? customerMap[pet.customerId] : null;
-        if (pet && customer) {
-          alerts.push({ pet, customer, days, lastDate: record.date, cycleDays });
+        const customer = customerMap[pet.customerId];
+        if (customer) {
+          alerts.push({ pet, customer, days, lastDate: pet.lastVisitDate, cycleDays });
         }
       }
-    }
+    });
     return alerts.sort((a, b) => b.days - a.days);
-  },
-
-  _computeUnpaid(allRecords) {
-    const unpaid = allRecords.filter(r => r.paymentMethod === 'unpaid');
-    return { records: unpaid, total: unpaid.reduce((sum, r) => sum + App.getRecordAmount(r), 0) };
   },
 
   async render(container) {
@@ -58,8 +49,10 @@ App.pages.dashboard = {
         DB.count('customers')
       ]);
 
-      // 재방문 알림 + 미수금 집계용 (사진 제외 경량 로드)
-      const allRecords = await DB.getAllLight('records', ['photoBefore', 'photoAfter', 'memo']);
+      // 미수금 건수만 경량 조회 (전체 records 로드 제거)
+      const allRecordsLight = await DB.getAllLight('records', ['photoBefore', 'photoAfter', 'memo', 'serviceIds', 'groomer']);
+      const unpaidRecords = allRecordsLight.filter(r => r.paymentMethod === 'unpaid');
+      const unpaidTotal = unpaidRecords.reduce((sum, r) => sum + App.getRecordAmount(r), 0);
 
       // Build lookup maps once
       const customerMap = {};
@@ -85,12 +78,9 @@ App.pages.dashboard = {
       const todayRecords = recentRecords.filter(r => r.date === today);
       const todayRevenue = todayRecords.reduce((sum, r) => sum + App.getRecordAmount(r), 0);
 
-      // Revisit alerts
+      // Revisit alerts (pets의 lastVisitDate 사용, records 전체 로드 불필요)
       const revisitDays = await DB.getSetting('revisitDays') || 30;
-      const revisitAlerts = this._computeRevisitAlerts(allRecords, petMap, customerMap, revisitDays);
-
-      // 미수금(외상) 집계
-      const { records: unpaidRecords, total: unpaidTotal } = this._computeUnpaid(allRecords);
+      const revisitAlerts = this._computeRevisitAlerts(pets, customerMap, revisitDays);
 
       // 생일 알림 (7일 이내)
       const upcomingBirthdays = [];
