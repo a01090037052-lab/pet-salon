@@ -476,19 +476,15 @@ App.pages.pets = {
       const pet = await DB.get('pets', id);
       if (!pet) return;
 
-      const confirmed = await App.confirm(`"${App.escapeHtml(pet.name)}"을(를) 삭제하시겠습니까?<br>관련 예약과 미용 기록도 함께 휴지통으로 이동됩니다.`);
+      const confirmed = await App.confirm(`"${App.escapeHtml(pet.name)}"을(를) 삭제하시겠습니까?<br>관련 예약과 미용 기록도 함께 삭제됩니다.<br><strong>이 작업은 되돌릴 수 없습니다.</strong>`);
       if (!confirmed) return;
 
       const appointments = await DB.getByIndex('appointments', 'petId', id);
+      for (const appt of appointments) await DB.delete('appointments', appt.id);
       const records = await DB.getByIndex('records', 'petId', id);
-
-      const pairs = [
-        ...appointments.map(a => ['appointments', a.id]),
-        ...records.map(r => ['records', r.id]),
-        ['pets', id]
-      ];
-      await DB.softDeleteCascade(pairs);
-      App.showToast('반려견이 휴지통으로 이동되었습니다.');
+      for (const rec of records) await DB.delete('records', rec.id);
+      await DB.delete('pets', id);
+      App.showToast('삭제되었습니다.');
       App.navigate('pets');
     } catch (err) {
       console.error('deletePet error:', err);

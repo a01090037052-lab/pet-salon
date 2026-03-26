@@ -789,8 +789,8 @@ App.pages.records = {
     try {
       const confirmed = await App.confirm('이 미용 기록을 삭제하시겠습니까?');
       if (!confirmed) return;
-      await DB.softDelete('records', id);
-      App.showToast('미용 기록이 휴지통으로 이동되었습니다.');
+      await DB.delete('records', id);
+      App.showToast('미용 기록이 삭제되었습니다.');
       App.handleRoute();
     } catch (err) {
       console.error('deleteRecord error:', err);

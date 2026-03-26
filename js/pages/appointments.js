@@ -957,8 +957,8 @@ App.pages.appointments = {
     if (!confirmed) return;
 
     try {
-      await DB.softDelete('appointments', id);
-      App.showToast('예약이 휴지통으로 이동되었습니다.');
+      await DB.delete('appointments', id);
+      App.showToast('예약이 삭제되었습니다.');
       App.handleRoute();
     } catch (err) {
       console.error('Delete appointment error:', err);
