@@ -66,6 +66,24 @@ App.pages.revenue = {
     // 매출 데이터 캐시
     this._records = records;
 
+    const now = new Date();
+    const year = now.getFullYear();
+    const month = now.getMonth();
+
+    // O(N) 집계: 전체 레코드를 한 번만 순회하여 날짜별/월별 집계
+    const dailyRevMap = {};
+    const monthlyRevMap = {};
+    const monthlyCntMap = {};
+    records.forEach(r => {
+      if (!r.date) return;
+      const amt = App.getRecordAmount(r);
+      const day = r.date;
+      const mon = r.date.slice(0, 7);
+      dailyRevMap[day] = (dailyRevMap[day] || 0) + amt;
+      monthlyRevMap[mon] = (monthlyRevMap[mon] || 0) + amt;
+      monthlyCntMap[mon] = (monthlyCntMap[mon] || 0) + 1;
+    });
+
     // 이번 주 일별 차트 데이터
     const dayLabels = ['월', '화', '수', '목', '금', '토', '일'];
     const weekData = [];
@@ -74,15 +92,10 @@ App.pages.revenue = {
       const d = new Date(monday);
       d.setDate(monday.getDate() + i);
       const ds = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
-      const rev = records.filter(r => r.date === ds).reduce((sum, r) => sum + App.getRecordAmount(r), 0);
+      const rev = dailyRevMap[ds] || 0;
       weekData.push({ label: dayLabels[i], date: ds, rev });
       if (rev > weekMax) weekMax = rev;
     }
-
-    // 이번 달 일별 차트 데이터
-    const now = new Date();
-    const year = now.getFullYear();
-    const month = now.getMonth();
 
     // 손익 데이터
     const fixedCost = Number(await DB.getSetting('monthlyFixedCost')) || 0;
@@ -95,7 +108,7 @@ App.pages.revenue = {
     // 지난달 비교
     const lastMonthDate = new Date(year, month - 1, 1);
     const lastMonth = `${lastMonthDate.getFullYear()}-${String(lastMonthDate.getMonth() + 1).padStart(2, '0')}`;
-    const lastMonthRevenue = records.filter(r => r.date && r.date.startsWith(lastMonth)).reduce((sum, r) => sum + App.getRecordAmount(r), 0);
+    const lastMonthRevenue = monthlyRevMap[lastMonth] || 0;
     const lastMonthVariableCost = variableCosts[lastMonth] || 0;
     const lastMonthProfit = lastMonthRevenue - fixedCost - lastMonthVariableCost;
     const monthChange = lastMonthRevenue > 0 ? Math.round(((monthRevenue - lastMonthRevenue) / lastMonthRevenue) * 100) : 0;
@@ -104,7 +117,7 @@ App.pages.revenue = {
     let monthMax = 1;
     for (let d = 1; d <= daysInMonth; d++) {
       const ds = `${year}-${String(month + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
-      const rev = records.filter(r => r.date === ds).reduce((sum, r) => sum + App.getRecordAmount(r), 0);
+      const rev = dailyRevMap[ds] || 0;
       monthData.push({ day: d, date: ds, rev });
       if (rev > monthMax) monthMax = rev;
     }
@@ -116,8 +129,8 @@ App.pages.revenue = {
       const tDate = new Date(year, month - i, 1);
       const tMonth = `${tDate.getFullYear()}-${String(tDate.getMonth() + 1).padStart(2, '0')}`;
       const tLabel = `${tDate.getMonth() + 1}월`;
-      const rev = records.filter(r => r.date && r.date.startsWith(tMonth)).reduce((sum, r) => sum + App.getRecordAmount(r), 0);
-      const cnt = records.filter(r => r.date && r.date.startsWith(tMonth)).length;
+      const rev = monthlyRevMap[tMonth] || 0;
+      const cnt = monthlyCntMap[tMonth] || 0;
       monthlyTrend.push({ month: tMonth, label: tLabel, rev, count: cnt });
       if (rev > trendMax) trendMax = rev;
     }

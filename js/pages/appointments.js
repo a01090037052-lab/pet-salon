@@ -793,8 +793,8 @@ App.pages.appointments = {
       if (warn) {
         warn.innerHTML = '';
         if (cid) {
-          const allAppts = await DB.getAll('appointments');
-          const noshowCount = allAppts.filter(a => a.customerId === Number(cid) && a.status === 'noshow').length;
+          const custAppts = await DB.getByIndex('appointments', 'customerId', Number(cid));
+          const noshowCount = custAppts.filter(a => a.status === 'noshow').length;
           if (noshowCount > 0) {
             warn.innerHTML = `<div style="color:var(--danger);font-size:0.85rem;margin-top:4px;font-weight:600">&#x26A0; 이 고객은 노쇼 ${noshowCount}회 이력이 있습니다</div>`;
           }
@@ -826,8 +826,8 @@ App.pages.appointments = {
 
     // 기존 고객 선택 시 노쇼 이력 즉시 표시
     if (appt.customerId) {
-      const allAppts = await DB.getAll('appointments');
-      const noshowCount = allAppts.filter(a => a.customerId === Number(appt.customerId) && a.status === 'noshow').length;
+      const custAppts2 = await DB.getByIndex('appointments', 'customerId', Number(appt.customerId));
+      const noshowCount = custAppts2.filter(a => a.status === 'noshow').length;
       if (noshowCount > 0) {
         const warn = document.getElementById('noshow-warning');
         if (warn) warn.innerHTML = `<div style="color:var(--danger);font-size:0.85rem;margin-top:4px;font-weight:600">&#x26A0; 이 고객은 노쇼 ${noshowCount}회 이력이 있습니다</div>`;
@@ -855,12 +855,12 @@ App.pages.appointments = {
 
     // Check time conflict (duration-aware)
     if (time) {
-      const allAppts = await DB.getAll('appointments');
+      const dayAppts = await DB.getByIndex('appointments', 'date', date);
       const toMin = (t) => { const [h, m] = t.split(':').map(Number); return h * 60 + m; };
       const newStart = toMin(time);
       const newEnd = newStart + duration;
-      const conflict = allAppts.find(a => {
-        if (a.id === id || a.date !== date || !a.time || a.status === 'cancelled') return false;
+      const conflict = dayAppts.find(a => {
+        if (a.id === id || !a.time || a.status === 'cancelled') return false;
         const isSameResource = (groomer && a.groomer && a.groomer === groomer) || a.petId === petId;
         if (!isSameResource) return false;
         const aStart = toMin(a.time);

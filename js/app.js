@@ -829,6 +829,12 @@ const App = {
       const minutes = Number(await DB.getSetting('notifMinutes')) || 30;
       const now = new Date();
       const today = this.getToday();
+
+      // 날짜 바뀌면 알림 Set 초기화 (메모리 누수 방지)
+      if (this._notifiedDate !== today) {
+        this._notifiedAppts.clear();
+        this._notifiedDate = today;
+      }
       // 효율적 쿼리: 오늘 날짜의 예약만 인덱스로 조회
       const appointments = await DB.getByIndex('appointments', 'date', today);
 

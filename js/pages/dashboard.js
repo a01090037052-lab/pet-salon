@@ -30,8 +30,8 @@ App.pages.dashboard = {
         DB.count('customers')
       ]);
 
-      // All records needed for revisit alerts
-      const allRecords = await DB.getAll('records');
+      // 재방문 알림 + 미수금 집계용 (사진 제외 경량 로드)
+      const allRecords = await DB.getAllLight('records', ['photoBefore', 'photoAfter', 'memo']);
 
       // Build lookup maps once
       const customerMap = {};
