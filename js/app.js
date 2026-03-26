@@ -633,6 +633,7 @@ const App = {
           <div style="display:flex;gap:6px">
             <input type="text" id="quick-pet-name" placeholder="반려견 이름" style="flex:1;box-sizing:border-box">
             <input type="text" id="quick-pet-breed" placeholder="견종" style="flex:1;box-sizing:border-box">
+            <input type="number" id="quick-pet-age" placeholder="나이" min="0" max="30" style="width:60px;box-sizing:border-box">
           </div>
         </div>
         <div style="display:flex;gap:8px">
@@ -657,8 +658,10 @@ const App = {
         const newId = await DB.add('customers', { name, phone });
         const petName = document.getElementById('quick-pet-name')?.value.trim();
         const petBreed = document.getElementById('quick-pet-breed')?.value.trim();
+        const petAge = Number(document.getElementById('quick-pet-age')?.value) || 0;
         if (petName) {
-          await DB.add('pets', { customerId: newId, name: petName, breed: petBreed || '' });
+          const birthYear = petAge > 0 ? (new Date().getFullYear() - petAge) : null;
+          await DB.add('pets', { customerId: newId, name: petName, breed: petBreed || '', birthYear });
         }
         hidden.value = newId;
         input.value = name + ' (' + App.formatPhone(phone) + ')';
