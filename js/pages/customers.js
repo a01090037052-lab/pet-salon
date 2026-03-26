@@ -240,12 +240,11 @@ App.pages.customers = {
           return `
           <div class="table-container">
             <table class="data-table">
-              <thead><tr><th>날짜</th><th>반려견</th><th>서비스</th><th>금액</th><th>담당</th><th>결제</th><th>사진</th></tr></thead>
+              <thead><tr><th>날짜</th><th>반려견</th><th>서비스</th><th>금액</th><th>담당</th><th>결제</th></tr></thead>
               <tbody>
                 ${records.slice(0, 10).map(r => {
                   const pet = petMap[r.petId];
                   const serviceNames = (r.serviceIds || []).map(id => serviceMap[id] || '').filter(Boolean).join(', ') || '-';
-                  const hasPhotos = r.photoBefore || r.photoAfter;
                   return `<tr${r.paymentMethod === 'unpaid' ? ' style="background:var(--warning-light)"' : ''}>
                     <td>${App.formatDate(r.date)}</td>
                     <td>${App.escapeHtml(pet?.name || '-')}</td>
@@ -253,7 +252,6 @@ App.pages.customers = {
                     <td><strong>${App.formatCurrency(App.getRecordAmount(r))}</strong></td>
                     <td>${App.escapeHtml(r.groomer || '-')}</td>
                     <td>${App.pages.records.getPaymentLabel(r.paymentMethod)}</td>
-                    <td>${hasPhotos ? `<button class="btn-icon" onclick="App.pages.records.showPhotosById(${r.id})" title="사진 보기">&#x1F4F7;</button>` : '-'}</td>
                   </tr>`;
                 }).join('')}
               </tbody>

@@ -464,36 +464,6 @@ App.pages.records = {
         <div class="form-detail-section">
           <div class="form-row">
             <div class="form-group">
-              <label class="form-label">&#x1F4F7; 미용 전 사진</label>
-              <div style="display:flex;align-items:center;gap:12px">
-                <div id="f-photoBefore-preview" style="width:80px;height:80px;border-radius:var(--radius);background:var(--bg);display:flex;align-items:center;justify-content:center;overflow:hidden;border:1px dashed var(--border)">
-                  ${record.photoBefore ? `<img src="${record.photoBefore}" style="width:100%;height:100%;object-fit:cover">` : '<span style="color:var(--text-muted);font-size:0.8rem">사진 없음</span>'}
-                </div>
-                <div>
-                  <input type="file" id="f-photoBefore" accept="image/*" style="display:none">
-                  <button type="button" class="btn btn-sm btn-secondary" onclick="document.getElementById('f-photoBefore').click()">선택</button>
-                  ${record.photoBefore ? '<button type="button" class="btn btn-sm btn-danger" id="f-photoBefore-remove" style="margin-left:4px">삭제</button>' : ''}
-                </div>
-              </div>
-              <input type="hidden" id="f-photoBefore-data" value="">
-            </div>
-            <div class="form-group">
-              <label class="form-label">&#x1F4F7; 미용 후 사진</label>
-              <div style="display:flex;align-items:center;gap:12px">
-                <div id="f-photoAfter-preview" style="width:80px;height:80px;border-radius:var(--radius);background:var(--bg);display:flex;align-items:center;justify-content:center;overflow:hidden;border:1px dashed var(--border)">
-                  ${record.photoAfter ? `<img src="${record.photoAfter}" style="width:100%;height:100%;object-fit:cover">` : '<span style="color:var(--text-muted);font-size:0.8rem">사진 없음</span>'}
-                </div>
-                <div>
-                  <input type="file" id="f-photoAfter" accept="image/*" style="display:none">
-                  <button type="button" class="btn btn-sm btn-secondary" onclick="document.getElementById('f-photoAfter').click()">선택</button>
-                  ${record.photoAfter ? '<button type="button" class="btn btn-sm btn-danger" id="f-photoAfter-remove" style="margin-left:4px">삭제</button>' : ''}
-                </div>
-              </div>
-              <input type="hidden" id="f-photoAfter-data" value="">
-            </div>
-          </div>
-          <div class="form-row">
-            <div class="form-group">
               <label class="form-label">할인 금액</label>
               <input type="number" id="f-discount" value="${record.discount || ''}" placeholder="0" min="0" step="1000">
             </div>
@@ -614,17 +584,6 @@ App.pages.records = {
     document.getElementById('f-discount')?.addEventListener('input', calcFinalPrice);
     document.getElementById('f-extraCharge')?.addEventListener('input', calcFinalPrice);
 
-    // 미용 전후 사진 업로드 이벤트
-    if (record.photoBefore) {
-      document.getElementById('f-photoBefore-data').value = record.photoBefore;
-    }
-    if (record.photoAfter) {
-      document.getElementById('f-photoAfter-data').value = record.photoAfter;
-    }
-
-    this._setupPhotoUpload('photoBefore');
-    this._setupPhotoUpload('photoAfter');
-
     // Payment chip buttons
     document.querySelectorAll('.payment-chip').forEach(chip => {
       chip.addEventListener('click', () => {
@@ -668,61 +627,6 @@ App.pages.records = {
 
   },
 
-  _setupPhotoUpload(field) {
-    const fileInput = document.getElementById('f-' + field);
-    const dataInput = document.getElementById('f-' + field + '-data');
-    const preview = document.getElementById('f-' + field + '-preview');
-    const removeBtn = document.getElementById('f-' + field + '-remove');
-
-    if (!fileInput || !dataInput || !preview) return;
-
-    fileInput.addEventListener('change', (e) => {
-      const file = e.target.files[0];
-      if (!file) return;
-      if (file.size > 10 * 1024 * 1024) {
-        App.showToast('파일이 너무 큽니다 (10MB 이하)', 'error');
-        e.target.value = '';
-        return;
-      }
-      const reader = new FileReader();
-      reader.onload = (ev) => {
-        this._resizeImage(ev.target.result, (compressed) => {
-          dataInput.value = compressed;
-          preview.innerHTML = `<img src="${compressed}" style="width:100%;height:100%;object-fit:cover">`;
-          // 삭제 버튼 추가
-          if (!document.getElementById('f-' + field + '-remove')) {
-            const btn = document.createElement('button');
-            btn.type = 'button';
-            btn.id = 'f-' + field + '-remove';
-            btn.className = 'btn btn-sm btn-danger';
-            btn.style.marginLeft = '4px';
-            btn.textContent = '삭제';
-            btn.addEventListener('click', () => {
-              dataInput.value = '';
-              preview.innerHTML = '<span style="color:var(--text-muted);font-size:0.8rem">사진 없음</span>';
-              btn.remove();
-            });
-            fileInput.parentElement.querySelector('.btn-secondary')?.after(btn);
-          }
-        });
-      };
-      reader.readAsDataURL(file);
-    });
-
-    if (removeBtn) {
-      removeBtn.addEventListener('click', () => {
-        dataInput.value = '';
-        preview.innerHTML = '<span style="color:var(--text-muted);font-size:0.8rem">사진 없음</span>';
-        removeBtn.remove();
-      });
-    }
-  },
-
-  // 이미지 리사이즈 - App.resizeImage() 공유 유틸 사용
-  _resizeImage(dataUrl, callback) {
-    App.resizeImage(dataUrl, callback);
-  },
-
   async saveRecord(id) {
     try {
       const customerId = Number(document.getElementById('record-customer-select-value')?.value || document.getElementById('f-customerId')?.value);
@@ -758,12 +662,10 @@ App.pages.records = {
       const discount = Number(document.getElementById('f-discount').value) || 0;
       const extraCharge = Number(document.getElementById('f-extraCharge').value) || 0;
       const finalPrice = totalPrice - discount + extraCharge;
-      const photoBefore = document.getElementById('f-photoBefore-data')?.value || '';
-      const photoAfter = document.getElementById('f-photoAfter-data')?.value || '';
       const appointmentId = document.getElementById('f-appointmentId')?.value || null;
       const status = 'completed';
 
-      const data = { customerId, petId, date, groomer, nextVisitDate, serviceIds, totalPrice, discount, extraCharge, finalPrice, memo, paymentMethod, photoBefore, photoAfter, appointmentId, status };
+      const data = { customerId, petId, date, groomer, nextVisitDate, serviceIds, totalPrice, discount, extraCharge, finalPrice, memo, paymentMethod, appointmentId, status };
 
       if (id) {
         const existing = await DB.get('records', id);
@@ -1059,33 +961,6 @@ App.pages.records = {
     document.getElementById('report-date-picker')?.addEventListener('change', (e) => {
       this.showDailyReport(e.target.value);
     });
-  },
-
-  // 미용 전후 사진 보기 (recordId 기반으로 DB에서 조회)
-  async showPhotosById(recordId) {
-    const record = await DB.get('records', recordId);
-    if (!record) { App.showToast('기록을 찾을 수 없습니다.', 'error'); return; }
-    const before = record.photoBefore || '';
-    const after = record.photoAfter || '';
-    const dateLabel = App.formatDate(record.date);
-    const content = `
-      <div style="text-align:center;margin-bottom:12px;color:var(--text-secondary)">${dateLabel}</div>
-      <div style="display:flex;gap:16px;flex-wrap:wrap;justify-content:center">
-        ${before ? `
-          <div style="flex:1;min-width:200px;text-align:center">
-            <div style="font-weight:700;margin-bottom:8px;color:var(--text-secondary)">미용 전</div>
-            <img src="${before}" class="photo-viewable" data-group="record-${record.id}" data-caption="미용 전" alt="미용 전" style="max-width:100%;max-height:400px;border-radius:var(--radius);object-fit:contain">
-          </div>
-        ` : ''}
-        ${after ? `
-          <div style="flex:1;min-width:200px;text-align:center">
-            <div style="font-weight:700;margin-bottom:8px;color:var(--text-secondary)">미용 후</div>
-            <img src="${after}" class="photo-viewable" data-group="record-${record.id}" data-caption="미용 후" alt="미용 후" style="max-width:100%;max-height:400px;border-radius:var(--radius);object-fit:contain">
-          </div>
-        ` : ''}
-      </div>
-    `;
-    App.showModal({ title: '미용 전후 사진', content, hideFooter: true });
   },
 
   async showReceipt(recordId) {
@@ -1706,6 +1581,21 @@ App.pages.records = {
       saveText: '카드 생성',
       content: `
         <div class="form-group">
+          <label class="form-label">사진 선택</label>
+          <div style="display:flex;gap:8px">
+            <div style="flex:1">
+              <div style="font-size:0.8rem;color:var(--text-muted);margin-bottom:4px">미용 전</div>
+              <input type="file" id="card-photo-before" accept="image/*" capture="environment" style="display:none">
+              <div id="card-preview-before" style="width:100%;height:100px;border:2px dashed var(--border);border-radius:var(--radius);display:flex;align-items:center;justify-content:center;cursor:pointer;overflow:hidden;font-size:0.8rem;color:var(--text-muted)" onclick="document.getElementById('card-photo-before').click()">&#x1F4F7; 선택</div>
+            </div>
+            <div style="flex:1">
+              <div style="font-size:0.8rem;color:var(--text-muted);margin-bottom:4px">미용 후</div>
+              <input type="file" id="card-photo-after" accept="image/*" capture="environment" style="display:none">
+              <div id="card-preview-after" style="width:100%;height:100px;border:2px dashed var(--border);border-radius:var(--radius);display:flex;align-items:center;justify-content:center;cursor:pointer;overflow:hidden;font-size:0.8rem;color:var(--text-muted)" onclick="document.getElementById('card-photo-after').click()">&#x1F4F7; 선택</div>
+            </div>
+          </div>
+        </div>
+        <div class="form-group">
           <label class="form-label">레이아웃</label>
           <div id="card-pick-layout" style="display:flex;gap:8px;flex-wrap:wrap">
             ${Object.entries(LAYOUTS).map(([key, l]) => `
@@ -1740,12 +1630,16 @@ App.pages.records = {
 
         App.closeModal();
 
-        // Now generate the card with selected options
-        await this._doGenerateCard(recordId, layout, theme);
+        // Now generate the card with selected options and instant photos (not saved to DB)
+        await this._doGenerateCard(recordId, layout, theme, cardPhotoBefore, cardPhotoAfter);
       }
     });
 
-    // Wire up toggle buttons
+    // Instant photo variables - not saved to DB
+    let cardPhotoBefore = null;
+    let cardPhotoAfter = null;
+
+    // Wire up toggle buttons and photo inputs
     setTimeout(() => {
       document.querySelectorAll('#card-pick-layout .card-pick-btn').forEach(btn => {
         btn.addEventListener('click', () => {
@@ -1759,13 +1653,42 @@ App.pages.records = {
           btn.classList.add('active');
         });
       });
+
+      document.getElementById('card-photo-before')?.addEventListener('change', (e) => {
+        const file = e.target.files[0];
+        if (!file) return;
+        const reader = new FileReader();
+        reader.onload = (ev) => {
+          App.resizeImage(ev.target.result, (compressed) => {
+            cardPhotoBefore = compressed;
+            document.getElementById('card-preview-before').innerHTML = `<img src="${compressed}" style="width:100%;height:100%;object-fit:cover">`;
+          });
+        };
+        reader.readAsDataURL(file);
+      });
+
+      document.getElementById('card-photo-after')?.addEventListener('change', (e) => {
+        const file = e.target.files[0];
+        if (!file) return;
+        const reader = new FileReader();
+        reader.onload = (ev) => {
+          App.resizeImage(ev.target.result, (compressed) => {
+            cardPhotoAfter = compressed;
+            document.getElementById('card-preview-after').innerHTML = `<img src="${compressed}" style="width:100%;height:100%;object-fit:cover">`;
+          });
+        };
+        reader.readAsDataURL(file);
+      });
     }, 100);
   },
 
-  async _doGenerateCard(recordId, layout, theme) {
+  async _doGenerateCard(recordId, layout, theme, photoBefore, photoAfter) {
     try {
       const record = await DB.get('records', recordId);
       if (!record) { App.showToast('기록을 찾을 수 없습니다.', 'error'); return; }
+      // Use instant-capture photos (not saved to DB)
+      record.photoBefore = photoBefore || null;
+      record.photoAfter = photoAfter || null;
       const customer = await DB.get('customers', record.customerId);
       const pet = await DB.get('pets', record.petId);
       const shopName = await DB.getSetting('shopName') || '펫살롱';
