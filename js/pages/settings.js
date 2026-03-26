@@ -87,13 +87,13 @@ App.pages.settings = {
                 <div id="groomer-list" style="display:flex;flex-direction:column;gap:8px;margin-bottom:12px">
                   ${(groomers || []).map((g, i) => `
                     <div style="display:flex;align-items:center;gap:8px">
-                      <input type="text" class="groomer-input" value="${App.escapeHtml(g)}" style="flex:1">
+                      <input type="text" class="groomer-input" value="${App.escapeHtml(g)}" class="flex-1">
                       <button class="btn btn-sm btn-danger btn-remove-groomer" data-index="${i}">삭제</button>
                     </div>
                   `).join('')}
                 </div>
                 <div style="display:flex;gap:8px">
-                  <input type="text" id="new-groomer" placeholder="새 미용사 이름" style="flex:1">
+                  <input type="text" id="new-groomer" placeholder="새 미용사 이름" class="flex-1">
                   <button class="btn btn-sm btn-primary" id="btn-add-groomer">추가</button>
                 </div>
               </div>
@@ -324,7 +324,7 @@ App.pages.settings = {
         <!-- Danger Zone -->
         <div class="card" style="margin-top:20px;border:1px solid var(--danger)">
           <div class="card-header" style="background:var(--danger-light)">
-            <span class="card-title" style="color:var(--danger)">&#x26A0; 위험 영역</span>
+            <span class="card-title" class="text-danger">&#x26A0; 위험 영역</span>
           </div>
           <div class="card-body">
             <p style="color:var(--text-secondary);font-size:0.9rem;margin-bottom:12px">
@@ -404,7 +404,7 @@ App.pages.settings = {
       const index = list.querySelectorAll('.groomer-input').length;
       list.insertAdjacentHTML('beforeend', `
         <div style="display:flex;align-items:center;gap:8px">
-          <input type="text" class="groomer-input" value="${App.escapeHtml(name)}" style="flex:1">
+          <input type="text" class="groomer-input" value="${App.escapeHtml(name)}" class="flex-1">
           <button class="btn btn-sm btn-danger btn-remove-groomer" data-index="${index}">삭제</button>
         </div>
       `);
@@ -628,7 +628,7 @@ App.pages.settings = {
             const name = item.name || item.date || item.key || `#${item.id}`;
             const deletedDate = item.deletedAt ? App.formatDate(item.deletedAt.slice(0, 10)) : '';
             return `<div style="display:flex;align-items:center;gap:8px;padding:6px 10px;background:var(--bg);border-radius:var(--radius);font-size:0.88rem">
-              <span style="flex:1">${App.escapeHtml(name)}</span>
+              <span class="flex-1">${App.escapeHtml(name)}</span>
               <span style="color:var(--text-muted);font-size:0.78rem">${deletedDate}</span>
               <button class="btn btn-sm btn-secondary btn-restore-item" data-store="${store}" data-id="${item.id}" style="padding:4px 10px;font-size:0.78rem">복원</button>
             </div>`;

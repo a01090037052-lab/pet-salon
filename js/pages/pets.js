@@ -75,7 +75,7 @@ App.pages.pets = {
                       <td>${petLastVisit[p.id] ? `<span ${App.getDaysAgo(petLastVisit[p.id]) >= 30 ? 'class="badge badge-warning"' : 'style="color:var(--text-secondary)"'}>${App.getRelativeTime(petLastVisit[p.id])}</span>` : '<span style="color:var(--text-muted)">-</span>'}</td>
                       <td class="table-actions">
                         <button class="btn-icon btn-edit-pet" data-id="${p.id}" title="수정">&#x270F;</button>
-                        <button class="btn-icon btn-delete-pet" data-id="${p.id}" title="삭제" style="color:var(--danger)">&#x1F5D1;</button>
+                        <button class="btn-icon btn-delete-pet" data-id="${p.id}" title="삭제" class="text-danger">&#x1F5D1;</button>
                       </td>
                     </tr>`;
                 }).join('')}
@@ -278,7 +278,7 @@ App.pages.pets = {
             <div class="pet-photo-preview" id="f-photo-preview">
               ${pet.photo ? `<img src="${pet.photo}" alt="반려견 사진">` : '<span class="pet-photo-placeholder">&#x1F436;</span>'}
             </div>
-            <div style="flex:1">
+            <div class="flex-1">
               <input type="file" id="f-photo" accept="image/*" style="display:none">
               <button type="button" class="btn btn-sm btn-secondary" id="f-photo-btn">&#x1F4F7; 사진 선택</button>
               ${pet.photo ? '<button type="button" class="btn btn-sm btn-danger" id="f-photo-remove" style="margin-left:8px">삭제</button>' : ''}

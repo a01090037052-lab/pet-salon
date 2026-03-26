@@ -152,7 +152,7 @@ App.pages.appointments = {
                       <td class="table-actions">
                         <button class="btn-icon btn-edit-appt" data-id="${a.id}" title="수정">&#x270F;</button>
                         <button class="btn-icon btn-complete-appt" data-id="${a.id}" title="미용 기록 작성" style="color:var(--success)">&#x2714;</button>
-                        <button class="btn-icon btn-delete-appt" data-id="${a.id}" title="삭제" style="color:var(--danger)">&#x1F5D1;</button>
+                        <button class="btn-icon btn-delete-appt" data-id="${a.id}" title="삭제" class="text-danger">&#x1F5D1;</button>
                       </td>
                     </tr>`;
                 }).join('')}
@@ -201,8 +201,8 @@ App.pages.appointments = {
                     <option value="noshow" ${a.status === 'noshow' ? 'selected' : ''}>노쇼</option>
                   </select>
                   <div style="display:flex;gap:6px">
-                    <button class="btn btn-sm btn-secondary btn-edit-appt" data-id="${a.id}" style="flex:1">&#x270F; 수정</button>
-                    <button class="btn btn-sm btn-success btn-complete-appt" data-id="${a.id}" style="flex:1">&#x2702; 미용 완료</button>
+                    <button class="btn btn-sm btn-secondary btn-edit-appt" data-id="${a.id}" class="flex-1">&#x270F; 수정</button>
+                    <button class="btn btn-sm btn-success btn-complete-appt" data-id="${a.id}" class="flex-1">&#x2702; 미용 완료</button>
                   </div>
                 </div>
               </div>`;
@@ -712,7 +712,7 @@ App.pages.appointments = {
           ${!id ? `<div class="form-group">
             <label class="form-label">반복 예약</label>
             <div class="form-row">
-              <select id="f-repeat-cycle" style="flex:1">
+              <select id="f-repeat-cycle" class="flex-1">
                 <option value="0">반복 없음</option>
                 <option value="7">매주</option>
                 <option value="14">2주마다</option>

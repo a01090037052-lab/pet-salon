@@ -2845,3 +2845,8 @@ a.stat-card { display: flex; }
   background: var(--primary-light);
   box-shadow: 0 0 0 2px rgba(99,102,241,0.2);
 }
+
+/* ========== Utility Classes ========== */
+.flex-1 { flex: 1; }
+.text-danger { color: var(--danger); }
+.text-primary-c { color: var(--primary); }

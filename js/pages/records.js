@@ -66,7 +66,7 @@ App.pages.records = {
       <div id="unpaid-warning-card" class="card" style="margin-bottom:16px;border:1.5px solid var(--danger);cursor:pointer">
         <div class="card-body" style="padding:16px 20px;display:flex;align-items:center;gap:14px;background:linear-gradient(135deg,var(--danger-light),#FEE2E2)">
           <span style="font-size:1.5rem">&#x1F4B8;</span>
-          <div style="flex:1">
+          <div class="flex-1">
             <div style="font-weight:800;color:var(--danger);font-size:1rem">미수금 경고</div>
             <div style="font-size:0.88rem;color:#991B1B;margin-top:2px">총 ${unpaidRecs.length}건 &middot; ${App.formatCurrency(unpaidTotal)}</div>
           </div>
@@ -139,7 +139,7 @@ App.pages.records = {
                         <button class="btn-icon btn-photo-card" data-id="${r.id}" title="사진 카드 생성" style="color:var(--info)">&#x1F4F8;</button>
                         <button class="btn-icon btn-receipt-record" data-id="${r.id}" title="영수증" style="color:var(--success)">&#x1F9FE;</button>
                         <button class="btn-icon btn-edit-record" data-id="${r.id}" title="수정">&#x270F;</button>
-                        <button class="btn-icon btn-delete-record" data-id="${r.id}" title="삭제" style="color:var(--danger)">&#x1F5D1;</button>
+                        <button class="btn-icon btn-delete-record" data-id="${r.id}" title="삭제" class="text-danger">&#x1F5D1;</button>
                       </td>
                     </tr>`;
                 }).join('')}
@@ -904,7 +904,7 @@ App.pages.records = {
               if (!data || data.count === 0) return '';
               return `<div style="display:flex;justify-content:space-between;padding:8px 12px;background:var(--bg);border-radius:8px${m === 'unpaid' ? ';border-left:3px solid var(--danger)' : ''}">
                 <span>${this.getPaymentLabel(m)} (${data.count}건)</span>
-                <strong${m === 'unpaid' ? ' style="color:var(--danger)"' : ''}>${App.formatCurrency(data.amount)}</strong>
+                <strong${m === 'unpaid' ? ' class="text-danger"' : ''}>${App.formatCurrency(data.amount)}</strong>
               </div>`;
             }).filter(Boolean).join('')}
             ${Object.keys(paymentBreakdown).filter(m => !paymentMethods.includes(m) && paymentBreakdown[m].count > 0).map(m => {
@@ -938,9 +938,9 @@ App.pages.records = {
                 const pet = petMap[r.petId];
                 return `<div style="display:flex;align-items:center;gap:12px;padding:8px 12px;background:var(--bg);border-radius:8px;font-size:0.88rem${r.paymentMethod === 'unpaid' ? ';border-left:3px solid var(--danger)' : ''}">
                   <span style="color:var(--text-muted);min-width:50px">${this.getPaymentLabel(r.paymentMethod)}</span>
-                  <span style="flex:1"><strong>${App.escapeHtml(customer?.name || '-')}</strong> / ${App.escapeHtml(pet?.name || '-')}</span>
+                  <span class="flex-1"><strong>${App.escapeHtml(customer?.name || '-')}</strong> / ${App.escapeHtml(pet?.name || '-')}</span>
                   <span style="font-weight:600">${App.escapeHtml(r.groomer || '-')}</span>
-                  <strong${r.paymentMethod === 'unpaid' ? ' style="color:var(--danger)"' : ''}>${App.formatCurrency(App.getRecordAmount(r))}</strong>
+                  <strong${r.paymentMethod === 'unpaid' ? ' class="text-danger"' : ''}>${App.formatCurrency(App.getRecordAmount(r))}</strong>
                 </div>`;
               }).join('')}
           </div>
@@ -1023,7 +1023,7 @@ App.pages.records = {
           }).join('') : '<div style="color:var(--text-muted)">서비스 미지정</div>'}
           <hr class="receipt-divider">
           <div class="receipt-row"><span>소계</span><span>${App.formatCurrency(totalPrice)}</span></div>
-          ${discount > 0 ? `<div class="receipt-row" style="color:var(--danger)"><span>할인</span><span>-${App.formatCurrency(discount)}</span></div>` : ''}
+          ${discount > 0 ? `<div class="receipt-row" class="text-danger"><span>할인</span><span>-${App.formatCurrency(discount)}</span></div>` : ''}
           ${extraCharge > 0 ? `<div class="receipt-row"><span>추가요금</span><span>+${App.formatCurrency(extraCharge)}</span></div>` : ''}
           <div class="receipt-row total"><span>합계</span><span>${App.formatCurrency(finalPrice)}</span></div>
           ${record.paymentMethod ? `<div class="receipt-row"><span>결제</span><span>${this.getPaymentLabel(record.paymentMethod)}</span></div>` : ''}
@@ -1583,12 +1583,12 @@ App.pages.records = {
         <div class="form-group">
           <label class="form-label">사진 선택</label>
           <div style="display:flex;gap:8px">
-            <div style="flex:1">
+            <div class="flex-1">
               <div style="font-size:0.8rem;color:var(--text-muted);margin-bottom:4px">미용 전</div>
               <input type="file" id="card-photo-before" accept="image/*" capture="environment" style="display:none">
               <div id="card-preview-before" style="width:100%;height:100px;border:2px dashed var(--border);border-radius:var(--radius);display:flex;align-items:center;justify-content:center;cursor:pointer;overflow:hidden;font-size:0.8rem;color:var(--text-muted)" onclick="document.getElementById('card-photo-before').click()">&#x1F4F7; 선택</div>
             </div>
-            <div style="flex:1">
+            <div class="flex-1">
               <div style="font-size:0.8rem;color:var(--text-muted);margin-bottom:4px">미용 후</div>
               <input type="file" id="card-photo-after" accept="image/*" capture="environment" style="display:none">
               <div id="card-preview-after" style="width:100%;height:100px;border:2px dashed var(--border);border-radius:var(--radius);display:flex;align-items:center;justify-content:center;cursor:pointer;overflow:hidden;font-size:0.8rem;color:var(--text-muted)" onclick="document.getElementById('card-photo-after').click()">&#x1F4F7; 선택</div>

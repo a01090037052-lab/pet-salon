@@ -61,7 +61,7 @@ App.pages.services = {
                         ${s.isActive !== false ? '&#x1F7E2;' : '&#x26AA;'}
                       </button>
                       <button class="btn-icon btn-edit-service" data-id="${s.id}" title="수정">&#x270F;</button>
-                      <button class="btn-icon btn-delete-service" data-id="${s.id}" title="삭제" style="color:var(--danger)">&#x1F5D1;</button>
+                      <button class="btn-icon btn-delete-service" data-id="${s.id}" title="삭제" class="text-danger">&#x1F5D1;</button>
                     </td>
                   </tr>
                 `).join('')}
@@ -112,7 +112,7 @@ App.pages.services = {
                     ${s.isActive !== false ? '&#x1F7E2;' : '&#x26AA;'}
                   </button>
                   <button class="btn-icon btn-edit-service" data-id="${s.id}" title="수정">&#x270F;</button>
-                  <button class="btn-icon btn-delete-service" data-id="${s.id}" title="삭제" style="color:var(--danger)">&#x1F5D1;</button>
+                  <button class="btn-icon btn-delete-service" data-id="${s.id}" title="삭제" class="text-danger">&#x1F5D1;</button>
                 </div>
               </div>
             `).join('')}

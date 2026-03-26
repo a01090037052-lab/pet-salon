@@ -139,7 +139,7 @@ App.pages.dashboard = {
       const backupWarning = needsBackup ? `
         <div style="background:var(--warning-light);border:1px solid var(--warning);border-radius:var(--radius);padding:12px 16px;margin-bottom:16px;display:flex;align-items:center;gap:12px">
           <span style="font-size:1.3rem">&#x26A0;</span>
-          <div style="flex:1">
+          <div class="flex-1">
             <strong>백업 알림</strong>: ${backupDays !== null ? `마지막 백업 후 ${backupDays}일 경과.` : '아직 백업하지 않았습니다.'} 데이터 안전을 위해 백업해주세요.
           </div>
           <button class="btn btn-sm btn-warning" onclick="App.pages.settings?.directBackup()">백업하기</button>
@@ -159,22 +159,22 @@ App.pages.dashboard = {
             <div style="display:flex;flex-direction:column;gap:10px">
               <div class="onboarding-step" style="display:flex;align-items:center;gap:12px;padding:10px 14px;background:var(--bg-white);border-radius:var(--radius);border:1px solid var(--border-light)">
                 <span style="width:28px;height:28px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:0.8rem;font-weight:700;${shopInfo ? 'background:var(--success);color:#fff' : 'background:var(--bg);color:var(--text-muted);border:1.5px solid var(--border)'}">${shopInfo ? '&#x2713;' : '1'}</span>
-                <div style="flex:1"><strong>매장 정보 입력</strong><div style="font-size:0.8rem;color:var(--text-muted)">매장명, 전화번호, 주소</div></div>
+                <div class="flex-1"><strong>매장 정보 입력</strong><div style="font-size:0.8rem;color:var(--text-muted)">매장명, 전화번호, 주소</div></div>
                 ${!shopInfo ? '<a href="#settings" class="btn btn-sm btn-primary">설정</a>' : '<span class="badge badge-success">완료</span>'}
               </div>
               <div class="onboarding-step" style="display:flex;align-items:center;gap:12px;padding:10px 14px;background:var(--bg-white);border-radius:var(--radius);border:1px solid var(--border-light)">
                 <span style="width:28px;height:28px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:0.8rem;font-weight:700;${groomersSet.length > 0 ? 'background:var(--success);color:#fff' : 'background:var(--bg);color:var(--text-muted);border:1.5px solid var(--border)'}">${groomersSet.length > 0 ? '&#x2713;' : '2'}</span>
-                <div style="flex:1"><strong>미용사 등록</strong><div style="font-size:0.8rem;color:var(--text-muted)">담당 미용사 추가</div></div>
+                <div class="flex-1"><strong>미용사 등록</strong><div style="font-size:0.8rem;color:var(--text-muted)">담당 미용사 추가</div></div>
                 ${groomersSet.length === 0 ? '<a href="#settings" class="btn btn-sm btn-primary">설정</a>' : '<span class="badge badge-success">완료</span>'}
               </div>
               <div class="onboarding-step" style="display:flex;align-items:center;gap:12px;padding:10px 14px;background:var(--bg-white);border-radius:var(--radius);border:1px solid var(--border-light)">
                 <span style="width:28px;height:28px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:0.8rem;font-weight:700;${serviceCount > 0 ? 'background:var(--success);color:#fff' : 'background:var(--bg);color:var(--text-muted);border:1.5px solid var(--border)'}">${serviceCount > 0 ? '&#x2713;' : '3'}</span>
-                <div style="flex:1"><strong>서비스 등록</strong><div style="font-size:0.8rem;color:var(--text-muted)">미용 서비스 및 가격 설정</div></div>
+                <div class="flex-1"><strong>서비스 등록</strong><div style="font-size:0.8rem;color:var(--text-muted)">미용 서비스 및 가격 설정</div></div>
                 ${serviceCount === 0 ? '<a href="#services" class="btn btn-sm btn-primary">설정</a>' : '<span class="badge badge-success">완료</span>'}
               </div>
               <div class="onboarding-step" style="display:flex;align-items:center;gap:12px;padding:10px 14px;background:var(--bg-white);border-radius:var(--radius);border:1px solid var(--border-light)">
                 <span style="width:28px;height:28px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:0.8rem;font-weight:700;background:var(--bg);color:var(--text-muted);border:1.5px solid var(--border)">4</span>
-                <div style="flex:1"><strong>첫 고객 등록</strong><div style="font-size:0.8rem;color:var(--text-muted)">고객과 반려견 정보 추가</div></div>
+                <div class="flex-1"><strong>첫 고객 등록</strong><div style="font-size:0.8rem;color:var(--text-muted)">고객과 반려견 정보 추가</div></div>
                 <button class="btn btn-sm btn-primary" onclick="App.pages.customers.showForm()">등록</button>
               </div>
             </div>
@@ -239,7 +239,7 @@ App.pages.dashboard = {
         ${unpaidRecords.length > 0 ? `
         <div class="card dash-accordion" style="margin-bottom:20px;border:1.5px solid var(--danger)">
           <div class="card-header dash-accordion-toggle" style="background:var(--danger-light);cursor:pointer;user-select:none" data-target="dash-unpaid">
-            <span class="card-title" style="color:var(--danger)">&#x1F4B8; 미수금 현황</span>
+            <span class="card-title" class="text-danger">&#x1F4B8; 미수금 현황</span>
             <div style="display:flex;align-items:center;gap:8px">
               <span class="badge badge-danger">${unpaidRecords.length}건 / ${App.formatCurrency(unpaidTotal)}</span>
               <span class="dash-chevron" style="transition:transform 0.2s;font-size:0.8rem">&#x25BC;</span>
@@ -252,7 +252,7 @@ App.pages.dashboard = {
               return `
                 <div class="alert-item">
                   <span style="font-weight:700;color:var(--danger)">${App.formatCurrency(App.getRecordAmount(r))}</span>
-                  <div style="flex:1">
+                  <div class="flex-1">
                     <strong>${App.escapeHtml(customer?.name || '-')}</strong>
                     ${pet ? ' / ' + App.escapeHtml(pet.name) : ''}
                     <div style="font-size:0.78rem;color:var(--text-secondary);margin-top:2px">${App.formatDate(r.date)}</div>
@@ -280,7 +280,7 @@ App.pages.dashboard = {
             ${revisitAlerts.slice(0, 8).map(a => `
               <div class="alert-item">
                 <span class="days">${a.days}일</span>
-                <div style="flex:1">
+                <div class="flex-1">
                   <strong>${App.escapeHtml(a.customer.name)}</strong>의
                   <strong>${App.escapeHtml(a.pet.name)}</strong>
                   <div style="font-size:0.78rem;color:var(--text-secondary);margin-top:2px">
@@ -345,7 +345,7 @@ App.pages.dashboard = {
             banner.innerHTML = `
               <div style="background:${quota.percentage > 95 ? 'var(--danger-light)' : 'var(--warning-light)'};border:1px solid ${quota.percentage > 95 ? 'var(--danger)' : 'var(--warning)'};border-radius:var(--radius);padding:12px 16px;margin-top:16px;display:flex;align-items:center;gap:12px">
                 <span style="font-size:1.3rem">${quota.percentage > 95 ? '&#x1F6A8;' : '&#x26A0;'}</span>
-                <div style="flex:1">
+                <div class="flex-1">
                   <strong>${quota.percentage > 95 ? '저장 공간 부족!' : '저장 공간 경고'}</strong>:
                   ${usedMB}MB / ${quotaMB}MB 사용 중 (${quota.percentage}%).
                   ${quota.percentage > 95 ? ' 데이터 백업 후 오래된 사진을 삭제해주세요.' : ' 정기적으로 백업하시기 바랍니다.'}

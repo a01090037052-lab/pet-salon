@@ -195,7 +195,7 @@ App.pages.revenue = {
         <div class="card" style="margin-bottom:16px;border:1.5px solid var(--danger)">
           <div class="card-body" style="padding:16px 20px;display:flex;align-items:center;gap:14px;background:linear-gradient(135deg,var(--danger-light),#FEE2E2)">
             <span style="font-size:1.5rem">&#x1F4B8;</span>
-            <div style="flex:1">
+            <div class="flex-1">
               <div style="font-weight:800;color:var(--danger);font-size:1rem">미수금 경고</div>
               <div style="font-size:0.88rem;color:#991B1B;margin-top:2px">총 ${unpaidRecs.length}건 &middot; ${App.formatCurrency(unpaidTotal)}</div>
             </div>
@@ -347,7 +347,7 @@ App.pages.revenue = {
             </div>
             <div style="display:flex;justify-content:space-between;padding:10px 0;border-bottom:1px solid var(--border)">
               <span>고정비</span>
-              <strong style="color:var(--danger)">-${App.formatCurrency(fixedCost)}</strong>
+              <strong class="text-danger">-${App.formatCurrency(fixedCost)}</strong>
             </div>
             <div style="display:flex;justify-content:space-between;align-items:center;padding:10px 0;border-bottom:1px solid var(--border)">
               <span>변동비 (이번 달)</span>
