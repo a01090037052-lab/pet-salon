@@ -113,6 +113,7 @@ const App = {
     if (moreBtn && moreMenu) {
       moreBtn.addEventListener('click', (e) => {
         e.stopPropagation();
+        addMenu?.classList.remove('open');
         moreMenu.classList.toggle('open');
       });
       document.addEventListener('click', () => moreMenu?.classList.remove('open'));
@@ -127,6 +128,7 @@ const App = {
     if (addBtn && addMenu) {
       addBtn.addEventListener('click', (e) => {
         e.stopPropagation();
+        moreMenu?.classList.remove('open');
         addMenu.classList.toggle('open');
       });
       document.addEventListener('click', (e) => {
@@ -345,7 +347,7 @@ const App = {
     container.appendChild(toast);
 
     // Duration based on type: success=2.5s, info=2s, error=5s
-    const duration = type === 'error' ? 5000 : type === 'info' ? 2000 : 2500;
+    const duration = type === 'error' ? 5000 : type === 'info' ? 5000 : 2500;
     setTimeout(() => {
       if (toast.parentElement) {
         toast.style.animation = 'toastOut 0.3s ease forwards';
@@ -962,23 +964,28 @@ const App = {
     document.getElementById('global-search-results').innerHTML = '';
 
     history.pushState({ searchOpen: true }, '');
-    this._searchPopHandler = () => { this.closeSearch(); };
+    this._searchPopHandler = () => { this.closeSearch(true); };
     window.addEventListener('popstate', this._searchPopHandler, { once: true });
 
     // Auto-focus
     setTimeout(() => input.focus(), 50);
   },
 
-  closeSearch() {
+  closeSearch(fromPopstate) {
     const overlay = document.getElementById('global-search-overlay');
-    if (!overlay) return;
+    if (!overlay || overlay.classList.contains('hidden')) return;
     overlay.classList.add('hidden');
     overlay.classList.remove('animate-in');
     this._searchData = null;
     document.getElementById('global-search-results').innerHTML = '';
+    // Remove popstate listener first
     if (this._searchPopHandler) {
       window.removeEventListener('popstate', this._searchPopHandler);
       this._searchPopHandler = null;
+    }
+    // Clean up history if not called from popstate
+    if (!fromPopstate && history.state && history.state.searchOpen) {
+      history.back();
     }
   },
 

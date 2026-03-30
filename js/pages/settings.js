@@ -87,7 +87,7 @@ App.pages.settings = {
                 <div id="groomer-list" style="display:flex;flex-direction:column;gap:8px;margin-bottom:12px">
                   ${(groomers || []).map((g, i) => `
                     <div style="display:flex;align-items:center;gap:8px">
-                      <input type="text" class="groomer-input" value="${App.escapeHtml(g)}" class="flex-1">
+                      <input type="text" class="groomer-input flex-1" value="${App.escapeHtml(g)}">
                       <button class="btn btn-sm btn-danger btn-remove-groomer" data-index="${i}">삭제</button>
                     </div>
                   `).join('')}
@@ -387,7 +387,7 @@ App.pages.settings = {
       const index = list.querySelectorAll('.groomer-input').length;
       list.insertAdjacentHTML('beforeend', `
         <div style="display:flex;align-items:center;gap:8px">
-          <input type="text" class="groomer-input" value="${App.escapeHtml(name)}" class="flex-1">
+          <input type="text" class="groomer-input flex-1" value="${App.escapeHtml(name)}">
           <button class="btn btn-sm btn-danger btn-remove-groomer" data-index="${index}">삭제</button>
         </div>
       `);

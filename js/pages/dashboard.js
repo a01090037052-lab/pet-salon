@@ -245,7 +245,7 @@ App.pages.dashboard = {
               <span class="dash-chevron" style="transition:transform 0.2s;font-size:0.8rem">&#x25BC;</span>
             </div>
           </div>
-          <div class="card-body" id="dash-unpaid" style="display:none">
+          <div class="card-body" id="dash-unpaid" style="display:${unpaidRecords.length > 0 ? 'block' : 'none'}">
             ${unpaidRecords.sort((a, b) => (b.date || '').localeCompare(a.date || '')).slice(0, 10).map(r => {
               const customer = customerMap[r.customerId];
               const pet = petMap[r.petId];
@@ -276,7 +276,7 @@ App.pages.dashboard = {
               <span class="dash-chevron" style="transition:transform 0.2s;font-size:0.8rem">&#x25BC;</span>
             </div>
           </div>
-          <div class="card-body" id="dash-revisit" style="display:none">
+          <div class="card-body" id="dash-revisit" style="display:${revisitAlerts.length > 0 ? 'block' : 'none'}">
             ${revisitAlerts.slice(0, 8).map(a => `
               <div class="alert-item">
                 <span class="days">${a.days}일</span>
@@ -308,7 +308,7 @@ App.pages.dashboard = {
               <span class="dash-chevron" style="transition:transform 0.2s;font-size:0.8rem">&#x25BC;</span>
             </div>
           </div>
-          <div class="card-body" id="dash-birthday" style="display:none">
+          <div class="card-body" id="dash-birthday" style="display:${upcomingBirthdays.length > 0 ? 'block' : 'none'}">
             ${upcomingBirthdays.map(b => {
               const phoneClean = (b.phone || '').replace(/\D/g, '');
               const daysLabel = b.daysUntil === 0 ? '오늘!' : b.daysUntil + '일 후';
@@ -404,6 +404,13 @@ App.pages.dashboard = {
   async init() {
     // Accordion toggles for alert sections
     document.querySelectorAll('.dash-accordion-toggle').forEach(header => {
+      // Set initial chevron state for sections that start open
+      const targetId = header.dataset.target;
+      const body = document.getElementById(targetId);
+      if (body && body.style.display !== 'none') {
+        const chevron = header.querySelector('.dash-chevron');
+        if (chevron) chevron.style.transform = 'rotate(180deg)';
+      }
       header.addEventListener('click', () => {
         const targetId = header.dataset.target;
         const body = document.getElementById(targetId);

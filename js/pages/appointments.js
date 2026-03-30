@@ -203,8 +203,8 @@ App.pages.appointments = {
                     <option value="noshow" ${a.status === 'noshow' ? 'selected' : ''}>노쇼</option>
                   </select>
                   <div style="display:flex;gap:6px">
-                    <button class="btn btn-sm btn-secondary btn-edit-appt" data-id="${a.id}" class="flex-1">&#x270F; 수정</button>
-                    <button class="btn btn-sm btn-success btn-complete-appt" data-id="${a.id}" class="flex-1">&#x2702; 미용 완료</button>
+                    <button class="btn btn-sm btn-secondary btn-edit-appt flex-1" data-id="${a.id}">&#x270F; 수정</button>
+                    <button class="btn btn-sm btn-success btn-complete-appt flex-1" data-id="${a.id}">&#x2702; 미용 완료</button>
                   </div>
                 </div>
               </div>`;

@@ -527,7 +527,7 @@ App.pages.customers = {
       <td><span class="badge badge-info">${petCount[c.id] || 0}마리</span></td>
       <td>${lastVisit[c.id] ? App.getRelativeTime(lastVisit[c.id]) : '-'}</td>
       <td>${App.formatDate(c.createdAt)}</td>
-      <td class="table-actions"><button class="btn-icon btn-edit-customer" data-id="${c.id}" title="수정">&#x270F;</button><button class="btn-icon btn-delete-customer" data-id="${c.id}" title="삭제" class="text-danger">&#x1F5D1;</button></td>
+      <td class="table-actions"><button class="btn-icon btn-edit-customer" data-id="${c.id}" title="수정">&#x270F;</button><button class="btn-icon btn-delete-customer text-danger" data-id="${c.id}" title="삭제">&#x1F5D1;</button></td>
     </tr>`;
   },
 
@@ -538,7 +538,7 @@ App.pages.customers = {
     return `<div class="mobile-card clickable-row" data-id="${c.id}" data-tags="${(c.tags || []).join(',')}" style="cursor:pointer">
       <div class="mobile-card-header"><div style="display:flex;align-items:center;gap:10px"><div class="mobile-card-avatar">${App.escapeHtml(initial)}</div><strong>${App.escapeHtml(c.name)}</strong>${this.getTagBadges(c.tags)}${absenceBadge}</div><span class="badge badge-info">${petCount[c.id] || 0}마리</span></div>
       <div class="mobile-card-body"><a href="tel:${App.escapeHtml((c.phone || '').replace(/\D/g, ''))}" class="mobile-card-phone" onclick="event.stopPropagation()">&#x1F4DE; ${App.formatPhone(c.phone)}</a><span class="mobile-card-meta-text">${lastVisit[c.id] ? '최근 방문: ' + App.getRelativeTime(lastVisit[c.id]) : '방문 기록 없음'}</span>
-      <div style="display:flex;gap:4px;margin-top:8px;border-top:1px solid var(--border-light);padding-top:8px"><button class="btn btn-sm btn-secondary btn-edit-customer" data-id="${c.id}" class="flex-1" onclick="event.stopPropagation()">수정</button><button class="btn btn-sm btn-danger btn-delete-customer" data-id="${c.id}" class="flex-1" onclick="event.stopPropagation()">삭제</button></div></div>
+      <div style="display:flex;gap:4px;margin-top:8px;border-top:1px solid var(--border-light);padding-top:8px"><button class="btn btn-sm btn-secondary btn-edit-customer flex-1" data-id="${c.id}" onclick="event.stopPropagation()">수정</button><button class="btn btn-sm btn-danger btn-delete-customer flex-1" data-id="${c.id}" onclick="event.stopPropagation()">삭제</button></div></div>
     </div>`;
   },
 

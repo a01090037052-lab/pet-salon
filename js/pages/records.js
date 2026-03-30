@@ -794,10 +794,29 @@ App.pages.records = {
   },
 
   async deleteRecord(id) {
+    const confirmed = await App.confirm('이 미용 기록을 삭제하시겠습니까?');
+    if (!confirmed) return;
     try {
-      const confirmed = await App.confirm('이 미용 기록을 삭제하시겠습니까?');
-      if (!confirmed) return;
+      const record = await DB.get('records', id);
+      // 연관 예약 상태 원복
+      if (record && record.appointmentId) {
+        const appt = await DB.get('appointments', Number(record.appointmentId));
+        if (appt && appt.status === 'completed') {
+          appt.status = 'confirmed';
+          await DB.update('appointments', appt);
+        }
+      }
       await DB.delete('records', id);
+      // pet lastVisitDate 재계산
+      if (record && record.petId) {
+        const petRecords = await DB.getByIndex('records', 'petId', record.petId);
+        const pet = await DB.get('pets', record.petId);
+        if (pet) {
+          const latest = petRecords.sort((a, b) => (b.date || '').localeCompare(a.date || ''))[0];
+          pet.lastVisitDate = latest ? latest.date : null;
+          await DB.update('pets', pet);
+        }
+      }
       App.showToast('미용 기록이 삭제되었습니다.');
       App.handleRoute();
     } catch (err) {

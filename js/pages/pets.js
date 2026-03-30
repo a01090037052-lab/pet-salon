@@ -75,7 +75,7 @@ App.pages.pets = {
                       <td>${petLastVisit[p.id] ? `<span ${App.getDaysAgo(petLastVisit[p.id]) >= 30 ? 'class="badge badge-warning"' : 'style="color:var(--text-secondary)"'}>${App.getRelativeTime(petLastVisit[p.id])}</span>` : '<span style="color:var(--text-muted)">-</span>'}</td>
                       <td class="table-actions">
                         <button class="btn-icon btn-edit-pet" data-id="${p.id}" title="수정">&#x270F;</button>
-                        <button class="btn-icon btn-delete-pet" data-id="${p.id}" title="삭제" class="text-danger">&#x1F5D1;</button>
+                        <button class="btn-icon btn-delete-pet text-danger" data-id="${p.id}" title="삭제">&#x1F5D1;</button>
                       </td>
                     </tr>`;
                 }).join('')}
