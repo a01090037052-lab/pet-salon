@@ -1,0 +1,1003 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>펫살롱 사용 가이드</title>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Helvetica Neue', 'Noto Sans KR', sans-serif;
+      line-height: 1.6;
+      color: #333;
+      background: linear-gradient(135deg, #F3E7FF 0%, #FFF0F5 100%);
+      min-height: 100vh;
+      padding: 20px;
+    }
+
+    .container {
+      max-width: 900px;
+      margin: 0 auto;
+      background: white;
+      border-radius: 16px;
+      box-shadow: 0 10px 40px rgba(0, 0, 0, 0.1);
+      overflow: hidden;
+    }
+
+    header {
+      background: linear-gradient(135deg, #C084FC 0%, #A855F7 50%, #D946EF 100%);
+      color: white;
+      padding: 60px 40px;
+      text-align: center;
+    }
+
+    header h1 {
+      font-size: 2.5rem;
+      margin-bottom: 10px;
+      font-weight: 800;
+      letter-spacing: -0.5px;
+    }
+
+    header p {
+      font-size: 1.1rem;
+      opacity: 0.95;
+      font-weight: 300;
+    }
+
+    main {
+      padding: 40px;
+    }
+
+    .table-of-contents {
+      background: #F9F5FF;
+      border-left: 4px solid #A855F7;
+      padding: 24px;
+      border-radius: 8px;
+      margin-bottom: 40px;
+    }
+
+    .table-of-contents h2 {
+      font-size: 1.3rem;
+      margin-bottom: 16px;
+      color: #7C3AED;
+    }
+
+    .table-of-contents ul {
+      list-style: none;
+      columns: 2;
+      gap: 20px;
+    }
+
+    .table-of-contents li {
+      margin-bottom: 10px;
+    }
+
+    .table-of-contents a {
+      color: #7C3AED;
+      text-decoration: none;
+      font-weight: 500;
+      transition: color 0.3s;
+    }
+
+    .table-of-contents a:hover {
+      color: #A855F7;
+      text-decoration: underline;
+    }
+
+    section {
+      margin-bottom: 50px;
+      scroll-margin-top: 20px;
+    }
+
+    h2 {
+      font-size: 2rem;
+      color: #7C3AED;
+      margin-bottom: 20px;
+      padding-bottom: 12px;
+      border-bottom: 3px solid #E9D5FF;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+
+    h3 {
+      font-size: 1.4rem;
+      color: #9333EA;
+      margin-top: 24px;
+      margin-bottom: 12px;
+    }
+
+    h4 {
+      font-size: 1.1rem;
+      color: #A855F7;
+      margin-top: 16px;
+      margin-bottom: 8px;
+    }
+
+    p {
+      margin-bottom: 12px;
+      font-size: 1rem;
+      line-height: 1.8;
+    }
+
+    ul, ol {
+      margin-left: 24px;
+      margin-bottom: 16px;
+    }
+
+    li {
+      margin-bottom: 8px;
+      line-height: 1.7;
+    }
+
+    .card {
+      background: #F9F5FF;
+      border: 1px solid #E9D5FF;
+      border-radius: 12px;
+      padding: 20px;
+      margin-bottom: 20px;
+      border-left: 4px solid #A855F7;
+    }
+
+    .card-title {
+      font-weight: 700;
+      color: #7C3AED;
+      margin-bottom: 12px;
+      font-size: 1.05rem;
+    }
+
+    .tip-box {
+      background: linear-gradient(135deg, #FEF3C7 0%, #FCD34D 100%);
+      border-left: 4px solid #F59E0B;
+      padding: 16px 20px;
+      border-radius: 8px;
+      margin-bottom: 20px;
+      display: flex;
+      gap: 12px;
+      align-items: flex-start;
+    }
+
+    .tip-icon {
+      font-size: 1.4rem;
+      flex-shrink: 0;
+      margin-top: 2px;
+    }
+
+    .tip-content {
+      flex: 1;
+    }
+
+    .tip-content strong {
+      display: block;
+      color: #92400E;
+      margin-bottom: 4px;
+    }
+
+    .tip-content p {
+      margin-bottom: 0;
+      color: #78350F;
+      font-size: 0.95rem;
+    }
+
+    .warning-box {
+      background: #FEE2E2;
+      border-left: 4px solid #EF4444;
+      padding: 16px 20px;
+      border-radius: 8px;
+      margin-bottom: 20px;
+      color: #991B1B;
+    }
+
+    .warning-box strong {
+      display: block;
+      margin-bottom: 4px;
+    }
+
+    .workflow-step {
+      display: flex;
+      gap: 16px;
+      margin-bottom: 20px;
+      padding: 16px;
+      background: #F0F9FF;
+      border-radius: 8px;
+      border-left: 4px solid #3B82F6;
+    }
+
+    .step-number {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      width: 40px;
+      height: 40px;
+      background: #3B82F6;
+      color: white;
+      border-radius: 50%;
+      flex-shrink: 0;
+      font-weight: bold;
+      font-size: 1.2rem;
+    }
+
+    .step-content {
+      flex: 1;
+    }
+
+    .step-content strong {
+      display: block;
+      color: #1E40AF;
+      margin-bottom: 4px;
+    }
+
+    .feature-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+      gap: 16px;
+      margin-bottom: 20px;
+    }
+
+    .feature-item {
+      background: #F0F9FF;
+      border: 1px solid #BAE6FD;
+      border-radius: 8px;
+      padding: 16px;
+      text-align: center;
+    }
+
+    .feature-icon {
+      font-size: 2rem;
+      margin-bottom: 8px;
+    }
+
+    .feature-name {
+      font-weight: 700;
+      color: #0369A1;
+      margin-bottom: 4px;
+    }
+
+    .feature-desc {
+      font-size: 0.9rem;
+      color: #0C4A6E;
+      line-height: 1.5;
+    }
+
+    .menu-structure {
+      background: white;
+      border: 1px solid #E5E7EB;
+      border-radius: 8px;
+      overflow: hidden;
+      margin-bottom: 20px;
+    }
+
+    .menu-item {
+      padding: 12px 16px;
+      border-bottom: 1px solid #E5E7EB;
+      display: flex;
+      gap: 12px;
+      align-items: center;
+    }
+
+    .menu-item:last-child {
+      border-bottom: none;
+    }
+
+    .menu-icon {
+      font-size: 1.3rem;
+      width: 30px;
+      text-align: center;
+    }
+
+    .menu-text {
+      flex: 1;
+    }
+
+    .menu-text strong {
+      display: block;
+      color: #1F2937;
+      margin-bottom: 2px;
+    }
+
+    .menu-text small {
+      color: #6B7280;
+      font-size: 0.85rem;
+    }
+
+    code {
+      background: #F3F4F6;
+      padding: 2px 6px;
+      border-radius: 4px;
+      font-family: 'Monaco', 'Courier New', monospace;
+      font-size: 0.9em;
+      color: #DC2626;
+    }
+
+    .keyboard-key {
+      display: inline-block;
+      background: #E5E7EB;
+      border: 1px solid #9CA3AF;
+      border-radius: 4px;
+      padding: 2px 8px;
+      font-family: monospace;
+      font-weight: bold;
+      font-size: 0.85em;
+    }
+
+    .faq-item {
+      margin-bottom: 20px;
+      padding: 16px;
+      background: #FFFBEB;
+      border-radius: 8px;
+      border-left: 4px solid #FBBF24;
+    }
+
+    .faq-item strong {
+      display: block;
+      color: #92400E;
+      margin-bottom: 8px;
+      font-size: 1.05rem;
+    }
+
+    .faq-item p {
+      color: #78350F;
+      margin-bottom: 0;
+    }
+
+    footer {
+      background: #F3F4F6;
+      padding: 30px 40px;
+      text-align: center;
+      color: #6B7280;
+      font-size: 0.9rem;
+      border-top: 1px solid #E5E7EB;
+    }
+
+    @media (max-width: 768px) {
+      header {
+        padding: 40px 20px;
+      }
+
+      header h1 {
+        font-size: 1.8rem;
+      }
+
+      main {
+        padding: 20px;
+      }
+
+      h2 {
+        font-size: 1.5rem;
+      }
+
+      h3 {
+        font-size: 1.2rem;
+      }
+
+      .table-of-contents ul {
+        columns: 1;
+      }
+
+      .feature-grid {
+        grid-template-columns: 1fr;
+      }
+
+      .workflow-step {
+        flex-direction: column;
+        align-items: flex-start;
+      }
+
+      footer {
+        padding: 20px;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <header>
+      <h1>펫살롱</h1>
+      <p>애견 미용 고객 관리 완벽 가이드</p>
+    </header>
+
+    <main>
+      <div class="table-of-contents">
+        <h2>목차</h2>
+        <ul>
+          <li><a href="#introduction">소개</a></li>
+          <li><a href="#getting-started">시작하기</a></li>
+          <li><a href="#daily-workflow">일일 사용 가이드</a></li>
+          <li><a href="#features">메뉴별 상세 가이드</a></li>
+          <li><a href="#search">검색 기능</a></li>
+          <li><a href="#sms">문자(SMS) 기능</a></li>
+          <li><a href="#data-management">데이터 관리</a></li>
+          <li><a href="#troubleshooting">문제 해결</a></li>
+          <li><a href="#maintenance">유지보수 불가 시 대처</a></li>
+        </ul>
+      </div>
+
+      <!-- 1. 소개 -->
+      <section id="introduction">
+        <h2>소개</h2>
+
+        <h3>펫살롱이란?</h3>
+        <p>펫살롱은 애견 미용 샵의 전체 운영을 관리하기 위해 설계된 웹 기반 고객 관리 시스템입니다. 매장에서 필요한 모든 기능을 한 곳에서 사용할 수 있습니다.</p>
+
+        <h3>주요 특징</h3>
+        <div class="feature-grid">
+          <div class="feature-item">
+            <div class="feature-icon">📱</div>
+            <div class="feature-name">완벽한 모바일 지원</div>
+            <div class="feature-desc">스마트폰, 태블릿에서 자유롭게 사용</div>
+          </div>
+          <div class="feature-item">
+            <div class="feature-icon">⚡</div>
+            <div class="feature-name">초고속</div>
+            <div class="feature-desc">로딩 지연 없이 빠른 반응</div>
+          </div>
+          <div class="feature-item">
+            <div class="feature-icon">📴</div>
+            <div class="feature-name">오프라인 작동</div>
+            <div class="feature-desc">인터넷 없어도 모든 기능 이용 가능</div>
+          </div>
+          <div class="feature-item">
+            <div class="feature-icon">📊</div>
+            <div class="feature-name">상세한 분석</div>
+            <div class="feature-desc">실시간 매출, 고객 분석 제공</div>
+          </div>
+          <div class="feature-item">
+            <div class="feature-icon">💾</div>
+            <div class="feature-name">자동 저장</div>
+            <div class="feature-desc">데이터 손실 걱정 없음</div>
+          </div>
+          <div class="feature-item">
+            <div class="feature-icon">📸</div>
+            <div class="feature-name">사진 저장</div>
+            <div class="feature-desc">미용 전후 사진 카드 생성</div>
+          </div>
+        </div>
+      </section>
+
+      <!-- 2. 시작하기 -->
+      <section id="getting-started">
+        <h2>시작하기</h2>
+
+        <h3>첫 설정 순서</h3>
+        <div class="workflow-step">
+          <div class="step-number">1</div>
+          <div class="step-content">
+            <strong>매장 정보 입력</strong>
+            <p>설정 > 매장 관리에서 매장 이름, 전화번호, 주소를 입력합니다.</p>
+          </div>
+        </div>
+
+        <div class="workflow-step">
+          <div class="step-number">2</div>
+          <div class="step-content">
+            <strong>미용사 등록</strong>
+            <p>설정 > 매장 관리에서 담당 미용사 이름을 추가합니다.</p>
+          </div>
+        </div>
+
+        <div class="workflow-step">
+          <div class="step-number">3</div>
+          <div class="step-content">
+            <strong>서비스 메뉴 등록</strong>
+            <p>서비스 메뉴에서 미용 서비스(목욕, 드라이, 트리밍 등)와 가격(소형/중형/대형)을 설정합니다.</p>
+          </div>
+        </div>
+
+        <div class="workflow-step">
+          <div class="step-number">4</div>
+          <div class="step-content">
+            <strong>첫 고객 등록</strong>
+            <p>고객 관리에서 보호자 정보와 반려견 정보를 등록합니다.</p>
+          </div>
+        </div>
+
+        <div class="tip-box">
+          <div class="tip-icon">💡</div>
+          <div class="tip-content">
+            <strong>팁</strong>
+            <p>설정을 먼저 완료해야 예약 및 기록 작성이 정확하게 작동합니다. 특히 서비스 메뉴 가격 설정이 중요합니다.</p>
+          </div>
+        </div>
+      </section>
+
+      <!-- 3. 일일 사용 가이드 -->
+      <section id="daily-workflow">
+        <h2>일일 사용 가이드</h2>
+
+        <h3>아침: 오늘 예약 확인</h3>
+        <p>앱을 열면 대시보드에 오늘의 예약 목록이 표시됩니다. 몇 건의 예약이 있는지, 어떤 고객들이 올 예정인지 한눈에 확인할 수 있습니다.</p>
+
+        <div class="card">
+          <div class="card-title">대시보드 확인 사항</div>
+          <ul>
+            <li>오늘 예약 건수 및 시간</li>
+            <li>고객명, 반려견명</li>
+            <li>미용사별 일정</li>
+            <li>미수금 현황</li>
+            <li>재방문 알림 (7일 초과)</li>
+            <li>생일 축하 알림 (7일 이내)</li>
+          </ul>
+        </div>
+
+        <h3>전화 예약: 고객 및 반려견 검색</h3>
+        <ol>
+          <li>전화를 받으면 좌측 상단의 돋보기 아이콘 또는 <span class="keyboard-key">/</span>를 눌러 검색창을 엽니다.</li>
+          <li>고객 이름이나 반려견 이름, 전화번호를 입력하여 검색합니다.</li>
+          <li>기존 고객이면 조회 후 "예약" 버튼을 클릭합니다.</li>
+          <li>신규 고객이면 검색 결과 하단의 "+ 새 고객 등록"을 클릭합니다.</li>
+        </ol>
+
+        <h3>현장 접수: 신규 고객 빠르게 등록</h3>
+        <p>고객이 방문했을 때 빠르게 등록하려면:</p>
+        <ol>
+          <li>화면 하단의 + 버튼을 누릅니다.</li>
+          <li>"새 고객" 또는 "새 반려견"을 선택합니다.</li>
+          <li>기본 정보(이름, 전화번호, 반려견 이름)만 입력하고 저장합니다.</li>
+          <li>자세한 정보(체중, 나이, 특이사항 등)는 나중에 수정할 수 있습니다.</li>
+        </ol>
+
+        <h3>미용 완료: 기록 작성부터 문자 발송까지</h3>
+        <div class="workflow-step">
+          <div class="step-number">1</div>
+          <div class="step-content">
+            <strong>미용 기록 작성</strong>
+            <p>예약 목록에서 "미용 완료" 버튼을 클릭하거나, 미용 기록 페이지에서 새 기록을 추가합니다. 서비스, 가격, 다음 예약일 등을 입력합니다.</p>
+          </div>
+        </div>
+
+        <div class="workflow-step">
+          <div class="step-number">2</div>
+          <div class="step-content">
+            <strong>사진 카드 생성</strong>
+            <p>미용 전후 사진을 촬영하고 업로드합니다. 자동으로 카드 형식의 이미지가 생성되어 인쇄할 수 있습니다.</p>
+          </div>
+        </div>
+
+        <div class="workflow-step">
+          <div class="step-number">3</div>
+          <div class="step-content">
+            <strong>다음 예약 제안</strong>
+            <p>고객에게 다음 미용 추천 날짜를 제시하고 예약합니다.</p>
+          </div>
+        </div>
+
+        <div class="workflow-step">
+          <div class="step-number">4</div>
+          <div class="step-content">
+            <strong>완료 문자 발송</strong>
+            <p>미용 완료 안내 문자를 발송합니다. 미용 기록 옆의 "문자" 버튼으로 한 번에 전송할 수 있습니다.</p>
+          </div>
+        </div>
+
+        <h3>퇴근: 일일 정산</h3>
+        <p>매출 페이지에서:</p>
+        <ul>
+          <li>오늘 총 매출 확인</li>
+          <li>결제 수단별 통계 확인</li>
+          <li>미수금 고객 확인 및 연락</li>
+          <li>필요시 일일 정산표 다운로드</li>
+        </ul>
+
+        <div class="tip-box">
+          <div class="tip-icon">💡</div>
+          <div class="tip-content">
+            <strong>효율 팁</strong>
+            <p>예약 시간대에 미용 기록 완료 여부를 실시간으로 업데이트하면, 매출 추적과 고객 만족도 향상에 도움이 됩니다.</p>
+          </div>
+        </div>
+      </section>
+
+      <!-- 4. 메뉴별 상세 가이드 -->
+      <section id="features">
+        <h2>메뉴별 상세 가이드</h2>
+
+        <h3>대시보드</h3>
+        <p>앱을 열었을 때 가장 먼저 보는 페이지입니다. 당일 주요 정보를 한눈에 파악할 수 있습니다.</p>
+
+        <div class="card">
+          <div class="card-title">주요 기능</div>
+          <ul>
+            <li><strong>오늘 예약:</strong> 본일 예약 목록 (상태: 대기, 확정, 미용중, 완료, 취소, 노쇼)</li>
+            <li><strong>오늘 매출:</strong> 금일 총 매출 및 건수 (일일 목표 진행률 표시)</li>
+            <li><strong>미수금 현황:</strong> 미지급 건 조회 및 결제 처리</li>
+            <li><strong>재방문 알림:</strong> 마지막 미용 후 설정 기간이 지난 반려견 목록</li>
+            <li><strong>생일 알림:</strong> 7일 내 생일인 고객 및 반려견</li>
+            <li><strong>백업 알림:</strong> 데이터 안전을 위한 백업 권고</li>
+          </ul>
+        </div>
+
+        <h3>예약 관리</h3>
+        <p>고객 예약을 효율적으로 관리하는 페이지입니다.</p>
+
+        <div class="card">
+          <div class="card-title">주요 기능</div>
+          <ul>
+            <li><strong>예약 목록:</strong> 전체 예약 조회, 상태별 필터링</li>
+            <li><strong>캘린더 뷰:</strong> 월별 캘린더에서 예약 현황 시각화</li>
+            <li><strong>타임테이블:</strong> 미용사별 일정을 시간 단위로 관리</li>
+            <li><strong>반복 예약:</strong> 주 1회, 2주, 4주 등 정기 예약 생성</li>
+            <li><strong>예약 상태 변경:</strong> 대기 → 확정 → 미용중 → 완료</li>
+            <li><strong>시간 충돌 감지:</strong> 미용사별, 반려견별 중복 예약 방지</li>
+          </ul>
+        </div>
+
+        <h3>미용 기록</h3>
+        <p>완료된 미용 작업을 기록하고 관리합니다.</p>
+
+        <div class="card">
+          <div class="card-title">주요 기능</div>
+          <ul>
+            <li><strong>기록 작성:</strong> 서비스, 금액, 담당 미용사, 메모 기입</li>
+            <li><strong>사진 업로드:</strong> 미용 전후 사진 첨부</li>
+            <li><strong>사진 카드:</strong> 사진으로 자동 생성되는 인쇄용 카드</li>
+            <li><strong>영수증 생성:</strong> 고객에게 제공할 영수증 자동 생성</li>
+            <li><strong>결제 상태:</strong> 현금, 카드, 계좌이체, 미결제 등 관리</li>
+            <li><strong>다음 예약일:</strong> 미용 주기 자동 계산</li>
+          </ul>
+        </div>
+
+        <h3>고객 관리</h3>
+        <p>고객 정보를 체계적으로 관리합니다.</p>
+
+        <div class="card">
+          <div class="card-title">주요 기능</div>
+          <ul>
+            <li><strong>고객 목록:</strong> 이름순, 최근방문순, 등록일순, 방문횟수순 정렬</li>
+            <li><strong>고객 분류:</strong> VIP, 신규, 단골, 주의 태그 설정</li>
+            <li><strong>고객 상세:</strong> 방문 통계, 미용 기록, 반려견 목록 조회</li>
+            <li><strong>미수금 확인:</strong> 고객별 미지급액 추적</li>
+            <li><strong>전화/문자:</strong> 직접 연락 기능</li>
+            <li><strong>메모:</strong> 고객 특이사항 기록</li>
+          </ul>
+        </div>
+
+        <h3>반려견 관리</h3>
+        <p>반려견의 개별 정보와 관리 정보를 기록합니다.</p>
+
+        <div class="card">
+          <div class="card-title">주요 기능</div>
+          <ul>
+            <li><strong>반려견 프로필:</strong> 이름, 견종, 체중, 나이, 성별, 중성화 여부</li>
+            <li><strong>건강 정보:</strong> 성격, 건강 특이사항, 알러지, 선호 스타일</li>
+            <li><strong>사진:</strong> 반려견 프로필 사진 업로드</li>
+            <li><strong>미용 주기:</strong> 개별 반려견별 권장 미용 주기 설정</li>
+            <li><strong>상태 관리:</strong> 활동중, 사망, 양도 등 상태 기록</li>
+            <li><strong>미용 이력:</strong> 해당 반려견의 모든 미용 기록 조회</li>
+          </ul>
+        </div>
+
+        <h3>매출 분석</h3>
+        <p>수익성을 분석하고 전략을 수립합니다.</p>
+
+        <div class="card">
+          <div class="card-title">주요 기능</div>
+          <ul>
+            <li><strong>오늘 매출:</strong> 본일 매출 목표 진행률</li>
+            <li><strong>이번 주/달 매출:</strong> 기간별 수익 요약</li>
+            <li><strong>일별/월별 차트:</strong> 시각적 매출 추이 분석</li>
+            <li><strong>결제 수단별 통계:</strong> 현금, 카드, 이체 분석</li>
+            <li><strong>미용사별 매출:</strong> 담당자별 성과 파악</li>
+            <li><strong>손익 계산:</strong> 고정비, 변동비 입력 후 순이익 계산</li>
+            <li><strong>CSV 내보내기:</strong> 세무사 제출용 자료 추출</li>
+          </ul>
+        </div>
+
+        <h3>서비스 메뉴</h3>
+        <p>제공하는 미용 서비스와 가격을 관리합니다.</p>
+
+        <div class="card">
+          <div class="card-title">주요 기능</div>
+          <ul>
+            <li><strong>서비스 등록:</strong> 미용 항목 추가 (목욕, 드라이, 트리밍 등)</li>
+            <li><strong>사이즈별 가격:</strong> 소형, 중형, 대형 동물별로 다른 가격 설정</li>
+            <li><strong>활성화/비활성화:</strong> 서비스 사용 여부 관리</li>
+            <li><strong>예약에 자동 반영:</strong> 설정한 서비스가 예약/기록에서 선택 가능</li>
+          </ul>
+        </div>
+
+        <h3>설정</h3>
+        <p>앱 전체 설정을 관리합니다.</p>
+
+        <div class="card">
+          <div class="card-title">주요 기능</div>
+          <ul>
+            <li><strong>매장 정보:</strong> 이름, 전화번호, 주소, 재방문 알림 기준일</li>
+            <li><strong>미용사 관리:</strong> 담당 미용사 추가/삭제</li>
+            <li><strong>휴무일 설정:</strong> 정기 휴무일 지정</li>
+            <li><strong>테마 색상:</strong> 앱 전체 색상 커스터마이징</li>
+            <li><strong>알림 설정:</strong> 예약 알림 활성화 및 시간 설정</li>
+            <li><strong>매출 목표:</strong> 일일 목표 설정</li>
+            <li><strong>고정비/변동비:</strong> 손익 계산용 비용 입력</li>
+            <li><strong>메시지 템플릿:</strong> SMS 발송 문구 커스터마이징</li>
+            <li><strong>백업/복원:</strong> 데이터 백업 및 복원</li>
+          </ul>
+        </div>
+      </section>
+
+      <!-- 5. 검색 기능 -->
+      <section id="search">
+        <h2>검색 기능</h2>
+
+        <h3>전체 검색 사용하기</h3>
+        <p>화면 우측 하단의 돋보기 아이콘을 클릭하거나 <span class="keyboard-key">/</span> 키를 눌러 검색창을 엽니다.</p>
+
+        <h3>검색 기준</h3>
+        <ul>
+          <li><strong>고객 이름:</strong> "박민주", "이영희" 등</li>
+          <li><strong>전화번호 뒷자리:</strong> "1234", "9876" 등 4자리</li>
+          <li><strong>반려견 이름:</strong> "뽀삐", "나봉이" 등</li>
+        </ul>
+
+        <h3>검색 결과 활용</h3>
+        <ul>
+          <li>검색 결과를 클릭하면 상세 카드를 볼 수 있습니다.</li>
+          <li>카드에서 전화, 문자, 예약, 미용 기록 등을 빠르게 실행할 수 있습니다.</li>
+          <li>미수금, 최근 기록, 반려견 정보를 한눈에 확인할 수 있습니다.</li>
+        </ul>
+
+        <div class="tip-box">
+          <div class="tip-icon">💡</div>
+          <div class="tip-content">
+            <strong>검색 팁</strong>
+            <p>전화로 예약을 받을 때 전화번호로 검색하면 기존 고객을 빠르게 찾을 수 있습니다. "9876"만 입력해도 전화번호가 ***-**-9876인 고객을 찾아줍니다.</p>
+          </div>
+        </div>
+      </section>
+
+      <!-- 6. 문자(SMS) 기능 -->
+      <section id="sms">
+        <h2>문자(SMS) 기능</h2>
+
+        <h3>자동 메시지 발송</h3>
+        <p>펫살롱은 4가지 상황에서 자동 문자를 보낼 수 있습니다.</p>
+
+        <div class="card">
+          <div class="card-title">예약 확인 문자</div>
+          <p>새 예약이 등록되면 고객에게 예약 확인 문자를 보낼 수 있습니다. 아래 정보가 포함됩니다:</p>
+          <ul>
+            <li>예약 날짜 및 시간</li>
+            <li>반려견 이름</li>
+            <li>담당 미용사</li>
+            <li>매장 연락처</li>
+          </ul>
+        </div>
+
+        <div class="card">
+          <div class="card-title">미용 완료 안내</div>
+          <p>미용을 완료하고 기록을 저장할 때 발송합니다:</p>
+          <ul>
+            <li>완료 안내</li>
+            <li>시술 서비스 항목</li>
+            <li>금액</li>
+            <li>감사 인사</li>
+          </ul>
+        </div>
+
+        <div class="card">
+          <div class="card-title">재방문 알림</div>
+          <p>마지막 미용 후 설정된 기간이 지나면 대시보드에 표시되며, "문자" 버튼으로 발송합니다:</p>
+          <ul>
+            <li>마지막 미용 후 경과일</li>
+            <li>다음 예약 제안</li>
+            <li>매장 연락처</li>
+          </ul>
+        </div>
+
+        <div class="card">
+          <div class="card-title">생일 축하 문자</div>
+          <p>반려견 또는 고객의 생일 7일 전부터 대시보드에 표시되며, 축하 문자를 발송할 수 있습니다:</p>
+          <ul>
+            <li>생일 축하 인사</li>
+            <li>특별 할인 제안</li>
+            <li>매장 연락처</li>
+          </ul>
+        </div>
+
+        <h3>메시지 커스터마이징</h3>
+        <p>설정 > 운영 설정 > 메시지 템플릿에서 메시지를 수정할 수 있습니다.</p>
+
+        <div class="card">
+          <div class="card-title">사용 가능한 변수</div>
+          <ul>
+            <li><code>{매장명}</code> - 등록한 매장 이름</li>
+            <li><code>{고객명}</code> - 고객 이름</li>
+            <li><code>{반려견명}</code> - 반려견 이름</li>
+            <li><code>{경과일수}</code> - 마지막 미용 후 지난 일수</li>
+            <li><code>{날짜}</code> - 예약 날짜</li>
+            <li><code>{시간}</code> - 예약 시간</li>
+            <li><code>{서비스}</code> - 미용 서비스 항목</li>
+            <li><code>{금액}</code> - 미용 가격</li>
+            <li><code>{미용사}</code> - 담당 미용사</li>
+            <li><code>{전화번호}</code> - 매장 전화번호</li>
+          </ul>
+        </div>
+
+        <div class="warning-box">
+          <strong>주의</strong>
+          <p>문자 발송 시 고객의 휴대폰이 필요합니다. 고객 등록 시 전화번호를 정확히 입력해주세요.</p>
+        </div>
+      </section>
+
+      <!-- 7. 데이터 관리 -->
+      <section id="data-management">
+        <h2>데이터 관리</h2>
+
+        <h3>백업 방법</h3>
+        <ol>
+          <li>설정 > 데이터 탭으로 이동합니다.</li>
+          <li>"데이터 백업하기" 버튼을 클릭합니다.</li>
+          <li>브라우저가 자동으로 JSON 파일을 다운로드합니다.</li>
+          <li>파일 이름은 <code>펫살롱_백업_2024-03-30.json</code> 형식입니다.</li>
+        </ol>
+
+        <div class="tip-box">
+          <div class="tip-icon">💡</div>
+          <div class="tip-content">
+            <strong>백업 권장사항</strong>
+            <p>최소 1주일에 1번, 데이터가 많을수록 자주 백업하세요. 안전한 클라우드 저장소(Google Drive, iCloud 등)에 복사본을 보관하는 것을 권장합니다.</p>
+          </div>
+        </div>
+
+        <h3>복원 방법</h3>
+        <ol>
+          <li>설정 > 데이터 탭으로 이동합니다.</li>
+          <li>"데이터 복원하기" 버튼을 클릭합니다.</li>
+          <li>백업 파일(JSON)을 선택합니다.</li>
+          <li>확인 메시지를 읽고 진행합니다. (기존 데이터는 덮어쓰기됩니다)</li>
+          <li>복원 완료 후 자동으로 이전 데이터를 안전하게 보관합니다.</li>
+        </ol>
+
+        <h3>폰 교체 시 데이터 이전</h3>
+        <ol>
+          <li><strong>기존 폰에서:</strong> 설정 > 데이터에서 백업 파일 다운로드</li>
+          <li><strong>안전 보관:</strong> 백업 파일을 이메일로 전송하거나 USB에 저장</li>
+          <li><strong>새 폰에서:</strong> 펫살롱 앱 설치 후 복원 기능 사용</li>
+          <li><strong>확인:</strong> 데이터가 정확히 이전되었는지 확인</li>
+        </ol>
+
+        <h3>백업 파일 보관 중요성</h3>
+        <ul>
+          <li>장기 사업 자료 보관: 최소 3년~5년 보관 권장</li>
+          <li>세무사 상담 시 활용</li>
+          <li>분쟁 발생 시 증거 자료</li>
+          <li>새 직원 교육 자료</li>
+        </ul>
+
+        <div class="warning-box">
+          <strong>중요</strong>
+          <p>백업 파일은 매우 중요합니다. 여러 곳에 복사본을 저장하고, 안전한 장소에 보관하세요. 기기 고장이나 분실 시에만 필요하지만, 필요할 때 없으면 모든 데이터를 잃을 수 있습니다.</p>
+        </div>
+      </section>
+
+      <!-- 8. 문제 해결(FAQ) -->
+      <section id="troubleshooting">
+        <h2>문제 해결 (FAQ)</h2>
+
+        <div class="faq-item">
+          <strong>Q. 앱이 안 열려요</strong>
+          <p>앱을 여러 번 사용했는데 갑자기 안 열리는 경우가 있습니다. 다음을 시도해보세요: 1) 브라우저 새로고침 (F5 또는 Ctrl+R), 2) 브라우저 캐시 삭제 후 다시 접속, 3) 다른 브라우저 사용, 4) 디바이스 재시작</p>
+        </div>
+
+        <div class="faq-item">
+          <strong>Q. 데이터가 사라졌어요</strong>
+          <p>먼저 당황하지 마세요! 펫살롱은 기기에 데이터를 저장하므로 웹사이트를 방문하는 방식에 따라 달라질 수 있습니다. 1) 북마크된 정확한 주소로 접속했는지 확인, 2) 홈 화면에 추가했으면 그 아이콘으로 시작, 3) 백업 파일이 있으면 복원 기능으로 데이터 복구</p>
+        </div>
+
+        <div class="faq-item">
+          <strong>Q. 오프라인에서 사용하려면?</strong>
+          <p>펫살롱은 완벽한 오프라인 지원을 제공합니다. 1) 한 번 접속하면 필요한 파일이 자동 다운로드되고, 2) 이후 인터넷 없이도 모든 기능 사용 가능, 3) 연결 복구 후 자동 동기화. 인터넷 없는 상황에서도 걱정 없이 사용하세요.</p>
+        </div>
+
+        <div class="faq-item">
+          <strong>Q. 문자가 안 보내져요</strong>
+          <p>1) 고객 연락처가 정확히 입력되었는지 확인, 2) 휴대폰의 SMS 권한이 허용되었는지 확인, 3) 앱 개발자의 SMS 기능은 문자 작성만 자동화하며, 실제 발송은 기기의 기본 문자 앱을 거치므로 발송 여부는 기기에 따라 다를 수 있음</p>
+        </div>
+
+        <div class="faq-item">
+          <strong>Q. 예약이 겹친다고 나와요</strong>
+          <p>펫살롱은 같은 미용사나 같은 반려견의 예약 시간이 겹치는 것을 방지합니다. 1) 예약 소요시간 재확인, 2) 다른 미용사 배정 또는 시간 변경, 3) 기존 예약 상태 변경 확인</p>
+        </div>
+
+        <div class="faq-item">
+          <strong>Q. 저장 공간이 부족하다고 해요</strong>
+          <p>사진이 많으면 저장 공간을 많이 사용합니다. 1) 오래된 사진 삭제, 2) 백업 파일 다운로드 후 기기에서 삭제, 3) 별도 클라우드 저장소 활용 고려</p>
+        </div>
+
+        <div class="faq-item">
+          <strong>Q. 모바일과 PC에서 동시에 쓸 수 있나요?</strong>
+          <p>각 기기는 독립적인 데이터를 가집니다. 데이터를 동기화하려면: 1) 한 기기에서 백업 파일 생성, 2) 다른 기기에서 복원 기능으로 불러오기. 이 방법으로 여러 기기에서 같은 데이터를 사용할 수 있습니다.</p>
+        </div>
+
+        <div class="faq-item">
+          <strong>Q. 비용이 드나요?</strong>
+          <p>펫살롱은 완전 무료입니다. 광고도 없고, 추가 구독료도 없습니다. 다만 매장의 인터넷 요금은 발생합니다(초기 설정 시에만 필요).</p>
+        </div>
+      </section>
+
+      <!-- 9. 유지보수 불가 시 대처 -->
+      <section id="maintenance">
+        <h2>유지보수 불가 시 대처법</h2>
+
+        <h3>현재 상황 이해</h3>
+        <p>펫살롱은 GitHub Pages라는 무료 호스팅으로 운영되고 있습니다. 이는 개발자가 관리하지 못하는 상황이 생길 수 있음을 의미합니다. 다음은 대비책입니다.</p>
+
+        <h3>1단계: 정기 백업</h3>
+        <ul>
+          <li>최소 주 1회 백업 수행 (설정 > 데이터 > 데이터 백업하기)</li>
+          <li>여러 곳에 복사본 보관: 외장하드, 클라우드, 이메일</li>
+          <li>중요 데이터(고객 목록, 재방문 주기)는 엑셀로도 별도 관리 고려</li>
+        </ul>
+
+        <h3>2단계: 다른 호스팅 이용</h3>
+        <p>개발자가 미지우면 다른 호스팅 서비스로 옮길 수 있습니다:</p>
+        <ul>
+          <li>Vercel, Netlify 등 무료 호스팅 서비스 이용 가능</li>
+          <li>자신의 서버/웹호스팅에 설치 가능</li>
+          <li>IT 기술자의 도움 필요 (완전히 자동화되지 않음)</li>
+        </ul>
+
+        <h3>3단계: 다른 개발자에게 인수</h3>
+        <p>기술 능력이 없다면:</p>
+        <ul>
+          <li>개발자 커뮤니티에 요청</li>
+          <li>백업 파일 제공으로 새로운 버전 개발 요청</li>
+          <li>유사한 기능의 다른 솔루션 찾기</li>
+        </ul>
+
+        <h3>4단계: 다른 시스템으로 데이터 이전</h3>
+        <p>만약 완전히 다른 시스템으로 옮겨야 한다면:</p>
+        <ol>
+          <li>펫살롱에서 백업 파일 다운로드</li>
+          <li>고객 목록, 반려견 정보, 예약, 기록을 CSV 또는 엑셀로 변환</li>
+          <li>새로운 CRM 시스템 또는 미용 관리 소프트웨어로 가져오기</li>
+        </ol>
+
+        <div class="tip-box">
+          <div class="tip-icon">💡</div>
+          <div class="tip-content">
+            <strong>미리 준비하기</strong>
+            <p>사업이 중요할수록 백업이 중요합니다. 정기적인 백업은 어떤 상황에서든 데이터 손실을 방지합니다. 오늘부터 시작하세요!</p>
+          </div>
+        </div>
+
+        <h3>최악의 시나리오: 데이터 복구</h3>
+        <p>혹시 백업 없이 데이터를 잃어버렸다면:</p>
+        <ul>
+          <li>기기의 브라우저 캐시/쿠키에 일부 복구 가능할 수 있습니다</li>
+          <li>IT 전문가에게 기기의 IndexedDB 데이터 복구 문의 가능</li>
+          <li>이를 위해서도 정기 백업이 최고의 방법입니다</li>
+        </ul>
+
+        <div class="warning-box">
+          <strong>매우 중요</strong>
+          <p>무료 도구를 사용할 때의 위험성을 항상 인식하세요. 사업의 핵심 데이터는 반드시 정기적으로 백업하고, 여러 위치에 보관해야 합니다.</p>
+        </div>
+      </section>
+
+      <div style="margin-top: 60px; padding: 24px; background: #F0F9FF; border-radius: 12px; border-left: 4px solid #3B82F6;">
+        <h3 style="margin-top: 0; color: #1E40AF;">추가 도움말</h3>
+        <p>펫살롱 사용 중 다른 질문이 있으시면:</p>
+        <ul>
+          <li>좌측 하단의 피드백 또는 개발자 연락처 확인</li>
+          <li>정기적인 백업 습관 들이기</li>
+          <li>새로운 기능이나 버그 리포트도 개발자에게 알려주세요</li>
+        </ul>
+      </div>
+    </main>
+
+    <footer>
+      <p>펫살롱 사용 가이드 v1.0</p>
+      <p>애견 미용 샵 운영을 위한 완벽한 고객 관리 시스템</p>
+      <p style="margin-top: 12px; font-size: 0.85rem; color: #9CA3AF;">
+        이 가이드는 펫살롱의 모든 기능을 설명하기 위해 작성되었습니다.<br>
+        정기적인 백업으로 귀중한 데이터를 보호하세요.
+      </p>
+    </footer>
+  </div>
+</body>
+</html>
