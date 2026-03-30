@@ -186,9 +186,9 @@ App.pages.services = {
   async saveService(id) {
     const name = document.getElementById('f-name').value.trim();
     const description = document.getElementById('f-description').value.trim();
-    const priceSmall = Number(document.getElementById('f-priceSmall').value) || 0;
-    const priceMedium = Number(document.getElementById('f-priceMedium').value) || 0;
-    const priceLarge = Number(document.getElementById('f-priceLarge').value) || 0;
+    const priceSmall = Math.max(0, Number(document.getElementById('f-priceSmall').value) || 0);
+    const priceMedium = Math.max(0, Number(document.getElementById('f-priceMedium').value) || 0);
+    const priceLarge = Math.max(0, Number(document.getElementById('f-priceLarge').value) || 0);
 
     if (!name) { App.highlightField('f-name'); App.showToast('서비스명을 입력해주세요.', 'error'); return; }
 
@@ -221,10 +221,21 @@ App.pages.services = {
   async deleteService(id) {
     const service = await DB.get('services', id);
     if (!service) return;
-    const confirmed = await App.confirm(`"${App.escapeHtml(service.name)}" 서비스를 삭제하시겠습니까?`);
-    if (!confirmed) return;
-    await DB.delete('services', id);
-    App.showToast('서비스가 삭제되었습니다.');
+    // 기존 기록에서 참조 중이면 삭제 대신 비활성화
+    const records = await DB.getAll('records');
+    const hasRef = records.some(r => (r.serviceIds || []).includes(id));
+    if (hasRef) {
+      const ok = await App.confirm(`"${App.escapeHtml(service.name)}" 서비스가 기존 기록에 사용 중입니다.<br>삭제 대신 <strong>비활성화</strong>합니다.`);
+      if (!ok) return;
+      service.isActive = false;
+      await DB.update('services', service);
+      App.showToast('서비스가 비활성화되었습니다.');
+    } else {
+      const confirmed = await App.confirm(`"${App.escapeHtml(service.name)}" 서비스를 삭제하시겠습니까?`);
+      if (!confirmed) return;
+      await DB.delete('services', id);
+      App.showToast('서비스가 삭제되었습니다.');
+    }
     App.handleRoute();
   },
 

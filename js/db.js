@@ -58,7 +58,12 @@ const DB = {
           }
         }
       };
-      req.onsuccess = (e) => { this.db = e.target.result; resolve(); };
+      req.onsuccess = (e) => {
+        this.db = e.target.result;
+        // Safari ITP 데이터 자동 삭제 방지
+        if (navigator.storage && navigator.storage.persist) navigator.storage.persist().catch(() => {});
+        resolve();
+      };
       req.onerror = (e) => reject(e.target.error);
     });
   },

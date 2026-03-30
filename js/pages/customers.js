@@ -381,7 +381,7 @@ App.pages.customers = {
       content: `
         <div class="form-group">
           <label class="form-label">이름 <span class="required">*</span></label>
-          <input type="text" id="f-name" value="${App.escapeHtml(customer.name || '')}" placeholder="고객 이름">
+          <input type="text" id="f-name" value="${App.escapeHtml(customer.name || '')}" placeholder="고객 이름" maxlength="50">
         </div>
         <div class="form-group">
           <label class="form-label">연락처 <span class="required">*</span></label>

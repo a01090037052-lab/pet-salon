@@ -719,6 +719,20 @@ App.pages.records = {
           await DB.update('pets', pet);
         }
       }
+      // 고객 태그 재계산 (방문 횟수 기반)
+      if (record && record.customerId) {
+        const custRecords = await DB.getByIndex('records', 'customerId', record.customerId);
+        const cust = await DB.get('customers', record.customerId);
+        if (cust) {
+          const vc = custRecords.length;
+          const tags = (cust.tags || []).filter(t => !['신규', '일반', '단골'].includes(t));
+          if (vc <= 3) tags.push('신규');
+          else if (vc <= 10) tags.push('일반');
+          else tags.push('단골');
+          cust.tags = tags;
+          await DB.update('customers', cust);
+        }
+      }
       App.showToast('미용 기록이 삭제되었습니다.');
       App.handleRoute();
     } catch (err) {

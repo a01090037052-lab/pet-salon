@@ -430,6 +430,7 @@ App.pages.pets = {
       const weight = parseFloat(document.getElementById('f-weight').value) || null;
       const gender = document.getElementById('f-gender').value;
       const ageInput = Number(document.getElementById('f-age')?.value);
+      if (ageInput > 30) { App.showToast('나이를 확인해주세요 (최대 30살).', 'error'); return; }
       const birthYear = ageInput > 0 ? (new Date().getFullYear() - ageInput) : null;
       const birthDate = birthYear ? `${birthYear}-01-01` : '';
       const neutered = document.getElementById('f-neutered').checked;
