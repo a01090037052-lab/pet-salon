@@ -49,9 +49,9 @@ App.pages.dashboard = {
         DB.count('customers')
       ]);
 
-      // 미수금 건수만 경량 조회 (전체 records 로드 제거)
-      const allRecordsLight = await DB.getAllLight('records', ['photoBefore', 'photoAfter', 'memo', 'serviceIds', 'groomer']);
-      const unpaidRecords = allRecordsLight.filter(r => r.paymentMethod === 'unpaid');
+      // 미수금 조회: 금액 계산에 필요한 최소 필드만 로드
+      const allRecordsMin = await DB.getAllLight('records', ['photoBefore', 'photoAfter', 'memo', 'serviceIds', 'groomer', 'nextVisitDate', 'appointmentId']);
+      const unpaidRecords = allRecordsMin.filter(r => r.paymentMethod === 'unpaid');
       const unpaidTotal = unpaidRecords.reduce((sum, r) => sum + App.getRecordAmount(r), 0);
 
       // Build lookup maps once

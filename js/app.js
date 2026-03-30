@@ -14,6 +14,7 @@ const App = {
       this.setupGlobalSearch();
       this.setupLightbox();
       this.registerSW();
+      this.setupOfflineIndicator();
       this.handleRoute();
       window.addEventListener('hashchange', () => this.handleRoute());
       await this.updateBadges();
@@ -154,6 +155,22 @@ const App = {
         console.warn('SW 등록 실패:', err.message);
       });
     }
+  },
+
+  setupOfflineIndicator() {
+    const banner = document.createElement('div');
+    banner.id = 'offline-banner';
+    banner.style.cssText = 'display:none;position:fixed;top:0;left:0;right:0;z-index:10000;background:var(--danger,#e74c3c);color:#fff;text-align:center;padding:6px;font-size:0.82rem;font-weight:600';
+    banner.textContent = '오프라인 상태입니다';
+    document.body.prepend(banner);
+    const update = () => {
+      banner.style.display = navigator.onLine ? 'none' : 'block';
+      if (navigator.onLine && banner._wasOffline) this.showToast('네트워크 연결됨');
+      banner._wasOffline = !navigator.onLine;
+    };
+    window.addEventListener('online', update);
+    window.addEventListener('offline', update);
+    update();
   },
 
   handleRoute() {
@@ -351,7 +368,14 @@ const App = {
     const container = document.getElementById('toast-container');
     const toast = document.createElement('div');
     toast.className = `toast ${type}`;
-    toast.innerHTML = `<span>${message}</span><button class="toast-dismiss" onclick="this.parentElement.style.animation='toastOut 0.3s ease forwards';setTimeout(()=>this.parentElement.remove(),300)">&times;</button>`;
+    const msgSpan = document.createElement('span');
+    msgSpan.textContent = message;
+    const dismissBtn = document.createElement('button');
+    dismissBtn.className = 'toast-dismiss';
+    dismissBtn.textContent = '\u00D7';
+    dismissBtn.onclick = () => { toast.style.animation = 'toastOut 0.3s ease forwards'; setTimeout(() => toast.remove(), 300); };
+    toast.appendChild(msgSpan);
+    toast.appendChild(dismissBtn);
     container.appendChild(toast);
 
     // Duration based on type: success=2.5s, info=2s, error=5s
