@@ -200,14 +200,7 @@ const DB = {
     });
   },
 
-  async search(storeName, fields, query) {
-    const all = await this.getAll(storeName);
-    if (!query) return all;
-    const q = query.toLowerCase();
-    return all.filter(item => fields.some(f => item[f] && String(item[f]).toLowerCase().includes(q)));
-  },
-
-  // ========== New Efficient Query Methods ==========
+  // ========== Efficient Query Methods ==========
 
   // Paginated query with cursor
   async getPage(storeName, options = {}) {

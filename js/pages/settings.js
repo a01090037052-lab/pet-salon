@@ -508,9 +508,18 @@ App.pages.settings = {
         const text = await file.text();
         const data = JSON.parse(text);
 
-        if (!data._version && !data.customers) {
+        const validStores = ['customers', 'pets', 'appointments', 'records', 'services', 'settings'];
+        const hasValidData = data._version || validStores.some(s => Array.isArray(data[s]));
+        if (!hasValidData || typeof data !== 'object') {
           App.showToast('올바른 백업 파일이 아닙니다.', 'error');
           return;
+        }
+        // 데이터 구조 검증: 배열이 아닌 값이 스토어 키에 있으면 거부
+        for (const s of validStores) {
+          if (data[s] && !Array.isArray(data[s])) {
+            App.showToast(`잘못된 데이터 형식: ${s}`, 'error');
+            return;
+          }
         }
 
         // 자동 백업: import 전 현재 데이터를 IndexedDB에 보관

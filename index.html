@@ -67,7 +67,7 @@
   </main>
 
   <!-- Global Search Button -->
-  <button id="global-search-btn" class="global-search-btn" title="고객 검색 (/)">&#x1F50D;</button>
+  <button id="global-search-btn" class="global-search-btn" title="고객 검색 (/)" aria-label="고객 검색">&#x1F50D;</button>
 
   <!-- Global Search Overlay -->
   <div id="global-search-overlay" class="global-search-overlay hidden">
@@ -130,7 +130,7 @@
       <span class="bottom-nav-badge" id="bottom-badge" style="display:none">0</span>
       <span class="bottom-nav-label">예약</span>
     </a>
-    <div class="bottom-nav-add" id="bottom-nav-add">
+    <div class="bottom-nav-add" id="bottom-nav-add" role="button" aria-label="빠른 추가" aria-haspopup="true">
       <span>+</span>
       <div class="bottom-add-menu" id="bottom-nav-add-menu">
         <div class="bottom-add-item" data-action="customer">&#x1F464; 새 고객</div>

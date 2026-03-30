@@ -102,9 +102,13 @@ const App = {
         item.classList.add('active');
       });
     });
-    // More menu toggle
+    // 메뉴 요소 먼저 선언 (상호 참조를 위해)
     const moreBtn = document.getElementById('bottom-more-btn');
     const moreMenu = document.getElementById('bottom-more-menu');
+    const addBtn = document.getElementById('bottom-nav-add');
+    const addMenu = document.getElementById('bottom-nav-add-menu');
+
+    // More menu toggle
     if (moreBtn && moreMenu) {
       moreBtn.addEventListener('click', (e) => {
         e.stopPropagation();
@@ -118,8 +122,6 @@ const App = {
     }
 
     // Bottom nav add button (quick actions)
-    const addBtn = document.getElementById('bottom-nav-add');
-    const addMenu = document.getElementById('bottom-nav-add-menu');
     if (addBtn && addMenu) {
       addBtn.addEventListener('click', (e) => {
         e.stopPropagation();
@@ -148,7 +150,9 @@ const App = {
 
   registerSW() {
     if ('serviceWorker' in navigator && window.location.protocol !== 'file:') {
-      navigator.serviceWorker.register('./sw.js').catch(() => {});
+      navigator.serviceWorker.register('./sw.js').catch(err => {
+        console.warn('SW 등록 실패:', err.message);
+      });
     }
   },
 
@@ -192,7 +196,11 @@ const App = {
           <div class="empty-state">
             <div class="empty-state-icon">&#x26A0;</div>
             <div class="empty-state-text">페이지를 불러오는 중 오류가 발생했습니다.</div>
-            <button class="btn btn-primary" onclick="App.navigate('dashboard')">대시보드로 이동</button>
+            <div style="font-size:0.82rem;color:var(--text-muted);margin:8px 0">${App.escapeHtml(err?.message || '')}</div>
+            <div style="display:flex;gap:8px;justify-content:center">
+              <button class="btn btn-primary" onclick="App.navigate('${page}')">다시 시도</button>
+              <button class="btn btn-secondary" onclick="App.navigate('dashboard')">대시보드로 이동</button>
+            </div>
           </div>`;
       }
     }
@@ -316,7 +324,12 @@ const App = {
   confirm(message) {
     return new Promise((resolve) => {
       this._confirmResolve = resolve;
-      document.getElementById('confirm-body').innerHTML = `<p>${message}</p>`;
+      const body = document.getElementById('confirm-body');
+      if (message.includes('<') && message.includes('>')) {
+        body.innerHTML = `<p>${message}</p>`;
+      } else {
+        body.textContent = message;
+      }
       const overlay = document.getElementById('confirm-overlay');
       overlay.classList.remove('hidden');
       document.getElementById('confirm-ok').onclick = () => this.closeConfirm(true);
