@@ -1,5 +1,7 @@
 // ========== Appointments Page ==========
 App.pages.appointments = {
+  _showAll: false,
+
   async render(container) {
     const appointments = await DB.getAll('appointments');
     const today = App.getToday();
@@ -118,7 +120,7 @@ App.pages.appointments = {
                       <button class="btn btn-primary" onclick="App.pages.appointments.showForm()">+ 첫 예약 등록하기</button>
                     </div>
                   </td></tr>
-                ` : sorted.map(a => {
+                ` : (this._showAll ? sorted : sorted.slice(0, 20)).map(a => {
                   const customer = customerMap[a.customerId];
                   const pet = petMap[a.petId];
                   const serviceNames = (a.serviceIds || []).map(id => serviceMap[id] || '').filter(Boolean).join(', ');
@@ -168,7 +170,7 @@ App.pages.appointments = {
                 <div class="empty-state-text">등록된 예약이 없습니다</div>
                 <button class="btn btn-primary" onclick="App.pages.appointments.showForm()">+ 첫 예약 등록하기</button>
               </div>
-            ` : sorted.map(a => {
+            ` : (this._showAll ? sorted : sorted.slice(0, 20)).map(a => {
               const customer = customerMap[a.customerId];
               const pet = petMap[a.petId];
               const isToday = a.date === today;
@@ -208,6 +210,7 @@ App.pages.appointments = {
               </div>`;
             }).join('')}
           </div>
+          ${!this._showAll && sorted.length > 20 ? `<div style="text-align:center;padding:16px"><button class="btn btn-secondary" id="btn-load-more-appts" style="min-width:200px">더 보기 (${sorted.length - 20}건 남음)</button></div>` : ''}
 
         </div>
       </div>
@@ -320,6 +323,11 @@ App.pages.appointments = {
   },
 
   async init() {
+    document.getElementById('btn-load-more-appts')?.addEventListener('click', () => {
+      this._showAll = true;
+      App.handleRoute();
+    });
+
     document.getElementById('btn-add-appointment')?.addEventListener('click', () => this.showForm());
 
     // 캘린더 토글

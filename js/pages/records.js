@@ -1,5 +1,7 @@
 // ========== Grooming Records Page ==========
 App.pages.records = {
+  _showAll: false,
+
   async render(container) {
     // 효율적 쿼리: 목록에서는 사진 필드 제외 (큰 base64 데이터)
     const records = await DB.getAllLight('records', ['photoBefore', 'photoAfter']);
@@ -116,7 +118,7 @@ App.pages.records = {
                       <div class="empty-state-text">미용 기록이 없습니다</div>
                     </div>
                   </td></tr>
-                ` : sorted.map(r => {
+                ` : (this._showAll ? sorted : sorted.slice(0, 20)).map(r => {
                   const customer = customerMap[r.customerId];
                   const pet = petMap[r.petId];
                   const serviceNames = (r.serviceIds || []).map(id => serviceMap[id]).filter(Boolean).join(', ') || '-';
@@ -154,7 +156,7 @@ App.pages.records = {
                 <div class="empty-state-icon">&#x2702;</div>
                 <div class="empty-state-text">미용 기록이 없습니다</div>
               </div>
-            ` : sorted.map(r => {
+            ` : (this._showAll ? sorted : sorted.slice(0, 20)).map(r => {
               const customer = customerMap[r.customerId];
               const pet = petMap[r.petId];
               const isUnpaid = r.paymentMethod === 'unpaid';
@@ -183,6 +185,7 @@ App.pages.records = {
               </div>`;
             }).join('')}
           </div>
+          ${!this._showAll && sorted.length > 20 ? `<div style="text-align:center;padding:16px"><button class="btn btn-secondary" id="btn-load-more-records" style="min-width:200px">더 보기 (${sorted.length - 20}건 남음)</button></div>` : ''}
 
         </div>
       </div>
@@ -289,6 +292,11 @@ App.pages.records = {
   },
 
   async init() {
+    document.getElementById('btn-load-more-records')?.addEventListener('click', () => {
+      this._showAll = true;
+      App.handleRoute();
+    });
+
     document.getElementById('btn-add-record')?.addEventListener('click', () => this.showForm());
 
     // 미수금 경고 카드 클릭 -> 미결제 필터
@@ -1560,63 +1568,82 @@ App.pages.records = {
   },
 
   // ========== Photo Card System (사진 카드) ==========
+  _cardPhotos: [],
+  _CARD_LAYOUTS: {
+    single: { name: '1컷', icon: '📷', photos: 1 },
+    polaroid: { name: '폴라로이드', icon: '📸', photos: 1 },
+    circle: { name: '원형', icon: '⭕', photos: 1 },
+    strip2: { name: '2컷', icon: '🎬', photos: 2 },
+    strip3: { name: '3컷', icon: '🖼', photos: 3 },
+    strip4: { name: '4컷 가로', icon: '🎞', photos: 4 },
+    grid4: { name: '4컷 그리드', icon: '⊞', photos: 4 }
+  },
+  _CARD_THEMES: {
+    default: { name: '기본', color: '#6366F1', emoji: '✂' },
+    spring: { name: '봄', color: '#EC4899', emoji: '🌸' },
+    summer: { name: '여름', color: '#06B6D4', emoji: '🌊' },
+    autumn: { name: '가을', color: '#D97706', emoji: '🍂' },
+    winter: { name: '겨울', color: '#3B82F6', emoji: '❄' },
+    minimal: { name: '미니멀', color: '#374151', emoji: '✂' },
+    cute: { name: '귀여운', color: '#F472B6', emoji: '🐾' }
+  },
+
+  _renderPhotoSlots(count) {
+    const container = document.getElementById('card-photo-slots');
+    if (!container) return;
+    this._cardPhotos = new Array(count).fill(null);
+    container.innerHTML = Array.from({ length: count }, (_, i) => `
+      <div class="flex-1" style="min-width:70px">
+        <input type="file" id="card-photo-${i}" accept="image/*" style="display:none">
+        <div id="card-preview-${i}" style="width:100%;height:90px;border:2px dashed var(--border);border-radius:var(--radius);display:flex;align-items:center;justify-content:center;cursor:pointer;overflow:hidden;font-size:1.2rem;color:var(--text-muted)" onclick="document.getElementById('card-photo-${i}').click()">📷</div>
+      </div>
+    `).join('');
+    // 파일 선택 핸들러
+    for (let i = 0; i < count; i++) {
+      document.getElementById(`card-photo-${i}`)?.addEventListener('change', (e) => {
+        const file = e.target.files[0];
+        if (!file) return;
+        const reader = new FileReader();
+        reader.onload = (ev) => {
+          App.resizeImage(ev.target.result, (compressed) => {
+            this._cardPhotos[i] = compressed;
+            const preview = document.getElementById(`card-preview-${i}`);
+            if (preview) preview.innerHTML = `<img src="${compressed}" style="width:100%;height:100%;object-fit:cover">`;
+          });
+        };
+        reader.readAsDataURL(file);
+      });
+    }
+  },
+
   async generatePhotoCard(recordId) {
     const record = await DB.get('records', recordId);
     if (!record) { App.showToast('기록을 찾을 수 없습니다.', 'error'); return; }
 
-    // Load saved preferences (last used settings)
     const saved = await DB.getSetting('cardDesignSettings') || {};
-    const LAYOUTS = {
-      strip2: { name: '2컷', icon: '🎬' },
-      strip3: { name: '3컷', icon: '🖼' },
-      strip4: { name: '4컷 가로', icon: '🎞' },
-      grid4: { name: '4컷 그리드', icon: '⊞' },
-      single: { name: '1컷', icon: '📷' },
-      polaroid: { name: '폴라로이드', icon: '📸' },
-      circle: { name: '원형', icon: '⭕' }
-    };
-    const THEMES = {
-      default: { name: '기본', color: '#6366F1', emoji: '✂' },
-      spring: { name: '봄', color: '#EC4899', emoji: '🌸' },
-      summer: { name: '여름', color: '#06B6D4', emoji: '🌊' },
-      autumn: { name: '가을', color: '#D97706', emoji: '🍂' },
-      winter: { name: '겨울', color: '#3B82F6', emoji: '❄' },
-      minimal: { name: '미니멀', color: '#374151', emoji: '✂' },
-      cute: { name: '귀여운', color: '#F472B6', emoji: '🐾' }
-    };
-
     const selectedLayout = saved.layout || 'strip2';
     const selectedTheme = saved.template || 'default';
+    const LAYOUTS = this._CARD_LAYOUTS;
+    const THEMES = this._CARD_THEMES;
 
     App.showModal({
       title: '사진 카드 만들기',
       saveText: '카드 생성',
       content: `
         <div class="form-group">
-          <label class="form-label">사진 선택</label>
-          <div style="display:flex;gap:8px">
-            <div class="flex-1">
-              <div style="font-size:0.8rem;color:var(--text-muted);margin-bottom:4px">미용 전</div>
-              <input type="file" id="card-photo-before" accept="image/*" capture="environment" style="display:none">
-              <div id="card-preview-before" style="width:100%;height:100px;border:2px dashed var(--border);border-radius:var(--radius);display:flex;align-items:center;justify-content:center;cursor:pointer;overflow:hidden;font-size:0.8rem;color:var(--text-muted)" onclick="document.getElementById('card-photo-before').click()">&#x1F4F7; 선택</div>
-            </div>
-            <div class="flex-1">
-              <div style="font-size:0.8rem;color:var(--text-muted);margin-bottom:4px">미용 후</div>
-              <input type="file" id="card-photo-after" accept="image/*" capture="environment" style="display:none">
-              <div id="card-preview-after" style="width:100%;height:100px;border:2px dashed var(--border);border-radius:var(--radius);display:flex;align-items:center;justify-content:center;cursor:pointer;overflow:hidden;font-size:0.8rem;color:var(--text-muted)" onclick="document.getElementById('card-photo-after').click()">&#x1F4F7; 선택</div>
-            </div>
-          </div>
-        </div>
-        <div class="form-group">
           <label class="form-label">레이아웃</label>
           <div id="card-pick-layout" style="display:flex;gap:8px;flex-wrap:wrap">
             ${Object.entries(LAYOUTS).map(([key, l]) => `
-              <button type="button" class="card-pick-btn${key === selectedLayout ? ' active' : ''}" data-key="${key}">
+              <button type="button" class="card-pick-btn${key === selectedLayout ? ' active' : ''}" data-key="${key}" data-photos="${l.photos}">
                 <span style="font-size:1.3rem">${l.icon}</span>
                 <span style="font-size:0.75rem">${l.name}</span>
               </button>
             `).join('')}
           </div>
+        </div>
+        <div class="form-group">
+          <label class="form-label">사진 선택</label>
+          <div id="card-photo-slots" style="display:flex;gap:8px;flex-wrap:wrap"></div>
         </div>
         <div class="form-group">
           <label class="form-label">테마</label>
@@ -1633,74 +1660,51 @@ App.pages.records = {
       onSave: async () => {
         const layout = document.querySelector('#card-pick-layout .card-pick-btn.active')?.dataset.key || 'strip2';
         const theme = document.querySelector('#card-pick-theme .card-pick-btn.active')?.dataset.key || 'default';
+        if (!this._cardPhotos.some(p => p)) { App.showToast('사진을 최소 1장 선택해주세요.', 'error'); return; }
 
-        // Save preferences for next time
         const settings = await DB.getSetting('cardDesignSettings') || {};
         settings.layout = layout;
         settings.template = theme;
         await DB.setSetting('cardDesignSettings', settings);
 
         App.closeModal();
-
-        // Now generate the card with selected options and instant photos (not saved to DB)
-        await this._doGenerateCard(recordId, layout, theme, cardPhotoBefore, cardPhotoAfter);
+        await this._doGenerateCard(recordId, layout, theme, this._cardPhotos[0] || null, this._cardPhotos[1] || null, this._cardPhotos[2] || null, this._cardPhotos[3] || null);
       }
     });
 
-    // Instant photo variables - not saved to DB
-    let cardPhotoBefore = null;
-    let cardPhotoAfter = null;
-
-    // Wire up toggle buttons and photo inputs
+    // Wire up
     setTimeout(() => {
+      // 레이아웃 선택 → 사진 슬롯 동적 변경
       document.querySelectorAll('#card-pick-layout .card-pick-btn').forEach(btn => {
         btn.addEventListener('click', () => {
           document.querySelectorAll('#card-pick-layout .card-pick-btn').forEach(b => b.classList.remove('active'));
           btn.classList.add('active');
+          this._renderPhotoSlots(Number(btn.dataset.photos));
         });
       });
+      // 초기 사진 슬롯 렌더
+      const initPhotos = LAYOUTS[selectedLayout]?.photos || 2;
+      this._renderPhotoSlots(initPhotos);
+
+      // 테마 토글
       document.querySelectorAll('#card-pick-theme .card-pick-btn').forEach(btn => {
         btn.addEventListener('click', () => {
           document.querySelectorAll('#card-pick-theme .card-pick-btn').forEach(b => b.classList.remove('active'));
           btn.classList.add('active');
         });
       });
-
-      document.getElementById('card-photo-before')?.addEventListener('change', (e) => {
-        const file = e.target.files[0];
-        if (!file) return;
-        const reader = new FileReader();
-        reader.onload = (ev) => {
-          App.resizeImage(ev.target.result, (compressed) => {
-            cardPhotoBefore = compressed;
-            document.getElementById('card-preview-before').innerHTML = `<img src="${compressed}" style="width:100%;height:100%;object-fit:cover">`;
-          });
-        };
-        reader.readAsDataURL(file);
-      });
-
-      document.getElementById('card-photo-after')?.addEventListener('change', (e) => {
-        const file = e.target.files[0];
-        if (!file) return;
-        const reader = new FileReader();
-        reader.onload = (ev) => {
-          App.resizeImage(ev.target.result, (compressed) => {
-            cardPhotoAfter = compressed;
-            document.getElementById('card-preview-after').innerHTML = `<img src="${compressed}" style="width:100%;height:100%;object-fit:cover">`;
-          });
-        };
-        reader.readAsDataURL(file);
-      });
     }, 100);
   },
 
-  async _doGenerateCard(recordId, layout, theme, photoBefore, photoAfter) {
+  async _doGenerateCard(recordId, layout, theme, photo1, photo2, photo3, photo4) {
     try {
       const record = await DB.get('records', recordId);
       if (!record) { App.showToast('기록을 찾을 수 없습니다.', 'error'); return; }
-      // Use instant-capture photos (not saved to DB)
-      record.photoBefore = photoBefore || null;
-      record.photoAfter = photoAfter || null;
+      // 즉석 사진 (DB에 저장 안 함)
+      record.photoBefore = photo1 || null;
+      record.photoAfter = photo2 || null;
+      record.photo3 = photo3 || null;
+      record.photo4 = photo4 || null;
       const customer = await DB.get('customers', record.customerId);
       const pet = await DB.get('pets', record.petId);
       const shopName = await DB.getSetting('shopName') || '펫살롱';
