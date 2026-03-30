@@ -518,14 +518,27 @@ const App = {
       petsByCustomer[p.customerId].push(p);
     });
 
-    const _petLabel = (cId) => {
+    // 검색어에 따라 매칭된 반려견 라벨 생성
+    const _petDisplay = (cId, matchQ) => {
       const cp = petsByCustomer[cId] || [];
-      return cp.length > 0 ? cp.map(p => p.name).join(', ') + ' 보호자' : '';
+      if (cp.length === 0) return '';
+      if (matchQ) {
+        const matched = cp.find(p => (p.name || '').normalize('NFC').toLowerCase().indexOf(matchQ) === 0);
+        if (matched) {
+          const rest = cp.length - 1;
+          return matched.name + (rest > 0 ? ' 외 ' + rest + '마리' : '');
+        }
+      }
+      if (cp.length === 1) return cp[0].name;
+      return cp[0].name + ' 외 ' + (cp.length - 1) + '마리';
     };
 
     const selected = selectedId ? sorted.find(c => c.id === selectedId) : null;
+    const selPets = selected ? (petsByCustomer[selected.id] || []) : [];
     const selectedDisplay = selected
-      ? (_petLabel(selected.id) ? _petLabel(selected.id) + ' (' + this.escapeHtml(selected.name) + ')' : this.escapeHtml(selected.name) + ' (' + this.formatPhone(selected.phone) + ')')
+      ? (selPets.length > 0
+        ? (selPets.length === 1 ? selPets[0].name : selPets[0].name + ' 외 ' + (selPets.length - 1) + '마리') + ' · ' + this.escapeHtml(selected.name)
+        : this.escapeHtml(selected.name) + ' (' + this.formatPhone(selected.phone) + ')')
       : '';
 
     container.innerHTML = `
@@ -587,9 +600,11 @@ const App = {
         dropdown.innerHTML = '<div class="search-select-option"><span style="color:var(--text-muted)">반려견/고객 이름, 전화번호를 입력하세요</span></div>';
       } else {
         dropdown.innerHTML = filtered.slice(0, 20).map(c => {
-          const pl = _petLabel(c.id);
-          const display = pl ? `${this.escapeHtml(pl)} <span class="sub">${this.escapeHtml(c.name)}, ${this.formatPhone(c.phone)}</span>` : `${this.escapeHtml(c.name)} <span class="sub">${this.formatPhone(c.phone)}</span>`;
-          const dataName = pl ? `${pl} (${c.name})` : `${c.name} (${this.formatPhone(c.phone)})`;
+          const pl = _petDisplay(c.id, q);
+          const display = pl
+            ? `${this.escapeHtml(pl)} · ${this.escapeHtml(c.name)} <span class="sub">${this.formatPhone(c.phone)}</span>`
+            : `${this.escapeHtml(c.name)} <span class="sub">${this.formatPhone(c.phone)}</span>`;
+          const dataName = pl ? `${pl} · ${c.name}` : `${c.name} (${this.formatPhone(c.phone)})`;
           return `<div class="search-select-option" data-id="${c.id}" data-name="${this.escapeHtml(dataName)}">
             ${display}
           </div>`;
