@@ -463,6 +463,10 @@ App.pages.appointments = {
         const newStatus = e.target.value;
         const appt = await DB.get('appointments', id);
         if (!appt) { App.showToast('예약을 찾을 수 없습니다.', 'error'); return; }
+        if (newStatus === 'noshow') {
+          const ok = await App.confirm('노쇼로 변경하시겠습니까?<br>고객 이력에 기록됩니다.');
+          if (!ok) { e.target.value = appt.status; return; }
+        }
         appt.status = newStatus;
         await DB.update('appointments', appt);
         // Update row data-status for filtering

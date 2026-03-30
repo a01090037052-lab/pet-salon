@@ -378,8 +378,8 @@ const App = {
     toast.appendChild(dismissBtn);
     container.appendChild(toast);
 
-    // Duration based on type: success=2.5s, info=2s, error=5s
-    const duration = type === 'error' ? 5000 : type === 'info' ? 5000 : 2500;
+    // Duration: html(링크 포함)=10s, error=5s, info=5s, success=2.5s
+    const duration = opts.html ? 10000 : type === 'error' ? 5000 : type === 'info' ? 5000 : 2500;
     setTimeout(() => {
       if (toast.parentElement) {
         toast.style.animation = 'toastOut 0.3s ease forwards';
@@ -722,6 +722,8 @@ const App = {
             <div style="flex:1"><label style="font-size:0.82rem;color:var(--text-muted)">견종</label><input type="text" id="quick-pet-breed" placeholder="견종" style="width:100%;box-sizing:border-box"></div>
             <div style="width:60px"><label style="font-size:0.82rem;color:var(--text-muted)">나이</label><input type="number" id="quick-pet-age" placeholder="나이" min="0" max="30" style="width:100%;box-sizing:border-box"></div>
           </div>
+          <label style="font-size:0.82rem;color:var(--text-muted)">특이사항/알러지</label>
+          <input type="text" id="quick-pet-notes" placeholder="특이사항, 알러지 등 (선택)" style="margin-bottom:8px;width:100%;box-sizing:border-box">
           <label style="font-size:0.82rem;color:var(--text-muted)">사이즈</label>
           <div style="display:flex;gap:6px;margin-top:4px;margin-bottom:4px" id="quick-pet-size-group">
             <label style="flex:1;text-align:center;padding:8px;border:1px solid var(--border);border-radius:8px;cursor:pointer;font-size:0.9rem" data-size="소형">소형</label>
@@ -803,7 +805,8 @@ const App = {
         const petAge = Number(document.getElementById('quick-pet-age')?.value) || 0;
         const petSize = document.getElementById('quick-pet-size')?.value || '';
         const birthYear = petAge > 0 ? (new Date().getFullYear() - petAge) : null;
-        const petId = await DB.add('pets', { customerId: newId, name: petName, breed: petBreed, birthYear, size: petSize });
+        const petNotes = document.getElementById('quick-pet-notes')?.value.trim() || '';
+        const petId = await DB.add('pets', { customerId: newId, name: petName, breed: petBreed, birthYear, size: petSize, healthNotes: petNotes });
         hidden.value = newId;
         input.value = petName + ' · ' + name;
         dropdown.style.maxHeight = '';

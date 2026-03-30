@@ -653,7 +653,7 @@ App.pages.records = {
               <div style="font-size:2.5rem;margin-bottom:12px">&#x2705;</div>
               <div style="font-size:1.1rem;font-weight:700;margin-bottom:20px">미용 기록이 저장되었습니다</div>
               <div style="display:flex;flex-direction:column;gap:10px;max-width:280px;margin:0 auto">
-                ${nextVisitDate ? `<button class="btn btn-primary" id="post-save-appt">&#x1F4C5; 다음 예약 등록 (${App.formatDate(nextVisitDate)})</button>` : ''}
+                <button class="btn btn-primary" id="post-save-appt">&#x1F4C5; 다음 예약 등록${nextVisitDate ? ' (' + App.formatDate(nextVisitDate) + ')' : ''}</button>
                 ${customerPhone ? `<button class="btn btn-success" id="post-save-sms">&#x1F4AC; 미용 완료 문자 보내기</button>` : ''}
                 <button class="btn btn-secondary" id="post-save-close">완료</button>
               </div>

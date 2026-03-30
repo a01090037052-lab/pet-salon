@@ -487,6 +487,15 @@ App.pages.customers = {
         return;
       }
 
+      // 새 고객 등록 시 바로 예약 제안
+      if (!id) {
+        const doAppt = await App.confirm(`"${App.escapeHtml(name)}" 고객의 예약을 바로 등록하시겠습니까?`);
+        if (doAppt) {
+          App.pages.appointments.showForm(null, newId);
+          return;
+        }
+      }
+
       App.handleRoute();
     } catch (err) {
       console.error('Save customer error:', err);

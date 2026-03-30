@@ -115,7 +115,8 @@ App.pages.dashboard = {
         const msg = await App.buildSms('revisit', {
           '고객명': a.customer.name || '',
           '반려견명': a.pet.name || '',
-          '경과일수': String(a.days)
+          '경과일수': String(a.days),
+          '마지막방문일': a.pet.lastVisitDate ? App.formatDate(a.pet.lastVisitDate) : ''
         });
         a._smsBody = encodeURIComponent(msg);
       }
@@ -176,6 +177,9 @@ App.pages.dashboard = {
                 <span style="width:28px;height:28px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:0.8rem;font-weight:700;background:var(--bg);color:var(--text-muted);border:1.5px solid var(--border)">4</span>
                 <div class="flex-1"><strong>첫 고객 등록</strong><div style="font-size:0.8rem;color:var(--text-muted)">고객과 반려견 정보 추가</div></div>
                 <button class="btn btn-sm btn-primary" onclick="App.pages.customers.showForm()">등록</button>
+              </div>
+              <div style="border-top:1px dashed var(--border);margin-top:12px;padding-top:12px;text-align:center">
+                <a href="#settings" style="color:var(--text-muted);font-size:0.85rem">기존 데이터가 있나요? <strong style="color:var(--primary)">백업 파일로 복원하기</strong></a>
               </div>
             </div>
           </div>
@@ -246,6 +250,7 @@ App.pages.dashboard = {
             </div>
           </div>
           <div class="card-body" id="dash-unpaid" style="display:${unpaidRecords.length > 0 ? 'block' : 'none'}">
+            ${unpaidRecords.length > 10 ? `<div style="font-size:0.82rem;color:var(--text-muted);margin-bottom:8px;text-align:right"><a href="#records" style="color:var(--primary)">미수금 전체 ${unpaidRecords.length}건 보기 &rarr;</a></div>` : ''}
             ${unpaidRecords.sort((a, b) => (b.date || '').localeCompare(a.date || '')).slice(0, 10).map(r => {
               const customer = customerMap[r.customerId];
               const pet = petMap[r.petId];
@@ -258,7 +263,7 @@ App.pages.dashboard = {
                     <div style="font-size:0.78rem;color:var(--text-secondary);margin-top:2px">${App.formatDate(r.date)}</div>
                   </div>
                   <div style="display:flex;gap:4px;flex-shrink:0">
-                    ${customer?.phone ? `<a href="tel:${App.escapeHtml((customer.phone || '').replace(/\D/g, ''))}" class="btn btn-sm btn-secondary" onclick="event.stopPropagation()">전화</a>` : ''}
+                    ${customer?.phone ? `<a href="tel:${App.escapeHtml((customer.phone || '').replace(/\D/g, ''))}" class="btn btn-sm btn-secondary" onclick="event.stopPropagation()">전화</a><a href="sms:${App.escapeHtml((customer.phone || '').replace(/\D/g, ''))}" class="btn btn-sm btn-secondary" onclick="event.stopPropagation()">문자</a>` : ''}
                     <button class="btn btn-sm btn-success btn-pay-unpaid" data-id="${r.id}" onclick="event.stopPropagation()">결제</button>
                   </div>
                 </div>`;
@@ -380,7 +385,8 @@ App.pages.dashboard = {
             <div class="detail">${App.escapeHtml(serviceNames || '서비스 미지정')}${appt.groomer ? ' &middot; ' + App.escapeHtml(appt.groomer) : ''}</div>
             ${(() => { const w = [pet?.temperament, pet?.healthNotes, pet?.allergies].filter(Boolean); if (!w.length) return ''; const s = w.join(', '); return '<div style="font-size:0.75rem;color:var(--danger);margin-top:2px">&#x26A0; ' + App.escapeHtml(s.length > 50 ? s.slice(0, 50) + '...' : s) + '</div>'; })()}
           </div>
-          <div style="flex-shrink:0">
+          <div style="flex-shrink:0;display:flex;align-items:center;gap:4px">
+            ${customer?.phone ? `<a href="tel:${App.escapeHtml((customer.phone || '').replace(/\D/g, ''))}" class="btn btn-sm btn-secondary" onclick="event.stopPropagation()" style="min-width:36px">&#x1F4DE;</a>` : ''}
             <span class="badge badge-${this.getStatusBadge(appt.status)}">${this.getStatusLabel(appt.status)}</span>
           </div>
         </div>
