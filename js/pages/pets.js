@@ -367,6 +367,15 @@ App.pages.pets = {
           </select>
           <div class="form-hint">개별 미용 주기를 설정하면 대시보드 재방문 알림에 반영됩니다</div>
         </div>
+        ${id ? `<div class="form-group">
+          <label class="form-label">상태</label>
+          <select id="f-petStatus">
+            <option value="active" ${(pet.petStatus || 'active') === 'active' ? 'selected' : ''}>활동 중</option>
+            <option value="deceased" ${pet.petStatus === 'deceased' ? 'selected' : ''}>사망</option>
+            <option value="transferred" ${pet.petStatus === 'transferred' ? 'selected' : ''}>양도/이전</option>
+          </select>
+          <div class="form-hint">사망/양도 상태의 반려견은 재방문 알림에서 제외됩니다</div>
+        </div>` : ''}
       `,
       onSave: () => this.savePet(id, presetCustomerId)
     });
@@ -441,12 +450,13 @@ App.pages.pets = {
       const memo = document.getElementById('f-memo').value.trim();
       const preferredStyle = document.getElementById('f-preferredStyle')?.value.trim() || '';
       const groomingCycle = Number(document.getElementById('f-groomingCycle')?.value) || null;
+      const petStatus = document.getElementById('f-petStatus')?.value || 'active';
       const photo = document.getElementById('f-photo-data')?.value || '';
 
       if (!customerId) { App.showToast('보호자를 선택해주세요.', 'error'); App.highlightField('f-customerId'); return; }
       if (!name) { App.showToast('이름을 입력해주세요.', 'error'); App.highlightField('f-name'); return; }
 
-      const data = { customerId, name, breed, weight, gender, birthDate, birthYear, neutered, size, temperament, healthNotes, allergies, memo, preferredStyle, groomingCycle, photo };
+      const data = { customerId, name, breed, weight, gender, birthDate, birthYear, neutered, size, temperament, healthNotes, allergies, memo, preferredStyle, groomingCycle, petStatus, photo };
 
       if (id) {
         const existing = await DB.get('pets', id);

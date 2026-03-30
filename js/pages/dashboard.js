@@ -6,6 +6,7 @@ App.pages.dashboard = {
     const alerts = [];
     pets.forEach(pet => {
       if (!pet.lastVisitDate) return;
+      if (pet.petStatus && pet.petStatus !== 'active') return;
       const days = App.getDaysAgo(pet.lastVisitDate);
       if (days === null) return;
       const cycleDays = pet.groomingCycle || revisitDays;
