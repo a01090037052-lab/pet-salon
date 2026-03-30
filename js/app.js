@@ -504,18 +504,34 @@ const App = {
       .join('');
   },
 
-  // Render searchable customer select
+  // Render searchable customer select (반려견 이름 검색 지원)
   async renderCustomerSelect(containerId, selectedId, onChange) {
-    const customers = await DB.getAll('customers');
+    const [customers, allPets] = await Promise.all([DB.getAll('customers'), DB.getAll('pets')]);
     const sorted = customers.sort((a, b) => (a.name || '').localeCompare(b.name || '', 'ko'));
     const container = document.getElementById(containerId);
     if (!container) return;
 
+    // 고객별 반려견 매핑
+    const petsByCustomer = {};
+    allPets.forEach(p => {
+      if (!petsByCustomer[p.customerId]) petsByCustomer[p.customerId] = [];
+      petsByCustomer[p.customerId].push(p);
+    });
+
+    const _petLabel = (cId) => {
+      const cp = petsByCustomer[cId] || [];
+      return cp.length > 0 ? cp.map(p => p.name).join(', ') + ' 보호자' : '';
+    };
+
     const selected = selectedId ? sorted.find(c => c.id === selectedId) : null;
+    const selectedDisplay = selected
+      ? (_petLabel(selected.id) ? _petLabel(selected.id) + ' (' + this.escapeHtml(selected.name) + ')' : this.escapeHtml(selected.name) + ' (' + this.formatPhone(selected.phone) + ')')
+      : '';
+
     container.innerHTML = `
       <div class="search-select">
-        <input type="text" id="${containerId}-input" placeholder="고객 이름 또는 전화번호 검색..."
-          value="${selected ? this.escapeHtml(selected.name) + ' (' + this.formatPhone(selected.phone) + ')' : ''}"
+        <input type="text" id="${containerId}-input" placeholder="반려견/고객 이름, 전화번호 검색..."
+          value="${selectedDisplay}"
           autocomplete="off">
         <input type="hidden" id="${containerId}-value" value="${selectedId || ''}">
         <div class="search-select-dropdown" id="${containerId}-dropdown"></div>
@@ -527,11 +543,10 @@ const App = {
     const dropdown = document.getElementById(`${containerId}-dropdown`);
 
     const renderOptions = (query) => {
-      const q = (query || '').toLowerCase();
-      // 입력 없으면 목록 안 보여줌 (이름 입력 시작해야 검색)
+      const q = (query || '').trim().normalize('NFC').toLowerCase();
       if (!q) {
         dropdown.innerHTML = `
-          <div class="search-select-option"><span style="color:var(--text-muted)">고객 이름 또는 전화번호를 입력하세요</span></div>
+          <div class="search-select-option"><span style="color:var(--text-muted)">반려견/고객 이름, 전화번호를 입력하세요</span></div>
           <div class="search-select-option" style="color:var(--primary);font-weight:700;border-top:1px solid var(--border);text-align:center" id="btn-inline-new-cust">+ 새 고객 등록</div>
         `;
         dropdown.classList.add('open');
@@ -541,13 +556,17 @@ const App = {
         });
         return;
       }
-      const filtered = sorted.filter(c =>
-        (c.name || '').toLowerCase().startsWith(q) ||
-        (c.phone || '').replace(/\D/g, '').includes(q.replace(/\D/g, ''))
-      );
+      const qDigits = q.replace(/\D/g, '');
+      const filtered = sorted.filter(c => {
+        const name = (c.name || '').normalize('NFC').toLowerCase();
+        if (name.indexOf(q) === 0) return true;
+        if (qDigits && (c.phone || '').replace(/\D/g, '').indexOf(qDigits) !== -1) return true;
+        const cPets = petsByCustomer[c.id] || [];
+        if (cPets.some(p => (p.name || '').normalize('NFC').toLowerCase().indexOf(q) === 0)) return true;
+        return false;
+      });
 
       if (filtered.length === 0 && q) {
-        // 인라인 폼이 이미 표시 중이면 이름만 업데이트
         if (document.getElementById('quick-cust-phone')) {
           const nameEl = document.getElementById('quick-cust-name-val');
           const labelEl = document.getElementById('quick-cust-label');
@@ -555,7 +574,6 @@ const App = {
           if (labelEl) labelEl.textContent = `"${q}" 새 고객 등록`;
           return;
         }
-        // 검색 결과 없음 + 새 고객 등록 버튼 (자동 폼 표시 안 함)
         dropdown.innerHTML = `
           <div class="search-select-option"><span style="color:var(--text-muted)">검색 결과 없음</span></div>
           <div class="search-select-option" style="color:var(--primary);font-weight:700;border-top:1px solid var(--border);text-align:center" id="btn-inline-new-cust-empty">+ "${App.escapeHtml(q)}" 새 고객 등록</div>
@@ -566,21 +584,22 @@ const App = {
           App._showInlineCustomerForm(dropdown, hidden, input, onChange, currentQ);
         });
       } else if (filtered.length === 0) {
-        dropdown.innerHTML = '<div class="search-select-option"><span style="color:var(--text-muted)">고객 이름 또는 전화번호를 입력하세요</span></div>';
+        dropdown.innerHTML = '<div class="search-select-option"><span style="color:var(--text-muted)">반려견/고객 이름, 전화번호를 입력하세요</span></div>';
       } else {
-        dropdown.innerHTML = filtered.slice(0, 20).map(c =>
-          `<div class="search-select-option" data-id="${c.id}" data-name="${this.escapeHtml(c.name)} (${this.formatPhone(c.phone)})">
-            ${this.escapeHtml(c.name)} <span class="sub">${this.formatPhone(c.phone)}</span>
-          </div>`
-        ).join('');
+        dropdown.innerHTML = filtered.slice(0, 20).map(c => {
+          const pl = _petLabel(c.id);
+          const display = pl ? `${this.escapeHtml(pl)} <span class="sub">${this.escapeHtml(c.name)}, ${this.formatPhone(c.phone)}</span>` : `${this.escapeHtml(c.name)} <span class="sub">${this.formatPhone(c.phone)}</span>`;
+          const dataName = pl ? `${pl} (${c.name})` : `${c.name} (${this.formatPhone(c.phone)})`;
+          return `<div class="search-select-option" data-id="${c.id}" data-name="${this.escapeHtml(dataName)}">
+            ${display}
+          </div>`;
+        }).join('');
       }
-      // 검색 결과가 있어도 하단에 "새 고객 등록" 버튼 표시 (신규 등록 경로 보장)
       if (filtered.length > 0 && q) {
         dropdown.innerHTML += `<div class="search-select-option" style="color:var(--primary);font-weight:700;border-top:1px solid var(--border);text-align:center" id="btn-inline-new-cust">+ 새 고객 등록</div>`;
       }
       dropdown.classList.add('open');
 
-      // "새 고객 등록" 버튼 클릭 시 인라인 폼 표시
       document.getElementById('btn-inline-new-cust')?.addEventListener('click', (ev) => {
         ev.stopPropagation();
         App._showInlineCustomerForm(dropdown, hidden, input, onChange, input.value.trim());
@@ -595,12 +614,20 @@ const App = {
       }, 300);
     });
     let _searchTimer = null;
+    let _isComposing = false;
+    input.addEventListener('compositionstart', () => { _isComposing = true; });
+    input.addEventListener('compositionend', () => {
+      _isComposing = false;
+      clearTimeout(_searchTimer);
+      renderOptions(input.value);
+    });
     input.addEventListener('input', () => {
       hidden.value = '';
       if (onChange) onChange('');
-      // 한글 자모 조합 중 깜빡임 방지 (200ms 디바운스)
       clearTimeout(_searchTimer);
-      _searchTimer = setTimeout(() => renderOptions(input.value), 200);
+      // 한글 조합 중에는 긴 디바운스 (조합 완료 대기), 아니면 짧은 디바운스
+      const delay = _isComposing ? 400 : 200;
+      _searchTimer = setTimeout(() => renderOptions(input.value), delay);
     });
 
     dropdown.addEventListener('click', (e) => {
