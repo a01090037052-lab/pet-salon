@@ -592,10 +592,13 @@ const App = {
         input.scrollIntoView({ behavior: 'smooth', block: 'center' });
       }, 300);
     });
+    let _searchTimer = null;
     input.addEventListener('input', () => {
       hidden.value = '';
-      renderOptions(input.value);
       if (onChange) onChange('');
+      // 한글 자모 조합 중 깜빡임 방지 (200ms 디바운스)
+      clearTimeout(_searchTimer);
+      _searchTimer = setTimeout(() => renderOptions(input.value), 200);
     });
 
     dropdown.addEventListener('click', (e) => {
