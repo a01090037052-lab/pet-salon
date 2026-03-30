@@ -602,7 +602,7 @@ App.pages.records = {
         // 고객 자동 분류 (방문 횟수 기반, 신규 1-3, 일반 4-10, 단골 11+)
         try {
           const custRecords = await DB.getByIndex('records', 'customerId', customerId);
-          const visitCount = custRecords.length + 1; // 현재 저장 포함
+          const visitCount = custRecords.length; // 이미 DB에 저장된 후 조회이므로 현재 기록 포함됨
 
           const cust = await DB.get('customers', customerId);
           if (cust) {

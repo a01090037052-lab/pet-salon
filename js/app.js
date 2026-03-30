@@ -342,11 +342,7 @@ const App = {
     return new Promise((resolve) => {
       this._confirmResolve = resolve;
       const body = document.getElementById('confirm-body');
-      if (message.includes('<') && message.includes('>')) {
-        body.innerHTML = `<p>${message}</p>`;
-      } else {
-        body.textContent = message;
-      }
+      body.innerHTML = `<p>${message}</p>`;
       const overlay = document.getElementById('confirm-overlay');
       overlay.classList.remove('hidden');
       document.getElementById('confirm-ok').onclick = () => this.closeConfirm(true);
@@ -364,12 +360,16 @@ const App = {
   },
 
   // ========== Toast ==========
-  showToast(message, type = 'success') {
+  showToast(message, type = 'success', opts = {}) {
     const container = document.getElementById('toast-container');
     const toast = document.createElement('div');
     toast.className = `toast ${type}`;
     const msgSpan = document.createElement('span');
-    msgSpan.textContent = message;
+    if (opts.html) {
+      msgSpan.innerHTML = message;
+    } else {
+      msgSpan.textContent = message;
+    }
     const dismissBtn = document.createElement('button');
     dismissBtn.className = 'toast-dismiss';
     dismissBtn.textContent = '\u00D7';

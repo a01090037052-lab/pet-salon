@@ -42,7 +42,7 @@ App.pages.dashboard = {
 
       const [customers, pets, todayAppointmentsRaw, recentRecords, services, customerCount] = await Promise.all([
         DB.getAllLight('customers', ['memo']),
-        DB.getAllLight('pets', ['photo', 'preferredStyle']),
+        DB.getAllLight('pets', ['preferredStyle']),
         DB.getByIndex('appointments', 'date', today),
         DB.getByDateRange('records', 'date', twoMonthsAgoStr, today),
         DB.getAll('services'),

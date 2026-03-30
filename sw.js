@@ -44,7 +44,7 @@ self.addEventListener('fetch', (e) => {
         const fetchPromise = fetch(e.request).then(response => {
           if (response.ok) cache.put(e.request, response.clone());
           return response;
-        }).catch(() => cached);
+        }).catch(() => cached || new Response('Offline', { status: 503, statusText: 'Service Unavailable' }));
         return cached || fetchPromise;
       })
     )
