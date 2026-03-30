@@ -9,7 +9,6 @@ const App = {
       this.setupNavigation();
       this.setupSidebar();
       this.setupModal();
-      this.setupFAB();
       this.setupKeyboard();
       this.setupBottomNav();
       this.setupGlobalSearch();
@@ -68,10 +67,6 @@ const App = {
       if (e.target === e.currentTarget) this.closeConfirm(false);
     });
     document.getElementById('confirm-cancel').addEventListener('click', () => this.closeConfirm(false));
-  },
-
-  setupFAB() {
-    // FAB removed - bottom nav "+" button replaces this
   },
 
   setupKeyboard() {

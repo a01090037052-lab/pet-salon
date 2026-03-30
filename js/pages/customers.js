@@ -502,13 +502,18 @@ App.pages.customers = {
     if (!confirmed) return;
 
     try {
-      const pets = await DB.getByIndex('pets', 'customerId', id);
-      for (const pet of pets) await DB.delete('pets', pet.id);
-      const appointments = await DB.getByIndex('appointments', 'customerId', id);
-      for (const appt of appointments) await DB.delete('appointments', appt.id);
-      const records = await DB.getByIndex('records', 'customerId', id);
-      for (const rec of records) await DB.delete('records', rec.id);
-      await DB.delete('customers', id);
+      const [pets, appointments, records] = await Promise.all([
+        DB.getByIndex('pets', 'customerId', id),
+        DB.getByIndex('appointments', 'customerId', id),
+        DB.getByIndex('records', 'customerId', id)
+      ]);
+      const ops = [
+        ...pets.map(p => ({ store: 'pets', id: p.id })),
+        ...appointments.map(a => ({ store: 'appointments', id: a.id })),
+        ...records.map(r => ({ store: 'records', id: r.id })),
+        { store: 'customers', id }
+      ];
+      await DB.deleteCascade(ops);
       App.showToast('삭제되었습니다.');
       App.navigate('customers');
     } catch (err) {

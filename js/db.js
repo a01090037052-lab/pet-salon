@@ -158,6 +158,22 @@ const DB = {
     });
   },
 
+  // 여러 스토어에서 원자적으로 삭제 (단일 트랜잭션)
+  async deleteCascade(ops) {
+    if (this.mode === 'server') {
+      for (const { store, id } of ops) await fetch(`/api/${store}/${id}`, { method: 'DELETE' });
+      return;
+    }
+    const storeNames = [...new Set(ops.map(o => o.store))];
+    return new Promise((resolve, reject) => {
+      const tx = this.db.transaction(storeNames, 'readwrite');
+      for (const { store, id } of ops) tx.objectStore(store).delete(id);
+      tx.oncomplete = () => resolve();
+      tx.onerror = () => reject(tx.error);
+      tx.onabort = () => reject(tx.error);
+    });
+  },
+
   async getByIndex(storeName, indexName, value) {
     if (this.mode === 'server') {
       const res = await fetch(`/api/${storeName}?indexName=${encodeURIComponent(indexName)}&indexValue=${encodeURIComponent(value)}`);

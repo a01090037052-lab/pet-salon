@@ -479,11 +479,16 @@ App.pages.pets = {
       const confirmed = await App.confirm(`"${App.escapeHtml(pet.name)}"을(를) 삭제하시겠습니까?<br>관련 예약과 미용 기록도 함께 삭제됩니다.<br><strong>이 작업은 되돌릴 수 없습니다.</strong>`);
       if (!confirmed) return;
 
-      const appointments = await DB.getByIndex('appointments', 'petId', id);
-      for (const appt of appointments) await DB.delete('appointments', appt.id);
-      const records = await DB.getByIndex('records', 'petId', id);
-      for (const rec of records) await DB.delete('records', rec.id);
-      await DB.delete('pets', id);
+      const [appointments, records] = await Promise.all([
+        DB.getByIndex('appointments', 'petId', id),
+        DB.getByIndex('records', 'petId', id)
+      ]);
+      const ops = [
+        ...appointments.map(a => ({ store: 'appointments', id: a.id })),
+        ...records.map(r => ({ store: 'records', id: r.id })),
+        { store: 'pets', id }
+      ];
+      await DB.deleteCascade(ops);
       App.showToast('삭제되었습니다.');
       App.navigate('pets');
     } catch (err) {

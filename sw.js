@@ -1,4 +1,4 @@
-const CACHE_NAME = 'petsalon-offline-v2';
+const CACHE_NAME = 'petsalon-offline-v3';
 const ASSETS = [
   './',
   './index.html',
@@ -14,7 +14,9 @@ const ASSETS = [
   './js/pages/settings.js',
   './js/pages/revenue.js',
   './manifest.json',
-  './icon.svg'
+  './icon.svg',
+  './icon-192.png',
+  './icon-512.png'
 ];
 
 self.addEventListener('install', (e) => {
