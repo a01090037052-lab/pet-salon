@@ -70,7 +70,7 @@ App.pages.appointments = {
         </div>
       </div>
 
-      <div class="filter-bar">
+      <div class="filter-bar" id="appt-filter-bar">
         <div class="quick-filters">
           <button class="quick-filter-btn active" data-filter="all">전체</button>
           <button class="quick-filter-btn" data-filter="today">오늘</button>
@@ -94,7 +94,7 @@ App.pages.appointments = {
         <button class="btn btn-secondary btn-sm" id="btn-clear-filter">필터 초기화</button>
       </div>
 
-      <div class="card">
+      <div class="card" id="appt-list-card">
         <div class="card-body no-padding">
           <div class="table-container">
             <table class="data-table" id="appt-table">
@@ -152,6 +152,7 @@ App.pages.appointments = {
                         </select>
                       </td>
                       <td class="table-actions">
+                        <button class="btn-icon btn-reminder-appt" data-id="${a.id}" title="재확인 문자" style="color:var(--info)">&#x1F4E9;</button>
                         <button class="btn-icon btn-edit-appt" data-id="${a.id}" title="수정">&#x270F;</button>
                         <button class="btn-icon btn-complete-appt" data-id="${a.id}" title="미용 기록 작성" style="color:var(--success)">&#x2714;</button>
                         <button class="btn-icon btn-delete-appt text-danger" data-id="${a.id}" title="삭제">&#x1F5D1;</button>
@@ -203,8 +204,10 @@ App.pages.appointments = {
                     <option value="noshow" ${a.status === 'noshow' ? 'selected' : ''}>노쇼</option>
                   </select>
                   <div style="display:flex;gap:6px">
+                    <button class="btn btn-sm btn-info btn-reminder-appt flex-1" data-id="${a.id}">&#x1F4E9; 재확인</button>
                     <button class="btn btn-sm btn-secondary btn-edit-appt flex-1" data-id="${a.id}">&#x270F; 수정</button>
                     <button class="btn btn-sm btn-success btn-complete-appt flex-1" data-id="${a.id}">&#x2702; 미용 완료</button>
+                    <button class="btn btn-sm btn-danger btn-delete-appt" data-id="${a.id}" style="flex:0 0 auto;padding:6px 12px;min-width:44px" title="삭제">&#x1F5D1;</button>
                   </div>
                 </div>
               </div>`;
@@ -337,12 +340,16 @@ App.pages.appointments = {
         const isHidden = cal.style.display === 'none';
         cal.style.display = isHidden ? 'block' : 'none';
         sessionStorage.setItem('calendarOpen', isHidden ? 'true' : 'false');
+        // 캘린더 열 때 타임테이블 닫기
         if (isHidden) {
+          const tt = document.getElementById('timetable-container');
+          if (tt) { tt.style.display = 'none'; sessionStorage.setItem('timetableOpen', 'false'); }
           this._calYear = new Date().getFullYear();
           this._calMonth = new Date().getMonth();
           this._closedDays = null;
           this.renderCalendar();
         }
+        this._updateListVisibility();
       }
     });
 
@@ -355,6 +362,18 @@ App.pages.appointments = {
         this._calMonth = new Date().getMonth();
         this._closedDays = null;
         this.renderCalendar();
+        this._updateListVisibility();
+      }
+    }
+
+    // Restore timetable view state
+    if (sessionStorage.getItem('timetableOpen') === 'true' && sessionStorage.getItem('calendarOpen') !== 'true') {
+      const tt = document.getElementById('timetable-container');
+      if (tt) {
+        tt.style.display = 'block';
+        this._ttDate = App.getToday();
+        this.renderTimetable();
+        this._updateListVisibility();
       }
     }
 
@@ -365,10 +384,15 @@ App.pages.appointments = {
       if (tt) {
         const isHidden = tt.style.display === 'none';
         tt.style.display = isHidden ? 'block' : 'none';
+        sessionStorage.setItem('timetableOpen', isHidden ? 'true' : 'false');
+        // 타임테이블 열 때 캘린더 닫기
         if (isHidden) {
+          const cal = document.getElementById('calendar-container');
+          if (cal) { cal.style.display = 'none'; sessionStorage.setItem('calendarOpen', 'false'); }
           this._ttDate = App.getToday();
           this.renderTimetable();
         }
+        this._updateListVisibility();
       }
     });
     document.getElementById('tt-prev')?.addEventListener('click', () => {
@@ -502,6 +526,29 @@ App.pages.appointments = {
     document.querySelectorAll('.btn-delete-appt').forEach(btn => {
       btn.addEventListener('click', () => this.deleteAppointment(Number(btn.dataset.id)));
     });
+
+    // Reminder SMS
+    document.querySelectorAll('.btn-reminder-appt').forEach(btn => {
+      btn.addEventListener('click', () => this.sendReminder(Number(btn.dataset.id)));
+    });
+  },
+
+  async sendReminder(id) {
+    const appt = await DB.get('appointments', id);
+    if (!appt) { App.showToast('예약을 찾을 수 없습니다.', 'error'); return; }
+    const customer = await DB.get('customers', appt.customerId);
+    const phone = (customer?.phone || '').replace(/\D/g, '');
+    if (!phone) { App.showToast('고객 연락처가 없습니다.', 'error'); return; }
+    const pet = await DB.get('pets', appt.petId);
+    const msg = await App.buildSms('reminder', {
+      '고객명': customer.name || '',
+      '반려견명': pet?.name || '',
+      '날짜': appt.date || '',
+      '시간': appt.time || '',
+      '미용사': appt.groomer || ''
+    });
+    const sep = /iP(hone|ad|od)/.test(navigator.userAgent) || /Mac/.test(navigator.userAgent) ? '&' : '?';
+    window.open(`sms:${phone}${sep}body=${encodeURIComponent(msg)}`, '_self');
   },
 
   async renderTimetable() {
@@ -587,6 +634,16 @@ App.pages.appointments = {
 
     html += '</div>';
     grid.innerHTML = html;
+  },
+
+  _updateListVisibility() {
+    const calOpen = document.getElementById('calendar-container')?.style.display !== 'none';
+    const ttOpen = document.getElementById('timetable-container')?.style.display !== 'none';
+    const hide = calOpen || ttOpen;
+    const filterBar = document.getElementById('appt-filter-bar');
+    const listCard = document.getElementById('appt-list-card');
+    if (filterBar) filterBar.style.display = hide ? 'none' : '';
+    if (listCard) listCard.style.display = hide ? 'none' : '';
   },
 
   applyFilters(special) {

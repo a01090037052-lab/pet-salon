@@ -15,12 +15,14 @@ App.pages.settings = {
     const DEFAULT_TEMPLATES = {
       revisit: '[{매장명}] {고객명}님 안녕하세요! {반려견명}의 마지막 미용 후 {경과일수}일이 지났습니다. 예약 문의: {전화번호}',
       appointment: '[{매장명}] {고객명}님, {날짜} {시간}에 {반려견명} 예약이 확인되었습니다. 담당: {미용사}. 문의: {전화번호}',
+      reminder: '[{매장명}] {고객명}님, 내일({날짜}) {시간}에 {반려견명} 미용 예약이 있습니다. 변경/취소는 {전화번호}로 연락 부탁드립니다.',
       birthday: '[{매장명}] {고객명}님! {반려견명}의 생일을 축하합니다! 🎂 생일 기념 특별 할인을 준비했어요. 문의: {전화번호}',
       complete: '[{매장명}] {고객명}님, {반려견명}의 미용이 완료되었습니다! 서비스: {서비스}, 금액: {금액}원. 감사합니다! 💕'
     };
     const savedTemplates = await DB.getSetting('messageTemplates') || {};
     const revisitTpl = savedTemplates.revisit || DEFAULT_TEMPLATES.revisit;
     const appointmentTpl = savedTemplates.appointment || DEFAULT_TEMPLATES.appointment;
+    const reminderTpl = savedTemplates.reminder || DEFAULT_TEMPLATES.reminder;
     const birthdayTpl = savedTemplates.birthday || DEFAULT_TEMPLATES.birthday;
     const completeTpl = savedTemplates.complete || DEFAULT_TEMPLATES.complete;
 
@@ -219,6 +221,10 @@ App.pages.settings = {
             <div class="form-group">
               <label class="form-label">예약 확인 문자</label>
               <textarea id="tpl-appointment" rows="3">${App.escapeHtml(appointmentTpl)}</textarea>
+            </div>
+            <div class="form-group">
+              <label class="form-label">예약 재확인 문자 (전날 발송용)</label>
+              <textarea id="tpl-reminder" rows="3">${App.escapeHtml(reminderTpl)}</textarea>
             </div>
             <div class="form-group">
               <label class="form-label">생일 축하 문자</label>
@@ -433,12 +439,14 @@ App.pages.settings = {
       // 메시지 템플릿
       const tplRevisit = document.getElementById('tpl-revisit');
       const tplAppointment = document.getElementById('tpl-appointment');
+      const tplReminder = document.getElementById('tpl-reminder');
       const tplBirthday = document.getElementById('tpl-birthday');
       const tplComplete = document.getElementById('tpl-complete');
-      if (tplRevisit && tplAppointment && tplBirthday && tplComplete) {
+      if (tplRevisit && tplAppointment && tplReminder && tplBirthday && tplComplete) {
         await DB.setSetting('messageTemplates', {
           revisit: tplRevisit.value,
           appointment: tplAppointment.value,
+          reminder: tplReminder.value,
           birthday: tplBirthday.value,
           complete: tplComplete.value
         });
@@ -459,12 +467,14 @@ App.pages.settings = {
       const defaults = {
         revisit: '[{매장명}] {고객명}님 안녕하세요! {반려견명}의 마지막 미용 후 {경과일수}일이 지났습니다. 예약 문의: {전화번호}',
         appointment: '[{매장명}] {고객명}님, {날짜} {시간}에 {반려견명} 예약이 확인되었습니다. 담당: {미용사}. 문의: {전화번호}',
+        reminder: '[{매장명}] {고객명}님, 내일({날짜}) {시간}에 {반려견명} 미용 예약이 있습니다. 변경/취소는 {전화번호}로 연락 부탁드립니다.',
         birthday: '[{매장명}] {고객명}님! {반려견명}의 생일을 축하합니다! 🎂 생일 기념 특별 할인을 준비했어요. 문의: {전화번호}',
         complete: '[{매장명}] {고객명}님, {반려견명}의 미용이 완료되었습니다! 서비스: {서비스}, 금액: {금액}원. 감사합니다! 💕'
       };
       await DB.setSetting('messageTemplates', defaults);
       document.getElementById('tpl-revisit').value = defaults.revisit;
       document.getElementById('tpl-appointment').value = defaults.appointment;
+      document.getElementById('tpl-reminder').value = defaults.reminder;
       document.getElementById('tpl-birthday').value = defaults.birthday;
       document.getElementById('tpl-complete').value = defaults.complete;
       App.showToast('기본값으로 복원되었습니다.');
