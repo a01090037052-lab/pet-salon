@@ -315,6 +315,11 @@ App.pages.appointments = {
           const dateInput = document.getElementById('filter-date');
           if (dateInput) {
             dateInput.value = date;
+            // 날짜 선택 시 필터+목록 표시
+            const filterBar = document.getElementById('appt-filter-bar');
+            const listCard = document.getElementById('appt-list-card');
+            if (filterBar) filterBar.style.display = '';
+            if (listCard) listCard.style.display = '';
             this.applyFilters();
           }
           // 선택 표시
