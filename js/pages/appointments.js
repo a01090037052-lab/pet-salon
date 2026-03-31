@@ -94,7 +94,7 @@ App.pages.appointments = {
         <button class="btn btn-secondary btn-sm" id="btn-clear-filter">필터 초기화</button>
       </div>
 
-      <div class="card" id="appt-list-card">
+      <div class="card">
         <div class="card-body no-padding">
           <div class="table-container">
             <table class="data-table" id="appt-table">
@@ -315,11 +315,6 @@ App.pages.appointments = {
           const dateInput = document.getElementById('filter-date');
           if (dateInput) {
             dateInput.value = date;
-            // 날짜 선택 시 필터+목록 표시
-            const filterBar = document.getElementById('appt-filter-bar');
-            const listCard = document.getElementById('appt-list-card');
-            if (filterBar) filterBar.style.display = '';
-            if (listCard) listCard.style.display = '';
             this.applyFilters();
           }
           // 선택 표시
@@ -646,9 +641,7 @@ App.pages.appointments = {
     const ttOpen = document.getElementById('timetable-container')?.style.display !== 'none';
     const hide = calOpen || ttOpen;
     const filterBar = document.getElementById('appt-filter-bar');
-    const listCard = document.getElementById('appt-list-card');
     if (filterBar) filterBar.style.display = hide ? 'none' : '';
-    if (listCard) listCard.style.display = hide ? 'none' : '';
   },
 
   applyFilters(special) {
