@@ -1477,6 +1477,10 @@ a.stat-card { display: flex; }
 .settings-tab-content {
   animation: pageIn 0.2s ease;
 }
+.settings-tab-content .card,
+.settings-tab-content .card-body {
+  overflow: visible;
+}
 
 /* ========== Responsive ========== */
 @media (max-width: 768px) {
