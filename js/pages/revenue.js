@@ -302,8 +302,7 @@ App.pages.revenue = {
                       <div style="font-size:0.65rem;color:var(--text-muted)">${m.count}건</div>
                     </div>
                   </div>`;
-                }).join('')
-              })()}
+                }).join('')}
             </div>
           </div>
         </div>
