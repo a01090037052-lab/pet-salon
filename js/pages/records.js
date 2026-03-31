@@ -384,7 +384,7 @@ App.pages.records = {
           </div>
           <div class="form-group">
             <label class="form-label">메모</label>
-            <textarea id="f-memo" placeholder="미용 중 특이사항, 다음 방문 시 참고할 내용 등">${App.escapeHtml(record.memo || '')}</textarea>
+            <textarea id="f-memo" placeholder="미용 중 특이사항, 다음 방문 시 참고할 내용 등" maxlength="2000">${App.escapeHtml(record.memo || '')}</textarea>
           </div>
         </div>
         <input type="hidden" id="f-appointmentId" value="${record.appointmentId || ''}">

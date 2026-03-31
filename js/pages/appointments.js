@@ -821,7 +821,7 @@ App.pages.appointments = {
       const dateVal = document.getElementById('f-date').value;
       if (!dateVal) return;
       const cd = await DB.getSetting('closedDays') || [];
-      const dow = new Date(dateVal).getDay();
+      const dow = new Date(dateVal + 'T00:00:00').getDay();
       const dayNames = ['일', '월', '화', '수', '목', '금', '토'];
       let existingWarn = document.getElementById('closed-day-warning');
       if (!existingWarn) {
@@ -915,7 +915,7 @@ App.pages.appointments = {
         if (cycle > 0 && count > 1) {
           let created = 1;
           for (let i = 1; i < count; i++) {
-            const baseDate = new Date(date);
+            const baseDate = new Date(date + 'T00:00:00');
             baseDate.setDate(baseDate.getDate() + cycle * i);
             const nextDate = App.formatLocalDate(baseDate);
             const repeatData = { ...data, date: nextDate };

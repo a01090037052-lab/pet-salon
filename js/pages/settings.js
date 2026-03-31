@@ -359,9 +359,19 @@ App.pages.settings = {
       await DB.setSetting('shopAddress', document.getElementById('s-shopAddress').value.trim());
       await DB.setSetting('revisitDays', Number(document.getElementById('s-revisitDays').value) || 30);
       await App.applyShopName();
-      // 미용사 목록
+      // 미용사 목록 (삭제된 미용사가 기존 기록에 있으면 경고)
       const inputs = document.querySelectorAll('.groomer-input');
       const groomers = Array.from(inputs).map(i => i.value.trim()).filter(Boolean);
+      const prevGroomers = await DB.getSetting('groomers') || [];
+      const removed = prevGroomers.filter(g => !groomers.includes(g));
+      if (removed.length > 0) {
+        const records = await DB.getAllLight('records', ['photoBefore', 'photoAfter', 'memo']);
+        const usedRemoved = removed.filter(g => records.some(r => r.groomer === g));
+        if (usedRemoved.length > 0) {
+          const ok = await App.confirm(`"${usedRemoved.join(', ')}" 미용사가 기존 기록에 사용 중입니다.<br>삭제해도 기존 기록에는 이름이 유지됩니다. 계속할까요?`);
+          if (!ok) return;
+        }
+      }
       await DB.setSetting('groomers', groomers);
       // 휴무일
       const checks = document.querySelectorAll('input[name="closedDay"]:checked');

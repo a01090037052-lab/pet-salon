@@ -492,18 +492,13 @@ const DB = {
       k => !k.startsWith('_') && this.stores[k] && Array.isArray(data[k])
     );
 
-    const errors = [];
-    let completed = 0;
-    const total = storeNames.length;
-
-    // 2. Process each store in a single transaction (clear + all adds)
-    for (const storeName of storeNames) {
-      try {
-        const items = data[storeName];
-        const tx = this.db.transaction(storeName, 'readwrite');
+    // 2. 단일 트랜잭션으로 모든 스토어를 원자적으로 처리
+    try {
+      const tx = this.db.transaction(storeNames, 'readwrite');
+      for (const storeName of storeNames) {
         const store = tx.objectStore(storeName);
         store.clear();
-        for (const item of items) {
+        for (const item of data[storeName]) {
           try {
             if (storeName === 'settings' && !item.key) continue;
             store.add(item);
@@ -511,22 +506,15 @@ const DB = {
             console.warn(`importAll: skipped bad item in ${storeName}`, e);
           }
         }
-        await new Promise((resolve, reject) => {
-          tx.oncomplete = resolve;
-          tx.onerror = () => reject(tx.error);
-        });
-      } catch (e) {
-        // 3. If any store fails, report error but continue with others
-        console.error(`importAll: failed for ${storeName}`, e);
-        errors.push({ store: storeName, error: e.message || String(e) });
       }
-      completed++;
-      // 4. Progress callback for UI
-      if (onProgress) onProgress({ completed, total, storeName });
-    }
-
-    if (errors.length > 0) {
-      console.warn('importAll completed with errors:', errors);
+      await new Promise((resolve, reject) => {
+        tx.oncomplete = resolve;
+        tx.onerror = () => reject(tx.error);
+        tx.onabort = () => reject(tx.error);
+      });
+    } catch (e) {
+      console.error('importAll failed (rolled back):', e);
+      throw e;
     }
   },
 
