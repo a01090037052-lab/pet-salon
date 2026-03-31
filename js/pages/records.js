@@ -725,10 +725,11 @@ App.pages.records = {
         const cust = await DB.get('customers', record.customerId);
         if (cust) {
           const vc = custRecords.length;
-          const tags = (cust.tags || []).filter(t => !['신규', '일반', '단골'].includes(t));
-          if (vc <= 3) tags.push('신규');
-          else if (vc <= 10) tags.push('일반');
-          else tags.push('단골');
+          const autoTags = ['new', 'normal', 'regular'];
+          const tags = (cust.tags || []).filter(t => !autoTags.includes(t));
+          if (vc <= 3) tags.push('new');
+          else if (vc <= 10) tags.push('normal');
+          else tags.push('regular');
           cust.tags = tags;
           await DB.update('customers', cust);
         }
