@@ -61,7 +61,19 @@ const DB = {
       req.onsuccess = (e) => {
         this.db = e.target.result;
         // Safari ITP 데이터 자동 삭제 방지
-        if (navigator.storage && navigator.storage.persist) navigator.storage.persist().catch(() => {});
+        if (navigator.storage && navigator.storage.persist) {
+          navigator.storage.persist().then(granted => {
+            if (!granted && typeof App !== 'undefined' && App.showToast) {
+              // PWA 홈 화면 추가 안내 (persist 실패 시 데이터 삭제 위험)
+              const isStandalone = window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone;
+              if (!isStandalone) {
+                setTimeout(() => {
+                  App.showToast('데이터 보호를 위해 앱을 홈 화면에 추가해주세요.', 'warning', { duration: 8000 });
+                }, 3000);
+              }
+            }
+          }).catch(() => {});
+        }
         resolve();
       };
       req.onerror = (e) => reject(e.target.error);

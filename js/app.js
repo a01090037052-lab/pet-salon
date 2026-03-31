@@ -479,7 +479,7 @@ const App = {
 
   formatDate(dateStr) {
     if (!dateStr) return '-';
-    const d = new Date(dateStr);
+    const d = this.parseLocalDate ? this.parseLocalDate(dateStr) : new Date(dateStr);
     if (isNaN(d.getTime())) return dateStr;
     return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
   },
@@ -512,9 +512,19 @@ const App = {
     return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
   },
 
+  // YYYY-MM-DD 문자열을 로컬 시간대로 파싱 (UTC 오프셋 방지)
+  parseLocalDate(dateStr) {
+    if (!dateStr) return null;
+    // ISO datetime 형식(T 포함)은 그대로, 날짜만 있으면 T00:00:00 붙임
+    if (dateStr.length === 10 && /^\d{4}-\d{2}-\d{2}$/.test(dateStr)) {
+      return new Date(dateStr + 'T00:00:00');
+    }
+    return new Date(dateStr);
+  },
+
   getDaysAgo(dateStr) {
     if (!dateStr) return null;
-    const d = new Date(dateStr);
+    const d = this.parseLocalDate(dateStr);
     const now = new Date();
     const diff = Math.floor((now - d) / (1000 * 60 * 60 * 24));
     return diff;

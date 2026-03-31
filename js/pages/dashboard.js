@@ -86,11 +86,21 @@ App.pages.dashboard = {
       // 생일 알림 (7일 이내)
       const upcomingBirthdays = [];
       const nowForBirthday = new Date();
+      const todayForBirthday = new Date(nowForBirthday.getFullYear(), nowForBirthday.getMonth(), nowForBirthday.getDate());
+      const getBirthdayDaysUntil = (birthDate) => {
+        const birth = new Date(birthDate + 'T00:00:00');
+        let bd = new Date(nowForBirthday.getFullYear(), birth.getMonth(), birth.getDate());
+        let diffDays = Math.floor((bd - todayForBirthday) / (1000*60*60*24));
+        // 올해 생일이 지났으면 내년 생일 체크 (연말→연초 경계)
+        if (diffDays < 0) {
+          bd = new Date(nowForBirthday.getFullYear() + 1, birth.getMonth(), birth.getDate());
+          diffDays = Math.floor((bd - todayForBirthday) / (1000*60*60*24));
+        }
+        return diffDays;
+      };
       pets.forEach(p => {
         if (!p.birthDate) return;
-        const birth = new Date(p.birthDate);
-        const thisYearBirthday = new Date(nowForBirthday.getFullYear(), birth.getMonth(), birth.getDate());
-        const diffDays = Math.floor((thisYearBirthday - new Date(nowForBirthday.getFullYear(), nowForBirthday.getMonth(), nowForBirthday.getDate())) / (1000*60*60*24));
+        const diffDays = getBirthdayDaysUntil(p.birthDate);
         if (diffDays >= 0 && diffDays <= 7) {
           const customer = customerMap[p.customerId];
           if (customer) upcomingBirthdays.push({ type: 'pet', name: p.name, ownerName: customer.name, phone: customer.phone, daysUntil: diffDays, photo: p.photo });
@@ -98,9 +108,7 @@ App.pages.dashboard = {
       });
       customers.forEach(c => {
         if (!c.birthday) return;
-        const birth = new Date(c.birthday);
-        const thisYearBirthday = new Date(nowForBirthday.getFullYear(), birth.getMonth(), birth.getDate());
-        const diffDays = Math.floor((thisYearBirthday - new Date(nowForBirthday.getFullYear(), nowForBirthday.getMonth(), nowForBirthday.getDate())) / (1000*60*60*24));
+        const diffDays = getBirthdayDaysUntil(c.birthday);
         if (diffDays >= 0 && diffDays <= 7) {
           upcomingBirthdays.push({ type: 'customer', name: c.name, ownerName: c.name, phone: c.phone, daysUntil: diffDays });
         }

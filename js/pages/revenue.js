@@ -1,18 +1,18 @@
 // ========== Revenue (매출) Page ==========
 App.pages.revenue = {
   async render(container) {
-    const records = await DB.getAllLight('records', ['photoBefore', 'photoAfter']);
-    const sorted = records.sort((a, b) => (b.date || '').localeCompare(a.date || ''));
-
-    const [customers, pets] = await Promise.all([
+    const today = App.getToday();
+    // 최근 1년 records만 로드 (성능 최적화), 미수금/전체 매출은 경량 집계
+    const oneYearAgo = (() => { const d = new Date(); d.setFullYear(d.getFullYear() - 1); return App.formatLocalDate(d); })();
+    const [records, allRecordsMin, customers, pets] = await Promise.all([
+      DB.getByDateRange('records', 'date', oneYearAgo, '9999-12-31'),
+      DB.getAllLight('records', ['photoBefore', 'photoAfter', 'memo', 'serviceIds', 'serviceNames', 'groomer', 'nextVisitDate', 'appointmentId']),
       DB.getAllLight('customers', ['memo', 'address']),
       DB.getAllLight('pets', ['photo', 'temperament', 'healthNotes', 'preferredStyle'])
     ]);
+    const sorted = records.sort((a, b) => (b.date || '').localeCompare(a.date || ''));
     const customerMap = {}; customers.forEach(c => customerMap[c.id] = c);
     const petMap = {}; pets.forEach(p => petMap[p.id] = p);
-
-    // 오늘 매출
-    const today = App.getToday();
     const todayRecords = records.filter(r => r.date === today);
     const todayRevenue = todayRecords.reduce((sum, r) => sum + App.getRecordAmount(r), 0);
 
@@ -35,11 +35,11 @@ App.pages.revenue = {
     const monthRecords = records.filter(r => r.date && r.date.startsWith(thisMonth));
     const monthRevenue = monthRecords.reduce((sum, r) => sum + App.getRecordAmount(r), 0);
 
-    // 전체 매출
-    const totalRevenue = records.reduce((sum, r) => sum + App.getRecordAmount(r), 0);
+    // 전체 매출 (경량 데이터에서 집계)
+    const totalRevenue = allRecordsMin.reduce((sum, r) => sum + App.getRecordAmount(r), 0);
 
-    // 미수금 집계
-    const unpaidRecs = records.filter(r => r.paymentMethod === 'unpaid');
+    // 미수금 집계 (경량 데이터에서 집계)
+    const unpaidRecs = allRecordsMin.filter(r => r.paymentMethod === 'unpaid');
     const unpaidTotal = unpaidRecs.reduce((sum, r) => sum + App.getRecordAmount(r), 0);
 
     // 결제 수단별 통계 (이번 달)

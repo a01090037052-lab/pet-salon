@@ -121,7 +121,7 @@ App.pages.records = {
                 ` : (this._showAll ? sorted : sorted.slice(0, 20)).map(r => {
                   const customer = customerMap[r.customerId];
                   const pet = petMap[r.petId];
-                  const serviceNames = (r.serviceIds || []).map(id => serviceMap[id]).filter(Boolean).join(', ') || '-';
+                  const serviceNames = (r.serviceNames && r.serviceNames.length > 0) ? r.serviceNames.join(', ') : (r.serviceIds || []).map(id => serviceMap[id]).filter(Boolean).join(', ') || '-';
                   return `
                     <tr data-id="${r.id}" data-month="${(r.date || '').slice(0, 7)}"
                         data-search="${(customer?.name || '') + ' ' + (pet?.name || '')}"
@@ -564,6 +564,10 @@ App.pages.records = {
       document.querySelectorAll('input[name="serviceIds"]:checked').forEach(cb => {
         serviceIds.push(Number(cb.value));
       });
+      // 서비스명 스냅샷 저장 (서비스 삭제/이름 변경 시에도 과거 기록 유지)
+      const allServices = await DB.getAll('services');
+      const svcMap = {}; allServices.forEach(s => { svcMap[s.id] = s.name; });
+      const serviceNames = serviceIds.map(id => svcMap[id] || '').filter(Boolean);
 
       if (!customerId) { App.showToast('고객을 선택해주세요.', 'error'); App.highlightField('record-customer-select-input'); return; }
       if (!petId) { App.showToast('반려견을 선택해주세요.', 'error'); App.highlightField('f-petId'); return; }
@@ -575,7 +579,7 @@ App.pages.records = {
       const appointmentId = document.getElementById('f-appointmentId')?.value || null;
       const status = 'completed';
 
-      const data = { customerId, petId, date, groomer, nextVisitDate, serviceIds, totalPrice, discount, extraCharge, finalPrice, memo, paymentMethod, appointmentId, status };
+      const data = { customerId, petId, date, groomer, nextVisitDate, serviceIds, serviceNames, totalPrice, discount, extraCharge, finalPrice, memo, paymentMethod, appointmentId, status };
 
       if (id) {
         const existing = await DB.get('records', id);
