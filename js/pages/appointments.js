@@ -348,6 +348,10 @@ App.pages.appointments = {
           this._calMonth = new Date().getMonth();
           this._closedDays = null;
           this.renderCalendar();
+        } else {
+          // 캘린더 닫을 때 날짜 필터 초기화
+          const dateInput = document.getElementById('filter-date');
+          if (dateInput) { dateInput.value = ''; this.applyFilters(); }
         }
         this._updateListVisibility();
       }
@@ -541,7 +545,7 @@ App.pages.appointments = {
     if (!phone) { App.showToast('고객 연락처가 없습니다.', 'error'); return; }
     const pet = await DB.get('pets', appt.petId);
     const msg = await App.buildSms('reminder', {
-      '고객명': customer.name || '',
+      '고객명': customer?.name || '',
       '반려견명': pet?.name || '',
       '날짜': appt.date || '',
       '시간': appt.time || '',
@@ -637,8 +641,10 @@ App.pages.appointments = {
   },
 
   _updateListVisibility() {
-    const calOpen = document.getElementById('calendar-container')?.style.display !== 'none';
-    const ttOpen = document.getElementById('timetable-container')?.style.display !== 'none';
+    const calEl = document.getElementById('calendar-container');
+    const ttEl = document.getElementById('timetable-container');
+    const calOpen = calEl ? calEl.style.display !== 'none' : false;
+    const ttOpen = ttEl ? ttEl.style.display !== 'none' : false;
     const hide = calOpen || ttOpen;
     const filterBar = document.getElementById('appt-filter-bar');
     if (filterBar) filterBar.style.display = hide ? 'none' : '';
