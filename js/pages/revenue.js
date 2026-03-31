@@ -220,17 +220,25 @@ App.pages.revenue = {
               <div style="text-align:center;margin-bottom:16px">
                 <div style="font-size:1.6rem;font-weight:800;color:var(--primary)">${App.formatCurrency(weekRevenue)}</div>
               </div>
-              <div style="display:flex;align-items:flex-end;gap:8px;height:200px;padding:0 4px">
-                ${weekData.map(d => {
-                  const pct = d.rev > 0 ? Math.max(5, Math.round((d.rev / weekMax) * 100)) : 0;
-                  const isToday = d.date === today;
-                  return `<div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:4px" title="${d.date}: ${App.formatCurrency(d.rev)}">
-                    <span style="font-size:0.75rem;color:var(--text-secondary);font-weight:700">${d.rev > 0 ? (d.rev >= 10000 ? Math.round(d.rev / 10000) + '만' : App.formatCurrency(d.rev)) : ''}</span>
-                    <div style="width:100%;background:${isToday ? 'linear-gradient(to top,var(--success),#34D399)' : 'linear-gradient(to top,var(--primary),#818CF8)'};border-radius:6px 6px 0 0;min-height:4px;height:${pct}%"></div>
-                    <span style="font-size:0.78rem;font-weight:${isToday ? '800' : '500'};color:${isToday ? 'var(--primary)' : 'var(--text-muted)'}">${d.label}</span>
-                  </div>`;
-                }).join('')}
-              </div>
+              ${(() => {
+                const gridMax = Math.ceil(weekMax / 100000) * 100000 || 100000;
+                const gridLines = [0.25, 0.5, 0.75, 1].map(r => ({ y: r * 100, label: Math.round(gridMax * r / 10000) + '만' }));
+                return `<div style="position:relative;height:220px;padding:0 4px">
+                  ${gridLines.map(g => `<div style="position:absolute;left:0;right:0;bottom:${g.y * 0.82}%;border-bottom:1px dashed var(--border-light);z-index:0"><span style="position:absolute;left:-2px;top:-14px;font-size:0.65rem;color:var(--text-muted)">${g.label}</span></div>`).join('')}
+                  <div style="display:flex;align-items:flex-end;gap:8px;height:100%;position:relative;z-index:1;padding-top:20px">
+                    ${weekData.map(d => {
+                      const pct = d.rev > 0 ? Math.max(8, Math.round((d.rev / gridMax) * 82)) : 0;
+                      const isToday = d.date === today;
+                      const label = d.rev >= 10000 ? Math.round(d.rev / 10000) + '만' : d.rev > 0 ? App.formatCurrency(d.rev) : '';
+                      return `<div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:4px" title="${d.date}: ${App.formatCurrency(d.rev)}">
+                        <span style="font-size:0.72rem;color:${isToday ? 'var(--success)' : 'var(--text-secondary)'};font-weight:700">${label}</span>
+                        <div style="width:100%;background:${isToday ? 'linear-gradient(to top,var(--success),#34D399)' : 'linear-gradient(to top,var(--primary),#818CF8)'};border-radius:6px 6px 0 0;min-height:4px;height:${pct}%"></div>
+                        <span style="font-size:0.78rem;font-weight:${isToday ? '800' : '500'};color:${isToday ? 'var(--primary)' : 'var(--text-muted)'}">${d.label}</span>
+                      </div>`;
+                    }).join('')}
+                  </div>
+                </div>`;
+              })()}
             </div>
           </div>
 
@@ -268,16 +276,23 @@ App.pages.revenue = {
             <div style="text-align:center;margin-bottom:16px">
               <div style="font-size:1.6rem;font-weight:800;color:var(--primary)">${App.formatCurrency(monthRevenue)}</div>
             </div>
-            <div style="display:flex;align-items:flex-end;gap:2px;height:200px;padding:0;overflow-x:auto">
-              ${monthData.map(d => {
-                  const pct = d.rev > 0 ? Math.max(5, Math.round((d.rev / monthMax) * 100)) : 0;
-                  const isToday = d.date === today;
-                  return `<div style="flex:1;min-width:14px;display:flex;flex-direction:column;align-items:center;gap:2px" title="${d.date}: ${App.formatCurrency(d.rev)}">
-                    <div style="width:100%;background:${isToday ? 'linear-gradient(to top,var(--success),#34D399)' : 'linear-gradient(to top,var(--primary),#818CF8)'};border-radius:4px 4px 0 0;min-height:2px;height:${pct}%"></div>
-                    <span style="font-size:0.55rem;color:${isToday ? 'var(--primary)' : 'var(--text-muted)'};font-weight:${isToday ? '800' : '400'}">${d.day % 5 === 1 || isToday ? d.day : ''}</span>
-                  </div>`;
-                }).join('')}
-            </div>
+            ${(() => {
+              const mGridMax = Math.ceil(monthMax / 100000) * 100000 || 100000;
+              const mGridLines = [0.25, 0.5, 0.75, 1].map(r => ({ y: r * 100, label: Math.round(mGridMax * r / 10000) + '만' }));
+              return `<div style="position:relative;height:220px;padding:0;overflow-x:auto">
+                ${mGridLines.map(g => `<div style="position:absolute;left:0;right:0;bottom:${g.y * 0.82}%;border-bottom:1px dashed var(--border-light);z-index:0"><span style="position:absolute;left:0;top:-14px;font-size:0.6rem;color:var(--text-muted)">${g.label}</span></div>`).join('')}
+                <div style="display:flex;align-items:flex-end;gap:2px;height:100%;position:relative;z-index:1;padding-top:20px">
+                  ${monthData.map(d => {
+                    const pct = d.rev > 0 ? Math.max(5, Math.round((d.rev / mGridMax) * 82)) : 0;
+                    const isToday = d.date === today;
+                    return `<div style="flex:1;min-width:14px;display:flex;flex-direction:column;align-items:center;gap:2px" title="${d.date}: ${App.formatCurrency(d.rev)}">
+                      <div style="width:100%;background:${isToday ? 'linear-gradient(to top,var(--success),#34D399)' : 'linear-gradient(to top,var(--primary),#818CF8)'};border-radius:4px 4px 0 0;min-height:2px;height:${pct}%"></div>
+                      <span style="font-size:0.55rem;color:${isToday ? 'var(--primary)' : 'var(--text-muted)'};font-weight:${isToday ? '800' : '400'}">${d.day % 5 === 1 || isToday ? d.day : ''}</span>
+                    </div>`;
+                  }).join('')}
+                </div>
+              </div>`;
+            })()}
           </div>
         </div>
       </div>
@@ -290,19 +305,28 @@ App.pages.revenue = {
             <span class="card-title">&#x1F4C8; 최근 6개월 매출 추이</span>
           </div>
           <div class="card-body">
-            <div style="display:flex;align-items:flex-end;gap:12px;height:220px;padding:0 8px">
-              ${monthlyTrend.map(m => {
-                  const pct = m.rev > 0 ? Math.max(5, Math.round((m.rev / trendMax) * 100)) : 0;
-                  const isCurrent = m.month === thisMonth;
-                  return `<div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:6px" title="${m.month}: ${App.formatCurrency(m.rev)} (${m.count}건)">
-                    <span style="font-size:0.75rem;color:var(--text-secondary);font-weight:700">${m.rev >= 10000 ? Math.round(m.rev / 10000) + '만' : (m.rev > 0 ? App.formatCurrency(m.rev) : '')}</span>
-                    <div style="width:100%;background:${isCurrent ? 'linear-gradient(to top,var(--success),#34D399)' : 'linear-gradient(to top,var(--primary),#818CF8)'};border-radius:8px 8px 0 0;min-height:4px;height:${pct}%"></div>
-                    <div style="text-align:center">
-                      <div style="font-size:0.78rem;font-weight:${isCurrent ? '800' : '500'};color:${isCurrent ? 'var(--primary)' : 'var(--text-muted)'}">${m.label}</div>
-                      <div style="font-size:0.65rem;color:var(--text-muted)">${m.count}건</div>
-                    </div>
-                  </div>`;
-                }).join('')}
+            ${(() => {
+              const tGridMax = Math.ceil(trendMax / 1000000) * 1000000 || 1000000;
+              const tGridLines = [0.25, 0.5, 0.75, 1].map(r => ({ y: r * 100, label: Math.round(tGridMax * r / 10000) + '만' }));
+              return `<div style="position:relative;height:240px;padding:0 8px">
+                ${tGridLines.map(g => `<div style="position:absolute;left:0;right:0;bottom:${g.y * 0.75}%;border-bottom:1px dashed var(--border-light);z-index:0"><span style="position:absolute;left:-2px;top:-14px;font-size:0.65rem;color:var(--text-muted)">${g.label}</span></div>`).join('')}
+                <div style="display:flex;align-items:flex-end;gap:12px;height:100%;position:relative;z-index:1;padding-top:20px">
+                  ${monthlyTrend.map(m => {
+                    const pct = m.rev > 0 ? Math.max(8, Math.round((m.rev / tGridMax) * 75)) : 0;
+                    const isCurrent = m.month === thisMonth;
+                    const label = m.rev >= 10000 ? Math.round(m.rev / 10000) + '만' : (m.rev > 0 ? App.formatCurrency(m.rev) : '');
+                    return `<div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:6px" title="${m.month}: ${App.formatCurrency(m.rev)} (${m.count}건)">
+                      <span style="font-size:0.75rem;color:${isCurrent ? 'var(--success)' : 'var(--text-secondary)'};font-weight:700">${label}</span>
+                      <div style="width:100%;background:${isCurrent ? 'linear-gradient(to top,var(--success),#34D399)' : 'linear-gradient(to top,var(--primary),#818CF8)'};border-radius:8px 8px 0 0;min-height:4px;height:${pct}%"></div>
+                      <div style="text-align:center">
+                        <div style="font-size:0.78rem;font-weight:${isCurrent ? '800' : '500'};color:${isCurrent ? 'var(--primary)' : 'var(--text-muted)'}">${m.label}</div>
+                        <div style="font-size:0.65rem;color:var(--text-muted)">${m.count}건</div>
+                      </div>
+                    </div>`;
+                  }).join('')}
+                </div>
+              </div>`;
+            })()}
             </div>
           </div>
         </div>
