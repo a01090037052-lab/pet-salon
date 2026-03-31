@@ -3,8 +3,12 @@ App.pages.appointments = {
   _showAll: false,
 
   async render(container) {
-    const appointments = await DB.getAll('appointments');
     const today = App.getToday();
+    // 최근 3개월 + 미래 예약만 로드 (성능 최적화)
+    const threeMonthsAgo = (() => { const d = new Date(); d.setMonth(d.getMonth() - 3); return App.formatLocalDate(d); })();
+    const appointments = this._showAll
+      ? await DB.getAll('appointments')
+      : await DB.getByDateRange('appointments', 'date', threeMonthsAgo, '9999-12-31');
 
     const sorted = appointments.sort((a, b) => {
       const dateComp = (b.date || '').localeCompare(a.date || '');

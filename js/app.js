@@ -15,6 +15,7 @@ const App = {
       this.setupLightbox();
       this.registerSW();
       this.setupOfflineIndicator();
+      this.setupTabSync();
       this.handleRoute();
       window.addEventListener('hashchange', () => this.handleRoute());
       await this.updateBadges();
@@ -154,6 +155,29 @@ const App = {
       navigator.serviceWorker.register('./sw.js').catch(err => {
         console.warn('SW 등록 실패:', err.message);
       });
+      // SW 업데이트 알림 수신
+      navigator.serviceWorker.addEventListener('message', (e) => {
+        if (e.data && e.data.type === 'SW_UPDATED') {
+          this.showToast('새 버전이 있습니다. <a href="#" onclick="location.reload();return false" style="color:#fff;text-decoration:underline;margin-left:4px">새로고침</a>', 'info', { html: true, duration: 10000 });
+        }
+      });
+    }
+  },
+
+  setupTabSync() {
+    if (typeof BroadcastChannel === 'undefined') return;
+    this._tabChannel = new BroadcastChannel('petsalon-sync');
+    this._tabChannel.addEventListener('message', (e) => {
+      if (e.data && e.data.type === 'DB_CHANGED') {
+        this.handleRoute(); // 현재 페이지 새로고침
+        this.updateBadges();
+      }
+    });
+  },
+
+  notifyTabSync() {
+    if (this._tabChannel) {
+      this._tabChannel.postMessage({ type: 'DB_CHANGED' });
     }
   },
 

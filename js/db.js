@@ -90,7 +90,7 @@ const DB = {
       data.createdAt = data.createdAt || new Date().toISOString();
       data.updatedAt = new Date().toISOString();
       const req = store.add(data);
-      req.onsuccess = () => resolve(req.result);
+      req.onsuccess = () => { if (typeof App !== 'undefined' && App.notifyTabSync) App.notifyTabSync(); resolve(req.result); };
       req.onerror = () => {
         if (req.error && req.error.name === 'QuotaExceededError') {
           if (typeof App !== 'undefined' && App.showToast) {
@@ -139,7 +139,7 @@ const DB = {
     return new Promise((resolve, reject) => {
       data.updatedAt = new Date().toISOString();
       const req = this._idbStore(storeName, 'readwrite').put(data);
-      req.onsuccess = () => resolve(req.result);
+      req.onsuccess = () => { if (typeof App !== 'undefined' && App.notifyTabSync) App.notifyTabSync(); resolve(req.result); };
       req.onerror = () => {
         if (req.error && req.error.name === 'QuotaExceededError') {
           if (typeof App !== 'undefined' && App.showToast) {
@@ -158,7 +158,7 @@ const DB = {
     }
     return new Promise((resolve, reject) => {
       const req = this._idbStore(storeName, 'readwrite').delete(id);
-      req.onsuccess = () => resolve();
+      req.onsuccess = () => { if (typeof App !== 'undefined' && App.notifyTabSync) App.notifyTabSync(); resolve(); };
       req.onerror = () => reject(req.error);
     });
   },
@@ -477,6 +477,25 @@ const DB = {
     return data;
   },
 
+  validateBackup(data) {
+    if (!data || typeof data !== 'object') return '유효하지 않은 백업 파일입니다.';
+    const validStores = Object.keys(data).filter(k => !k.startsWith('_') && this.stores[k]);
+    if (validStores.length === 0) return '인식 가능한 데이터가 없습니다.';
+    for (const store of validStores) {
+      if (!Array.isArray(data[store])) return `"${store}" 데이터가 올바른 형식이 아닙니다.`;
+    }
+    // 필수 스토어 확인
+    const required = ['customers', 'pets', 'services'];
+    const missing = required.filter(r => !data[r] || !Array.isArray(data[r]));
+    if (missing.length > 0) return `필수 데이터 누락: ${missing.join(', ')}`;
+    // 고객 데이터 필수 필드 검증 (샘플)
+    if (data.customers.length > 0) {
+      const sample = data.customers[0];
+      if (!sample.name && !sample.phone) return '고객 데이터에 이름/연락처가 없습니다.';
+    }
+    return null; // 유효
+  },
+
   async importAll(data, onProgress) {
     if (this.mode === 'server') {
       await fetch('/api/import', {
@@ -488,6 +507,9 @@ const DB = {
     }
 
     // 1. Validate data structure first (don't delete existing data yet)
+    const validationError = this.validateBackup(data);
+    if (validationError) throw new Error(validationError);
+
     const storeNames = Object.keys(data).filter(
       k => !k.startsWith('_') && this.stores[k] && Array.isArray(data[k])
     );
