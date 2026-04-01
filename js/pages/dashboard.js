@@ -29,7 +29,7 @@ App.pages.dashboard = {
     App._dashboardDirty = false;
 
     try {
-      const smsSep = /iP(hone|ad|od)/.test(navigator.userAgent) || /Mac/.test(navigator.userAgent) ? '&' : '?';
+      const smsSep = App.getSmsSep();
       const today = App.getToday();
       const thisMonth = today.slice(0, 7);
       const lastMonthDate = new Date();

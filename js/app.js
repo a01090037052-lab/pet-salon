@@ -323,6 +323,11 @@ const App = {
     overlay.classList.remove('hidden');
     overlay.classList.add('animate-in');
 
+    // Android 뒤로가기 처리
+    history.pushState({ modalOpen: true }, '');
+    this._modalPopHandler = () => { this.closeModal(true); };
+    window.addEventListener('popstate', this._modalPopHandler, { once: true });
+
     // Mobile drag-to-close
     if (window.innerWidth <= 768) {
       const modal = document.getElementById('modal');
@@ -361,8 +366,9 @@ const App = {
     };
   },
 
-  closeModal() {
+  closeModal(fromPopstate) {
     const overlay = document.getElementById('modal-overlay');
+    if (overlay.classList.contains('hidden')) return;
     overlay.classList.add('hidden');
     overlay.classList.remove('animate-in');
     const modalBody = document.getElementById('modal-body');
@@ -373,6 +379,14 @@ const App = {
     if (this._lastFocusedElement) {
       try { this._lastFocusedElement.focus(); } catch(e) {}
       this._lastFocusedElement = null;
+    }
+    // 뒤로가기 히스토리 정리
+    if (this._modalPopHandler) {
+      window.removeEventListener('popstate', this._modalPopHandler);
+      this._modalPopHandler = null;
+    }
+    if (!fromPopstate && history.state && history.state.modalOpen) {
+      history.back();
     }
   },
 
@@ -387,13 +401,26 @@ const App = {
       const overlay = document.getElementById('confirm-overlay');
       overlay.classList.remove('hidden');
       document.getElementById('confirm-ok').onclick = () => this.closeConfirm(true);
+      // Android 뒤로가기 처리
+      history.pushState({ confirmOpen: true }, '');
+      this._confirmPopHandler = () => { this.closeConfirm(false, true); };
+      window.addEventListener('popstate', this._confirmPopHandler, { once: true });
       // Focus confirm button
       setTimeout(() => document.getElementById('confirm-ok')?.focus(), 100);
     });
   },
 
-  closeConfirm(result = false) {
-    document.getElementById('confirm-overlay').classList.add('hidden');
+  closeConfirm(result = false, fromPopstate) {
+    const overlay = document.getElementById('confirm-overlay');
+    if (overlay.classList.contains('hidden')) return;
+    overlay.classList.add('hidden');
+    if (this._confirmPopHandler) {
+      window.removeEventListener('popstate', this._confirmPopHandler);
+      this._confirmPopHandler = null;
+    }
+    if (!fromPopstate && history.state && history.state.confirmOpen) {
+      history.back();
+    }
     if (this._confirmResolve) {
       this._confirmResolve(result);
       this._confirmResolve = null;
@@ -1579,5 +1606,22 @@ const App = {
     }
 
     return tpl;
+  },
+
+  // SMS URI 생성 유틸리티
+  getSmsSep() {
+    return /iP(hone|ad|od)/.test(navigator.userAgent) ? '&' : '?';
+  },
+
+  getSmsUrl(phone, body) {
+    const cleanPhone = (phone || '').replace(/\D/g, '');
+    if (!cleanPhone) return '';
+    if (!body) return `sms:${cleanPhone}`;
+    return `sms:${cleanPhone}${this.getSmsSep()}body=${encodeURIComponent(body)}`;
+  },
+
+  openSms(phone, body) {
+    const url = this.getSmsUrl(phone, body);
+    if (url) window.open(url, '_self');
   }
 };

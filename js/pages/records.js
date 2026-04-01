@@ -677,11 +677,7 @@ App.pages.records = {
             '서비스': serviceNames !== '-' ? serviceNames : '',
             '금액': String(finalPrice)
           });
-          const sep = /iP(hone|ad|od)/.test(navigator.userAgent) || /Mac/.test(navigator.userAgent) ? '&' : '?';
-          const smsUrl = `sms:${customerPhone}${sep}body=${encodeURIComponent(msg)}`;
-          const a = document.createElement('a');
-          a.href = smsUrl;
-          a.click();
+          App.openSms(customerPhone, msg);
           // Don't close modal - just update button to show sent
           const btn = document.getElementById('post-save-sms');
           if (btn) { btn.textContent = '\u2713 발송됨'; btn.disabled = true; btn.style.opacity = '0.6'; }

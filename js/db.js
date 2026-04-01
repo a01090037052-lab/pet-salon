@@ -557,13 +557,16 @@ const DB = {
       await fetch('/api/clear', { method: 'DELETE' });
       return;
     }
-    for (const storeName of Object.keys(this.stores)) {
-      const tx = this.db.transaction(storeName, 'readwrite');
-      await new Promise((resolve, reject) => {
-        const r = tx.objectStore(storeName).clear();
-        r.onsuccess = resolve; r.onerror = () => reject(r.error);
-      });
+    const storeNames = Object.keys(this.stores);
+    const tx = this.db.transaction(storeNames, 'readwrite');
+    for (const storeName of storeNames) {
+      tx.objectStore(storeName).clear();
     }
+    await new Promise((resolve, reject) => {
+      tx.oncomplete = resolve;
+      tx.onerror = () => reject(tx.error);
+      tx.onabort = () => reject(tx.error);
+    });
   },
 
   async getSetting(key) {

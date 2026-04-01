@@ -555,8 +555,7 @@ App.pages.appointments = {
       '시간': appt.time || '',
       '미용사': appt.groomer || ''
     });
-    const sep = /iP(hone|ad|od)/.test(navigator.userAgent) || /Mac/.test(navigator.userAgent) ? '&' : '?';
-    window.open(`sms:${phone}${sep}body=${encodeURIComponent(msg)}`, '_self');
+    App.openSms(phone, msg);
   },
 
   async renderTimetable() {
@@ -1001,8 +1000,7 @@ App.pages.appointments = {
               '시간': time || '',
               '미용사': groomer || ''
             });
-            const sep = /iP(hone|ad|od)/.test(navigator.userAgent) || /Mac/.test(navigator.userAgent) ? '&' : '?';
-            App.showToast(`예약 완료 <a href="sms:${phone}${sep}body=${encodeURIComponent(msg)}" style="color:#fff;text-decoration:underline;margin-left:6px" onclick="event.stopPropagation()">문자 보내기</a>`, 'info', { html: true });
+            App.showToast(`예약 완료 <a href="${App.getSmsUrl(phone, msg)}" style="color:#fff;text-decoration:underline;margin-left:6px" onclick="event.stopPropagation()">문자 보내기</a>`, 'info', { html: true });
           } else {
             App.showToast('새 예약이 등록되었습니다.');
           }
