@@ -150,32 +150,31 @@ const App = {
     }
   },
 
+  _swUpdateNotified: false,
+  _showSwUpdate() {
+    if (this._swUpdateNotified) return;
+    this._swUpdateNotified = true;
+    this.showToast('새 버전이 있습니다. <a href="#" onclick="location.reload();return false" style="color:#fff;text-decoration:underline;margin-left:4px">새로고침</a>', 'info', { html: true, duration: 10000 });
+  },
+
   registerSW() {
     if ('serviceWorker' in navigator && window.location.protocol !== 'file:') {
       navigator.serviceWorker.register('./sw.js').then(reg => {
-        // SW 업데이트 감지
         reg.addEventListener('updatefound', () => {
           const newSW = reg.installing;
           if (!newSW) return;
           newSW.addEventListener('statechange', () => {
-            // 새 SW가 활성화되고, 이전 SW가 있었던 경우 = 업데이트
             if (newSW.state === 'activated' && navigator.serviceWorker.controller) {
-              this.showToast('새 버전이 있습니다. <a href="#" onclick="location.reload();return false" style="color:#fff;text-decoration:underline;margin-left:4px">새로고침</a>', 'info', { html: true, duration: 10000 });
+              this._showSwUpdate();
             }
           });
         });
       }).catch(err => {
         console.warn('SW 등록 실패:', err.message);
       });
-      // 다른 탭에서 SW가 변경된 경우
-      navigator.serviceWorker.addEventListener('controllerchange', () => {
-        this.showToast('앱이 업데이트되었습니다. <a href="#" onclick="location.reload();return false" style="color:#fff;text-decoration:underline;margin-left:4px">새로고침</a>', 'info', { html: true, duration: 10000 });
-      });
-      // SW에서 postMessage로 업데이트 알림 수신 (하위 호환)
+      navigator.serviceWorker.addEventListener('controllerchange', () => this._showSwUpdate());
       navigator.serviceWorker.addEventListener('message', (e) => {
-        if (e.data && e.data.type === 'SW_UPDATED') {
-          this.showToast('새 버전이 있습니다. <a href="#" onclick="location.reload();return false" style="color:#fff;text-decoration:underline;margin-left:4px">새로고침</a>', 'info', { html: true, duration: 10000 });
-        }
+        if (e.data && e.data.type === 'SW_UPDATED') this._showSwUpdate();
       });
     }
   },
