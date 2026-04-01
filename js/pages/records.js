@@ -1856,7 +1856,7 @@ App.pages.records = {
       filtered.forEach(r => {
         const customer = customerMap[r.customerId];
         const pet = petMap[r.petId];
-        const serviceNames = (r.serviceIds || []).map(id => serviceMap[id]).filter(Boolean).join(', ');
+        const serviceNames = (r.serviceNames && r.serviceNames.length > 0) ? r.serviceNames.join(', ') : (r.serviceIds || []).map(id => serviceMap[id]).filter(Boolean).join(', ');
         const payLabel = { cash: '현금', card: '카드', transfer: '이체', unpaid: '미결제' }[r.paymentMethod] || '';
         lines.push([
           r.date || '',
