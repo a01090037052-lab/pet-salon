@@ -481,7 +481,7 @@ App.pages.revenue = {
           </div>
           <div class="card-body">
             ${(() => {
-              const niceMax = (v) => { if (v <= 0) return 1000000; const mag = Math.pow(10, Math.floor(Math.log10(v))); const norm = v / mag; return Math.ceil(norm * 2) / 2 * mag; };
+              const niceMax = (v) => { if (v <= 0) return 1000000; const mag = Math.pow(10, Math.floor(Math.log10(v))); const norm = v / mag; return Math.ceil(norm * 4) / 4 * mag; };
               const tMax = niceMax(trendMax);
               const tAvg = monthlyTrend.filter(m => m.rev > 0).length > 0 ? Math.round(monthlyTrend.reduce((s, m) => s + m.rev, 0) / monthlyTrend.filter(m => m.rev > 0).length) : 0;
               const tAvgPct = tAvg > 0 ? Math.round((tAvg / tMax) * 90) : 0;
