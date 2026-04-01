@@ -1621,7 +1621,7 @@ a.stat-card { display: flex; }
   .mobile-card { overflow: hidden; word-break: break-word; }
   .mobile-card-actions { flex-wrap: wrap; }
   .settings-tabs { overflow-x: auto; -webkit-overflow-scrolling: touch; flex-wrap: nowrap; }
-  .page-actions { flex-wrap: wrap; overflow: hidden; }
+  .page-actions { flex-wrap: wrap; }
   .grid-2 { grid-template-columns: 1fr; }
 }
 
