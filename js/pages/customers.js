@@ -56,10 +56,6 @@ App.pages.customers = {
           <p class="page-subtitle">총 ${customers.length}명의 고객</p>
         </div>
         <div class="page-actions">
-          <div class="search-box">
-            <span class="search-icon">&#x1F50D;</span>
-            <input type="text" id="customer-search" placeholder="이름, 전화번호 검색...">
-          </div>
           <select id="customer-tag-filter" style="width:auto;min-width:100px;font-size:0.85rem;padding:8px 12px">
             <option value="">전체 분류</option>
             <option value="vip">VIP</option>
@@ -76,6 +72,10 @@ App.pages.customers = {
           </select>
           <button class="btn btn-primary" id="btn-add-customer">+ 새 고객</button>
         </div>
+      </div>
+      <div class="search-box" style="margin-bottom:16px;max-width:none">
+        <span class="search-icon">&#x1F50D;</span>
+        <input type="text" id="customer-search" placeholder="고객 이름, 전화번호 검색..." style="width:100%">
       </div>
       <div class="card">
         <div class="card-body no-padding">
