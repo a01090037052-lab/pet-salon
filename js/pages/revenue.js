@@ -297,13 +297,13 @@ App.pages.revenue = {
                 ${weekAvg > 0 ? `<div style="position:absolute;left:0;right:0;bottom:${avgPct}%;border-bottom:2px dotted var(--warning);z-index:2"><span style="position:absolute;right:0;top:-16px;font-size:0.62rem;color:var(--warning);font-weight:700">평균 ${Math.round(weekAvg / 10000)}만</span></div>` : ''}
                 <div style="display:flex;align-items:flex-end;gap:8px;height:100%;position:relative;z-index:1">
                   ${weekData.map(d => {
-                    const pct = d.rev > 0 ? Math.max(8, Math.round((d.rev / gMax) * 90)) : 3;
+                    const barH = d.rev > 0 ? Math.max(8, Math.round((d.rev / gMax) * 150)) : 4;
                     const isToday = d.date === today;
                     const barBg = d.rev === 0 ? 'var(--border-light)' : isToday ? 'linear-gradient(to top,var(--success),#34D399)' : 'linear-gradient(to top,var(--primary),#818CF8)';
                     const label = d.rev >= 10000 ? Math.round(d.rev / 10000) + '만' : d.rev > 0 ? App.formatCurrency(d.rev) : '';
-                    return `<div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:4px" title="${d.date}: ${App.formatCurrency(d.rev)}">
+                    return `<div style="flex:1;display:flex;flex-direction:column;align-items:center;justify-content:flex-end;gap:4px" title="${d.date}: ${App.formatCurrency(d.rev)}">
                       <span style="font-size:0.75rem;color:${isToday ? 'var(--success)' : 'var(--text-secondary)'};font-weight:800">${label}</span>
-                      <div style="width:100%;background:${barBg};border-radius:6px 6px 0 0;min-height:4px;height:${pct}%"></div>
+                      <div style="width:100%;background:${barBg};border-radius:6px 6px 0 0;height:${barH}px"></div>
                       <span style="font-size:0.82rem;font-weight:${isToday ? '800' : '600'};color:${isToday ? 'var(--primary)' : 'var(--text-muted)'}">${d.label}</span>
                     </div>`;
                   }).join('')}
@@ -378,11 +378,11 @@ App.pages.revenue = {
                 ${mAvg > 0 ? `<div style="position:absolute;left:0;right:0;bottom:${mAvgPct}%;border-bottom:2px dotted var(--warning);z-index:2"><span style="position:absolute;right:0;top:-16px;font-size:0.62rem;color:var(--warning);font-weight:700">일평균 ${Math.round(mAvg / 10000)}만</span></div>` : ''}
                 <div style="display:flex;align-items:flex-end;gap:2px;height:100%;position:relative;z-index:1">
                   ${monthData.map(d => {
-                    const pct = d.rev > 0 ? Math.max(5, Math.round((d.rev / mMax) * 90)) : 2;
+                    const barH = d.rev > 0 ? Math.max(4, Math.round((d.rev / mMax) * 150)) : 2;
                     const isToday = d.date === today;
                     const barBg = d.rev === 0 ? 'var(--border-light)' : isToday ? 'linear-gradient(to top,var(--success),#34D399)' : 'linear-gradient(to top,var(--primary),#818CF8)';
-                    return `<div style="flex:1;min-width:12px;display:flex;flex-direction:column;align-items:center;gap:2px" title="${d.date}: ${App.formatCurrency(d.rev)}">
-                      <div style="width:100%;background:${barBg};border-radius:3px 3px 0 0;min-height:2px;height:${pct}%"></div>
+                    return `<div style="flex:1;min-width:12px;display:flex;flex-direction:column;align-items:center;justify-content:flex-end;gap:2px" title="${d.date}: ${App.formatCurrency(d.rev)}">
+                      <div style="width:100%;background:${barBg};border-radius:3px 3px 0 0;height:${barH}px"></div>
                       <span style="font-size:0.55rem;color:${isToday ? 'var(--primary)' : 'var(--text-muted)'};font-weight:${isToday ? '800' : '400'}">${d.day % 5 === 1 || isToday ? d.day : ''}</span>
                     </div>`;
                   }).join('')}
@@ -491,13 +491,13 @@ App.pages.revenue = {
                 ${tAvg > 0 ? `<div style="position:absolute;left:0;right:0;bottom:${tAvgPct}%;border-bottom:2px dotted var(--warning);z-index:2"><span style="position:absolute;right:0;top:-16px;font-size:0.62rem;color:var(--warning);font-weight:700">월평균 ${Math.round(tAvg / 10000)}만</span></div>` : ''}
                 <div style="display:flex;align-items:flex-end;gap:12px;height:100%;position:relative;z-index:1">
                   ${monthlyTrend.map(m => {
-                    const pct = m.rev > 0 ? Math.max(8, Math.round((m.rev / tMax) * 90)) : 3;
+                    const barH = m.rev > 0 ? Math.max(8, Math.round((m.rev / tMax) * 160)) : 4;
                     const isCurrent = m.month === thisMonth;
                     const barBg = m.rev === 0 ? 'var(--border-light)' : isCurrent ? 'linear-gradient(to top,var(--success),#34D399)' : 'linear-gradient(to top,var(--primary),#818CF8)';
                     const label = m.rev >= 10000 ? Math.round(m.rev / 10000) + '만' : (m.rev > 0 ? App.formatCurrency(m.rev) : '');
-                    return `<div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:6px" title="${m.month}: ${App.formatCurrency(m.rev)} (${m.count}건)">
+                    return `<div style="flex:1;display:flex;flex-direction:column;align-items:center;justify-content:flex-end;gap:6px" title="${m.month}: ${App.formatCurrency(m.rev)} (${m.count}건)">
                       <span style="font-size:0.78rem;color:${isCurrent ? 'var(--success)' : 'var(--text-secondary)'};font-weight:800">${label}</span>
-                      <div style="width:100%;background:${barBg};border-radius:8px 8px 0 0;min-height:4px;height:${pct}%"></div>
+                      <div style="width:100%;background:${barBg};border-radius:8px 8px 0 0;height:${barH}px"></div>
                       <div style="text-align:center">
                         <div style="font-size:0.82rem;font-weight:${isCurrent ? '800' : '600'};color:${isCurrent ? 'var(--primary)' : 'var(--text-muted)'}">${m.label}</div>
                         <div style="font-size:0.7rem;color:var(--text-muted)">${m.count}건</div>
