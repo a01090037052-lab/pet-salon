@@ -15,6 +15,9 @@ App.pages.revenue = {
     const petMap = {}; pets.forEach(p => petMap[p.id] = p);
     const todayRecords = records.filter(r => r.date === today);
     const todayRevenue = todayRecords.reduce((sum, r) => sum + App.getRecordAmount(r), 0);
+    // 어제 매출 (비교용)
+    const yesterday = (() => { const d = new Date(); d.setDate(d.getDate() - 1); return App.formatLocalDate(d); })();
+    const yesterdayRevenue = records.filter(r => r.date === yesterday).reduce((sum, r) => sum + App.getRecordAmount(r), 0);
 
     // 이번 주 매출
     const nowDate = new Date();
@@ -196,29 +199,23 @@ App.pages.revenue = {
       </div>
 
       <!-- 매출 요약 카드 -->
-      <div class="stats-grid" style="margin-bottom:20px">
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:20px">
         <div class="stat-card gradient-purple">
-          <div class="stat-icon purple">&#x1F4B5;</div>
           <div>
             <div class="stat-value" style="font-size:1.4rem">${App.formatCurrency(todayRevenue)}</div>
             <div class="stat-label">오늘 매출 (${todayRecords.length}건)</div>
-            ${unpaidRecs.some(r => r.date === today) ? '<div style="font-size:0.7rem;color:var(--text-muted)">(미수금 포함)</div>' : ''}
-          </div>
-        </div>
-        <div class="stat-card gradient-blue">
-          <div class="stat-icon blue">&#x1F4CA;</div>
-          <div>
-            <div class="stat-value" style="font-size:1.4rem">${App.formatCurrency(weekRevenue)}</div>
-            <div class="stat-label">이번 주 매출 (${weekRecords.length}건)</div>
-            ${unpaidRecs.some(r => r.date >= mondayStr && r.date <= sundayStr) ? '<div style="font-size:0.7rem;color:var(--text-muted)">(미수금 포함)</div>' : ''}
+            ${yesterdayRevenue > 0 ? (() => {
+              const diff = todayRevenue - yesterdayRevenue;
+              const diffPct = Math.round((diff / yesterdayRevenue) * 100);
+              return `<div style="font-size:0.75rem;font-weight:700;color:${diff >= 0 ? 'var(--success)' : 'var(--danger)'}">어제 대비 ${diff >= 0 ? '▲' : '▼'} ${Math.abs(diffPct)}%</div>`;
+            })() : '<div style="font-size:0.7rem;color:var(--text-muted)">어제 데이터 없음</div>'}
           </div>
         </div>
         <div class="stat-card gradient-green">
-          <div class="stat-icon green">&#x1F4B0;</div>
           <div>
             <div class="stat-value" style="font-size:1.4rem">${App.formatCurrency(monthRevenue)}</div>
-            <div class="stat-label">이번 달 매출 (${monthRecords.length}건)</div>
-            ${unpaidRecs.some(r => r.date && r.date.startsWith(thisMonth)) ? '<div style="font-size:0.7rem;color:var(--text-muted)">(미수금 포함)</div>' : ''}
+            <div class="stat-label">이번 달 (${monthRecords.length}건)</div>
+            ${lastMonthPacing > 0 ? `<div style="font-size:0.75rem;font-weight:700;color:${pacingChange >= 0 ? 'var(--success)' : 'var(--danger)'}">전월 동기 ${pacingChange >= 0 ? '▲' : '▼'} ${Math.abs(pacingChange)}%</div>` : '<div style="font-size:0.7rem;color:var(--text-muted)">비교 데이터 없음</div>'}
           </div>
         </div>
       </div>
@@ -463,6 +460,26 @@ App.pages.revenue = {
           </div>
         </div>
 
+        <!-- 미용사별 간략 요약 (전략 검토용) -->
+        ${groomerStatList.length > 1 ? `
+        <div class="card" style="margin-bottom:20px">
+          <div class="card-header">
+            <span class="card-title">&#x2702; 이번 달 미용사 요약</span>
+          </div>
+          <div class="card-body" style="padding:12px 16px">
+            <div style="display:flex;flex-direction:column;gap:8px">
+              ${groomerStatList.slice(0, 3).map(([name, stats]) => {
+                const avgPrice = stats.count > 0 ? Math.round(stats.revenue / stats.count) : 0;
+                return `<div style="display:flex;justify-content:space-between;align-items:center">
+                  <span style="font-weight:700">${App.escapeHtml(name)}</span>
+                  <span style="font-size:0.85rem;color:var(--text-secondary)">${stats.count}건 &middot; ${App.formatCurrency(stats.revenue)} &middot; 건당 ${App.formatCurrency(avgPrice)}</span>
+                </div>`;
+              }).join('')}
+            </div>
+          </div>
+        </div>
+        ` : ''}
+
         <!-- 월별 매출 추이 -->
         <div class="card" style="margin-bottom:20px">
           <div class="card-header">
@@ -519,9 +536,9 @@ App.pages.revenue = {
               <div style="display:flex;align-items:center;gap:6px">
                 <input type="number" id="r-variableCost" value="${variableCost}"
                   placeholder="0" min="0" step="10000"
-                  style="width:100px;text-align:right;padding:6px 10px;font-size:0.9rem"
+                  style="width:90px;text-align:right;padding:4px 8px;font-size:0.85rem"
                   onchange="App.pages.revenue.saveVariableCost(this.value)">
-                <span style="font-size:0.85rem;color:var(--text-muted)">원</span>
+                <span style="font-size:0.8rem;color:var(--text-muted)">원</span>
               </div>
             </div>
             <div style="display:flex;justify-content:space-between;padding:14px 0;font-size:1.1rem">
