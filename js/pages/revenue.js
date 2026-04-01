@@ -78,6 +78,7 @@ App.pages.revenue = {
     records.forEach(r => {
       if (!r.date || r.date < eightWeeksAgo) return;
       const dow = new Date(r.date + 'T00:00:00').getDay();
+      dayOfWeekStats[dow] += App.getRecordAmount(r);
       dowDateSet[dow].add(r.date);
     });
     const dowLabels = ['일', '월', '화', '수', '목', '금', '토'];
