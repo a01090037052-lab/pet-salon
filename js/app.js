@@ -171,6 +171,12 @@ const App = {
       navigator.serviceWorker.addEventListener('controllerchange', () => {
         this.showToast('앱이 업데이트되었습니다. <a href="#" onclick="location.reload();return false" style="color:#fff;text-decoration:underline;margin-left:4px">새로고침</a>', 'info', { html: true, duration: 10000 });
       });
+      // SW에서 postMessage로 업데이트 알림 수신 (하위 호환)
+      navigator.serviceWorker.addEventListener('message', (e) => {
+        if (e.data && e.data.type === 'SW_UPDATED') {
+          this.showToast('새 버전이 있습니다. <a href="#" onclick="location.reload();return false" style="color:#fff;text-decoration:underline;margin-left:4px">새로고침</a>', 'info', { html: true, duration: 10000 });
+        }
+      });
     }
   },
 

@@ -1,4 +1,4 @@
-const CACHE_NAME = 'petsalon-offline-v7';
+const CACHE_NAME = 'petsalon-offline-v8';
 const ASSETS = [
   './',
   './index.html',
@@ -29,7 +29,12 @@ self.addEventListener('activate', (e) => {
   e.waitUntil(
     caches.keys().then(keys =>
       Promise.all(keys.filter(k => k !== CACHE_NAME).map(k => caches.delete(k)))
-    ).then(() => self.clients.claim())
+    ).then(() => self.clients.claim()).then(() => {
+      // 업데이트 알림 (구/신 app.js 모두 대응)
+      self.clients.matchAll().then(clients => {
+        clients.forEach(client => client.postMessage({ type: 'SW_UPDATED' }));
+      });
+    })
   );
 });
 
