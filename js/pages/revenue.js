@@ -89,8 +89,8 @@ App.pages.revenue = {
     const dowMax = dowData.length > 0 ? dowData[0].avg || 1 : 1;
     const hasEnoughDowData = dowData.some(d => d.days >= 4);
 
-    // 일일 매출 목표
-    const dailyGoal = Number(await DB.getSetting('dailyGoal')) || 0;
+    // 월 매출 목표
+    const monthlyGoal = Number(await DB.getSetting('monthlyGoal')) || 0;
 
     // 미용사별 매출
     const groomerStats = {};
@@ -222,10 +222,10 @@ App.pages.revenue = {
 
       <!-- 오늘 탭 -->
       <div class="revenue-tab-content" id="rev-tab-today" style="display:block">
-        ${dailyGoal > 0 ? (() => {
-          const pct = Math.min(Math.round((todayRevenue / dailyGoal) * 100), 100);
+        ${monthlyGoal > 0 ? (() => {
+          const pct = Math.min(Math.round((monthRevenue / monthlyGoal) * 100), 100);
           const barColor = pct >= 100 ? 'var(--success)' : pct >= 70 ? 'var(--primary)' : 'var(--warning)';
-          return '<div class="card" style="margin-bottom:16px"><div class="card-body" style="padding:16px 20px"><div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px"><span style="font-weight:700">오늘 매출 목표</span><span style="font-weight:800;color:' + barColor + '">' + pct + '%</span></div><div style="height:10px;background:var(--border-light);border-radius:5px;overflow:hidden"><div style="height:100%;width:' + pct + '%;background:' + barColor + ';border-radius:5px;transition:width 0.3s"></div></div><div style="display:flex;justify-content:space-between;margin-top:6px;font-size:0.82rem;color:var(--text-secondary)"><span>' + App.formatCurrency(todayRevenue) + '</span><span>목표: ' + App.formatCurrency(dailyGoal) + '</span></div></div></div>';
+          return '<div class="card" style="margin-bottom:16px"><div class="card-body" style="padding:16px 20px"><div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px"><span style="font-weight:700">이번 달 매출 목표</span><span style="font-weight:800;color:' + barColor + '">' + pct + '%</span></div><div style="height:10px;background:var(--border-light);border-radius:5px;overflow:hidden"><div style="height:100%;width:' + pct + '%;background:' + barColor + ';border-radius:5px;transition:width 0.3s"></div></div><div style="display:flex;justify-content:space-between;margin-top:6px;font-size:0.82rem;color:var(--text-secondary)"><span>' + App.formatCurrency(monthRevenue) + '</span><span>목표: ' + App.formatCurrency(monthlyGoal) + '</span></div></div></div>';
         })() : ''}
 
         ${unpaidRecs.length > 0 ? `

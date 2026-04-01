@@ -139,8 +139,8 @@ App.pages.dashboard = {
         b._smsBody = encodeURIComponent(msg);
       }
 
-      // 일일 매출 목표
-      const dailyGoal = Number(await DB.getSetting('dailyGoal')) || 0;
+      // 월 매출 목표
+      const monthlyGoal = Number(await DB.getSetting('monthlyGoal')) || 0;
 
       // Auto-backup warning
       const needsBackup = await App.checkBackup();
@@ -222,9 +222,9 @@ App.pages.dashboard = {
             <div>
               <div class="stat-value" style="font-size:1.3rem">${App.formatCurrency(todayRevenue)}</div>
               <div class="stat-label">오늘 매출 (${todayRecords.length}건) &rarr;</div>
-              ${dailyGoal > 0 ? (() => {
-                const pct = Math.min(Math.round((todayRevenue / dailyGoal) * 100), 100);
-                return '<div style="margin-top:6px"><div style="height:6px;background:rgba(255,255,255,0.3);border-radius:3px;overflow:hidden"><div style="height:100%;width:' + pct + '%;background:#fff;border-radius:3px;transition:width 0.3s"></div></div><div style="font-size:0.7rem;margin-top:2px;opacity:0.9">' + pct + '% (목표: ' + App.formatCurrency(dailyGoal) + ')</div></div>';
+              ${monthlyGoal > 0 ? (() => {
+                const pct = Math.min(Math.round((monthRevenue / monthlyGoal) * 100), 100);
+                return '<div style="margin-top:6px"><div style="height:6px;background:rgba(255,255,255,0.3);border-radius:3px;overflow:hidden"><div style="height:100%;width:' + pct + '%;background:#fff;border-radius:3px;transition:width 0.3s"></div></div><div style="font-size:0.7rem;margin-top:2px;opacity:0.9">월 목표 ' + pct + '% (' + App.formatCurrency(monthlyGoal) + ')</div></div>';
               })() : ''}
             </div>
           </div>

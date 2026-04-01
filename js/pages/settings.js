@@ -181,9 +181,9 @@ App.pages.settings = {
             </div>
             <div class="card-body">
               <div class="form-group">
-                <label class="form-label">일일 매출 목표</label>
-                <input type="number" id="s-dailyGoal" value="${(await DB.getSetting('dailyGoal')) || ''}" placeholder="예: 500000" min="0" step="10000">
-                <div class="form-hint">대시보드에 목표 대비 달성률이 표시됩니다</div>
+                <label class="form-label">월 매출 목표</label>
+                <input type="number" id="s-monthlyGoal" value="${(await DB.getSetting('monthlyGoal')) || ''}" placeholder="예: 5000000" min="0" step="100000">
+                <div class="form-hint">매출 페이지와 대시보드에 목표 달성률이 표시됩니다</div>
               </div>
             </div>
           </div>
@@ -454,8 +454,8 @@ App.pages.settings = {
         });
       }
       // 매출 목표
-      const goal = Number(document.getElementById('s-dailyGoal').value) || 0;
-      await DB.setSetting('dailyGoal', goal);
+      const goal = Number(document.getElementById('s-monthlyGoal').value) || 0;
+      await DB.setSetting('monthlyGoal', goal);
       // 월 고정비
       const fixedCostMan = Number(document.getElementById('s-fixedCost').value) || 0;
       await DB.setSetting('monthlyFixedCost', fixedCostMan * 10000);
