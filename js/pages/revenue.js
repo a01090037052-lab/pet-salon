@@ -63,7 +63,8 @@ App.pages.revenue = {
     const todayDay = new Date().getDate();
     const lastMonthPacing = records.filter(r => {
       if (!r.date) return false;
-      const lastM = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+      const _now = new Date();
+      const lastM = new Date(_now.getFullYear(), _now.getMonth() - 1, 1);
       const lmStr = `${lastM.getFullYear()}-${String(lastM.getMonth() + 1).padStart(2, '0')}`;
       return r.date.startsWith(lmStr) && parseInt(r.date.slice(8, 10)) <= todayDay;
     }).reduce((sum, r) => sum + App.getRecordAmount(r), 0);
