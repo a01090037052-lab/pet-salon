@@ -293,7 +293,7 @@ App.pages.records = {
         date: fromAppointment.date,
         groomer: fromAppointment.groomer,
         serviceIds: fromAppointment.serviceIds || [],
-        appointmentId: fromAppointment.id
+        appointmentId: fromAppointment.id || null
       };
     }
 

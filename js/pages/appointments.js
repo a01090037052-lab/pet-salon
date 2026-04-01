@@ -258,22 +258,10 @@ App.pages.appointments = {
 
     const today = App.getToday();
 
-    // 이 달의 예약 수 카운트
+    // 이 달의 예약 수 카운트 (항상 DB 데이터 사용)
     const monthPrefix = `${year}-${String(month + 1).padStart(2, '0')}`;
-    const rows = document.querySelectorAll('#appt-tbody tr[data-date]');
     const dateCounts = {};
-    rows.forEach(row => {
-      const d = row.dataset.date;
-      if (d && d.startsWith(monthPrefix)) {
-        const status = row.dataset.status;
-        if (status !== 'cancelled') {
-          dateCounts[d] = (dateCounts[d] || 0) + 1;
-        }
-      }
-    });
-
-    // 테이블에서 못 찾으면 DB에서 가져온 데이터 사용
-    if (Object.keys(dateCounts).length === 0 && this._appointments) {
+    if (this._appointments) {
       this._appointments.forEach(a => {
         if (a.date && a.date.startsWith(monthPrefix) && a.status !== 'cancelled') {
           dateCounts[a.date] = (dateCounts[a.date] || 0) + 1;
