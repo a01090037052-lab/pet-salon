@@ -159,7 +159,9 @@ const App = {
 
   registerSW() {
     if ('serviceWorker' in navigator && window.location.protocol !== 'file:') {
-      navigator.serviceWorker.register('./sw.js').then(reg => {
+      navigator.serviceWorker.register('./sw.js', { updateViaCache: 'none' }).then(reg => {
+        // 앱 열 때마다 SW 업데이트 강제 체크 (iOS PWA 대응)
+        reg.update().catch(() => {});
         reg.addEventListener('updatefound', () => {
           const newSW = reg.installing;
           if (!newSW) return;
