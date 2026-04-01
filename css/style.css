@@ -44,6 +44,7 @@
 }
 
 /* ========== Reset ========== */
+.hidden { display: none !important; }
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; touch-action: manipulation; }
 html { font-size: 14px; scroll-behavior: smooth; }
 body {
