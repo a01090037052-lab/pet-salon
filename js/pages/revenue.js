@@ -183,7 +183,7 @@ App.pages.revenue = {
       <div class="revenue-tabs" style="display:flex;gap:4px;margin-bottom:16px;background:var(--bg-white);border-radius:var(--radius);padding:4px;box-shadow:var(--shadow-xs)">
         <button class="revenue-tab active" data-tab="today" style="flex:1;padding:10px;border:none;border-radius:8px;font-weight:600;font-size:0.85rem;cursor:pointer;background:var(--primary);color:#fff">오늘</button>
         <button class="revenue-tab" data-tab="month" style="flex:1;padding:10px;border:none;border-radius:8px;font-weight:600;font-size:0.85rem;cursor:pointer;background:transparent;color:var(--text-secondary)">이번 달</button>
-        <button class="revenue-tab" data-tab="analysis" style="flex:1;padding:10px;border:none;border-radius:8px;font-weight:600;font-size:0.85rem;cursor:pointer;background:transparent;color:var(--text-secondary)">분석</button>
+        <button class="revenue-tab" data-tab="analysis" style="flex:1;padding:10px;border:none;border-radius:8px;font-weight:600;font-size:0.85rem;cursor:pointer;background:transparent;color:var(--text-secondary)">인사이트</button>
       </div>
 
       <!-- 오늘 탭 -->
@@ -206,65 +206,63 @@ App.pages.revenue = {
           </div>
         </div>
         ` : ''}
+
+        <!-- 이번 주 일별 차트 -->
+        <div class="card">
+          <div class="card-header">
+            <span class="card-title">&#x1F4CA; 이번 주 일별 매출</span>
+          </div>
+          <div class="card-body">
+            ${(() => {
+              const niceMax = (v) => { if (v <= 0) return 100000; const mag = Math.pow(10, Math.floor(Math.log10(v))); const norm = v / mag; return Math.ceil(norm * 2) / 2 * mag; };
+              const gMax = niceMax(weekMax);
+              const weekAvg = weekData.filter(d => d.rev > 0).length > 0 ? Math.round(weekData.reduce((s, d) => s + d.rev, 0) / weekData.filter(d => d.rev > 0).length) : 0;
+              const avgPct = weekAvg > 0 ? Math.round((weekAvg / gMax) * 80) : 0;
+              return `<div style="position:relative;height:200px;padding:0 4px;margin-left:32px">
+                <div style="position:absolute;left:0;right:0;bottom:40%;border-bottom:1px dashed var(--border-light)"><span style="position:absolute;left:-34px;top:-8px;font-size:0.65rem;color:var(--text-muted)">${Math.round(gMax * 0.5 / 10000)}만</span></div>
+                <div style="position:absolute;left:0;right:0;bottom:80%;border-bottom:1px dashed var(--border-light)"><span style="position:absolute;left:-34px;top:-8px;font-size:0.65rem;color:var(--text-muted)">${Math.round(gMax / 10000)}만</span></div>
+                ${weekAvg > 0 ? `<div style="position:absolute;left:0;right:0;bottom:${avgPct}%;border-bottom:2px dotted var(--warning);z-index:2"><span style="position:absolute;right:0;top:-16px;font-size:0.62rem;color:var(--warning);font-weight:700">평균 ${Math.round(weekAvg / 10000)}만</span></div>` : ''}
+                <div style="display:flex;align-items:flex-end;gap:8px;height:100%;position:relative;z-index:1">
+                  ${weekData.map(d => {
+                    const pct = d.rev > 0 ? Math.max(8, Math.round((d.rev / gMax) * 80)) : 3;
+                    const isToday = d.date === today;
+                    const barBg = d.rev === 0 ? 'var(--border-light)' : isToday ? 'linear-gradient(to top,var(--success),#34D399)' : 'linear-gradient(to top,var(--primary),#818CF8)';
+                    const label = d.rev >= 10000 ? Math.round(d.rev / 10000) + '만' : d.rev > 0 ? App.formatCurrency(d.rev) : '';
+                    return `<div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:4px" title="${d.date}: ${App.formatCurrency(d.rev)}">
+                      <span style="font-size:0.75rem;color:${isToday ? 'var(--success)' : 'var(--text-secondary)'};font-weight:800">${label}</span>
+                      <div style="width:100%;background:${barBg};border-radius:6px 6px 0 0;min-height:4px;height:${pct}%"></div>
+                      <span style="font-size:0.82rem;font-weight:${isToday ? '800' : '600'};color:${isToday ? 'var(--primary)' : 'var(--text-muted)'}">${d.label}</span>
+                    </div>`;
+                  }).join('')}
+                </div>
+              </div>`;
+            })()}
+          </div>
+        </div>
       </div>
 
       <!-- 이번 달 탭 -->
       <div class="revenue-tab-content" id="rev-tab-month" style="display:none">
-        <div class="grid-2">
-          <!-- 이번 주 일별 차트 -->
-          <div class="card">
-            <div class="card-header">
-              <span class="card-title">&#x1F4CA; 이번 주 일별 매출</span>
-            </div>
-            <div class="card-body">
-              ${(() => {
-                const niceMax = (v) => { if (v <= 0) return 100000; const mag = Math.pow(10, Math.floor(Math.log10(v))); const norm = v / mag; return Math.ceil(norm * 2) / 2 * mag; };
-                const gMax = niceMax(weekMax);
-                const weekAvg = weekData.filter(d => d.rev > 0).length > 0 ? Math.round(weekData.reduce((s, d) => s + d.rev, 0) / weekData.filter(d => d.rev > 0).length) : 0;
-                const avgPct = weekAvg > 0 ? Math.round((weekAvg / gMax) * 80) : 0;
-                return `<div style="position:relative;height:200px;padding:0 4px;margin-left:32px">
-                  <div style="position:absolute;left:0;right:0;bottom:40%;border-bottom:1px dashed var(--border-light)"><span style="position:absolute;left:-34px;top:-8px;font-size:0.65rem;color:var(--text-muted)">${Math.round(gMax * 0.5 / 10000)}만</span></div>
-                  <div style="position:absolute;left:0;right:0;bottom:80%;border-bottom:1px dashed var(--border-light)"><span style="position:absolute;left:-34px;top:-8px;font-size:0.65rem;color:var(--text-muted)">${Math.round(gMax / 10000)}만</span></div>
-                  ${weekAvg > 0 ? `<div style="position:absolute;left:0;right:0;bottom:${avgPct}%;border-bottom:2px dotted var(--warning);z-index:2"><span style="position:absolute;right:0;top:-16px;font-size:0.62rem;color:var(--warning);font-weight:700">평균 ${Math.round(weekAvg / 10000)}만</span></div>` : ''}
-                  <div style="display:flex;align-items:flex-end;gap:8px;height:100%;position:relative;z-index:1">
-                    ${weekData.map(d => {
-                      const pct = d.rev > 0 ? Math.max(8, Math.round((d.rev / gMax) * 80)) : 3;
-                      const isToday = d.date === today;
-                      const barBg = d.rev === 0 ? 'var(--border-light)' : isToday ? 'linear-gradient(to top,var(--success),#34D399)' : 'linear-gradient(to top,var(--primary),#818CF8)';
-                      const label = d.rev >= 10000 ? Math.round(d.rev / 10000) + '만' : d.rev > 0 ? App.formatCurrency(d.rev) : '';
-                      return `<div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:4px" title="${d.date}: ${App.formatCurrency(d.rev)}">
-                        <span style="font-size:0.75rem;color:${isToday ? 'var(--success)' : 'var(--text-secondary)'};font-weight:800">${label}</span>
-                        <div style="width:100%;background:${barBg};border-radius:6px 6px 0 0;min-height:4px;height:${pct}%"></div>
-                        <span style="font-size:0.82rem;font-weight:${isToday ? '800' : '600'};color:${isToday ? 'var(--primary)' : 'var(--text-muted)'}">${d.label}</span>
-                      </div>`;
-                    }).join('')}
+        <!-- 이번 달 결제 수단별 -->
+        <div class="card" style="margin-bottom:20px">
+          <div class="card-header">
+            <span class="card-title">&#x1F4B3; 이번 달 결제 수단별</span>
+          </div>
+          <div class="card-body">
+            <div style="display:flex;flex-direction:column;gap:10px">
+              ${Object.entries(paymentStats).filter(([k, v]) => v > 0).map(([method, amount]) => {
+                const pct = Math.round((amount / monthPaymentTotal) * 100);
+                return `<div>
+                  <div style="display:flex;justify-content:space-between;margin-bottom:4px">
+                    <span style="font-weight:600;font-size:0.88rem">${paymentLabels[method] || method}</span>
+                    <span style="font-weight:700;font-size:0.88rem">${App.formatCurrency(amount)} (${pct}%)</span>
+                  </div>
+                  <div style="height:8px;background:var(--border-light);border-radius:4px;overflow:hidden">
+                    <div style="height:100%;width:${pct}%;background:${paymentColors[method] || 'var(--primary)'};border-radius:4px"></div>
                   </div>
                 </div>`;
-              })()}
-            </div>
-          </div>
-
-          <!-- 이번 달 결제 수단별 -->
-          <div class="card">
-            <div class="card-header">
-              <span class="card-title">&#x1F4B3; 이번 달 결제 수단별</span>
-            </div>
-            <div class="card-body">
-              <div style="display:flex;flex-direction:column;gap:10px">
-                ${Object.entries(paymentStats).filter(([k, v]) => v > 0).map(([method, amount]) => {
-                  const pct = Math.round((amount / monthPaymentTotal) * 100);
-                  return `<div>
-                    <div style="display:flex;justify-content:space-between;margin-bottom:4px">
-                      <span style="font-weight:600;font-size:0.88rem">${paymentLabels[method] || method}</span>
-                      <span style="font-weight:700;font-size:0.88rem">${App.formatCurrency(amount)} (${pct}%)</span>
-                    </div>
-                    <div style="height:8px;background:var(--border-light);border-radius:4px;overflow:hidden">
-                      <div style="height:100%;width:${pct}%;background:${paymentColors[method] || 'var(--primary)'};border-radius:4px"></div>
-                    </div>
-                  </div>`;
-                }).join('')}
-                ${Object.values(paymentStats).every(v => v === 0) ? '<p style="color:var(--text-muted);text-align:center">이번 달 기록이 없습니다</p>' : ''}
-              </div>
+              }).join('')}
+              ${Object.values(paymentStats).every(v => v === 0) ? '<p style="color:var(--text-muted);text-align:center">이번 달 기록이 없습니다</p>' : ''}
             </div>
           </div>
         </div>
@@ -299,9 +297,39 @@ App.pages.revenue = {
             })()}
           </div>
         </div>
+
+        <!-- 미용사별 매출 -->
+        ${groomerStatList.length > 0 ? `
+        <div class="card" style="margin-top:20px">
+          <div class="card-header">
+            <span class="card-title">&#x1F4CB; 이번 달 미용사별 매출</span>
+          </div>
+          <div class="card-body" style="padding:16px">
+            ${groomerStatList.map(([name, stats]) => {
+              const pct = Math.round((stats.revenue / groomerMaxRev) * 100);
+              const totalMonthRev = groomerStatList.reduce((s, [, st]) => s + st.revenue, 0);
+              const sharePct = totalMonthRev > 0 ? Math.round((stats.revenue / totalMonthRev) * 100) : 0;
+              return `
+                <div style="margin-bottom:16px;padding-bottom:16px;border-bottom:1px solid var(--border)">
+                  <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+                    <span style="font-weight:800;font-size:1rem">${App.escapeHtml(name)}</span>
+                    <span style="font-weight:700;color:var(--primary)">${App.formatCurrency(stats.revenue)}</span>
+                  </div>
+                  <div style="height:8px;background:var(--border-light);border-radius:4px;overflow:hidden;margin-bottom:8px">
+                    <div style="height:100%;width:${pct}%;background:linear-gradient(90deg,var(--primary),#818CF8);border-radius:4px"></div>
+                  </div>
+                  <div style="display:flex;gap:16px;font-size:0.82rem;color:var(--text-secondary)">
+                    <span>&#x2702; ${stats.count}건</span>
+                    <span>비율 ${sharePct}%</span>
+                  </div>
+                </div>`;
+            }).join('')}
+          </div>
+        </div>
+        ` : ''}
       </div>
 
-      <!-- 분석 탭 -->
+      <!-- 인사이트 탭 -->
       <div class="revenue-tab-content" id="rev-tab-analysis" style="display:none">
         <!-- 월별 매출 추이 -->
         <div class="card" style="margin-bottom:20px">
@@ -339,36 +367,6 @@ App.pages.revenue = {
             </div>
           </div>
         </div>
-
-        <!-- 미용사별 매출 -->
-        ${groomerStatList.length > 0 ? `
-        <div class="card" style="margin-bottom:20px">
-          <div class="card-header">
-            <span class="card-title">&#x1F4CB; 이번 달 미용사별 매출</span>
-          </div>
-          <div class="card-body" style="padding:16px">
-            ${groomerStatList.map(([name, stats]) => {
-              const pct = Math.round((stats.revenue / groomerMaxRev) * 100);
-              const totalMonthRev = groomerStatList.reduce((s, [, st]) => s + st.revenue, 0);
-              const sharePct = totalMonthRev > 0 ? Math.round((stats.revenue / totalMonthRev) * 100) : 0;
-              return `
-                <div style="margin-bottom:16px;padding-bottom:16px;border-bottom:1px solid var(--border)">
-                  <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
-                    <span style="font-weight:800;font-size:1rem">${App.escapeHtml(name)}</span>
-                    <span style="font-weight:700;color:var(--primary)">${App.formatCurrency(stats.revenue)}</span>
-                  </div>
-                  <div style="height:8px;background:var(--border-light);border-radius:4px;overflow:hidden;margin-bottom:8px">
-                    <div style="height:100%;width:${pct}%;background:linear-gradient(90deg,var(--primary),#818CF8);border-radius:4px"></div>
-                  </div>
-                  <div style="display:flex;gap:16px;font-size:0.82rem;color:var(--text-secondary)">
-                    <span>&#x2702; ${stats.count}건</span>
-                    <span>비율 ${sharePct}%</span>
-                  </div>
-                </div>`;
-            }).join('')}
-          </div>
-        </div>
-        ` : ''}
 
         <!-- 이번 달 손익 -->
         <div class="card" style="margin-bottom:20px">
@@ -424,28 +422,6 @@ App.pages.revenue = {
           </div>
         </div>
 
-        <!-- 전체 매출 요약 -->
-        <div class="card">
-          <div class="card-header">
-            <span class="card-title">&#x1F4DD; 전체 매출 요약</span>
-          </div>
-          <div class="card-body">
-            <div style="display:flex;flex-direction:column;gap:12px">
-              <div style="display:flex;justify-content:space-between;padding:8px 0;border-bottom:1px solid var(--border)">
-                <span>전체 매출</span><strong>${App.formatCurrency(totalRevenue)}</strong>
-              </div>
-              <div style="display:flex;justify-content:space-between;padding:8px 0;border-bottom:1px solid var(--border)">
-                <span>전체 기록 수</span><strong>${records.length}건</strong>
-              </div>
-              <div style="display:flex;justify-content:space-between;padding:8px 0;border-bottom:1px solid var(--border)">
-                <span>평균 객단가</span><strong>${records.length > 0 ? App.formatCurrency(Math.round(totalRevenue / records.length)) : '0원'}</strong>
-              </div>
-              <div style="display:flex;justify-content:space-between;padding:8px 0">
-                <span>미수금</span><strong style="color:${unpaidTotal > 0 ? 'var(--danger)' : 'inherit'}">${App.formatCurrency(unpaidTotal)}</strong>
-              </div>
-            </div>
-          </div>
-        </div>
       </div>
     `;
   },
