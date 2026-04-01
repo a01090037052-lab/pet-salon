@@ -1541,7 +1541,7 @@ a.stat-card { display: flex; }
   .page-title { font-size: 1.4rem; }
   .page-actions { width: 100%; }
   .page-actions .search-box { flex: 1; max-width: none; }
-  .modal { max-width: 100%; border-radius: var(--radius-lg) var(--radius-lg) 0 0; margin: 0; max-height: 92vh; position: fixed; bottom: 0; }
+  .modal { max-width: 100%; border-radius: var(--radius-lg) var(--radius-lg) 0 0; margin: 0; max-height: 92vh; position: fixed; bottom: 0; touch-action: pan-y; overflow-x: hidden; }
   .modal-overlay { align-items: flex-end; padding: 0; }
   .detail-header { flex-direction: column; text-align: center; padding: 20px; }
   .detail-header > div:last-child { margin-left: 0; }
