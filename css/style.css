@@ -1613,7 +1613,7 @@ a.stat-card { display: flex; }
   .stats-grid { overflow: hidden; }
   .filter-bar { overflow: hidden; }
   .filter-bar select, .filter-bar input { max-width: 100%; min-width: 0; }
-  .card { overflow: hidden; max-width: 100%; }
+  .card { overflow-x: hidden; max-width: 100%; }
   .card-body { overflow-x: hidden; overflow-y: visible; word-break: break-word; padding: 16px; }
   .card-header { padding: 14px 16px; }
   .modal .search-select-dropdown { max-height: 40vh; }
