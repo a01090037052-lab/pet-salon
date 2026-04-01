@@ -49,6 +49,50 @@ App.pages.revenue = {
       paymentStats[method] = (paymentStats[method] || 0) + App.getRecordAmount(r);
     });
 
+    // 오늘 결제 수단 간이 요약
+    const todayPayment = { cash: 0, card: 0, transfer: 0, unpaid: 0 };
+    todayRecords.forEach(r => {
+      const m = r.paymentMethod || 'none';
+      if (todayPayment[m] !== undefined) todayPayment[m]++;
+    });
+
+    // Same-day pacing: 지난달 같은 일차까지의 매출
+    const todayDay = new Date().getDate();
+    const lastMonthPacing = records.filter(r => {
+      if (!r.date) return false;
+      const lastM = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+      const lmStr = `${lastM.getFullYear()}-${String(lastM.getMonth() + 1).padStart(2, '0')}`;
+      return r.date.startsWith(lmStr) && parseInt(r.date.slice(8, 10)) <= todayDay;
+    }).reduce((sum, r) => sum + App.getRecordAmount(r), 0);
+    const pacingChange = lastMonthPacing > 0 ? Math.round(((monthRevenue - lastMonthPacing) / lastMonthPacing) * 100) : 0;
+
+    // 요일별 패턴 (최근 8주 평균)
+    const eightWeeksAgo = (() => { const d = new Date(); d.setDate(d.getDate() - 56); return App.formatLocalDate(d); })();
+    const dayOfWeekStats = [0, 0, 0, 0, 0, 0, 0]; // 일~토 매출 합계
+    const dayOfWeekCounts = [0, 0, 0, 0, 0, 0, 0]; // 매출>0 날 수
+    records.forEach(r => {
+      if (!r.date || r.date < eightWeeksAgo) return;
+      const dow = new Date(r.date + 'T00:00:00').getDay();
+      const amt = App.getRecordAmount(r);
+      dayOfWeekStats[dow] += amt;
+      if (amt > 0 && !dayOfWeekCounts._seen) dayOfWeekCounts[dow]++;
+    });
+    // 날짜별로 한번만 카운트 (위 로직 수정)
+    const dowDateSet = [new Set(), new Set(), new Set(), new Set(), new Set(), new Set(), new Set()];
+    records.forEach(r => {
+      if (!r.date || r.date < eightWeeksAgo) return;
+      const dow = new Date(r.date + 'T00:00:00').getDay();
+      dowDateSet[dow].add(r.date);
+    });
+    const dowLabels = ['일', '월', '화', '수', '목', '금', '토'];
+    const dowData = dowLabels.map((label, i) => ({
+      label,
+      avg: dowDateSet[i].size > 0 ? Math.round(dayOfWeekStats[i] / dowDateSet[i].size) : 0,
+      days: dowDateSet[i].size
+    })).sort((a, b) => b.avg - a.avg);
+    const dowMax = dowData.length > 0 ? dowData[0].avg || 1 : 1;
+    const hasEnoughDowData = dowData.some(d => d.days >= 4);
+
     // 일일 매출 목표
     const dailyGoal = Number(await DB.getSetting('dailyGoal')) || 0;
 
@@ -207,10 +251,48 @@ App.pages.revenue = {
         </div>
         ` : ''}
 
+        <!-- 오늘 매출 내역 -->
+        <div class="card" style="margin-bottom:16px">
+          <div class="card-header">
+            <span class="card-title">&#x1F4CB; 오늘 매출 내역 (${todayRecords.length}건)</span>
+          </div>
+          <div class="card-body" style="padding:0">
+            ${todayRecords.length === 0 ? '<p style="color:var(--text-muted);text-align:center;padding:20px">아직 오늘 기록이 없습니다</p>' :
+              `<div style="overflow-x:auto"><table class="data-table" style="font-size:0.85rem">
+                <thead><tr><th>시간</th><th>고객/반려견</th><th>금액</th><th>결제</th></tr></thead>
+                <tbody>${todayRecords.sort((a, b) => (b.date + (b.createdAt || '')).localeCompare(a.date + (a.createdAt || ''))).slice(0, 10).map(r => {
+                  const c = customerMap[r.customerId];
+                  const p = petMap[r.petId];
+                  const payLabel = { cash: '현금', card: '카드', transfer: '이체', unpaid: '미결제' };
+                  const time = r.createdAt ? new Date(r.createdAt).toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' }) : '-';
+                  return `<tr${r.paymentMethod === 'unpaid' ? ' style="background:var(--warning-light)"' : ''}>
+                    <td>${time}</td>
+                    <td>${App.escapeHtml((c?.name || '-') + '/' + (p?.name || '-'))}</td>
+                    <td><strong>${App.formatCurrency(App.getRecordAmount(r))}</strong></td>
+                    <td>${payLabel[r.paymentMethod] || '-'}</td>
+                  </tr>`;
+                }).join('')}</tbody>
+              </table></div>
+              ${todayRecords.length > 10 ? '<div style="text-align:center;padding:8px;font-size:0.82rem;color:var(--text-muted)">최근 10건 표시 중</div>' : ''}`}
+          </div>
+        </div>
+
+        <!-- 오늘 결제 수단 요약 -->
+        ${todayRecords.length > 0 ? `
+        <div class="card" style="margin-bottom:16px">
+          <div class="card-body" style="padding:12px 20px;display:flex;gap:16px;justify-content:center;flex-wrap:wrap">
+            ${todayPayment.card > 0 ? `<span style="font-size:0.88rem"><strong style="color:var(--primary)">카드</strong> ${todayPayment.card}건</span>` : ''}
+            ${todayPayment.cash > 0 ? `<span style="font-size:0.88rem"><strong style="color:var(--success)">현금</strong> ${todayPayment.cash}건</span>` : ''}
+            ${todayPayment.transfer > 0 ? `<span style="font-size:0.88rem"><strong style="color:var(--info)">이체</strong> ${todayPayment.transfer}건</span>` : ''}
+            ${todayPayment.unpaid > 0 ? `<span style="font-size:0.88rem"><strong style="color:var(--danger)">미결제</strong> ${todayPayment.unpaid}건</span>` : ''}
+          </div>
+        </div>
+        ` : ''}
+
         <!-- 이번 주 일별 차트 -->
         <div class="card">
           <div class="card-header">
-            <span class="card-title">&#x1F4CA; 이번 주 일별 매출</span>
+            <span class="card-title">&#x1F4CA; 이번 주 매출 &middot; ${App.formatCurrency(weekRevenue)}</span>
           </div>
           <div class="card-body">
             ${(() => {
@@ -243,6 +325,27 @@ App.pages.revenue = {
 
       <!-- 이번 달 탭 -->
       <div class="revenue-tab-content" id="rev-tab-month" style="display:none">
+        <!-- 이번 달 페이스 -->
+        <div class="card" style="margin-bottom:20px">
+          <div class="card-header">
+            <span class="card-title">&#x1F3C3; 이번 달 페이스 (${todayDay}일차)</span>
+          </div>
+          <div class="card-body">
+            <div style="display:flex;justify-content:space-between;padding:10px 0;border-bottom:1px solid var(--border)">
+              <span>이번 달 (${todayDay}일차)</span>
+              <strong style="font-size:1.1rem">${App.formatCurrency(monthRevenue)}</strong>
+            </div>
+            <div style="display:flex;justify-content:space-between;padding:10px 0;border-bottom:1px solid var(--border)">
+              <span>지난달 (${todayDay}일차)</span>
+              <strong>${App.formatCurrency(lastMonthPacing)}</strong>
+            </div>
+            <div style="display:flex;justify-content:space-between;padding:14px 0;align-items:center">
+              <span style="font-weight:700">전월 동일 시점 대비</span>
+              ${lastMonthPacing > 0 ? `<strong style="font-size:1.1rem;color:${pacingChange >= 0 ? 'var(--success)' : 'var(--danger)'}">${pacingChange >= 0 ? '▲' : '▼'} ${Math.abs(pacingChange)}% ${pacingChange >= 0 ? '앞서가는 중' : '뒤처지는 중'}</strong>` : '<span style="color:var(--text-muted)">비교 데이터 없음</span>'}
+            </div>
+          </div>
+        </div>
+
         <!-- 이번 달 결제 수단별 -->
         <div class="card" style="margin-bottom:20px">
           <div class="card-header">
@@ -331,6 +434,35 @@ App.pages.revenue = {
 
       <!-- 인사이트 탭 -->
       <div class="revenue-tab-content" id="rev-tab-analysis" style="display:none">
+        <!-- 요일별 패턴 -->
+        <div class="card" style="margin-bottom:20px">
+          <div class="card-header">
+            <span class="card-title">&#x1F4C6; 요일별 평균 매출 (최근 8주)</span>
+          </div>
+          <div class="card-body">
+            ${!hasEnoughDowData ? '<p style="color:var(--text-muted);text-align:center;padding:12px">데이터가 쌓이면 요일별 패턴이 표시됩니다 (최소 4주)</p>' :
+              `<div style="display:flex;flex-direction:column;gap:10px">
+                ${dowData.map((d, i) => {
+                  const pct = Math.max(5, Math.round((d.avg / dowMax) * 100));
+                  const isTop = i === 0;
+                  const isBottom = i === dowData.length - 1;
+                  return `<div>
+                    <div style="display:flex;justify-content:space-between;margin-bottom:4px;align-items:center">
+                      <span style="font-weight:${isTop ? '800' : '600'};font-size:0.9rem">${d.label}요일${isTop ? ' <span style="font-size:0.7rem;color:var(--success)">(최다)</span>' : ''}${isBottom ? ' <span style="font-size:0.7rem;color:var(--text-muted)">(최소)</span>' : ''}</span>
+                      <span style="font-weight:700;font-size:0.9rem;color:${isTop ? 'var(--success)' : 'var(--text-secondary)'}">${d.avg >= 10000 ? Math.round(d.avg / 10000) + '만원' : App.formatCurrency(d.avg)}</span>
+                    </div>
+                    <div style="height:8px;background:var(--border-light);border-radius:4px;overflow:hidden">
+                      <div style="height:100%;width:${pct}%;background:${isTop ? 'var(--success)' : 'var(--primary)'};border-radius:4px"></div>
+                    </div>
+                  </div>`;
+                }).join('')}
+              </div>
+              <div style="margin-top:12px;padding-top:12px;border-top:1px solid var(--border);font-size:0.82rem;color:var(--text-muted);text-align:center">
+                ${dowData[0].label}요일이 평균 매출 1위, ${dowData[dowData.length - 1].label}요일이 최저
+              </div>`}
+          </div>
+        </div>
+
         <!-- 월별 매출 추이 -->
         <div class="card" style="margin-bottom:20px">
           <div class="card-header">
