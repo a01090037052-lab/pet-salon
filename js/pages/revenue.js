@@ -60,28 +60,20 @@ App.pages.revenue = {
     });
 
     // Same-day pacing: 지난달 같은 일차까지의 매출
-    const todayDay = new Date().getDate();
+    const _pNow = new Date();
+    const todayDay = _pNow.getDate();
+    const _pLastM = new Date(_pNow.getFullYear(), _pNow.getMonth() - 1, 1);
+    const _pLmStr = `${_pLastM.getFullYear()}-${String(_pLastM.getMonth() + 1).padStart(2, '0')}`;
+    const _pLastMonthDays = new Date(_pNow.getFullYear(), _pNow.getMonth(), 0).getDate();
+    const _pCompareDay = Math.min(todayDay, _pLastMonthDays);
     const lastMonthPacing = records.filter(r => {
-      if (!r.date) return false;
-      const _now = new Date();
-      const lastM = new Date(_now.getFullYear(), _now.getMonth() - 1, 1);
-      const lmStr = `${lastM.getFullYear()}-${String(lastM.getMonth() + 1).padStart(2, '0')}`;
-      return r.date.startsWith(lmStr) && parseInt(r.date.slice(8, 10)) <= todayDay;
+      return r.date && r.date.startsWith(_pLmStr) && parseInt(r.date.slice(8, 10)) <= _pCompareDay;
     }).reduce((sum, r) => sum + App.getRecordAmount(r), 0);
     const pacingChange = lastMonthPacing > 0 ? Math.round(((monthRevenue - lastMonthPacing) / lastMonthPacing) * 100) : 0;
 
     // 요일별 패턴 (최근 8주 평균)
     const eightWeeksAgo = (() => { const d = new Date(); d.setDate(d.getDate() - 56); return App.formatLocalDate(d); })();
-    const dayOfWeekStats = [0, 0, 0, 0, 0, 0, 0]; // 일~토 매출 합계
-    const dayOfWeekCounts = [0, 0, 0, 0, 0, 0, 0]; // 매출>0 날 수
-    records.forEach(r => {
-      if (!r.date || r.date < eightWeeksAgo) return;
-      const dow = new Date(r.date + 'T00:00:00').getDay();
-      const amt = App.getRecordAmount(r);
-      dayOfWeekStats[dow] += amt;
-      if (amt > 0 && !dayOfWeekCounts._seen) dayOfWeekCounts[dow]++;
-    });
-    // 날짜별로 한번만 카운트 (위 로직 수정)
+    const dayOfWeekStats = [0, 0, 0, 0, 0, 0, 0];
     const dowDateSet = [new Set(), new Set(), new Set(), new Set(), new Set(), new Set(), new Set()];
     records.forEach(r => {
       if (!r.date || r.date < eightWeeksAgo) return;
@@ -603,5 +595,6 @@ App.pages.revenue = {
     costs[thisMonth] = Number(value) || 0;
     await DB.setSetting('variableCosts', costs);
     App.showToast('변동비가 저장되었습니다.');
+    App.handleRoute();
   }
 };
