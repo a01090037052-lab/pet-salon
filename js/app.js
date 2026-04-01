@@ -69,6 +69,18 @@ const App = {
       if (e.target === e.currentTarget) this.closeConfirm(false);
     });
     document.getElementById('confirm-cancel').addEventListener('click', () => this.closeConfirm(false));
+
+    // iOS 키보드가 모달을 가리는 문제 대응
+    if (window.visualViewport) {
+      window.visualViewport.addEventListener('resize', () => {
+        const modal = document.getElementById('modal');
+        const overlay = document.getElementById('modal-overlay');
+        if (overlay && !overlay.classList.contains('hidden') && modal) {
+          const keyboardHeight = window.innerHeight - window.visualViewport.height;
+          modal.style.marginBottom = keyboardHeight > 0 ? keyboardHeight + 'px' : '';
+        }
+      });
+    }
   },
 
   setupKeyboard() {

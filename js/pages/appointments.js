@@ -978,15 +978,32 @@ App.pages.appointments = {
         const count = Number(repeatCountEl?.value) || 0;
         if (cycle > 0 && count > 1) {
           let created = 1;
+          let skipped = 0;
+          const toMin = (t) => { const [h, m] = t.split(':').map(Number); return h * 60 + m; };
           for (let i = 1; i < count; i++) {
             const baseDate = new Date(date + 'T00:00:00');
             baseDate.setDate(baseDate.getDate() + cycle * i);
             const nextDate = App.formatLocalDate(baseDate);
+            // 시간 충돌 검사
+            if (time) {
+              const dayAppts = await DB.getByIndex('appointments', 'date', nextDate);
+              const newStart = toMin(time);
+              const newEnd = newStart + duration;
+              const conflict = dayAppts.find(a => {
+                if (!a.time || a.status === 'cancelled') return false;
+                const isSameResource = (groomer && a.groomer && a.groomer === groomer) || a.petId === petId;
+                if (!isSameResource) return false;
+                const aStart = toMin(a.time);
+                const aEnd = aStart + (a.duration || 60);
+                return newStart < aEnd && newEnd > aStart;
+              });
+              if (conflict) { skipped++; continue; }
+            }
             const repeatData = { ...data, date: nextDate };
             await DB.add('appointments', repeatData);
             created++;
           }
-          App.showToast(`반복 예약 ${created}건이 등록되었습니다.`);
+          App.showToast(`반복 예약 ${created}건 등록${skipped > 0 ? ` (시간 충돌 ${skipped}건 제외)` : ''}`);
         } else {
           // 전화번호 있으면 SMS 링크 포함 토스트, 없으면 일반 토스트
           const customer = await DB.get('customers', customerId);

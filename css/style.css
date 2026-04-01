@@ -1488,7 +1488,7 @@ a.stat-card { display: flex; }
   .sidebar { display: none; }
   .main-content { margin-left: 0 !important; }
   .bottom-nav { display: flex; }
-  .page-content { padding: 16px 16px 90px 16px; }
+  .page-content { padding: 16px 16px calc(90px + env(safe-area-inset-bottom)) 16px; }
 
   /* Global search mobile */
   .global-search-btn {
