@@ -286,17 +286,17 @@ App.pages.revenue = {
           </div>
           <div class="card-body">
             ${(() => {
-              const niceMax = (v) => { if (v <= 0) return 100000; const mag = Math.pow(10, Math.floor(Math.log10(v))); const norm = v / mag; return Math.ceil(norm * 2) / 2 * mag; };
+              const niceMax = (v) => { if (v <= 0) return 100000; const mag = Math.pow(10, Math.floor(Math.log10(v))); const norm = v / mag; return Math.ceil(norm * 4) / 4 * mag; };
               const gMax = niceMax(weekMax);
               const weekAvg = weekData.filter(d => d.rev > 0).length > 0 ? Math.round(weekData.reduce((s, d) => s + d.rev, 0) / weekData.filter(d => d.rev > 0).length) : 0;
-              const avgPct = weekAvg > 0 ? Math.round((weekAvg / gMax) * 80) : 0;
+              const avgPct = weekAvg > 0 ? Math.round((weekAvg / gMax) * 90) : 0;
               return `<div style="position:relative;height:200px;padding:0 4px;margin-left:32px">
-                <div style="position:absolute;left:0;right:0;bottom:40%;border-bottom:1px dashed var(--border-light)"><span style="position:absolute;left:-34px;top:-8px;font-size:0.65rem;color:var(--text-muted)">${Math.round(gMax * 0.5 / 10000)}만</span></div>
-                <div style="position:absolute;left:0;right:0;bottom:80%;border-bottom:1px dashed var(--border-light)"><span style="position:absolute;left:-34px;top:-8px;font-size:0.65rem;color:var(--text-muted)">${Math.round(gMax / 10000)}만</span></div>
+                <div style="position:absolute;left:0;right:0;bottom:45%;border-bottom:1px dashed var(--border-light)"><span style="position:absolute;left:-34px;top:-8px;font-size:0.65rem;color:var(--text-muted)">${Math.round(gMax * 0.5 / 10000)}만</span></div>
+                <div style="position:absolute;left:0;right:0;bottom:90%;border-bottom:1px dashed var(--border-light)"><span style="position:absolute;left:-34px;top:-8px;font-size:0.65rem;color:var(--text-muted)">${Math.round(gMax / 10000)}만</span></div>
                 ${weekAvg > 0 ? `<div style="position:absolute;left:0;right:0;bottom:${avgPct}%;border-bottom:2px dotted var(--warning);z-index:2"><span style="position:absolute;right:0;top:-16px;font-size:0.62rem;color:var(--warning);font-weight:700">평균 ${Math.round(weekAvg / 10000)}만</span></div>` : ''}
                 <div style="display:flex;align-items:flex-end;gap:8px;height:100%;position:relative;z-index:1">
                   ${weekData.map(d => {
-                    const pct = d.rev > 0 ? Math.max(8, Math.round((d.rev / gMax) * 80)) : 3;
+                    const pct = d.rev > 0 ? Math.max(8, Math.round((d.rev / gMax) * 90)) : 3;
                     const isToday = d.date === today;
                     const barBg = d.rev === 0 ? 'var(--border-light)' : isToday ? 'linear-gradient(to top,var(--success),#34D399)' : 'linear-gradient(to top,var(--primary),#818CF8)';
                     const label = d.rev >= 10000 ? Math.round(d.rev / 10000) + '만' : d.rev > 0 ? App.formatCurrency(d.rev) : '';
@@ -367,17 +367,17 @@ App.pages.revenue = {
           </div>
           <div class="card-body">
             ${(() => {
-              const niceMax = (v) => { if (v <= 0) return 100000; const mag = Math.pow(10, Math.floor(Math.log10(v))); const norm = v / mag; return Math.ceil(norm * 2) / 2 * mag; };
+              const niceMax = (v) => { if (v <= 0) return 100000; const mag = Math.pow(10, Math.floor(Math.log10(v))); const norm = v / mag; return Math.ceil(norm * 4) / 4 * mag; };
               const mMax = niceMax(monthMax);
               const mAvg = monthData.filter(d => d.rev > 0).length > 0 ? Math.round(monthData.reduce((s, d) => s + d.rev, 0) / monthData.filter(d => d.rev > 0).length) : 0;
-              const mAvgPct = mAvg > 0 ? Math.round((mAvg / mMax) * 80) : 0;
+              const mAvgPct = mAvg > 0 ? Math.round((mAvg / mMax) * 90) : 0;
               return `<div style="position:relative;height:200px;padding:0;overflow-x:auto;margin-left:32px">
-                <div style="position:absolute;left:0;right:0;bottom:40%;border-bottom:1px dashed var(--border-light)"><span style="position:absolute;left:-34px;top:-8px;font-size:0.6rem;color:var(--text-muted)">${Math.round(mMax * 0.5 / 10000)}만</span></div>
-                <div style="position:absolute;left:0;right:0;bottom:80%;border-bottom:1px dashed var(--border-light)"><span style="position:absolute;left:-34px;top:-8px;font-size:0.6rem;color:var(--text-muted)">${Math.round(mMax / 10000)}만</span></div>
+                <div style="position:absolute;left:0;right:0;bottom:45%;border-bottom:1px dashed var(--border-light)"><span style="position:absolute;left:-34px;top:-8px;font-size:0.6rem;color:var(--text-muted)">${Math.round(mMax * 0.5 / 10000)}만</span></div>
+                <div style="position:absolute;left:0;right:0;bottom:90%;border-bottom:1px dashed var(--border-light)"><span style="position:absolute;left:-34px;top:-8px;font-size:0.6rem;color:var(--text-muted)">${Math.round(mMax / 10000)}만</span></div>
                 ${mAvg > 0 ? `<div style="position:absolute;left:0;right:0;bottom:${mAvgPct}%;border-bottom:2px dotted var(--warning);z-index:2"><span style="position:absolute;right:0;top:-16px;font-size:0.62rem;color:var(--warning);font-weight:700">일평균 ${Math.round(mAvg / 10000)}만</span></div>` : ''}
                 <div style="display:flex;align-items:flex-end;gap:2px;height:100%;position:relative;z-index:1">
                   ${monthData.map(d => {
-                    const pct = d.rev > 0 ? Math.max(5, Math.round((d.rev / mMax) * 80)) : 2;
+                    const pct = d.rev > 0 ? Math.max(5, Math.round((d.rev / mMax) * 90)) : 2;
                     const isToday = d.date === today;
                     const barBg = d.rev === 0 ? 'var(--border-light)' : isToday ? 'linear-gradient(to top,var(--success),#34D399)' : 'linear-gradient(to top,var(--primary),#818CF8)';
                     return `<div style="flex:1;min-width:12px;display:flex;flex-direction:column;align-items:center;gap:2px" title="${d.date}: ${App.formatCurrency(d.rev)}">
@@ -483,14 +483,14 @@ App.pages.revenue = {
               const niceMax = (v) => { if (v <= 0) return 1000000; const mag = Math.pow(10, Math.floor(Math.log10(v))); const norm = v / mag; return Math.ceil(norm * 2) / 2 * mag; };
               const tMax = niceMax(trendMax);
               const tAvg = monthlyTrend.filter(m => m.rev > 0).length > 0 ? Math.round(monthlyTrend.reduce((s, m) => s + m.rev, 0) / monthlyTrend.filter(m => m.rev > 0).length) : 0;
-              const tAvgPct = tAvg > 0 ? Math.round((tAvg / tMax) * 80) : 0;
+              const tAvgPct = tAvg > 0 ? Math.round((tAvg / tMax) * 90) : 0;
               return `<div style="position:relative;height:220px;padding:0 8px;margin-left:36px">
-                <div style="position:absolute;left:0;right:0;bottom:40%;border-bottom:1px dashed var(--border-light)"><span style="position:absolute;left:-38px;top:-8px;font-size:0.65rem;color:var(--text-muted)">${Math.round(tMax * 0.5 / 10000)}만</span></div>
-                <div style="position:absolute;left:0;right:0;bottom:80%;border-bottom:1px dashed var(--border-light)"><span style="position:absolute;left:-38px;top:-8px;font-size:0.65rem;color:var(--text-muted)">${Math.round(tMax / 10000)}만</span></div>
+                <div style="position:absolute;left:0;right:0;bottom:45%;border-bottom:1px dashed var(--border-light)"><span style="position:absolute;left:-38px;top:-8px;font-size:0.65rem;color:var(--text-muted)">${Math.round(tMax * 0.5 / 10000)}만</span></div>
+                <div style="position:absolute;left:0;right:0;bottom:90%;border-bottom:1px dashed var(--border-light)"><span style="position:absolute;left:-38px;top:-8px;font-size:0.65rem;color:var(--text-muted)">${Math.round(tMax / 10000)}만</span></div>
                 ${tAvg > 0 ? `<div style="position:absolute;left:0;right:0;bottom:${tAvgPct}%;border-bottom:2px dotted var(--warning);z-index:2"><span style="position:absolute;right:0;top:-16px;font-size:0.62rem;color:var(--warning);font-weight:700">월평균 ${Math.round(tAvg / 10000)}만</span></div>` : ''}
                 <div style="display:flex;align-items:flex-end;gap:12px;height:100%;position:relative;z-index:1">
                   ${monthlyTrend.map(m => {
-                    const pct = m.rev > 0 ? Math.max(8, Math.round((m.rev / tMax) * 80)) : 3;
+                    const pct = m.rev > 0 ? Math.max(8, Math.round((m.rev / tMax) * 90)) : 3;
                     const isCurrent = m.month === thisMonth;
                     const barBg = m.rev === 0 ? 'var(--border-light)' : isCurrent ? 'linear-gradient(to top,var(--success),#34D399)' : 'linear-gradient(to top,var(--primary),#818CF8)';
                     const label = m.rev >= 10000 ? Math.round(m.rev / 10000) + '만' : (m.rev > 0 ? App.formatCurrency(m.rev) : '');
