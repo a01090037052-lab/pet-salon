@@ -516,7 +516,6 @@ App.pages.revenue = {
             })()}
             </div>
           </div>
-        </div>
 
         <!-- 이번 달 손익 -->
         <div class="card" style="margin-bottom:20px">
