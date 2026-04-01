@@ -323,6 +323,8 @@ App.pages.settings = {
           </div>
         </div>
       </div>
+
+      <div style="text-align:center;padding:20px 0;font-size:0.75rem;color:var(--text-muted)">v1.1 (0401)</div>
     `;
   },
 
