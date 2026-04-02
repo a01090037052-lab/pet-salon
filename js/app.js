@@ -178,7 +178,19 @@ const App = {
   _showSwUpdate() {
     if (this._swUpdateNotified) return;
     this._swUpdateNotified = true;
-    this.showToast('새 버전이 있습니다. <a href="#" onclick="location.reload();return false" style="color:#fff;text-decoration:underline;margin-left:4px">새로고침</a>', 'info', { html: true, duration: 10000 });
+    // 모달/폼 열려있으면 닫힐 때까지 대기 후 새로고침
+    const modalOpen = !document.getElementById('modal-overlay')?.classList.contains('hidden');
+    const confirmOpen = !document.getElementById('confirm-overlay')?.classList.contains('hidden');
+    if (modalOpen || confirmOpen) {
+      this.showToast('업데이트 대기 중... 작업 완료 후 자동 새로고침됩니다.', 'info');
+      const checkAndReload = setInterval(() => {
+        const mOpen = !document.getElementById('modal-overlay')?.classList.contains('hidden');
+        const cOpen = !document.getElementById('confirm-overlay')?.classList.contains('hidden');
+        if (!mOpen && !cOpen) { clearInterval(checkAndReload); location.reload(); }
+      }, 1000);
+    } else {
+      location.reload();
+    }
   },
 
   registerSW() {
