@@ -70,16 +70,28 @@ const App = {
     });
     document.getElementById('confirm-cancel').addEventListener('click', () => this.closeConfirm(false));
 
-    // iOS 키보드가 모달을 가리는 문제 대응
+    // 모바일 키보드가 모달을 가리는 문제 대응
     if (window.visualViewport) {
-      window.visualViewport.addEventListener('resize', () => {
+      const adjustModal = () => {
         const modal = document.getElementById('modal');
         const overlay = document.getElementById('modal-overlay');
-        if (overlay && !overlay.classList.contains('hidden') && modal) {
-          const keyboardHeight = window.innerHeight - window.visualViewport.height;
-          modal.style.marginBottom = keyboardHeight > 0 ? keyboardHeight + 'px' : '';
+        if (!overlay || overlay.classList.contains('hidden') || !modal) return;
+        const keyboardHeight = window.innerHeight - window.visualViewport.height;
+        if (keyboardHeight > 50) {
+          modal.style.maxHeight = window.visualViewport.height - 20 + 'px';
+          modal.style.bottom = keyboardHeight + 'px';
+          // focus된 input이 보이도록 스크롤
+          setTimeout(() => {
+            const focused = modal.querySelector(':focus');
+            if (focused) focused.scrollIntoView({ block: 'center', behavior: 'smooth' });
+          }, 100);
+        } else {
+          modal.style.maxHeight = '';
+          modal.style.bottom = '';
         }
-      });
+      };
+      window.visualViewport.addEventListener('resize', adjustModal);
+      window.visualViewport.addEventListener('scroll', adjustModal);
     }
   },
 
