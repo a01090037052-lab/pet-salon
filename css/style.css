@@ -1618,6 +1618,7 @@ a.stat-card { display: flex; }
   .card-header { padding: 14px 16px; }
   .modal .search-select-dropdown { max-height: 40vh; }
   .modal .search-select-dropdown.open { overflow-y: auto; -webkit-overflow-scrolling: touch; }
+  .modal-body:has(.search-select-dropdown.open) { overflow: visible; }
   .welcome-section { overflow: hidden; word-break: break-word; }
   .mobile-card { overflow: hidden; word-break: break-word; }
   .mobile-card-actions { flex-wrap: wrap; }
