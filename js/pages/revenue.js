@@ -104,54 +104,6 @@ App.pages.revenue = {
     const groomerStatList = Object.entries(groomerStats).sort((a, b) => b[1].revenue - a[1].revenue);
     const groomerMaxRev = groomerStatList.length > 0 ? groomerStatList[0][1].revenue || 1 : 1;
 
-    // 고객별 매출 TOP 10
-    const customerRevMap = {};
-    records.forEach(r => {
-      if (!r.customerId) return;
-      if (!customerRevMap[r.customerId]) customerRevMap[r.customerId] = { count: 0, revenue: 0 };
-      customerRevMap[r.customerId].count++;
-      customerRevMap[r.customerId].revenue += App.getRecordAmount(r);
-    });
-    const customerTop10 = Object.entries(customerRevMap)
-      .sort((a, b) => b[1].revenue - a[1].revenue)
-      .slice(0, 10)
-      .map(([cid, stats]) => ({ name: customerMap[cid]?.name || '알 수 없음', ...stats }));
-    const topCustMax = customerTop10.length > 0 ? customerTop10[0].revenue || 1 : 1;
-
-    // 서비스별 매출 비중 (이번 달)
-    const serviceRevMap = {};
-    const allServices = await DB.getAll('services');
-    const serviceNameMap = {}; allServices.forEach(s => { serviceNameMap[s.id] = s.name; });
-    monthRecords.forEach(r => {
-      const sNames = (r.serviceNames && r.serviceNames.length > 0) ? r.serviceNames : (r.serviceIds || []).map(id => serviceNameMap[id]).filter(Boolean);
-      sNames.forEach(name => {
-        if (!serviceRevMap[name]) serviceRevMap[name] = { count: 0, revenue: 0 };
-        serviceRevMap[name].count++;
-      });
-      if (sNames.length > 0) {
-        const perService = Math.round(App.getRecordAmount(r) / sNames.length);
-        sNames.forEach(name => { serviceRevMap[name].revenue += perService; });
-      }
-    });
-    const serviceRevList = Object.entries(serviceRevMap).sort((a, b) => b[1].revenue - a[1].revenue);
-    const serviceRevTotal = serviceRevList.reduce((s, [, v]) => s + v.revenue, 0) || 1;
-
-    // 객단가 추이 (최근 6개월)
-    const avgPriceByMonth = monthlyTrend.map(m => {
-      const cnt = monthlyCntMap[m.month] || 0;
-      return { label: m.label, avg: cnt > 0 ? Math.round(m.rev / cnt) : 0 };
-    });
-    const avgPriceMax = Math.max(...avgPriceByMonth.map(m => m.avg), 1);
-
-    // 신규 vs 재방문 (이번 달)
-    const monthCustomerIds = monthRecords.map(r => r.customerId).filter(Boolean);
-    const uniqueMonthCustomers = [...new Set(monthCustomerIds)];
-    let newCount = 0, returnCount = 0;
-    for (const cid of uniqueMonthCustomers) {
-      const firstRecord = records.find(r => r.customerId === cid && r.date < thisMonth + '-01');
-      if (firstRecord) returnCount++; else newCount++;
-    }
-
     // 매출 데이터 캐시
     this._records = records;
 
@@ -502,26 +454,6 @@ App.pages.revenue = {
           </div>
         </div>
 
-        <!-- 미용사별 간략 요약 (전략 검토용) -->
-        ${groomerStatList.length > 1 ? `
-        <div class="card" style="margin-bottom:20px">
-          <div class="card-header">
-            <span class="card-title">&#x2702; 이번 달 미용사 요약</span>
-          </div>
-          <div class="card-body" style="padding:12px 16px">
-            <div style="display:flex;flex-direction:column;gap:8px">
-              ${groomerStatList.slice(0, 3).map(([name, stats]) => {
-                const avgPrice = stats.count > 0 ? Math.round(stats.revenue / stats.count) : 0;
-                return `<div style="display:flex;justify-content:space-between;align-items:center">
-                  <span style="font-weight:700">${App.escapeHtml(name)}</span>
-                  <span style="font-size:0.85rem;color:var(--text-secondary)">${stats.count}건 &middot; ${App.formatCurrency(stats.revenue)} &middot; 건당 ${App.formatCurrency(avgPrice)}</span>
-                </div>`;
-              }).join('')}
-            </div>
-          </div>
-        </div>
-        ` : ''}
-
         <!-- 월별 매출 추이 -->
         <div class="card" style="margin-bottom:20px">
           <div class="card-header">
@@ -612,104 +544,10 @@ App.pages.revenue = {
           </div>
         </div>
 
-        <!-- 고객별 매출 TOP 10 -->
-        ${customerTop10.length > 0 ? `
-        <div class="card" style="margin-bottom:20px">
-          <div class="card-header">
-            <span class="card-title">&#x1F451; 고객별 매출 TOP 10 (최근 1년)</span>
-          </div>
-          <div class="card-body" style="padding:12px 16px">
-            ${customerTop10.map((c, i) => {
-              const pct = Math.max(5, Math.round((c.revenue / topCustMax) * 100));
-              return `<div style="margin-bottom:12px">
-                <div style="display:flex;justify-content:space-between;margin-bottom:4px;align-items:center">
-                  <span style="font-weight:700;font-size:0.88rem"><span style="color:${i < 3 ? 'var(--warning)' : 'var(--text-muted)'};margin-right:4px">${i + 1}</span>${App.escapeHtml(c.name)}</span>
-                  <span style="font-weight:700;font-size:0.85rem;color:var(--primary)">${App.formatCurrency(c.revenue)} <span style="font-weight:400;color:var(--text-muted)">(${c.count}회)</span></span>
-                </div>
-                <div style="height:6px;background:var(--border-light);border-radius:3px;overflow:hidden">
-                  <div style="height:100%;width:${pct}%;background:${i < 3 ? 'var(--warning)' : 'var(--primary)'};border-radius:3px"></div>
-                </div>
-              </div>`;
-            }).join('')}
-          </div>
-        </div>
-        ` : ''}
-
-        <!-- 서비스별 매출 비중 (이번 달) -->
-        ${serviceRevList.length > 0 ? `
-        <div class="card" style="margin-bottom:20px">
-          <div class="card-header">
-            <span class="card-title">&#x2702; 서비스별 매출 비중 (이번 달)</span>
-          </div>
-          <div class="card-body" style="padding:12px 16px">
-            ${serviceRevList.map(([name, stats]) => {
-              const pct = Math.round((stats.revenue / serviceRevTotal) * 100);
-              return `<div style="margin-bottom:12px">
-                <div style="display:flex;justify-content:space-between;margin-bottom:4px">
-                  <span style="font-weight:700;font-size:0.88rem">${App.escapeHtml(name)}</span>
-                  <span style="font-size:0.85rem">${App.formatCurrency(stats.revenue)} <span style="color:var(--text-muted)">(${pct}% &middot; ${stats.count}건)</span></span>
-                </div>
-                <div style="height:6px;background:var(--border-light);border-radius:3px;overflow:hidden">
-                  <div style="height:100%;width:${pct}%;background:var(--info);border-radius:3px"></div>
-                </div>
-              </div>`;
-            }).join('')}
-          </div>
-        </div>
-        ` : ''}
-
-        <!-- 객단가 추이 -->
-        <div class="card" style="margin-bottom:20px">
-          <div class="card-header">
-            <span class="card-title">&#x1F4B5; 객단가 추이 (최근 6개월)</span>
-          </div>
-          <div class="card-body">
-            <div style="display:flex;gap:12px;height:140px;position:relative">
-              ${avgPriceByMonth.map((m, i) => {
-                const barH = m.avg > 0 ? Math.max(8, Math.round((m.avg / avgPriceMax) * 100)) : 4;
-                const isCurrent = i === avgPriceByMonth.length - 1;
-                return `<div style="flex:1;position:relative;text-align:center">
-                  <span style="font-size:0.7rem;color:${isCurrent ? 'var(--success)' : 'var(--text-secondary)'};font-weight:700;position:absolute;top:0;left:0;right:0">${m.avg > 0 ? App.formatCurrency(m.avg) : ''}</span>
-                  <div style="position:absolute;bottom:20px;left:15%;right:15%;height:${barH}px;background:${isCurrent ? 'linear-gradient(to top,var(--success),#34D399)' : 'linear-gradient(to top,var(--info),#60A5FA)'};border-radius:6px 6px 0 0"></div>
-                  <span style="font-size:0.78rem;color:${isCurrent ? 'var(--primary)' : 'var(--text-muted)'};font-weight:${isCurrent ? '800' : '500'};position:absolute;bottom:0;left:0;right:0">${m.label}</span>
-                </div>`;
-              }).join('')}
-            </div>
-          </div>
-        </div>
-
-        <!-- 신규 vs 재방문 (이번 달) -->
-        <div class="card" style="margin-bottom:20px">
-          <div class="card-header">
-            <span class="card-title">&#x1F465; 신규 vs 재방문 (이번 달)</span>
-          </div>
-          <div class="card-body">
-            ${uniqueMonthCustomers.length === 0 ? '<p style="color:var(--text-muted);text-align:center">이번 달 기록이 없습니다</p>' : `
-            <div style="display:flex;gap:16px;margin-bottom:16px">
-              <div style="flex:1;text-align:center;padding:16px;background:var(--bg);border-radius:var(--radius)">
-                <div style="font-size:1.5rem;font-weight:800;color:var(--info)">${newCount}</div>
-                <div style="font-size:0.85rem;color:var(--text-secondary)">신규 고객</div>
-              </div>
-              <div style="flex:1;text-align:center;padding:16px;background:var(--bg);border-radius:var(--radius)">
-                <div style="font-size:1.5rem;font-weight:800;color:var(--success)">${returnCount}</div>
-                <div style="font-size:0.85rem;color:var(--text-secondary)">재방문 고객</div>
-              </div>
-              <div style="flex:1;text-align:center;padding:16px;background:var(--bg);border-radius:var(--radius)">
-                <div style="font-size:1.5rem;font-weight:800;color:var(--primary)">${uniqueMonthCustomers.length > 0 ? Math.round((returnCount / uniqueMonthCustomers.length) * 100) : 0}%</div>
-                <div style="font-size:0.85rem;color:var(--text-secondary)">재방문율</div>
-              </div>
-            </div>
-            <div style="height:12px;border-radius:6px;overflow:hidden;display:flex">
-              <div style="width:${uniqueMonthCustomers.length > 0 ? Math.round((newCount / uniqueMonthCustomers.length) * 100) : 50}%;background:var(--info)"></div>
-              <div style="width:${uniqueMonthCustomers.length > 0 ? Math.round((returnCount / uniqueMonthCustomers.length) * 100) : 50}%;background:var(--success)"></div>
-            </div>
-            <div style="display:flex;justify-content:space-between;margin-top:6px;font-size:0.75rem;color:var(--text-muted)">
-              <span>신규 ${uniqueMonthCustomers.length > 0 ? Math.round((newCount / uniqueMonthCustomers.length) * 100) : 0}%</span>
-              <span>재방문 ${uniqueMonthCustomers.length > 0 ? Math.round((returnCount / uniqueMonthCustomers.length) * 100) : 0}%</span>
-            </div>
-            `}
-          </div>
-        </div>
+        <!-- 상세 분석 링크 -->
+        <a href="#analytics" style="display:block;text-align:center;padding:16px;background:var(--bg-white);border-radius:var(--radius);box-shadow:var(--shadow-xs);color:var(--primary);font-weight:700;font-size:0.9rem;text-decoration:none;margin-bottom:20px">
+          &#x1F4CA; 상세 분석 보기 (고객, 서비스, 미용사 등) &rarr;
+        </a>
 
       </div>
     `;
