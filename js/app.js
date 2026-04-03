@@ -177,9 +177,12 @@ const App = {
   _swUpdateNotified: false,
   _showSwUpdate() {
     if (this._swUpdateNotified) return;
+    // 오프라인이면 온라인 복귀 시 재시도 (플래그 설정 안 함)
+    if (!navigator.onLine) {
+      window.addEventListener('online', () => this._showSwUpdate(), { once: true });
+      return;
+    }
     this._swUpdateNotified = true;
-    // 오프라인이면 새로고침 보류
-    if (!navigator.onLine) return;
     // 모달/폼 열려있으면 닫힐 때까지 대기 후 새로고침
     const modalOpen = !document.getElementById('modal-overlay')?.classList.contains('hidden');
     const confirmOpen = !document.getElementById('confirm-overlay')?.classList.contains('hidden');
