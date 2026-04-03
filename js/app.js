@@ -174,50 +174,13 @@ const App = {
     }
   },
 
-  _swUpdateNotified: false,
-  _showSwUpdate() {
-    if (this._swUpdateNotified) return;
-    // 오프라인이면 온라인 복귀 시 재시도 (플래그 설정 안 함)
-    if (!navigator.onLine) {
-      window.addEventListener('online', () => this._showSwUpdate(), { once: true });
-      return;
-    }
-    this._swUpdateNotified = true;
-    // 모달/폼 열려있으면 닫힐 때까지 대기 후 새로고침
-    const modalOpen = !document.getElementById('modal-overlay')?.classList.contains('hidden');
-    const confirmOpen = !document.getElementById('confirm-overlay')?.classList.contains('hidden');
-    if (modalOpen || confirmOpen) {
-      this.showToast('업데이트 대기 중... 작업 완료 후 자동 새로고침됩니다.', 'info');
-      const checkAndReload = setInterval(() => {
-        const mOpen = !document.getElementById('modal-overlay')?.classList.contains('hidden');
-        const cOpen = !document.getElementById('confirm-overlay')?.classList.contains('hidden');
-        if (!mOpen && !cOpen) { clearInterval(checkAndReload); location.reload(); }
-      }, 1000);
-    } else {
-      location.reload();
-    }
-  },
-
   registerSW() {
     if ('serviceWorker' in navigator && window.location.protocol !== 'file:') {
       navigator.serviceWorker.register('./sw.js', { updateViaCache: 'none' }).then(reg => {
         // 앱 열 때마다 SW 업데이트 강제 체크 (iOS PWA 대응)
         reg.update().catch(() => {});
-        reg.addEventListener('updatefound', () => {
-          const newSW = reg.installing;
-          if (!newSW) return;
-          newSW.addEventListener('statechange', () => {
-            if (newSW.state === 'activated' && navigator.serviceWorker.controller) {
-              this._showSwUpdate();
-            }
-          });
-        });
       }).catch(err => {
         console.warn('SW 등록 실패:', err.message);
-      });
-      navigator.serviceWorker.addEventListener('controllerchange', () => this._showSwUpdate());
-      navigator.serviceWorker.addEventListener('message', (e) => {
-        if (e.data && e.data.type === 'SW_UPDATED') this._showSwUpdate();
       });
     }
   },
