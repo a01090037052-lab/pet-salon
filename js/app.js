@@ -179,6 +179,16 @@ const App = {
       navigator.serviceWorker.register('./sw.js', { updateViaCache: 'none' }).then(reg => {
         // 앱 열 때마다 SW 업데이트 강제 체크 (iOS PWA 대응)
         reg.update().catch(() => {});
+        // 업데이트 감지 시 알림
+        reg.addEventListener('updatefound', () => {
+          const newSW = reg.installing;
+          if (!newSW) return;
+          newSW.addEventListener('statechange', () => {
+            if (newSW.state === 'activated' && navigator.serviceWorker.controller) {
+              this.showToast('앱이 업데이트되었습니다. 앱을 다시 열면 반영됩니다.', 'info');
+            }
+          });
+        });
       }).catch(err => {
         console.warn('SW 등록 실패:', err.message);
       });
