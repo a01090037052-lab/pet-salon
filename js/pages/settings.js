@@ -14,6 +14,8 @@ App.pages.settings = {
 
     const DEFAULT_TEMPLATES = {
       revisit: '[{매장명}] {고객명}님 안녕하세요! {반려견명}의 마지막 미용 후 {경과일수}일이 지났습니다. 예약 문의: {전화번호}',
+      atRisk: '[{매장명}] {고객명}님, {반려견명}이(가) 보고 싶어요! 미용 시기가 많이 지났는데 괜찮으신가요? 예약 문의: {전화번호}',
+      churned: '[{매장명}] {고객명}님 안녕하세요! 오랫동안 뵙지 못했네요. {반려견명} 잘 지내고 있나요? 다시 방문해주시면 특별 케어 해드릴게요! 문의: {전화번호}',
       appointment: '[{매장명}] {고객명}님, {날짜} {시간}에 {반려견명} 예약이 확인되었습니다. 담당: {미용사}. 문의: {전화번호}',
       reminder: '[{매장명}] {고객명}님, 내일({날짜}) {시간}에 {반려견명} 미용 예약이 있습니다. 변경/취소는 {전화번호}로 연락 부탁드립니다.',
       birthday: '[{매장명}] {고객명}님! {반려견명}의 생일을 축하합니다! 🎂 생일 기념 특별 할인을 준비했어요. 문의: {전화번호}',
@@ -21,6 +23,8 @@ App.pages.settings = {
     };
     const savedTemplates = await DB.getSetting('messageTemplates') || {};
     const revisitTpl = savedTemplates.revisit || DEFAULT_TEMPLATES.revisit;
+    const atRiskTpl = savedTemplates.atRisk || DEFAULT_TEMPLATES.atRisk;
+    const churnedTpl = savedTemplates.churned || DEFAULT_TEMPLATES.churned;
     const appointmentTpl = savedTemplates.appointment || DEFAULT_TEMPLATES.appointment;
     const reminderTpl = savedTemplates.reminder || DEFAULT_TEMPLATES.reminder;
     const birthdayTpl = savedTemplates.birthday || DEFAULT_TEMPLATES.birthday;
@@ -217,6 +221,14 @@ App.pages.settings = {
             <div class="form-group">
               <label class="form-label">재방문 알림 문자</label>
               <textarea id="tpl-revisit" rows="3">${App.escapeHtml(revisitTpl)}</textarea>
+            </div>
+            <div class="form-group">
+              <label class="form-label">이탈위험 고객 문자</label>
+              <textarea id="tpl-atRisk" rows="3">${App.escapeHtml(atRiskTpl)}</textarea>
+            </div>
+            <div class="form-group">
+              <label class="form-label">이탈 고객 문자</label>
+              <textarea id="tpl-churned" rows="3">${App.escapeHtml(churnedTpl)}</textarea>
             </div>
             <div class="form-group">
               <label class="form-label">예약 확인 문자</label>
@@ -440,6 +452,8 @@ App.pages.settings = {
       App.setupNotificationChecker();
       // 메시지 템플릿
       const tplRevisit = document.getElementById('tpl-revisit');
+      const tplAtRisk = document.getElementById('tpl-atRisk');
+      const tplChurned = document.getElementById('tpl-churned');
       const tplAppointment = document.getElementById('tpl-appointment');
       const tplReminder = document.getElementById('tpl-reminder');
       const tplBirthday = document.getElementById('tpl-birthday');
@@ -447,6 +461,8 @@ App.pages.settings = {
       if (tplRevisit && tplAppointment && tplReminder && tplBirthday && tplComplete) {
         await DB.setSetting('messageTemplates', {
           revisit: tplRevisit.value,
+          atRisk: tplAtRisk?.value || '',
+          churned: tplChurned?.value || '',
           appointment: tplAppointment.value,
           reminder: tplReminder.value,
           birthday: tplBirthday.value,
@@ -468,6 +484,8 @@ App.pages.settings = {
     document.getElementById('btn-reset-templates')?.addEventListener('click', async () => {
       const defaults = {
         revisit: '[{매장명}] {고객명}님 안녕하세요! {반려견명}의 마지막 미용 후 {경과일수}일이 지났습니다. 예약 문의: {전화번호}',
+        atRisk: '[{매장명}] {고객명}님, {반려견명}이(가) 보고 싶어요! 미용 시기가 많이 지났는데 괜찮으신가요? 예약 문의: {전화번호}',
+        churned: '[{매장명}] {고객명}님 안녕하세요! 오랫동안 뵙지 못했네요. {반려견명} 잘 지내고 있나요? 다시 방문해주시면 특별 케어 해드릴게요! 문의: {전화번호}',
         appointment: '[{매장명}] {고객명}님, {날짜} {시간}에 {반려견명} 예약이 확인되었습니다. 담당: {미용사}. 문의: {전화번호}',
         reminder: '[{매장명}] {고객명}님, 내일({날짜}) {시간}에 {반려견명} 미용 예약이 있습니다. 변경/취소는 {전화번호}로 연락 부탁드립니다.',
         birthday: '[{매장명}] {고객명}님! {반려견명}의 생일을 축하합니다! 🎂 생일 기념 특별 할인을 준비했어요. 문의: {전화번호}',
@@ -475,6 +493,8 @@ App.pages.settings = {
       };
       await DB.setSetting('messageTemplates', defaults);
       document.getElementById('tpl-revisit').value = defaults.revisit;
+      document.getElementById('tpl-atRisk').value = defaults.atRisk;
+      document.getElementById('tpl-churned').value = defaults.churned;
       document.getElementById('tpl-appointment').value = defaults.appointment;
       document.getElementById('tpl-reminder').value = defaults.reminder;
       document.getElementById('tpl-birthday').value = defaults.birthday;

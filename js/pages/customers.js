@@ -26,6 +26,24 @@ App.pages.customers = {
       }
     });
 
+    // 고객별 방문 상태 계산 (반려견 중 가장 좋은 상태 기준)
+    const customerVisitStatus = {};
+    const statusPriority = { normal: 0, remind: 1, 'at-risk': 2, churned: 3 };
+    pets.forEach(p => {
+      if (p.petStatus && p.petStatus !== 'active') return;
+      const status = App.classifyVisitStatus(p.lastVisitDate, p.groomingCycle);
+      const prev = customerVisitStatus[p.customerId];
+      if (!prev || statusPriority[status] < statusPriority[prev]) {
+        customerVisitStatus[p.customerId] = status;
+      }
+    });
+    // 반려견 없는 고객은 기록 기반으로 판정
+    customers.forEach(c => {
+      if (!customerVisitStatus[c.id]) {
+        customerVisitStatus[c.id] = App.classifyVisitStatus(lastVisit[c.id], null);
+      }
+    });
+
     // Restore sort key from sessionStorage if not already set
     if (!this._sortKey) {
       try {
@@ -56,6 +74,13 @@ App.pages.customers = {
           <p class="page-subtitle">총 ${customers.length}명의 고객</p>
         </div>
         <div class="page-actions">
+          <select id="customer-visit-filter" style="width:auto;min-width:100px;font-size:0.85rem;padding:8px 12px">
+            <option value="">방문 상태</option>
+            <option value="normal">정상</option>
+            <option value="remind">리마인드</option>
+            <option value="at-risk">이탈위험</option>
+            <option value="churned">이탈</option>
+          </select>
           <select id="customer-tag-filter" style="width:auto;min-width:100px;font-size:0.85rem;padding:8px 12px">
             <option value="">전체 분류</option>
             <option value="vip">VIP</option>
@@ -126,6 +151,7 @@ App.pages.customers = {
     this._sortedCustomers = sorted;
     this._petCount = petCount;
     this._lastVisit = lastVisit;
+    this._customerVisitStatus = customerVisitStatus;
     this._loadedCount = 20;
   },
 
@@ -163,7 +189,8 @@ App.pages.customers = {
             ${noshowCount > 0 ? `<span style="color:var(--danger);font-weight:700">노쇼 ${noshowCount}회</span>` : ''}
           </div>
         </div>
-        <div style="margin-left:auto;display:flex;gap:8px">
+        <div style="margin-left:auto;display:flex;gap:8px;flex-wrap:wrap">
+          <button class="btn btn-success" id="btn-send-message" data-customer-id="${customer.id}">메시지</button>
           <button class="btn btn-primary" id="btn-new-appt-for-customer" data-customer-id="${customer.id}">+ 예약</button>
           <button class="btn btn-secondary btn-edit-customer" data-id="${customer.id}">수정</button>
           <button class="btn btn-danger btn-delete-customer" data-id="${customer.id}">삭제</button>
@@ -309,6 +336,12 @@ App.pages.customers = {
       this.applyFilters();
     });
 
+    // Visit status filter
+    document.getElementById('customer-visit-filter')?.addEventListener('change', (e) => {
+      this._visitFilter = e.target.value;
+      this.applyFilters();
+    });
+
     // Search
     const _debouncedFilter = App.debounce(() => this.applyFilters(), 300);
     document.getElementById('customer-search')?.addEventListener('input', (e) => {
@@ -329,7 +362,11 @@ App.pages.customers = {
           document.getElementById('customer-tag-filter').value = f.tag;
           this._tagFilter = f.tag;
         }
-        if (f.search || f.tag) this.applyFilters();
+        if (f.visitStatus) {
+          document.getElementById('customer-visit-filter').value = f.visitStatus;
+          this._visitFilter = f.visitStatus;
+        }
+        if (f.search || f.tag || f.visitStatus) this.applyFilters();
       } catch (e) { /* ignore parse errors */ }
     }
 
@@ -367,6 +404,91 @@ App.pages.customers = {
     document.getElementById('btn-new-appt-for-customer')?.addEventListener('click', (e) => {
       const customerId = Number(e.target.dataset.customerId);
       App.pages.appointments.showForm(null, customerId);
+    });
+
+    // Send message (detail view)
+    document.getElementById('btn-send-message')?.addEventListener('click', (e) => {
+      const customerId = Number(e.target.dataset.customerId);
+      this.showMessageModal(customerId);
+    });
+  },
+
+  async showMessageModal(customerId) {
+    const customer = await DB.get('customers', customerId);
+    if (!customer) return;
+    const pets = await DB.getByIndex('pets', 'customerId', customerId);
+    const activePets = pets.filter(p => !p.petStatus || p.petStatus === 'active');
+    const firstPet = activePets[0] || pets[0];
+
+    const types = [
+      { key: 'revisit', label: '재방문 안내' },
+      { key: 'atRisk', label: '이탈위험 안내' },
+      { key: 'churned', label: '이탈 고객 안내' },
+      { key: 'birthday', label: '생일 축하' },
+      { key: 'complete', label: '미용 완료' },
+      { key: 'appointment', label: '예약 확인' },
+      { key: 'reminder', label: '예약 리마인더' }
+    ];
+
+    App.showModal({
+      title: '메시지 보내기',
+      content: `
+        <div class="form-group">
+          <label class="form-label">메시지 유형</label>
+          <select id="msg-type">
+            ${types.map(t => `<option value="${t.key}">${t.label}</option>`).join('')}
+          </select>
+        </div>
+        ${activePets.length > 1 ? `
+        <div class="form-group">
+          <label class="form-label">반려견 선택</label>
+          <select id="msg-pet">
+            ${activePets.map(p => `<option value="${p.id}">${App.escapeHtml(p.name)}</option>`).join('')}
+          </select>
+        </div>` : ''}
+        <div class="form-group">
+          <label class="form-label">미리보기</label>
+          <textarea id="msg-preview" rows="4" style="background:var(--bg);font-size:0.9rem"></textarea>
+        </div>
+        <div style="display:flex;gap:8px">
+          <button class="btn btn-success flex-1" id="msg-sms">문자 보내기</button>
+          <button class="btn btn-secondary flex-1" id="msg-copy">복사하기</button>
+        </div>
+      `,
+      saveText: null
+    });
+
+    const previewEl = document.getElementById('msg-preview');
+    const typeEl = document.getElementById('msg-type');
+    const petEl = document.getElementById('msg-pet');
+
+    const updatePreview = async () => {
+      const selPetId = petEl ? Number(petEl.value) : firstPet?.id;
+      const selPet = pets.find(p => p.id === selPetId) || firstPet;
+      const days = selPet?.lastVisitDate ? App.getDaysAgo(selPet.lastVisitDate) : '';
+      const msg = await App.buildSms(typeEl.value, {
+        '고객명': customer.name || '',
+        '반려견명': selPet?.name || '',
+        '경과일수': String(days || ''),
+        '마지막방문일': selPet?.lastVisitDate ? App.formatDate(selPet.lastVisitDate) : ''
+      });
+      previewEl.value = msg;
+    };
+
+    typeEl.addEventListener('change', updatePreview);
+    petEl?.addEventListener('change', updatePreview);
+    await updatePreview();
+
+    document.getElementById('msg-sms')?.addEventListener('click', () => {
+      const phone = (customer.phone || '').replace(/\D/g, '');
+      if (!phone) { App.showToast('연락처가 없습니다.', 'error'); return; }
+      App.openSms(phone, previewEl.value);
+    });
+
+    document.getElementById('msg-copy')?.addEventListener('click', () => {
+      navigator.clipboard.writeText(previewEl.value).then(() => {
+        App.showToast('메시지가 복사되었습니다. 카톡에 붙여넣기 하세요.');
+      });
     });
   },
 
@@ -533,10 +655,10 @@ App.pages.customers = {
 
   _renderCustomerRow(c, petCount, lastVisit) {
     const initial = c.name ? c.name.charAt(0) : '?';
-    const daysAgo = lastVisit[c.id] ? App.getDaysAgo(lastVisit[c.id]) : null;
-    const absenceBadge = daysAgo >= 60 ? '<span class="badge badge-danger" style="margin-left:6px;font-size:0.65rem">60일+</span>' : daysAgo >= 30 ? '<span class="badge badge-warning" style="margin-left:6px;font-size:0.65rem">30일+</span>' : '';
-    return `<tr data-id="${c.id}" data-tags="${(c.tags || []).join(',')}" class="clickable-row" style="cursor:pointer">
-      <td><div style="display:flex;align-items:center;gap:10px"><div style="width:34px;height:34px;border-radius:10px;background:linear-gradient(135deg,var(--primary-light),#E0E7FF);display:flex;align-items:center;justify-content:center;font-weight:800;color:var(--primary);font-size:0.85rem;flex-shrink:0">${App.escapeHtml(initial)}</div><strong>${App.escapeHtml(c.name)}</strong>${this.getTagBadges(c.tags)}${absenceBadge}</div></td>
+    const vs = this._customerVisitStatus?.[c.id] || 'normal';
+    const visitBadge = vs !== 'normal' ? `<span class="badge ${App.getVisitStatusBadge(vs)}" style="margin-left:6px;font-size:0.65rem">${App.getVisitStatusLabel(vs)}</span>` : '';
+    return `<tr data-id="${c.id}" data-tags="${(c.tags || []).join(',')}" data-visit-status="${vs}" class="clickable-row" style="cursor:pointer">
+      <td><div style="display:flex;align-items:center;gap:10px"><div style="width:34px;height:34px;border-radius:10px;background:linear-gradient(135deg,var(--primary-light),#E0E7FF);display:flex;align-items:center;justify-content:center;font-weight:800;color:var(--primary);font-size:0.85rem;flex-shrink:0">${App.escapeHtml(initial)}</div><strong>${App.escapeHtml(c.name)}</strong>${this.getTagBadges(c.tags)}${visitBadge}</div></td>
       <td><a href="tel:${App.escapeHtml((c.phone || '').replace(/\D/g, ''))}" style="color:var(--primary)" onclick="event.stopPropagation()">${App.formatPhone(c.phone)}</a></td>
       <td><span class="badge badge-info">${petCount[c.id] || 0}마리</span></td>
       <td>${lastVisit[c.id] ? App.getRelativeTime(lastVisit[c.id]) : '-'}</td>
@@ -547,10 +669,10 @@ App.pages.customers = {
 
   _renderCustomerCard(c, petCount, lastVisit) {
     const initial = c.name ? c.name.charAt(0) : '?';
-    const daysAgo = lastVisit[c.id] ? App.getDaysAgo(lastVisit[c.id]) : null;
-    const absenceBadge = daysAgo >= 60 ? '<span class="badge badge-danger" style="margin-left:6px;font-size:0.65rem">60일+</span>' : daysAgo >= 30 ? '<span class="badge badge-warning" style="margin-left:6px;font-size:0.65rem">30일+</span>' : '';
-    return `<div class="mobile-card clickable-row" data-id="${c.id}" data-tags="${(c.tags || []).join(',')}" style="cursor:pointer">
-      <div class="mobile-card-header"><div style="display:flex;align-items:center;gap:10px"><div class="mobile-card-avatar">${App.escapeHtml(initial)}</div><strong>${App.escapeHtml(c.name)}</strong>${this.getTagBadges(c.tags)}${absenceBadge}</div><span class="badge badge-info">${petCount[c.id] || 0}마리</span></div>
+    const vs = this._customerVisitStatus?.[c.id] || 'normal';
+    const visitBadge = vs !== 'normal' ? `<span class="badge ${App.getVisitStatusBadge(vs)}" style="margin-left:6px;font-size:0.65rem">${App.getVisitStatusLabel(vs)}</span>` : '';
+    return `<div class="mobile-card clickable-row" data-id="${c.id}" data-tags="${(c.tags || []).join(',')}" data-visit-status="${vs}" style="cursor:pointer">
+      <div class="mobile-card-header"><div style="display:flex;align-items:center;gap:10px"><div class="mobile-card-avatar">${App.escapeHtml(initial)}</div><strong>${App.escapeHtml(c.name)}</strong>${this.getTagBadges(c.tags)}${visitBadge}</div><span class="badge badge-info">${petCount[c.id] || 0}마리</span></div>
       <div class="mobile-card-body"><a href="tel:${App.escapeHtml((c.phone || '').replace(/\D/g, ''))}" class="mobile-card-phone" onclick="event.stopPropagation()">&#x1F4DE; ${App.formatPhone(c.phone)}</a><span class="mobile-card-meta-text">${lastVisit[c.id] ? '최근 방문: ' + App.getRelativeTime(lastVisit[c.id]) : '방문 기록 없음'}</span>
       <div style="display:flex;gap:4px;margin-top:8px;border-top:1px solid var(--border-light);padding-top:8px"><button class="btn btn-sm btn-secondary btn-edit-customer flex-1" data-id="${c.id}" onclick="event.stopPropagation()">수정</button><button class="btn btn-sm btn-danger btn-delete-customer flex-1" data-id="${c.id}" onclick="event.stopPropagation()">삭제</button></div></div>
     </div>`;
@@ -586,22 +708,26 @@ App.pages.customers = {
 
   _searchQuery: '',
   _tagFilter: '',
+  _visitFilter: '',
 
   applyFilters() {
     const q = (this._searchQuery || '').toLowerCase();
     const tag = this._tagFilter || '';
+    const visit = this._visitFilter || '';
 
     // Save filter state to sessionStorage
     sessionStorage.setItem('customer-filter', JSON.stringify({
       search: this._searchQuery || '',
       tag,
+      visitStatus: visit,
       sort: this._sortKey || 'name'
     }));
 
     const matchesFilter = (el) => {
       const textMatch = !q || el.textContent.toLowerCase().includes(q);
       const tagMatch = !tag || (el.dataset.tags || '').split(',').includes(tag);
-      return textMatch && tagMatch;
+      const visitMatch = !visit || (el.dataset.visitStatus || '') === visit;
+      return textMatch && tagMatch && visitMatch;
     };
 
     document.querySelectorAll('#customer-table tbody tr').forEach(row => {

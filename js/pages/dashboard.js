@@ -13,11 +13,34 @@ App.pages.dashboard = {
       if (days >= cycleDays) {
         const customer = customerMap[pet.customerId];
         if (customer) {
-          alerts.push({ pet, customer, days, lastDate: pet.lastVisitDate, cycleDays });
+          const visitStatus = App.classifyVisitStatus(pet.lastVisitDate, cycleDays);
+          alerts.push({ pet, customer, days, lastDate: pet.lastVisitDate, cycleDays, visitStatus });
         }
       }
     });
     return alerts.sort((a, b) => b.days - a.days);
+  },
+
+  // 전체 고객의 방문 상태 요약 (대시보드 카드용)
+  _computeVisitStatusSummary(pets, customerMap, revisitDays) {
+    const summary = { normal: 0, remind: 0, 'at-risk': 0, churned: 0 };
+    // 고객별로 가장 최근 방문한 반려견 기준으로 상태 판정
+    const customerBestStatus = {};
+    const statusPriority = { normal: 0, remind: 1, 'at-risk': 2, churned: 3 };
+    pets.forEach(pet => {
+      if (pet.petStatus && pet.petStatus !== 'active') return;
+      const customer = customerMap[pet.customerId];
+      if (!customer) return;
+      const cycleDays = pet.groomingCycle || revisitDays;
+      const status = App.classifyVisitStatus(pet.lastVisitDate, cycleDays);
+      const prev = customerBestStatus[pet.customerId];
+      // 고객의 반려견 중 가장 좋은(낮은) 상태를 사용
+      if (!prev || statusPriority[status] < statusPriority[prev]) {
+        customerBestStatus[pet.customerId] = status;
+      }
+    });
+    Object.values(customerBestStatus).forEach(s => summary[s]++);
+    return summary;
   },
 
   async render(container) {
@@ -83,6 +106,9 @@ App.pages.dashboard = {
       const revisitDays = await DB.getSetting('revisitDays') || 30;
       const revisitAlerts = this._computeRevisitAlerts(pets, customerMap, revisitDays);
 
+      // 고객 방문 상태 요약
+      const visitSummary = this._computeVisitStatusSummary(pets, customerMap, revisitDays);
+
       // 생일 알림 (7일 이내)
       const upcomingBirthdays = [];
       const nowForBirthday = new Date();
@@ -119,9 +145,10 @@ App.pages.dashboard = {
       const greeting = App.getGreeting();
       const shopName = await DB.getSetting('shopName');
 
-      // Pre-build SMS bodies for revisit alerts
+      // Pre-build SMS bodies for revisit alerts (상태별 템플릿 사용)
       for (const a of revisitAlerts) {
-        const msg = await App.buildSms('revisit', {
+        const smsType = a.visitStatus === 'churned' ? 'churned' : a.visitStatus === 'at-risk' ? 'atRisk' : 'revisit';
+        const msg = await App.buildSms(smsType, {
           '고객명': a.customer.name || '',
           '반려견명': a.pet.name || '',
           '경과일수': String(a.days),
@@ -281,6 +308,35 @@ App.pages.dashboard = {
         </div>
         ` : ''}
 
+        ${(visitSummary.remind + visitSummary['at-risk'] + visitSummary.churned) > 0 ? `
+        <div class="card" style="margin-bottom:20px">
+          <div class="card-header">
+            <span class="card-title">&#x1F4CB; 고객 관리 현황</span>
+            <a href="#customers" class="btn btn-sm btn-ghost">전체보기 &rarr;</a>
+          </div>
+          <div class="card-body" style="padding:16px">
+            <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:12px">
+              <div style="text-align:center;padding:12px;border-radius:var(--radius);background:var(--success-light);cursor:pointer" onclick="App.navigate('customers');setTimeout(()=>{const s=document.getElementById('customer-visit-filter');if(s){s.value='normal';s.dispatchEvent(new Event('change'))}},200)">
+                <div style="font-size:1.4rem;font-weight:800;color:var(--success)">${visitSummary.normal}</div>
+                <div style="font-size:0.78rem;color:var(--text-secondary);margin-top:2px">정상</div>
+              </div>
+              <div style="text-align:center;padding:12px;border-radius:var(--radius);background:var(--warning-light);cursor:pointer" onclick="App.navigate('customers');setTimeout(()=>{const s=document.getElementById('customer-visit-filter');if(s){s.value='remind';s.dispatchEvent(new Event('change'))}},200)">
+                <div style="font-size:1.4rem;font-weight:800;color:var(--warning)">${visitSummary.remind}</div>
+                <div style="font-size:0.78rem;color:var(--text-secondary);margin-top:2px">리마인드</div>
+              </div>
+              <div style="text-align:center;padding:12px;border-radius:var(--radius);background:${visitSummary['at-risk'] > 0 ? '#FEE2E2' : 'var(--bg)'};cursor:pointer" onclick="App.navigate('customers');setTimeout(()=>{const s=document.getElementById('customer-visit-filter');if(s){s.value='at-risk';s.dispatchEvent(new Event('change'))}},200)">
+                <div style="font-size:1.4rem;font-weight:800;color:var(--danger)">${visitSummary['at-risk']}</div>
+                <div style="font-size:0.78rem;color:var(--text-secondary);margin-top:2px">이탈위험</div>
+              </div>
+              <div style="text-align:center;padding:12px;border-radius:var(--radius);background:var(--bg);cursor:pointer" onclick="App.navigate('customers');setTimeout(()=>{const s=document.getElementById('customer-visit-filter');if(s){s.value='churned';s.dispatchEvent(new Event('change'))}},200)">
+                <div style="font-size:1.4rem;font-weight:800;color:var(--text-muted)">${visitSummary.churned}</div>
+                <div style="font-size:0.78rem;color:var(--text-secondary);margin-top:2px">이탈</div>
+              </div>
+            </div>
+          </div>
+        </div>
+        ` : ''}
+
         ${revisitAlerts.length > 0 ? `
         <div class="card dash-accordion" style="margin-bottom:20px">
           <div class="card-header dash-accordion-toggle" style="cursor:pointer;user-select:none" data-target="dash-revisit">
@@ -291,24 +347,30 @@ App.pages.dashboard = {
             </div>
           </div>
           <div class="card-body" id="dash-revisit" style="display:${revisitAlerts.length > 0 ? 'block' : 'none'}">
-            ${revisitAlerts.slice(0, 8).map(a => `
+            ${revisitAlerts.slice(0, 8).map(a => {
+              const statusLabel = App.getVisitStatusLabel(a.visitStatus);
+              const statusBadge = App.getVisitStatusBadge(a.visitStatus);
+              const smsType = a.visitStatus === 'churned' ? 'churned' : a.visitStatus === 'at-risk' ? 'atRisk' : 'revisit';
+              return `
               <div class="alert-item">
                 <span class="days">${a.days}일</span>
                 <div class="flex-1">
                   <strong>${App.escapeHtml(a.customer.name)}</strong>의
                   <strong>${App.escapeHtml(a.pet.name)}</strong>
+                  <span class="badge ${statusBadge}" style="font-size:0.65rem;margin-left:4px">${statusLabel}</span>
                   <div style="font-size:0.78rem;color:var(--text-secondary);margin-top:2px">
                     마지막 미용: ${App.formatDate(a.lastDate)}
-                    ${a.pet.groomingCycle ? ` | 미용 주기 ${a.cycleDays}일 초과` : ''}
+                    ${a.pet.groomingCycle ? ' | 미용 주기 ' + a.cycleDays + '일 초과' : ''}
                   </div>
                 </div>
                 <div class="alert-item-actions" style="display:flex;gap:4px;flex-shrink:0">
+                  <button class="btn btn-sm btn-ghost" onclick="event.stopPropagation();navigator.clipboard.writeText(decodeURIComponent('${a._smsBody}')).then(()=>App.showToast('메시지가 복사되었습니다.'))" title="메시지 복사 (카톡용)">복사</button>
                   <a href="sms:${App.escapeHtml((a.customer.phone || '').replace(/\D/g, ''))}${smsSep}body=${a._smsBody}" class="btn btn-sm btn-success" onclick="event.stopPropagation()" title="문자 보내기">문자</a>
                   <a href="tel:${App.escapeHtml((a.customer.phone || '').replace(/\D/g, ''))}" class="btn btn-sm btn-secondary" onclick="event.stopPropagation()" title="전화 걸기">전화</a>
                   <button class="btn btn-sm btn-primary" onclick="App.pages.appointments.showForm(null, ${a.customer.id}, {petId:${a.pet.id}})" style="flex-shrink:0">예약</button>
                 </div>
-              </div>
-            `).join('')}
+              </div>`;
+            }).join('')}
           </div>
         </div>
         ` : ''}

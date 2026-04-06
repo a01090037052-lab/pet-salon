@@ -588,6 +588,28 @@ const App = {
     return diff;
   },
 
+  // 고객 방문 상태 분류: normal(정상), remind(리마인드), at-risk(이탈위험), churned(이탈)
+  classifyVisitStatus(lastVisitDate, groomingCycle) {
+    if (!lastVisitDate) return 'churned';
+    const daysSince = this.getDaysAgo(lastVisitDate);
+    if (daysSince === null) return 'churned';
+    const cycle = groomingCycle || 30;
+    if (daysSince <= cycle + 3) return 'normal';
+    if (daysSince <= cycle * 1.5) return 'remind';
+    if (daysSince <= cycle * 2) return 'at-risk';
+    return 'churned';
+  },
+
+  getVisitStatusLabel(status) {
+    const labels = { normal: '정상', remind: '리마인드', 'at-risk': '이탈위험', churned: '이탈' };
+    return labels[status] || status;
+  },
+
+  getVisitStatusBadge(status) {
+    const badges = { normal: 'badge-success', remind: 'badge-warning', 'at-risk': 'badge-danger', churned: 'badge-secondary' };
+    return badges[status] || 'badge-secondary';
+  },
+
   getRelativeTime(dateStr) {
     const days = this.getDaysAgo(dateStr);
     if (days === null) return '-';
@@ -1495,6 +1517,8 @@ const App = {
     const templates = await DB.getSetting('messageTemplates');
     const defaults = {
       revisit: '[{매장명}] {고객명}님 안녕하세요! {반려견명}의 마지막 미용 후 {경과일수}일이 지났습니다. 예약 문의: {전화번호}',
+      atRisk: '[{매장명}] {고객명}님, {반려견명}이(가) 보고 싶어요! 미용 시기가 많이 지났는데 괜찮으신가요? 예약 문의: {전화번호}',
+      churned: '[{매장명}] {고객명}님 안녕하세요! 오랫동안 뵙지 못했네요. {반려견명} 잘 지내고 있나요? 다시 방문해주시면 특별 케어 해드릴게요! 문의: {전화번호}',
       appointment: '[{매장명}] {고객명}님, {날짜} {시간}에 {반려견명} 예약이 확인되었습니다. 담당: {미용사}. 문의: {전화번호}',
       reminder: '[{매장명}] {고객명}님, 내일({날짜}) {시간}에 {반려견명} 미용 예약이 있습니다. 변경/취소는 {전화번호}로 연락 부탁드립니다.',
       birthday: '[{매장명}] {고객명}님! {반려견명}의 생일을 축하합니다! 🎂 생일 기념 특별 할인을 준비했어요. 문의: {전화번호}',
