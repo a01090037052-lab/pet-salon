@@ -124,7 +124,7 @@ App.pages.services = {
         <div style="margin-top:20px;background:linear-gradient(135deg,#6366F1,#8B5CF6);border-radius:var(--radius-xl);padding:28px 32px;color:#fff;position:relative;overflow:hidden">
           <div style="position:absolute;top:-30%;right:-5%;width:200px;height:200px;background:rgba(255,255,255,0.08);border-radius:50%"></div>
           <h3 style="font-weight:800;margin-bottom:6px;font-size:1.15rem;position:relative;z-index:1">&#x1F4A1; 기본 서비스로 빠르게 시작하세요</h3>
-          <p style="opacity:0.85;margin-bottom:16px;font-size:0.9rem;position:relative;z-index:1">전체 미용, 목욕, 위생 미용 등 10개의 기본 서비스를 자동으로 등록합니다.</p>
+          <p style="opacity:0.85;margin-bottom:16px;font-size:0.9rem;position:relative;z-index:1">미용 코스, 추가 옵션, 단독 케어 등 14개의 서비스를 자동으로 등록합니다.</p>
           <button class="btn" id="btn-init-services" style="background:#fff;color:var(--primary);font-weight:700;position:relative;z-index:1">기본 서비스 자동 등록</button>
         </div>
       ` : ''}
@@ -241,16 +241,23 @@ App.pages.services = {
 
   async initDefaultServices() {
     const defaults = [
-      { name: '전체 미용', description: '목욕 + 전체 커트 + 귀청소 + 발톱 정리', priceSmall: 50000, priceMedium: 60000, priceLarge: 80000, isActive: true },
-      { name: '위생 미용', description: '발바닥, 배, 항문 주변 부분 미용', priceSmall: 15000, priceMedium: 20000, priceLarge: 25000, isActive: true },
-      { name: '목욕', description: '샴푸 + 드라이 + 귀청소 + 발톱 정리', priceSmall: 30000, priceMedium: 40000, priceLarge: 50000, isActive: true },
-      { name: '스포팅', description: '전체 짧은 커트 (클리퍼 사용)', priceSmall: 40000, priceMedium: 50000, priceLarge: 65000, isActive: true },
-      { name: '가위 커트', description: '가위로 전체 스타일링', priceSmall: 55000, priceMedium: 65000, priceLarge: 85000, isActive: true },
-      { name: '얼굴 커트', description: '얼굴 부분 스타일링', priceSmall: 10000, priceMedium: 10000, priceLarge: 15000, isActive: true },
-      { name: '발톱 정리', description: '발톱 커트 및 갈기', priceSmall: 5000, priceMedium: 5000, priceLarge: 8000, isActive: true },
-      { name: '귀 청소', description: '귀 세정 및 귀털 정리', priceSmall: 5000, priceMedium: 5000, priceLarge: 8000, isActive: true },
+      // 미용 코스 (목욕+기본케어 포함)
+      { name: '목욕', description: '샴푸 + 드라이 + 발톱/귀/항문낭 기본 케어', priceSmall: 30000, priceMedium: 40000, priceLarge: 50000, isActive: true },
+      { name: '위생미용', description: '목욕 + 발바닥/배/항문/눈가 클리퍼 정리', priceSmall: 35000, priceMedium: 45000, priceLarge: 55000, isActive: true },
+      { name: '전체미용 (클리퍼)', description: '위생 + 몸 전체 클리퍼컷 (썸머컷 등)', priceSmall: 40000, priceMedium: 50000, priceLarge: 65000, isActive: true },
+      { name: '전체미용 (가위컷)', description: '위생 + 몸 전체 가위 스타일링 (테디베어/배냇/라이언 등)', priceSmall: 55000, priceMedium: 70000, priceLarge: 90000, isActive: true },
+      { name: '스포팅', description: '클리퍼 바디 + 다리/귀/꼬리 자연스럽게 남김', priceSmall: 45000, priceMedium: 55000, priceLarge: 70000, isActive: true },
+      { name: '부분미용', description: '얼굴/다리/꼬리 등 원하는 부위만 정리', priceSmall: 15000, priceMedium: 20000, priceLarge: 25000, isActive: true },
+      // 추가 옵션 (미용 시 추가)
+      { name: '약욕', description: '피부 상태 맞춤 약용 샴푸 + 온욕', priceSmall: 15000, priceMedium: 20000, priceLarge: 30000, isActive: true },
+      { name: '보습팩', description: '피부 보습 + 털 윤기 케어', priceSmall: 15000, priceMedium: 20000, priceLarge: 25000, isActive: true },
+      { name: '엉킴 제거', description: '엉킴 정도에 따라 추가 (경미/심함)', priceSmall: 10000, priceMedium: 15000, priceLarge: 20000, isActive: true },
+      { name: '염색', description: '귀/꼬리 등 포인트 염색', priceSmall: 15000, priceMedium: 15000, priceLarge: 20000, isActive: true },
+      // 단독 케어 (미용 없이 단독 방문)
+      { name: '발톱 정리', description: '발톱 커트 및 줄 다듬기', priceSmall: 5000, priceMedium: 5000, priceLarge: 8000, isActive: true },
+      { name: '귀 청소', description: '귀 세정 + 귀털 정리', priceSmall: 5000, priceMedium: 5000, priceLarge: 8000, isActive: true },
       { name: '양치', description: '구강 관리 및 양치', priceSmall: 5000, priceMedium: 5000, priceLarge: 5000, isActive: true },
-      { name: '엉킴 제거', description: '털 엉킴 제거 (정도에 따라 추가 요금)', priceSmall: 10000, priceMedium: 15000, priceLarge: 20000, isActive: true },
+      { name: '항문낭', description: '항문낭 짜기', priceSmall: 5000, priceMedium: 5000, priceLarge: 5000, isActive: true },
     ];
 
     for (const service of defaults) {

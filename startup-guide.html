@@ -1,0 +1,455 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>애견미용 창업 준비 가이드</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Helvetica Neue', 'Noto Sans KR', sans-serif;
+      line-height: 1.6; color: #333;
+      background: linear-gradient(135deg, #F3E7FF 0%, #FFF0F5 100%);
+      min-height: 100vh; padding: 20px;
+    }
+    .container { max-width: 900px; margin: 0 auto; background: white; border-radius: 16px; box-shadow: 0 10px 40px rgba(0,0,0,0.1); overflow: hidden; }
+    header { background: linear-gradient(135deg, #F59E0B 0%, #D97706 50%, #B45309 100%); color: white; padding: 60px 40px; text-align: center; }
+    header h1 { font-size: 2.2rem; margin-bottom: 10px; font-weight: 800; }
+    header p { font-size: 1.1rem; opacity: 0.95; }
+    main { padding: 40px; }
+    .toc { background: #FFFBEB; border-left: 4px solid #F59E0B; padding: 24px; border-radius: 8px; margin-bottom: 40px; }
+    .toc h2 { font-size: 1.3rem; margin-bottom: 16px; color: #92400E; border: none; padding: 0; }
+    .toc ul { list-style: none; columns: 2; gap: 20px; }
+    .toc li { margin-bottom: 10px; }
+    .toc a { color: #B45309; text-decoration: none; font-weight: 500; }
+    .toc a:hover { text-decoration: underline; }
+    section { margin-bottom: 50px; scroll-margin-top: 20px; }
+    h2 { font-size: 1.8rem; color: #92400E; margin-bottom: 20px; padding-bottom: 12px; border-bottom: 3px solid #FDE68A; }
+    h3 { font-size: 1.3rem; color: #B45309; margin-top: 24px; margin-bottom: 12px; }
+    h4 { font-size: 1.05rem; color: #D97706; margin-top: 16px; margin-bottom: 8px; }
+    p { margin-bottom: 12px; font-size: 1rem; line-height: 1.8; }
+    ul, ol { margin-left: 24px; margin-bottom: 16px; }
+    li { margin-bottom: 8px; line-height: 1.7; }
+    .card { background: #FFFBEB; border: 1px solid #FDE68A; border-radius: 12px; padding: 20px; margin-bottom: 20px; border-left: 4px solid #F59E0B; }
+    .card-title { font-weight: 700; color: #92400E; margin-bottom: 12px; font-size: 1.05rem; }
+    .tip-box { background: linear-gradient(135deg, #ECFDF5 0%, #A7F3D0 100%); border-left: 4px solid #10B981; padding: 16px 20px; border-radius: 8px; margin-bottom: 20px; display: flex; gap: 12px; }
+    .tip-icon { font-size: 1.4rem; flex-shrink: 0; }
+    .tip-content { flex: 1; }
+    .tip-content strong { display: block; color: #065F46; margin-bottom: 4px; }
+    .tip-content p { margin-bottom: 0; color: #064E3B; font-size: 0.95rem; }
+    .warning-box { background: #FEE2E2; border-left: 4px solid #EF4444; padding: 16px 20px; border-radius: 8px; margin-bottom: 20px; color: #991B1B; }
+    .warning-box strong { display: block; margin-bottom: 4px; }
+    table { width: 100%; border-collapse: collapse; margin-bottom: 20px; font-size: 0.95rem; }
+    th, td { padding: 10px 14px; text-align: left; border-bottom: 1px solid #E5E7EB; }
+    th { background: #FFFBEB; color: #92400E; font-weight: 700; }
+    tr:hover { background: #FEFCE8; }
+    .checklist { list-style: none; margin-left: 0; }
+    .checklist li { padding: 8px 0; border-bottom: 1px solid #F3F4F6; display: flex; align-items: flex-start; gap: 10px; }
+    .checklist li::before { content: ""; display: inline-block; width: 20px; height: 20px; border: 2px solid #D1D5DB; border-radius: 4px; flex-shrink: 0; margin-top: 2px; }
+    /* 계산기 */
+    .calc-section { background: #F9FAFB; border-radius: 12px; padding: 24px; margin-bottom: 20px; }
+    .calc-row { display: flex; align-items: center; gap: 12px; margin-bottom: 12px; flex-wrap: wrap; }
+    .calc-row label { min-width: 140px; font-weight: 600; font-size: 0.9rem; color: #374151; }
+    .calc-row input, .calc-row select { padding: 10px 14px; border: 1.5px solid #D1D5DB; border-radius: 8px; font-size: 1rem; width: 180px; }
+    .calc-row input:focus { outline: none; border-color: #F59E0B; box-shadow: 0 0 0 3px rgba(245,158,11,0.2); }
+    .calc-row .unit { font-size: 0.85rem; color: #6B7280; }
+    .calc-result { background: linear-gradient(135deg, #FEF3C7 0%, #FDE68A 100%); border-radius: 12px; padding: 24px; margin-top: 20px; }
+    .calc-result-row { display: flex; justify-content: space-between; padding: 8px 0; border-bottom: 1px dashed #D97706; }
+    .calc-result-row:last-child { border-bottom: none; font-size: 1.2rem; font-weight: 800; padding-top: 12px; }
+    .calc-result-label { color: #92400E; }
+    .calc-result-value { font-weight: 700; color: #B45309; }
+    .btn-calc { background: #F59E0B; color: white; border: none; padding: 12px 32px; border-radius: 8px; font-size: 1rem; font-weight: 700; cursor: pointer; margin-top: 8px; }
+    .btn-calc:hover { background: #D97706; }
+    @media (max-width: 600px) {
+      header { padding: 40px 20px; }
+      header h1 { font-size: 1.6rem; }
+      main { padding: 20px; }
+      .toc ul { columns: 1; }
+      .calc-row { flex-direction: column; align-items: flex-start; gap: 4px; }
+      .calc-row input { width: 100%; }
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <header>
+      <h1>&#x2702;&#xFE0F; 애견미용 창업 준비 가이드</h1>
+      <p>상권 분석부터 브랜딩까지, 창업에 필요한 모든 것</p>
+    </header>
+
+    <main>
+      <div class="toc">
+        <h2>목차</h2>
+        <ul>
+          <li><a href="#location">1. 상권 분석</a></li>
+          <li><a href="#bep">2. 손익분기점 계산기</a></li>
+          <li><a href="#investment">3. 초기 투자비 체크리스트</a></li>
+          <li><a href="#pricing">4. 가격 전략</a></li>
+          <li><a href="#branding">5. 브랜딩 / SNS</a></li>
+          <li><a href="#resources">6. 유용한 자료</a></li>
+        </ul>
+      </div>
+
+      <!-- 1. 상권 분석 -->
+      <section id="location">
+        <h2>1. 상권 분석</h2>
+
+        <h3>입지 선정 핵심 기준</h3>
+        <table>
+          <tr><th>기준</th><th>좋은 입지</th><th>주의할 입지</th></tr>
+          <tr><td>반려동물 밀집도</td><td>아파트 단지, 빌라촌 밀집 지역</td><td>상업지구, 오피스 밀집</td></tr>
+          <tr><td>경쟁 업체</td><td>반경 500m 내 0~1곳</td><td>반경 500m 내 3곳 이상</td></tr>
+          <tr><td>접근성</td><td>1층, 주차 가능, 대로변</td><td>높은 층, 주차 불가</td></tr>
+          <tr><td>유동인구</td><td>산책 코스, 공원 근처</td><td>유흥가, 공단 지역</td></tr>
+          <tr><td>임대료</td><td>매출 대비 10~15%</td><td>매출 대비 20% 초과</td></tr>
+        </table>
+
+        <h3>상권 조사 체크리스트</h3>
+        <ul class="checklist">
+          <li>반경 1km 내 아파트 세대수 확인 (네이버 부동산)</li>
+          <li>동물등록현황 조회 (동물보호관리시스템 animal.go.kr)</li>
+          <li>경쟁 업체 수 / 가격대 / 리뷰 평점 조사 (네이버 지도)</li>
+          <li>주변 동물병원 유무 (협업 가능성)</li>
+          <li>주차 공간 확보 여부</li>
+          <li>배수/환기/소음 규제 확인</li>
+          <li>건물 용도 (근린생활시설 확인)</li>
+          <li>오전/오후/주말 유동인구 직접 확인 (최소 3회 방문)</li>
+        </ul>
+
+        <h3>무료 상권 분석 도구</h3>
+        <div class="card">
+          <div class="card-title">활용 가능한 무료 도구</div>
+          <table>
+            <tr><th>도구</th><th>용도</th><th>URL</th></tr>
+            <tr><td>소상공인 상권정보</td><td>업종별 밀집도, 매출 추정</td><td>sg.sbiz.or.kr</td></tr>
+            <tr><td>서울 열린데이터</td><td>인구, 가구, 반려동물 통계</td><td>data.seoul.go.kr</td></tr>
+            <tr><td>동물보호관리시스템</td><td>지역별 동물등록 현황</td><td>animal.go.kr</td></tr>
+            <tr><td>네이버 지도</td><td>경쟁업체 조사, 리뷰 분석</td><td>map.naver.com</td></tr>
+            <tr><td>카카오맵</td><td>유동인구 추정 (로드뷰)</td><td>map.kakao.com</td></tr>
+          </table>
+        </div>
+
+        <div class="tip-box">
+          <div class="tip-icon">&#x1F4A1;</div>
+          <div class="tip-content">
+            <strong>실전 팁</strong>
+            <p>후보지 3곳을 선정하고, 각각 평일/주말 오전 10시에 1시간씩 앉아서 강아지와 산책하는 사람 수를 세보세요. 가장 확실한 상권 분석입니다.</p>
+          </div>
+        </div>
+      </section>
+
+      <!-- 2. 손익분기점 계산기 -->
+      <section id="bep">
+        <h2>2. 손익분기점 계산기</h2>
+        <p>월 고정비와 예상 매출을 입력하면 손익분기점과 예상 수익을 자동으로 계산합니다.</p>
+
+        <div class="calc-section">
+          <h3 style="margin-top:0">월 고정비</h3>
+          <div class="calc-row"><label>임대료</label><input type="number" id="c-rent" value="1000000" step="100000"><span class="unit">원</span></div>
+          <div class="calc-row"><label>관리비</label><input type="number" id="c-maint" value="200000" step="50000"><span class="unit">원</span></div>
+          <div class="calc-row"><label>인건비 (본인 포함)</label><input type="number" id="c-labor" value="2500000" step="100000"><span class="unit">원</span></div>
+          <div class="calc-row"><label>보험/4대보험</label><input type="number" id="c-insurance" value="200000" step="50000"><span class="unit">원</span></div>
+          <div class="calc-row"><label>통신/인터넷</label><input type="number" id="c-comm" value="50000" step="10000"><span class="unit">원</span></div>
+          <div class="calc-row"><label>기타 고정비</label><input type="number" id="c-other" value="100000" step="50000"><span class="unit">원</span></div>
+
+          <h3>매출 예상</h3>
+          <div class="calc-row"><label>하루 평균 마릿수</label><input type="number" id="c-dogs" value="4" step="1" min="1"><span class="unit">마리</span></div>
+          <div class="calc-row"><label>평균 객단가</label><input type="number" id="c-price" value="50000" step="5000"><span class="unit">원</span></div>
+          <div class="calc-row"><label>월 영업일수</label><input type="number" id="c-days" value="25" step="1" min="1"><span class="unit">일</span></div>
+
+          <h3>변동비</h3>
+          <div class="calc-row"><label>소모품 비율</label><input type="number" id="c-supply" value="10" step="1" min="0" max="50"><span class="unit">% (매출 대비)</span></div>
+
+          <button class="btn-calc" onclick="calcBEP()">계산하기</button>
+
+          <div class="calc-result" id="bep-result" style="display:none">
+            <div class="calc-result-row"><span class="calc-result-label">월 고정비 합계</span><span class="calc-result-value" id="r-fixed">-</span></div>
+            <div class="calc-result-row"><span class="calc-result-label">월 예상 매출</span><span class="calc-result-value" id="r-revenue">-</span></div>
+            <div class="calc-result-row"><span class="calc-result-label">월 변동비 (소모품)</span><span class="calc-result-value" id="r-variable">-</span></div>
+            <div class="calc-result-row"><span class="calc-result-label">월 예상 순이익</span><span class="calc-result-value" id="r-profit">-</span></div>
+            <div class="calc-result-row"><span class="calc-result-label">이익률</span><span class="calc-result-value" id="r-margin">-</span></div>
+            <div class="calc-result-row"><span class="calc-result-label">&#x1F4CD; 손익분기 마릿수 (하루)</span><span class="calc-result-value" id="r-bep-dogs">-</span></div>
+            <div class="calc-result-row"><span class="calc-result-label">&#x1F4CD; 손익분기 매출 (월)</span><span class="calc-result-value" id="r-bep-rev">-</span></div>
+          </div>
+        </div>
+
+        <div class="tip-box">
+          <div class="tip-icon">&#x1F4A1;</div>
+          <div class="tip-content">
+            <strong>현실적인 수치 참고</strong>
+            <p>1인 샵 기준: 하루 3~5마리, 평균 객단가 4~6만원이 현실적입니다. 초기 3개월은 하루 2마리 이하를 예상하고 자금을 준비하세요.</p>
+          </div>
+        </div>
+      </section>
+
+      <!-- 3. 초기 투자비 -->
+      <section id="investment">
+        <h2>3. 초기 투자비 체크리스트</h2>
+
+        <table>
+          <tr><th>항목</th><th>예상 금액</th><th>비고</th></tr>
+          <tr><td>보증금</td><td>500~2,000만원</td><td>지역/평수에 따라 차이</td></tr>
+          <tr><td>인테리어</td><td>500~1,500만원</td><td>배수, 환기, 방수 필수</td></tr>
+          <tr><td>미용 테이블</td><td>30~80만원</td><td>유압식 추천</td></tr>
+          <tr><td>드라이어 (스탠드형)</td><td>50~150만원</td><td>2대 권장</td></tr>
+          <tr><td>욕조</td><td>50~200만원</td><td>스테인리스 + 샤워기</td></tr>
+          <tr><td>클리퍼 세트</td><td>30~80만원</td><td>2~3세트 (날 교체용)</td></tr>
+          <tr><td>가위 세트</td><td>30~100만원</td><td>커브/스트레이트/솎음</td></tr>
+          <tr><td>샴푸/린스/소모품</td><td>30~50만원</td><td>초기 3개월분</td></tr>
+          <tr><td>케이지/기다림 공간</td><td>20~50만원</td><td>3~5칸</td></tr>
+          <tr><td>간판/인테리어 소품</td><td>50~200만원</td><td>외부 간판 필수</td></tr>
+          <tr><td>CCTV/보안</td><td>30~50만원</td><td>4채널 기준</td></tr>
+          <tr><td>기타 (정수기, 에어컨 등)</td><td>50~100만원</td><td></td></tr>
+          <tr style="font-weight:700;background:#FFFBEB"><td>합계 (예상)</td><td>1,500~4,500만원</td><td>보증금 포함</td></tr>
+        </table>
+
+        <div class="warning-box">
+          <strong>주의사항</strong>
+          <p>초기 투자비 외에 <strong>최소 3~6개월 운영 자금</strong>을 별도로 확보하세요. 오픈 후 즉시 손익분기를 넘기는 경우는 드뭅니다.</p>
+        </div>
+      </section>
+
+      <!-- 4. 가격 전략 -->
+      <section id="pricing">
+        <h2>4. 가격 전략</h2>
+
+        <h3>서비스 메뉴 체계</h3>
+        <p>애견미용 서비스는 크게 <strong>기본 서비스</strong>, <strong>가위컷 스타일</strong>, <strong>스페셜 케어</strong>로 나뉩니다.</p>
+
+        <h4>기본 서비스</h4>
+        <table>
+          <tr><th>서비스</th><th>설명</th><th>소요 시간</th></tr>
+          <tr><td><strong>목욕</strong></td><td>샴푸 + 드라이 + 발톱/귀/항문낭 기본 케어</td><td>40~60분</td></tr>
+          <tr><td><strong>위생미용</strong></td><td>목욕 + 발바닥/배/항문 주변/눈가 정리 (클리퍼)</td><td>60~90분</td></tr>
+          <tr><td><strong>클리퍼컷 (전체)</strong></td><td>위생미용 + 몸 전체를 클리퍼로 밀기 (썸머컷 등)</td><td>90~120분</td></tr>
+          <tr><td><strong>가위컷 (전체미용)</strong></td><td>위생미용 + 몸 전체를 가위로 다듬기 (프리미엄)</td><td>2~3시간</td></tr>
+          <tr><td><strong>부분미용</strong></td><td>얼굴/다리/꼬리 등 특정 부위만 정리</td><td>30~60분</td></tr>
+        </table>
+
+        <h4>인기 가위컷 스타일</h4>
+        <p>가위컷은 미용사의 기술력이 가장 잘 드러나는 서비스이자 <strong>객단가가 높은 핵심 매출원</strong>입니다.</p>
+        <div class="card">
+          <div class="card-title">견종별 인기 가위컷 스타일</div>
+          <table>
+            <tr><th>스타일</th><th>대표 견종</th><th>특징</th></tr>
+            <tr><td><strong>테디베어컷</strong></td><td>비숑, 푸들, 말티푸</td><td>둥근 얼굴 + 통통한 몸, 가장 인기 있는 스타일</td></tr>
+            <tr><td><strong>배냇컷</strong></td><td>말티즈, 시츄</td><td>강아지처럼 짧고 자연스러운 느낌, 관리 편함</td></tr>
+            <tr><td><strong>라이언컷</strong></td><td>포메, 스피츠</td><td>갈기 부분을 살리고 몸은 짧게, 시선 집중</td></tr>
+            <tr><td><strong>하이바컷</strong></td><td>슈나우저</td><td>눈썹/수염 강조, 슈나우저 특유의 클래식 스타일</td></tr>
+            <tr><td><strong>머쉬룸컷</strong></td><td>비숑, 코커</td><td>버섯 모양 둥근 머리, 귀와 자연스럽게 연결</td></tr>
+            <tr><td><strong>스포팅컷</strong></td><td>코커, 스프링거</td><td>몸 짧게 + 다리/귀/배 털은 자연스럽게 늘어뜨림</td></tr>
+            <tr><td><strong>쇼클립</strong></td><td>푸들</td><td>품평회 스타일, 고난도 기술 필요</td></tr>
+            <tr><td><strong>자연컷/숯불컷</strong></td><td>포메, 스피츠</td><td>자연스러운 실루엣, 모량 살리는 커트</td></tr>
+            <tr><td><strong>클린페이스</strong></td><td>푸들</td><td>얼굴 짧게 밀고 머리에 볼륨, 세련된 느낌</td></tr>
+            <tr><td><strong>양머리컷</strong></td><td>비숑, 말티푸</td><td>머리를 양 갈래로 나눠 둥글게, 귀여운 느낌</td></tr>
+          </table>
+        </div>
+
+        <h4>스페셜 케어 서비스</h4>
+        <table>
+          <tr><th>서비스</th><th>설명</th><th>단독 가격대</th></tr>
+          <tr><td><strong>약욕/스파</strong></td><td>피부 상태에 맞는 약용 샴푸 + 온욕</td><td>+1~3만</td></tr>
+          <tr><td><strong>머드팩/보습팩</strong></td><td>피부 보습, 털 윤기 케어</td><td>+1.5~3만</td></tr>
+          <tr><td><strong>하이드로서지</strong></td><td>수압 마사지 + 딥클렌징 (모낭 세정)</td><td>+2~4만</td></tr>
+          <tr><td><strong>치석제거 (스케일링)</strong></td><td>무마취 치석 제거 (자격 필요)</td><td>3~8만</td></tr>
+          <tr><td><strong>컬러링/염색</strong></td><td>귀끝/꼬리 등 포인트 염색</td><td>+1~5만</td></tr>
+          <tr><td><strong>발톱/귀 단독</strong></td><td>목욕 없이 발톱+귀 관리만</td><td>0.5~1만</td></tr>
+        </table>
+
+        <h3>견종/사이즈별 가격 프레임</h3>
+        <p>가위컷 기준으로, 클리퍼컷은 이보다 1~2만원 낮게 설정하는 것이 일반적입니다.</p>
+
+        <table>
+          <tr><th>구분</th><th>목욕</th><th>위생미용</th><th>클리퍼컷</th><th>가위컷</th></tr>
+          <tr><td>소형 (말티즈, 요크셔, 치와와)</td><td>2~3만</td><td>3~4만</td><td>4~5만</td><td>5~7만</td></tr>
+          <tr><td>중형 (코커, 슈나우저, 비글)</td><td>3~5만</td><td>4~6만</td><td>5~7만</td><td>7~10만</td></tr>
+          <tr><td>대형 (골든, 사모예드, 허스키)</td><td>5~8만</td><td>6~9만</td><td>8~12만</td><td>12~18만</td></tr>
+          <tr><td>특수견 (올드잉글리쉬, 아프간 등)</td><td>별도 상담</td><td>별도 상담</td><td>별도 상담</td><td>15~25만</td></tr>
+        </table>
+
+        <div class="tip-box">
+          <div class="tip-icon">&#x1F4A1;</div>
+          <div class="tip-content">
+            <strong>가위컷이 매출의 핵심</strong>
+            <p>클리퍼컷 대비 가위컷은 1.5~2배 단가를 받을 수 있습니다. 가위컷 실력을 키우면 같은 시간에 더 높은 매출을 올릴 수 있고, 단골 확보에도 유리합니다. 인기 스타일 2~3개를 시그니처로 만들어보세요.</p>
+          </div>
+        </div>
+
+        <h3>추가 요금 항목</h3>
+        <table>
+          <tr><th>항목</th><th>금액</th><th>적용 기준</th></tr>
+          <tr><td>엉킴 추가 (경미)</td><td>+5,000</td><td>부분 엉킴, 슬리커로 풀 수 있는 수준</td></tr>
+          <tr><td>엉킴 추가 (심함)</td><td>+10,000~20,000</td><td>전체 엉킴, 시간 추가 소요</td></tr>
+          <tr><td>공격성 추가</td><td>+10,000~20,000</td><td>입마개/보정 필요, 2인 작업</td></tr>
+          <tr><td>노령견 추가</td><td>+5,000~10,000</td><td>15세 이상, 천천히 작업</td></tr>
+          <tr><td>대형견 목욕 추가</td><td>+10,000~20,000</td><td>30kg 이상</td></tr>
+          <tr><td>당일 예약</td><td>+5,000~10,000</td><td>선택사항 (운영 방침에 따라)</td></tr>
+        </table>
+
+        <h3>패키지/정기권 전략</h3>
+        <div class="card">
+          <div class="card-title">추천 패키지 구성</div>
+          <table>
+            <tr><th>패키지</th><th>구성</th><th>할인율</th><th>효과</th></tr>
+            <tr><td>5회권</td><td>전체미용 5회</td><td>10%</td><td>재방문 확보</td></tr>
+            <tr><td>10회권</td><td>전체미용 10회</td><td>15~20%</td><td>장기 고객 확보</td></tr>
+            <tr><td>월 정기권</td><td>월 1회 전체미용</td><td>연 계약 시 15%</td><td>안정적 매출</td></tr>
+            <tr><td>목욕+위생 세트</td><td>목욕 시 위생미용 포함</td><td>5,000 할인</td><td>객단가 UP</td></tr>
+            <tr><td>첫 방문 할인</td><td>첫 미용 20% 할인</td><td>20%</td><td>신규 유입</td></tr>
+            <tr><td>소개 할인</td><td>소개자/피소개자 각 10%</td><td>10%</td><td>자연 마케팅</td></tr>
+          </table>
+        </div>
+
+        <h3>경쟁사 가격 조사표</h3>
+        <p>주변 3~5개 샵의 가격을 조사해서 비교하세요.</p>
+        <table>
+          <tr><th>매장명</th><th>소형 가위컷</th><th>중형 가위컷</th><th>특이 서비스</th><th>리뷰 평점</th></tr>
+          <tr><td style="color:#999">(조사 후 기입)</td><td></td><td></td><td></td><td></td></tr>
+          <tr><td style="color:#999">(조사 후 기입)</td><td></td><td></td><td></td><td></td></tr>
+          <tr><td style="color:#999">(조사 후 기입)</td><td></td><td></td><td></td><td></td></tr>
+          <tr style="font-weight:700;background:#FFFBEB"><td>우리 매장 목표가</td><td></td><td></td><td></td><td></td></tr>
+        </table>
+
+        <div class="tip-box">
+          <div class="tip-icon">&#x1F4A1;</div>
+          <div class="tip-content">
+            <strong>가격 설정 원칙</strong>
+            <p>처음부터 너무 싸게 잡으면 올리기 어렵습니다. 주변 평균의 90~100% 수준으로 시작하고, 서비스 품질로 차별화하세요. "저렴한 샵"보다 "합리적인 가격에 잘하는 샵"이 오래 갑니다.</p>
+          </div>
+        </div>
+
+        <div class="warning-box">
+          <strong>서비스 메뉴 등록 팁</strong>
+          <p>펫살롱 앱의 <strong>서비스 메뉴</strong>에 위 서비스들을 등록하면, 미용 기록/예약 시 빠르게 선택할 수 있고 서비스별 매출 분석도 자동으로 됩니다. 가위컷 스타일별로 세분화해서 등록하면 "어떤 스타일이 인기인지" 데이터로 확인할 수 있습니다.</p>
+        </div>
+      </section>
+
+      <!-- 5. 브랜딩 / SNS -->
+      <section id="branding">
+        <h2>5. 브랜딩 / SNS</h2>
+
+        <h3>상호명 컨셉별 아이디어</h3>
+        <table>
+          <tr><th>컨셉</th><th>예시</th><th>느낌</th></tr>
+          <tr><td>감성/세련</td><td>르뽀, 도그살롱, 멍스파</td><td>프리미엄, 트렌디</td></tr>
+          <tr><td>친근/따뜻</td><td>뽀송뽀송, 멍멍이네, 댕댕살롱</td><td>동네 단골 느낌</td></tr>
+          <tr><td>전문성</td><td>그루밍랩, 펫케어스튜디오</td><td>기술력 강조</td></tr>
+          <tr><td>지역명 활용</td><td>○○동 애견미용, ○○펫</td><td>검색 최적화</td></tr>
+        </table>
+
+        <h3>인스타그램 콘텐츠 캘린더 (주간)</h3>
+        <div class="card">
+          <div class="card-title">주간 포스팅 계획 예시</div>
+          <table>
+            <tr><th>요일</th><th>콘텐츠 유형</th><th>예시</th></tr>
+            <tr><td>월</td><td>Before/After</td><td>이번 주 첫 미용 완성 사진</td></tr>
+            <tr><td>화</td><td>견종 팁</td><td>"말티즈 털 관리법 3가지"</td></tr>
+            <tr><td>수</td><td>일상/비하인드</td><td>미용 도구 소개, 준비 과정</td></tr>
+            <tr><td>목</td><td>고객 후기</td><td>보호자 리뷰 + 사진 (동의 필수)</td></tr>
+            <tr><td>금</td><td>Before/After</td><td>이번 주 베스트 미용</td></tr>
+            <tr><td>토</td><td>이벤트/프로모션</td><td>주말 예약 마감 안내, 할인 이벤트</td></tr>
+            <tr><td>일</td><td>휴식/소통</td><td>Q&A, 투표 스토리, 일상</td></tr>
+          </table>
+        </div>
+
+        <h3>해시태그 전략</h3>
+        <p>매 게시물마다 아래 조합으로 15~20개 사용하세요.</p>
+        <ul>
+          <li><strong>지역</strong>: #○○동애견미용 #○○구반려견 #○○역근처미용</li>
+          <li><strong>견종</strong>: #말티즈미용 #푸들미용 #비숑미용 #포메미용</li>
+          <li><strong>서비스</strong>: #애견미용 #반려견미용 #강아지미용 #펫그루밍</li>
+          <li><strong>감성</strong>: #오늘의댕댕이 #멍스타그램 #강아지스타그램</li>
+        </ul>
+
+        <h3>네이버 플레이스 등록 (필수)</h3>
+        <ol>
+          <li><strong>네이버 스마트플레이스</strong> 등록 (smartplace.naver.com)</li>
+          <li>매장 사진 최소 10장 업로드 (외관, 내부, 미용 과정, 완성)</li>
+          <li>영업시간, 주차, 서비스 메뉴 상세 기입</li>
+          <li>예약 기능 연동 (네이버 예약)</li>
+          <li>리뷰 적극 관리 (감사 답글 필수)</li>
+        </ol>
+
+        <div class="tip-box">
+          <div class="tip-icon">&#x1F4A1;</div>
+          <div class="tip-content">
+            <strong>가장 효과적인 마케팅</strong>
+            <p>애견미용에서 가장 강력한 마케팅은 <strong>"보호자 입소문"</strong>입니다. Before/After 사진을 보호자에게 보내고(펫살롱 리포트 기능 활용!), SNS 공유를 유도하세요. 실력 + 친절함이 최고의 광고입니다.</p>
+          </div>
+        </div>
+      </section>
+
+      <!-- 6. 유용한 자료 -->
+      <section id="resources">
+        <h2>6. 유용한 자료</h2>
+
+        <h3>창업 전 필수 확인</h3>
+        <ul>
+          <li><strong>동물미용업 신고</strong>: 관할 시/군/구청에 동물미용업 신고 (동물보호법 제69조)</li>
+          <li><strong>자격증</strong>: 반려동물스타일리스트 (민간자격), 애완동물미용사 등 - 법적 필수는 아니지만 신뢰도에 큰 영향</li>
+          <li><strong>보험</strong>: 동물미용 배상책임보험 가입 강력 권장</li>
+          <li><strong>세무</strong>: 사업자등록 (간이/일반과세), 부가세, 종합소득세 기본 이해 필요</li>
+        </ul>
+
+        <h3>참고 사이트</h3>
+        <table>
+          <tr><th>사이트</th><th>내용</th></tr>
+          <tr><td>소상공인마당 (semas.or.kr)</td><td>창업 교육, 컨설팅, 자금 지원 정보</td></tr>
+          <tr><td>서울신용보증재단</td><td>소상공인 창업 보증, 저금리 대출</td></tr>
+          <tr><td>창업진흥원 (kised.or.kr)</td><td>창업 지원 프로그램</td></tr>
+          <tr><td>국세청 홈택스</td><td>사업자등록, 세금 신고</td></tr>
+        </table>
+
+        <div class="card">
+          <div class="card-title">펫살롱 앱 활용</div>
+          <p>창업 후에는 <strong><a href="index.html" style="color:#B45309">펫살롱 앱</a></strong>으로 고객 관리, 예약, 매출 분석을 한 곳에서 관리하세요. <a href="guide.html" style="color:#B45309">사용 가이드</a>도 참고하세요.</p>
+        </div>
+      </section>
+
+      <div style="margin-top:60px;padding:24px;background:#FFFBEB;border-radius:12px;border-left:4px solid #F59E0B;text-align:center">
+        <p style="margin:0;font-size:1rem;color:#92400E"><strong>창업 성공을 응원합니다!</strong> 꼼꼼히 준비하고, 실력으로 승부하세요.</p>
+      </div>
+    </main>
+  </div>
+
+  <script>
+    function calcBEP() {
+      const rent = Number(document.getElementById('c-rent').value) || 0;
+      const maint = Number(document.getElementById('c-maint').value) || 0;
+      const labor = Number(document.getElementById('c-labor').value) || 0;
+      const insurance = Number(document.getElementById('c-insurance').value) || 0;
+      const comm = Number(document.getElementById('c-comm').value) || 0;
+      const other = Number(document.getElementById('c-other').value) || 0;
+      const dogs = Number(document.getElementById('c-dogs').value) || 1;
+      const price = Number(document.getElementById('c-price').value) || 0;
+      const days = Number(document.getElementById('c-days').value) || 25;
+      const supplyRate = (Number(document.getElementById('c-supply').value) || 0) / 100;
+
+      const fixedCost = rent + maint + labor + insurance + comm + other;
+      const revenue = dogs * price * days;
+      const variable = Math.round(revenue * supplyRate);
+      const profit = revenue - fixedCost - variable;
+      const margin = revenue > 0 ? Math.round((profit / revenue) * 100) : 0;
+
+      // 손익분기: 고정비 / (객단가 * (1 - 소모품비율)) / 영업일수
+      const contributionPerDog = price * (1 - supplyRate);
+      const bepDogsPerDay = contributionPerDog > 0 ? Math.ceil(fixedCost / contributionPerDog / days * 10) / 10 : 0;
+      const bepRevenue = contributionPerDog > 0 ? Math.round(fixedCost / (1 - supplyRate)) : 0;
+
+      const fmt = (n) => n.toLocaleString('ko-KR') + '원';
+
+      document.getElementById('r-fixed').textContent = fmt(fixedCost);
+      document.getElementById('r-revenue').textContent = fmt(revenue);
+      document.getElementById('r-variable').textContent = fmt(variable);
+      document.getElementById('r-profit').textContent = (profit >= 0 ? '+' : '') + fmt(profit);
+      document.getElementById('r-profit').style.color = profit >= 0 ? '#059669' : '#DC2626';
+      document.getElementById('r-margin').textContent = margin + '%';
+      document.getElementById('r-margin').style.color = margin >= 0 ? '#059669' : '#DC2626';
+      document.getElementById('r-bep-dogs').textContent = bepDogsPerDay + '마리/일';
+      document.getElementById('r-bep-rev').textContent = fmt(bepRevenue);
+
+      document.getElementById('bep-result').style.display = 'block';
+    }
+  </script>
+</body>
+</html>
