@@ -1037,30 +1037,47 @@ const App = {
     const services = await DB.getAll('services');
     const active = services.filter(s => s.isActive !== false);
     if (active.length === 0) return '<p style="color:var(--text-muted)">등록된 서비스가 없습니다. 서비스 메뉴에서 먼저 등록해주세요.</p>';
-    // 현재 사이즈에 맞는 가격 표시 (기본 small)
     const size = sizeType || 'small';
+    const catLabels = { grooming: '미용 코스', addon: '추가 옵션', care: '단독 케어' };
+    const catOrder = ['grooming', 'addon', 'care'];
+
+    // 카테고리별 그룹 + sortOrder 정렬
+    const grouped = {};
+    active.forEach(s => {
+      const cat = s.category || 'grooming';
+      if (!grouped[cat]) grouped[cat] = [];
+      grouped[cat].push(s);
+    });
+    catOrder.forEach(cat => {
+      if (grouped[cat]) grouped[cat].sort((a, b) => (a.sortOrder || 999) - (b.sortOrder || 999));
+    });
+
     let html = `
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
         <span style="font-weight:700;font-size:0.85rem;color:var(--text-secondary)">서비스 선택</span>
         <button type="button" class="btn btn-sm btn-ghost" id="btn-toggle-services">전체 선택</button>
       </div>
-      <div class="service-select-grid">
     `;
-    html += active.map(s => {
-      const checked = selectedIds.includes(s.id);
-      const price = Number(s['price' + size.charAt(0).toUpperCase() + size.slice(1)]) || 0;
-      return `
-        <label class="service-chip${checked ? ' checked' : ''}">
-          <input type="checkbox" name="serviceIds" value="${s.id}"
-            ${checked ? 'checked' : ''}
-            data-price-small="${s.priceSmall || 0}"
-            data-price-medium="${s.priceMedium || 0}"
-            data-price-large="${s.priceLarge || 0}">
-          <span class="service-chip-name">${this.escapeHtml(s.name)}</span>
-          <span class="service-chip-price">${this.formatPriceShort(price)}</span>
-        </label>`;
-    }).join('');
-    html += '</div>';
+    for (const cat of catOrder) {
+      if (!grouped[cat] || grouped[cat].length === 0) continue;
+      html += `<div style="font-size:0.78rem;font-weight:700;color:var(--primary);margin:8px 0 4px;padding-bottom:2px;border-bottom:1px solid var(--primary-lighter)">${catLabels[cat] || cat}</div>`;
+      html += '<div class="service-select-grid">';
+      html += grouped[cat].map(s => {
+        const checked = selectedIds.includes(s.id);
+        const price = Number(s['price' + size.charAt(0).toUpperCase() + size.slice(1)]) || 0;
+        return `
+          <label class="service-chip${checked ? ' checked' : ''}">
+            <input type="checkbox" name="serviceIds" value="${s.id}"
+              ${checked ? 'checked' : ''}
+              data-price-small="${s.priceSmall || 0}"
+              data-price-medium="${s.priceMedium || 0}"
+              data-price-large="${s.priceLarge || 0}">
+            <span class="service-chip-name">${this.escapeHtml(s.name)}</span>
+            <span class="service-chip-price">${this.formatPriceShort(price)}</span>
+          </label>`;
+      }).join('');
+      html += '</div>';
+    }
     return html;
   },
 
