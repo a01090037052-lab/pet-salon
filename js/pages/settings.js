@@ -458,11 +458,11 @@ App.pages.settings = {
       const tplReminder = document.getElementById('tpl-reminder');
       const tplBirthday = document.getElementById('tpl-birthday');
       const tplComplete = document.getElementById('tpl-complete');
-      if (tplRevisit && tplAppointment && tplReminder && tplBirthday && tplComplete) {
+      if (tplRevisit && tplAtRisk && tplChurned && tplAppointment && tplReminder && tplBirthday && tplComplete) {
         await DB.setSetting('messageTemplates', {
           revisit: tplRevisit.value,
-          atRisk: tplAtRisk?.value || '',
-          churned: tplChurned?.value || '',
+          atRisk: tplAtRisk.value,
+          churned: tplChurned.value,
           appointment: tplAppointment.value,
           reminder: tplReminder.value,
           birthday: tplBirthday.value,

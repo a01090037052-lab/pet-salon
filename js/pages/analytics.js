@@ -71,6 +71,22 @@ App.pages.analytics = {
     });
     const avgCycle = cycleCount > 0 ? Math.round(totalCycles / cycleCount) : 0;
 
+    // ===== 견종 분석 =====
+    const breedRevMap = {};
+    records.forEach(r => {
+      const pet = petMap[r.petId];
+      const breed = pet?.breed || '미입력';
+      if (!breedRevMap[breed]) breedRevMap[breed] = { count: 0, revenue: 0, pets: new Set() };
+      breedRevMap[breed].count++;
+      breedRevMap[breed].revenue += App.getRecordAmount(r);
+      if (r.petId) breedRevMap[breed].pets.add(r.petId);
+    });
+    const breedList = Object.entries(breedRevMap)
+      .map(([name, stats]) => ({ name, count: stats.count, revenue: stats.revenue, petCount: stats.pets.size, avg: stats.count > 0 ? Math.round(stats.revenue / stats.count) : 0 }))
+      .sort((a, b) => b.revenue - a.revenue);
+    const breedMaxRev = breedList.length > 0 ? breedList[0].revenue || 1 : 1;
+    const breedTotal = breedList.reduce((s, b) => s + b.count, 0) || 1;
+
     // ===== 서비스 분석 =====
     const serviceRevMap = {};
     records.forEach(r => {
@@ -217,6 +233,38 @@ App.pages.analytics = {
               </div>
               <div style="height:5px;background:var(--border-light);border-radius:3px;overflow:hidden">
                 <div style="height:100%;width:${pct}%;background:${i < 3 ? 'var(--warning)' : 'var(--primary)'};border-radius:3px"></div>
+              </div>
+            </div>`;
+          }).join('')}
+        </div>
+      </div>
+      ` : ''}
+
+      <!-- 견종 분석 -->
+      <h3 style="font-size:1rem;font-weight:800;margin-bottom:12px;color:var(--text-primary)">&#x1F436; 견종 분석</h3>
+
+      ${breedList.length > 0 ? `
+      <div class="card" style="margin-bottom:20px">
+        <div class="card-header">
+          <span class="card-title">견종별 매출/방문</span>
+        </div>
+        <div class="card-body" style="padding:12px 16px">
+          ${breedList.slice(0, 10).map((b, i) => {
+            const pct = Math.max(5, Math.round((b.revenue / breedMaxRev) * 100));
+            const sharePct = Math.round((b.count / breedTotal) * 100);
+            return `<div style="margin-bottom:14px;padding-bottom:14px;${i < breedList.length - 1 ? 'border-bottom:1px solid var(--border)' : ''}">
+              <div style="display:flex;justify-content:space-between;margin-bottom:4px;align-items:center">
+                <span style="font-weight:700;font-size:0.9rem"><span style="color:${i < 3 ? 'var(--warning)' : 'var(--text-muted)'};margin-right:4px">${i + 1}</span>${App.escapeHtml(b.name)}</span>
+                <span style="font-size:0.82rem;font-weight:700;color:var(--primary)">${App.formatCurrency(b.revenue)}</span>
+              </div>
+              <div style="height:6px;background:var(--border-light);border-radius:3px;overflow:hidden;margin-bottom:6px">
+                <div style="height:100%;width:${pct}%;background:${i < 3 ? 'var(--warning)' : 'var(--primary)'};border-radius:3px"></div>
+              </div>
+              <div style="display:flex;gap:12px;font-size:0.75rem;color:var(--text-muted)">
+                <span>${b.petCount}마리</span>
+                <span>${b.count}회 방문</span>
+                <span>평균 ${App.formatCurrency(b.avg)}</span>
+                <span>비중 ${sharePct}%</span>
               </div>
             </div>`;
           }).join('')}

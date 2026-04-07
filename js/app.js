@@ -610,6 +610,62 @@ const App = {
     return badges[status] || 'badge-secondary';
   },
 
+  // 미용 리포트: 컨디션 기반 관리법 자동 매칭
+  getHomeCareAdvice(record) {
+    const tips = [];
+    const skin = record.skinStatus || [];
+    if (skin.includes('건조')) tips.push('피부가 건조해요. 보습 스프레이를 2~3일에 한 번 뿌려주세요.');
+    if (skin.includes('발적')) tips.push('피부에 발적이 있어요. 긁거나 핥지 않도록 주의해주시고, 지속되면 병원 방문을 권합니다.');
+    if (skin.includes('각질')) tips.push('각질이 보여요. 저자극 샴푸 사용을 추천합니다.');
+    if (skin.includes('습진')) tips.push('습진 증상이 있어요. 동물병원에서 진료받으시길 권합니다.');
+    if (record.earStatus === 'dirty') tips.push('귀에 경미한 오염이 있어요. 귀 세정제로 주 1회 관리해주세요.');
+    if (record.earStatus === 'infected') tips.push('귀에 염증이 의심돼요. 동물병원 방문을 꼭 권합니다.');
+    if (record.mattingLevel === 'mild') tips.push('털 엉킴이 약간 있었어요. 주 2~3회 빗질을 해주세요.');
+    if (record.mattingLevel === 'severe') tips.push('털 엉킴이 심했어요. 매일 5분 빗질이 필요합니다. 슬리커 브러시를 추천해요.');
+    if (tips.length === 0 && record.condition) tips.push('컨디션이 좋아요! 지금처럼 관리해주시면 됩니다.');
+    return tips;
+  },
+
+  // 미용 리포트 텍스트 생성
+  async buildGroomingReport(record) {
+    const customer = record.customerId ? await DB.get('customers', record.customerId) : null;
+    const pet = record.petId ? await DB.get('pets', record.petId) : null;
+    const shopName = await DB.getSetting('shopName') || '펫살롱';
+    const conditionLabels = { good: '좋음', normal: '보통', caution: '주의' };
+    const earLabels = { clean: '깨끗', dirty: '경미한 오염', infected: '염증 의심' };
+    const mattingLabels = { none: '없음', mild: '경미', severe: '심함' };
+
+    let lines = [];
+    lines.push(`[${shopName}] ${pet?.name || ''} 미용 리포트`);
+    lines.push('');
+    lines.push(`날짜: ${App.formatDate(record.date)}`);
+    const svcNames = (record.serviceNames || []).join(', ');
+    if (svcNames) lines.push(`서비스: ${svcNames}`);
+    if (record.groomer) lines.push(`미용사: ${record.groomer}`);
+    lines.push('');
+
+    if (record.condition) lines.push(`컨디션: ${conditionLabels[record.condition] || record.condition}`);
+    if (record.skinStatus && record.skinStatus.length) lines.push(`피부: ${record.skinStatus.join(', ')}`);
+    if (record.earStatus) lines.push(`귀: ${earLabels[record.earStatus] || record.earStatus}`);
+    if (record.mattingLevel) lines.push(`엉킴: ${mattingLabels[record.mattingLevel] || record.mattingLevel}`);
+
+    const tips = this.getHomeCareAdvice(record);
+    if (tips.length > 0) {
+      lines.push('');
+      lines.push('집에서 관리법:');
+      tips.forEach(t => lines.push(`- ${t}`));
+    }
+
+    if (record.nextVisitDate) {
+      lines.push('');
+      lines.push(`다음 미용 추천: ${App.formatDate(record.nextVisitDate)}`);
+    }
+
+    lines.push('');
+    lines.push('감사합니다!');
+    return lines.join('\n');
+  },
+
   getRelativeTime(dateStr) {
     const days = this.getDaysAgo(dateStr);
     if (days === null) return '-';

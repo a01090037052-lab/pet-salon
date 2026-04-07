@@ -414,6 +414,7 @@
           <li><a href="#data-management">데이터 관리</a></li>
           <li><a href="#troubleshooting">문제 해결</a></li>
           <li><a href="#maintenance">유지보수 불가 시 대처</a></li>
+          <li><a href="#excel-notion">엑셀/노션 연동 가이드</a></li>
         </ul>
       </div>
 
@@ -976,6 +977,75 @@
         <div class="warning-box">
           <strong>매우 중요</strong>
           <p>무료 도구를 사용할 때의 위험성을 항상 인식하세요. 사업의 핵심 데이터는 반드시 정기적으로 백업하고, 여러 위치에 보관해야 합니다.</p>
+        </div>
+      </section>
+
+      <!-- 10. 엑셀/노션 연동 가이드 -->
+      <section id="excel-notion">
+        <h2>엑셀/노션 연동 가이드</h2>
+
+        <h3>CSV 파일을 엑셀에서 열기</h3>
+        <p>펫살롱에서 내보낸 CSV 파일을 엑셀에서 바로 활용할 수 있습니다.</p>
+        <ol>
+          <li><strong>CSV 다운로드</strong>: 매출 페이지 또는 미용 기록 > 세무 자료 내보내기 > 기간 선택 > CSV 다운로드</li>
+          <li><strong>엑셀에서 열기</strong>: 다운로드된 CSV 파일을 더블클릭하면 엑셀에서 자동으로 열립니다</li>
+          <li><strong>한글 깨짐 시</strong>: 엑셀 > 데이터 > 텍스트/CSV 가져오기 > 파일 선택 > 인코딩 "UTF-8" 확인 후 가져오기</li>
+        </ol>
+
+        <h3>엑셀에서 매출 분석하기</h3>
+        <p>CSV를 열면 다음 열이 포함됩니다:</p>
+        <p><code>날짜, 고객명, 반려견, 견종, 서비스, 기본금액, 할인, 추가요금, 최종금액, 결제수단, 담당 미용사, 컨디션, 피부, 귀, 엉킴, 메모</code></p>
+
+        <h4>피벗 테이블로 분석 (엑셀)</h4>
+        <ol>
+          <li>데이터 영역 선택 후 <strong>삽입 > 피벗 테이블</strong></li>
+          <li><strong>견종별 매출</strong>: 행에 "견종", 값에 "최종금액"(합계)</li>
+          <li><strong>월별 매출</strong>: 행에 "날짜"(월 그룹화), 값에 "최종금액"(합계)</li>
+          <li><strong>미용사별 실적</strong>: 행에 "담당 미용사", 값에 "최종금액"(합계) + "최종금액"(개수)</li>
+          <li><strong>서비스 인기도</strong>: 행에 "서비스", 값에 "최종금액"(개수)</li>
+        </ol>
+
+        <div class="tip-box">
+          <div class="tip-icon">💡</div>
+          <div class="tip-content">
+            <strong>구글 스프레드시트 사용 시</strong>
+            <p>구글 드라이브에 CSV를 업로드하면 구글 스프레드시트에서 바로 열 수 있습니다. 피벗 테이블도 동일하게 사용 가능합니다.</p>
+          </div>
+        </div>
+
+        <h3>노션(Notion)에서 활용하기</h3>
+        <p>노션에 매출 데이터를 가져와서 데이터베이스로 관리할 수 있습니다.</p>
+
+        <h4>CSV를 노션으로 가져오기</h4>
+        <ol>
+          <li>노션에서 새 페이지 생성</li>
+          <li><strong>/table</strong> 입력 > "Table - Full page" 선택</li>
+          <li>우측 상단 <strong>...</strong> 메뉴 > <strong>Merge with CSV</strong> (CSV 병합)</li>
+          <li>다운로드한 CSV 파일 선택</li>
+          <li>데이터가 테이블로 자동 생성됩니다</li>
+        </ol>
+
+        <h4>노션 데이터베이스 활용 팁</h4>
+        <ul>
+          <li><strong>필터</strong>: 견종별, 결제수단별, 미용사별로 필터링</li>
+          <li><strong>정렬</strong>: 날짜순, 금액순 정렬</li>
+          <li><strong>뷰 전환</strong>: 테이블, 보드, 캘린더, 갤러리 등 다양한 뷰 활용</li>
+          <li><strong>수식</strong>: 노션 수식으로 월별 합계, 평균 단가 계산 가능</li>
+        </ul>
+
+        <h4>추천 워크플로우</h4>
+        <ol>
+          <li>매월 1일에 지난달 CSV 내보내기</li>
+          <li>노션 "매출 기록" 데이터베이스에 CSV 가져오기</li>
+          <li>노션에서 월별 요약 페이지 작성</li>
+        </ol>
+
+        <div class="tip-box">
+          <div class="tip-icon">💡</div>
+          <div class="tip-content">
+            <strong>노션 무료 플랜 주의</strong>
+            <p>노션 무료 플랜에서도 CSV 가져오기와 데이터베이스 기능을 사용할 수 있습니다. 다만 파일 업로드 용량에 제한이 있으니, 너무 오래된 데이터는 분기별로 나눠서 관리하세요.</p>
+          </div>
         </div>
       </section>
 

@@ -382,6 +382,45 @@ App.pages.records = {
               <input type="number" id="f-extraCharge" value="${record.extraCharge || ''}" placeholder="0" min="0" step="1000">
             </div>
           </div>
+          <!-- 컨디션 체크 (리포트용) -->
+          <div style="border:1px solid var(--border);border-radius:var(--radius);padding:14px;margin-bottom:16px">
+            <div style="font-weight:700;font-size:0.9rem;margin-bottom:12px">컨디션 체크 <span style="font-weight:400;color:var(--text-muted);font-size:0.8rem">(선택)</span></div>
+            <div class="form-group" style="margin-bottom:10px">
+              <label class="form-label" style="font-size:0.82rem">전체 컨디션</label>
+              <div id="f-condition-chips" style="display:flex;gap:6px">
+                <button type="button" class="condition-chip${record.condition === 'good' ? ' active' : ''}" data-field="condition" data-value="good" style="flex:1;padding:8px;border:1.5px solid var(--border);border-radius:8px;background:${record.condition === 'good' ? 'var(--success-light)' : 'var(--bg-white)'};cursor:pointer;font-size:0.82rem;font-weight:600">좋음</button>
+                <button type="button" class="condition-chip${record.condition === 'normal' ? ' active' : ''}" data-field="condition" data-value="normal" style="flex:1;padding:8px;border:1.5px solid var(--border);border-radius:8px;background:${record.condition === 'normal' ? 'var(--warning-light)' : 'var(--bg-white)'};cursor:pointer;font-size:0.82rem;font-weight:600">보통</button>
+                <button type="button" class="condition-chip${record.condition === 'caution' ? ' active' : ''}" data-field="condition" data-value="caution" style="flex:1;padding:8px;border:1.5px solid var(--border);border-radius:8px;background:${record.condition === 'caution' ? '#FEE2E2' : 'var(--bg-white)'};cursor:pointer;font-size:0.82rem;font-weight:600">주의</button>
+              </div>
+              <input type="hidden" id="f-condition" value="${record.condition || ''}">
+            </div>
+            <div class="form-group" style="margin-bottom:10px">
+              <label class="form-label" style="font-size:0.82rem">피부 상태</label>
+              <div style="display:flex;gap:6px;flex-wrap:wrap">
+                ${['정상','건조','발적','각질','습진'].map(s => `<label class="checkbox-label" style="font-size:0.82rem"><input type="checkbox" name="skinStatus" value="${s}" ${(record.skinStatus || []).includes(s) ? 'checked' : ''}> ${s}</label>`).join('')}
+              </div>
+            </div>
+            <div class="form-row" style="margin-bottom:0">
+              <div class="form-group" style="margin-bottom:0">
+                <label class="form-label" style="font-size:0.82rem">귀 상태</label>
+                <select id="f-earStatus" style="font-size:0.85rem;padding:6px 10px">
+                  <option value="">선택 안 함</option>
+                  <option value="clean" ${record.earStatus === 'clean' ? 'selected' : ''}>깨끗</option>
+                  <option value="dirty" ${record.earStatus === 'dirty' ? 'selected' : ''}>경미한 오염</option>
+                  <option value="infected" ${record.earStatus === 'infected' ? 'selected' : ''}>염증 의심</option>
+                </select>
+              </div>
+              <div class="form-group" style="margin-bottom:0">
+                <label class="form-label" style="font-size:0.82rem">엉킴 정도</label>
+                <select id="f-mattingLevel" style="font-size:0.85rem;padding:6px 10px">
+                  <option value="">선택 안 함</option>
+                  <option value="none" ${record.mattingLevel === 'none' ? 'selected' : ''}>없음</option>
+                  <option value="mild" ${record.mattingLevel === 'mild' ? 'selected' : ''}>경미</option>
+                  <option value="severe" ${record.mattingLevel === 'severe' ? 'selected' : ''}>심함</option>
+                </select>
+              </div>
+            </div>
+          </div>
           <div class="form-group">
             <label class="form-label">메모</label>
             <textarea id="f-memo" placeholder="미용 중 특이사항, 다음 방문 시 참고할 내용 등" maxlength="2000">${App.escapeHtml(record.memo || '')}</textarea>
@@ -503,6 +542,25 @@ App.pages.records = {
       });
     });
 
+    // Condition chip buttons
+    document.querySelectorAll('.condition-chip').forEach(chip => {
+      chip.addEventListener('click', () => {
+        const field = chip.dataset.field;
+        const hiddenInput = document.getElementById('f-' + field);
+        const siblings = chip.parentElement.querySelectorAll('.condition-chip');
+        const wasActive = chip.classList.contains('active');
+        siblings.forEach(c => { c.classList.remove('active'); c.style.background = 'var(--bg-white)'; });
+        if (!wasActive) {
+          chip.classList.add('active');
+          const colors = { good: 'var(--success-light)', normal: 'var(--warning-light)', caution: '#FEE2E2' };
+          chip.style.background = colors[chip.dataset.value] || 'var(--bg-white)';
+          hiddenInput.value = chip.dataset.value;
+        } else {
+          hiddenInput.value = '';
+        }
+      });
+    });
+
     const origCustomerOnChange = async (cid) => {
       const petSelect = document.getElementById('f-petId');
       petSelect.innerHTML = '<option value="">반려견 선택</option>' + await App.getPetOptions(cid);
@@ -547,6 +605,12 @@ App.pages.records = {
       const memo = document.getElementById('f-memo').value.trim();
       const paymentMethod = document.getElementById('f-paymentMethod').value;
 
+      // 컨디션 체크 필드
+      const condition = document.getElementById('f-condition')?.value || '';
+      const skinStatus = []; document.querySelectorAll('input[name="skinStatus"]:checked').forEach(cb => skinStatus.push(cb.value));
+      const earStatus = document.getElementById('f-earStatus')?.value || '';
+      const mattingLevel = document.getElementById('f-mattingLevel')?.value || '';
+
       // Auto-calculate nextVisitDate from pet's groomingCycle
       let nextVisitDate = '';
       if (petId) {
@@ -579,7 +643,7 @@ App.pages.records = {
       const appointmentId = document.getElementById('f-appointmentId')?.value || null;
       const status = 'completed';
 
-      const data = { customerId, petId, date, groomer, nextVisitDate, serviceIds, serviceNames, totalPrice, discount, extraCharge, finalPrice, memo, paymentMethod, appointmentId, status };
+      const data = { customerId, petId, date, groomer, nextVisitDate, serviceIds, serviceNames, totalPrice, discount, extraCharge, finalPrice, memo, paymentMethod, appointmentId, status, condition, skinStatus, earStatus, mattingLevel };
 
       if (id) {
         const existing = await DB.get('records', id);
@@ -649,6 +713,8 @@ App.pages.records = {
 
         App.handleRoute();
 
+        const hasCondition = condition || skinStatus.length || earStatus || mattingLevel;
+
         App.showModal({
           title: '미용 기록 저장 완료',
           hideFooter: true,
@@ -659,6 +725,8 @@ App.pages.records = {
               <div style="display:flex;flex-direction:column;gap:10px;max-width:280px;margin:0 auto">
                 <button class="btn btn-primary" id="post-save-appt">&#x1F4C5; 다음 예약 등록${nextVisitDate ? ' (' + App.formatDate(nextVisitDate) + ')' : ''}</button>
                 ${customerPhone ? `<button class="btn btn-success" id="post-save-sms">&#x1F4AC; 미용 완료 문자 보내기</button>` : ''}
+                ${hasCondition && customerPhone ? `<button class="btn btn-success" id="post-save-report-sms" style="background:var(--info)">&#x1F4CB; 리포트 문자 보내기</button>` : ''}
+                ${hasCondition ? `<button class="btn btn-secondary" id="post-save-report-copy">&#x1F4CB; 리포트 복사 (카톡용)</button>` : ''}
                 <button class="btn btn-secondary" id="post-save-close">완료</button>
               </div>
             </div>
@@ -681,6 +749,22 @@ App.pages.records = {
           // Don't close modal - just update button to show sent
           const btn = document.getElementById('post-save-sms');
           if (btn) { btn.textContent = '\u2713 발송됨'; btn.disabled = true; btn.style.opacity = '0.6'; }
+        });
+        // 리포트 문자 보내기
+        document.getElementById('post-save-report-sms')?.addEventListener('click', async () => {
+          const report = await App.buildGroomingReport(data);
+          App.openSms(customerPhone, report);
+          const btn = document.getElementById('post-save-report-sms');
+          if (btn) { btn.textContent = '\u2713 발송됨'; btn.disabled = true; btn.style.opacity = '0.6'; }
+        });
+        // 리포트 복사 (카톡용)
+        document.getElementById('post-save-report-copy')?.addEventListener('click', async () => {
+          const report = await App.buildGroomingReport(data);
+          navigator.clipboard.writeText(report).then(() => {
+            App.showToast('리포트가 복사되었습니다. 카톡에 붙여넣기 하세요.');
+            const btn = document.getElementById('post-save-report-copy');
+            if (btn) { btn.textContent = '\u2713 복사됨'; btn.disabled = true; btn.style.opacity = '0.6'; }
+          });
         });
         document.getElementById('post-save-close')?.addEventListener('click', () => {
           App.closeModal();
@@ -1851,7 +1935,10 @@ App.pages.records = {
       lines.push('');
 
       // 상세 내역
-      lines.push(['날짜', '고객명', '반려견', '서비스', '기본금액', '할인', '추가요금', '최종금액', '결제수단', '담당 미용사', '메모'].map(csvEsc).join(','));
+      const conditionLabels = { good: '좋음', normal: '보통', caution: '주의' };
+      const earLabels = { clean: '깨끗', dirty: '경미한 오염', infected: '염증 의심' };
+      const mattingLabels = { none: '없음', mild: '경미', severe: '심함' };
+      lines.push(['날짜', '고객명', '반려견', '견종', '서비스', '기본금액', '할인', '추가요금', '최종금액', '결제수단', '담당 미용사', '컨디션', '피부', '귀', '엉킴', '메모'].map(csvEsc).join(','));
 
       filtered.forEach(r => {
         const customer = customerMap[r.customerId];
@@ -1862,13 +1949,18 @@ App.pages.records = {
           r.date || '',
           customer?.name || '',
           pet?.name || '',
+          pet?.breed || '',
           serviceNames,
-          App.getRecordAmount(r),
+          Number(r.totalPrice) || 0,
           Number(r.discount) || 0,
           Number(r.extraCharge) || 0,
           App.getRecordAmount(r),
           payLabel,
           r.groomer || '',
+          conditionLabels[r.condition] || '',
+          (r.skinStatus || []).join('/'),
+          earLabels[r.earStatus] || '',
+          mattingLabels[r.mattingLevel] || '',
           r.memo || ''
         ].map(csvEsc).join(','));
       });

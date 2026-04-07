@@ -488,6 +488,8 @@ App.pages.customers = {
     document.getElementById('msg-copy')?.addEventListener('click', () => {
       navigator.clipboard.writeText(previewEl.value).then(() => {
         App.showToast('메시지가 복사되었습니다. 카톡에 붙여넣기 하세요.');
+      }).catch(() => {
+        App.showToast('복사에 실패했습니다.', 'error');
       });
     });
   },

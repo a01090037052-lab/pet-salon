@@ -316,19 +316,19 @@ App.pages.dashboard = {
           </div>
           <div class="card-body" style="padding:16px">
             <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:12px">
-              <div style="text-align:center;padding:12px;border-radius:var(--radius);background:var(--success-light);cursor:pointer" onclick="App.navigate('customers');setTimeout(()=>{const s=document.getElementById('customer-visit-filter');if(s){s.value='normal';s.dispatchEvent(new Event('change'))}},200)">
+              <div style="text-align:center;padding:12px;border-radius:var(--radius);background:var(--success-light);cursor:pointer" onclick="sessionStorage.setItem('customer-filter',JSON.stringify({visitStatus:'normal'}));App.navigate('customers')">
                 <div style="font-size:1.4rem;font-weight:800;color:var(--success)">${visitSummary.normal}</div>
                 <div style="font-size:0.78rem;color:var(--text-secondary);margin-top:2px">정상</div>
               </div>
-              <div style="text-align:center;padding:12px;border-radius:var(--radius);background:var(--warning-light);cursor:pointer" onclick="App.navigate('customers');setTimeout(()=>{const s=document.getElementById('customer-visit-filter');if(s){s.value='remind';s.dispatchEvent(new Event('change'))}},200)">
+              <div style="text-align:center;padding:12px;border-radius:var(--radius);background:var(--warning-light);cursor:pointer" onclick="sessionStorage.setItem('customer-filter',JSON.stringify({visitStatus:'remind'}));App.navigate('customers')">
                 <div style="font-size:1.4rem;font-weight:800;color:var(--warning)">${visitSummary.remind}</div>
                 <div style="font-size:0.78rem;color:var(--text-secondary);margin-top:2px">리마인드</div>
               </div>
-              <div style="text-align:center;padding:12px;border-radius:var(--radius);background:${visitSummary['at-risk'] > 0 ? '#FEE2E2' : 'var(--bg)'};cursor:pointer" onclick="App.navigate('customers');setTimeout(()=>{const s=document.getElementById('customer-visit-filter');if(s){s.value='at-risk';s.dispatchEvent(new Event('change'))}},200)">
+              <div style="text-align:center;padding:12px;border-radius:var(--radius);background:${visitSummary['at-risk'] > 0 ? '#FEE2E2' : 'var(--bg)'};cursor:pointer" onclick="sessionStorage.setItem('customer-filter',JSON.stringify({visitStatus:'at-risk'}));App.navigate('customers')">
                 <div style="font-size:1.4rem;font-weight:800;color:var(--danger)">${visitSummary['at-risk']}</div>
                 <div style="font-size:0.78rem;color:var(--text-secondary);margin-top:2px">이탈위험</div>
               </div>
-              <div style="text-align:center;padding:12px;border-radius:var(--radius);background:var(--bg);cursor:pointer" onclick="App.navigate('customers');setTimeout(()=>{const s=document.getElementById('customer-visit-filter');if(s){s.value='churned';s.dispatchEvent(new Event('change'))}},200)">
+              <div style="text-align:center;padding:12px;border-radius:var(--radius);background:var(--bg);cursor:pointer" onclick="sessionStorage.setItem('customer-filter',JSON.stringify({visitStatus:'churned'}));App.navigate('customers')">
                 <div style="font-size:1.4rem;font-weight:800;color:var(--text-muted)">${visitSummary.churned}</div>
                 <div style="font-size:0.78rem;color:var(--text-secondary);margin-top:2px">이탈</div>
               </div>
@@ -364,7 +364,7 @@ App.pages.dashboard = {
                   </div>
                 </div>
                 <div class="alert-item-actions" style="display:flex;gap:4px;flex-shrink:0">
-                  <button class="btn btn-sm btn-ghost" onclick="event.stopPropagation();navigator.clipboard.writeText(decodeURIComponent('${a._smsBody}')).then(()=>App.showToast('메시지가 복사되었습니다.'))" title="메시지 복사 (카톡용)">복사</button>
+                  <button class="btn btn-sm btn-ghost btn-copy-sms" data-sms="${App.escapeHtml(decodeURIComponent(a._smsBody))}" onclick="event.stopPropagation()" title="메시지 복사 (카톡용)">복사</button>
                   <a href="sms:${App.escapeHtml((a.customer.phone || '').replace(/\D/g, ''))}${smsSep}body=${a._smsBody}" class="btn btn-sm btn-success" onclick="event.stopPropagation()" title="문자 보내기">문자</a>
                   <a href="tel:${App.escapeHtml((a.customer.phone || '').replace(/\D/g, ''))}" class="btn btn-sm btn-secondary" onclick="event.stopPropagation()" title="전화 걸기">전화</a>
                   <button class="btn btn-sm btn-primary" onclick="App.pages.appointments.showForm(null, ${a.customer.id}, {petId:${a.pet.id}})" style="flex-shrink:0">예약</button>
@@ -496,6 +496,18 @@ App.pages.dashboard = {
         body.style.display = isOpen ? 'none' : 'block';
         const chevron = header.querySelector('.dash-chevron');
         if (chevron) chevron.style.transform = isOpen ? '' : 'rotate(180deg)';
+      });
+    });
+
+    // SMS copy buttons
+    document.querySelectorAll('.btn-copy-sms').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const msg = btn.dataset.sms || '';
+        navigator.clipboard.writeText(msg).then(() => {
+          App.showToast('메시지가 복사되었습니다.');
+        }).catch(() => {
+          App.showToast('복사에 실패했습니다.', 'error');
+        });
       });
     });
 
