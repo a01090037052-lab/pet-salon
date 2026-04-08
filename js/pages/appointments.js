@@ -25,6 +25,7 @@ App.pages.appointments = {
     const customerMap = {}; customers.forEach(c => customerMap[c.id] = c);
     const petMap = {}; pets.forEach(p => petMap[p.id] = p);
     const serviceMap = {}; services.forEach(s => serviceMap[s.id] = s.name);
+    this._customerMap = customerMap;
 
     container.innerHTML = `
       <div class="page-header">
@@ -258,16 +259,22 @@ App.pages.appointments = {
 
     const today = App.getToday();
 
-    // 이 달의 예약 수 카운트 (항상 DB 데이터 사용)
+    // 이 달의 예약 데이터 그룹핑
     const monthPrefix = `${year}-${String(month + 1).padStart(2, '0')}`;
     const dateCounts = {};
+    const dateAppts = {};
     if (this._appointments) {
       this._appointments.forEach(a => {
         if (a.date && a.date.startsWith(monthPrefix) && a.status !== 'cancelled') {
           dateCounts[a.date] = (dateCounts[a.date] || 0) + 1;
+          if (!dateAppts[a.date]) dateAppts[a.date] = [];
+          dateAppts[a.date].push(a);
         }
       });
+      // 시간순 정렬
+      Object.values(dateAppts).forEach(arr => arr.sort((a, b) => (a.time || '').localeCompare(b.time || '')));
     }
+    const customerMap = this._customerMap || {};
 
     let cellsHtml = '';
     // 빈 칸 (이전 달)
@@ -286,10 +293,26 @@ App.pages.appointments = {
       if (count >= 3) colorClass = 'cal-red';
       else if (count >= 1) colorClass = 'cal-blue';
 
+      // 예약 미리보기 (최대 3건)
+      let previewHtml = '';
+      if (!isClosed && count > 0) {
+        const appts = dateAppts[dateStr] || [];
+        previewHtml = appts.slice(0, 3).map(a => {
+          const cName = customerMap[a.customerId]?.name || '?';
+          const shortName = cName.length > 3 ? cName.slice(0, 3) + '..' : cName;
+          return '<div style="font-size:0.55rem;line-height:1.3;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:var(--text-secondary)">' +
+            '<span style="color:var(--primary);font-weight:600">' + (a.time || '') + '</span> ' + App.escapeHtml(shortName) + '</div>';
+        }).join('');
+        if (count > 3) previewHtml += '<div style="font-size:0.5rem;color:var(--text-muted);text-align:center">+' + (count - 3) + '건</div>';
+      }
+
       cellsHtml += `
         <div class="calendar-cell ${isToday ? 'today' : ''} ${isClosed ? 'closed' : ''}" data-date="${dateStr}" style="${isClosed ? 'background:var(--bg);opacity:0.6' : ''}">
-          <span class="cal-day-num">${d}</span>
-          ${isClosed ? '<span style="font-size:0.6rem;color:var(--danger);font-weight:700">휴무</span>' : `<button class="cal-count-btn ${colorClass}" title="${dateStr}: ${count}건">${count}</button>`}
+          <div style="display:flex;justify-content:space-between;align-items:center">
+            <span class="cal-day-num">${d}</span>
+            ${isClosed ? '<span style="font-size:0.6rem;color:var(--danger);font-weight:700">휴무</span>' : count > 0 ? `<span class="cal-count-btn ${colorClass}" style="font-size:0.6rem;min-width:16px;height:16px;line-height:16px;padding:0 3px">${count}</span>` : ''}
+          </div>
+          ${previewHtml}
         </div>`;
     }
 

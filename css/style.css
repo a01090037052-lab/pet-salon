@@ -1554,16 +1554,23 @@ a.stat-card { display: flex; }
   .filter-bar { padding: 8px 10px; flex-direction: column; gap: 6px; }
   .filter-bar > * { width: 100% !important; min-width: 0 !important; }
   .data-table th, .data-table td { padding: 10px 12px; font-size: 0.82rem; }
-  .btn { padding: 10px 16px; }
-  .btn-sm { min-height: 40px; padding: 8px 14px; }
+  .btn { padding: 10px 16px; min-height: 44px; }
+  .btn-sm { min-height: 44px; padding: 8px 14px; }
+  .btn-icon { min-width: 44px; min-height: 44px; }
   .stat-card { padding: 16px; }
   .stat-value { font-size: 1.3rem; }
   .network-mode { display: block; }
+  /* iOS 자동 줌 방지: 입력 필드 16px 이상 */
+  input, select, textarea { font-size: 16px !important; }
+  /* 페이지 액션 모바일 정렬 */
+  .page-actions { display: flex; gap: 6px; flex-wrap: wrap; }
+  .page-actions select { flex: 1; min-width: 0; }
+  .page-actions .btn { white-space: nowrap; }
   /* Hide less important columns on mobile */
   .hide-mobile { display: none !important; }
   /* Better table on mobile */
   .data-table th, .data-table td { padding: 8px 10px; font-size: 0.8rem; }
-  .data-table .table-actions { gap: 0; }
+  .data-table .table-actions { gap: 2px; }
   .data-table .btn-icon { width: 30px; height: 30px; }
   .btn { min-height: 44px; }
   .btn-sm { min-height: 44px; }
@@ -1733,7 +1740,6 @@ a.stat-card { display: flex; }
 }
 /* cal-cells removed - cells injected directly into grid */
 .calendar-cell {
-  aspect-ratio: 1;
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -2561,9 +2567,9 @@ a.stat-card { display: flex; }
 
 /* ========== Responsive additions ========== */
 @media (max-width: 768px) {
-  .calendar-cell { min-height: 40px; }
+  .calendar-cell { min-height: 52px; }
   .cal-day-num { font-size: 0.7rem; }
-  .cal-count-btn { font-size: 0.6rem; padding: 0 4px; }
+  .cal-count-btn { font-size: 0.55rem; padding: 0 3px; }
   .pet-photo-upload { flex-direction: column; align-items: flex-start; }
 
   /* Show mobile cards, hide tables (only in card-body that contains mobile-card-list) */

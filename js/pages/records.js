@@ -1943,10 +1943,7 @@ App.pages.records = {
       lines.push('');
 
       // 상세 내역
-      const conditionLabels = { good: '좋음', normal: '보통', caution: '주의' };
-      const earLabels = { clean: '깨끗', dirty: '경미한 오염', infected: '염증 의심' };
-      const mattingLabels = { none: '없음', mild: '경미', severe: '심함' };
-      lines.push(['날짜', '고객명', '반려견', '견종', '서비스', '기본금액', '할인', '추가요금', '최종금액', '결제수단', '담당 미용사', '컨디션', '피부', '귀', '엉킴', '메모'].map(csvEsc).join(','));
+      lines.push(['날짜', '고객명', '반려견', '견종', '서비스', '기본금액', '할인', '추가요금', '최종금액', '결제수단', '담당 미용사', '메모'].map(csvEsc).join(','));
 
       filtered.forEach(r => {
         const customer = customerMap[r.customerId];
@@ -1965,10 +1962,6 @@ App.pages.records = {
           App.getRecordAmount(r),
           payLabel,
           r.groomer || '',
-          conditionLabels[r.condition] || '',
-          (r.skinStatus || []).join('/'),
-          earLabels[r.earStatus] || '',
-          mattingLabels[r.mattingLevel] || '',
           r.memo || ''
         ].map(csvEsc).join(','));
       });
