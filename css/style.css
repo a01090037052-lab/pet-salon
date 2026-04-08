@@ -1541,9 +1541,9 @@ a.stat-card { display: flex; }
   .page-title { font-size: 1.4rem; }
   .page-actions { width: 100%; }
   .page-actions .search-box { flex: 1; max-width: none; }
-  .modal { max-width: 100%; border-radius: var(--radius-lg) var(--radius-lg) 0 0; margin: 0; max-height: 90dvh; position: fixed; bottom: 0; touch-action: pan-y; overflow-x: hidden; }
+  .modal { max-width: 100%; border-radius: var(--radius-lg) var(--radius-lg) 0 0; margin: 0; max-height: 85vh; max-height: 85dvh; touch-action: pan-y; overflow-x: hidden; }
   .modal-overlay { align-items: flex-end; padding: 0; }
-  .modal-body { max-height: calc(70dvh); overflow-y: auto; -webkit-overflow-scrolling: touch; }
+  .modal-body { max-height: 65vh; max-height: 65dvh; overflow-y: auto; -webkit-overflow-scrolling: touch; }
   .detail-header { flex-direction: column; text-align: center; padding: 20px; }
   .detail-header > div:last-child { margin-left: 0; }
   .detail-meta { justify-content: center; }
@@ -2625,9 +2625,8 @@ a.stat-card { display: flex; }
     font-size: 0.82rem;
   }
 
-  /* #13 모달 키보드 대응 */
+  /* #13 모달 키보드 대응 - safe area */
   .modal {
-    max-height: 75vh;
     padding-bottom: env(safe-area-inset-bottom);
   }
 
