@@ -1,26 +1,33 @@
 // ========== Analytics (분석) Page ==========
 App.pages.analytics = {
   _period: '1month',
+  _customStart: '',
+  _customEnd: '',
 
   async render(container) {
     const period = this._period;
     const today = App.getToday();
     const now = new Date();
 
-    // 기간 계산
-    const periodStart = (() => {
-      const d = new Date();
+    // 기간 계산 (월초 기준)
+    let periodStart, periodEnd = today;
+    if (period === 'custom' && this._customStart && this._customEnd) {
+      periodStart = this._customStart;
+      periodEnd = this._customEnd;
+    } else {
+      const d = new Date(now.getFullYear(), now.getMonth(), 1); // 이번 달 1일
       if (period === '1month') d.setMonth(d.getMonth() - 1);
       else if (period === '3months') d.setMonth(d.getMonth() - 3);
       else if (period === '6months') d.setMonth(d.getMonth() - 6);
       else if (period === '1year') d.setFullYear(d.getFullYear() - 1);
-      return App.formatLocalDate(d);
-    })();
-    const periodLabels = { '1month': '최근 1개월', '3months': '최근 3개월', '6months': '최근 6개월', '1year': '최근 1년' };
+      else d.setMonth(d.getMonth()); // thisMonth - 이번 달 1일
+      periodStart = App.formatLocalDate(d);
+    }
+    const periodLabels = { '1month': '최근 1개월', '3months': '최근 3개월', '6months': '최근 6개월', '1year': '최근 1년', 'custom': '직접 설정' };
 
     // 데이터 로드
     const [records, customers, pets, services] = await Promise.all([
-      DB.getByDateRange('records', 'date', periodStart, '9999-12-31'),
+      DB.getByDateRange('records', 'date', periodStart, periodEnd + 'z'),
       DB.getAllLight('customers', ['memo', 'address']),
       DB.getAllLight('pets', ['photo', 'temperament', 'healthNotes', 'preferredStyle']),
       DB.getAll('services')
@@ -114,7 +121,7 @@ App.pages.analytics = {
       monthlyRevMap[mon] = (monthlyRevMap[mon] || 0) + App.getRecordAmount(r);
       monthlyCntMap[mon] = (monthlyCntMap[mon] || 0) + 1;
     });
-    const months = period === '1year' ? 12 : period === '6months' ? 6 : period === '3months' ? 3 : 1;
+    const months = period === '1year' ? 12 : period === '6months' ? 6 : period === '3months' ? 3 : period === 'custom' ? Math.max(1, Math.ceil((new Date(periodEnd) - new Date(periodStart)) / (1000*60*60*24*30))) : 1;
     const avgPriceByMonth = [];
     for (let i = months - 1; i >= 0; i--) {
       const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
@@ -179,14 +186,22 @@ App.pages.analytics = {
       </div>
 
       <!-- 기간 선택 -->
-      <div style="display:flex;gap:4px;margin-bottom:20px;background:var(--bg-white);border-radius:var(--radius);padding:4px;box-shadow:var(--shadow-xs)">
+      <div style="display:flex;gap:4px;margin-bottom:8px;background:var(--bg-white);border-radius:var(--radius);padding:4px;box-shadow:var(--shadow-xs)">
         <button class="analytics-period${period === '1month' ? ' active' : ''}" data-period="1month" style="flex:1;padding:10px;border:none;border-radius:8px;font-weight:600;font-size:0.82rem;cursor:pointer;background:${period === '1month' ? 'var(--primary)' : 'transparent'};color:${period === '1month' ? '#fff' : 'var(--text-secondary)'}">1개월</button>
         <button class="analytics-period${period === '3months' ? ' active' : ''}" data-period="3months" style="flex:1;padding:10px;border:none;border-radius:8px;font-weight:600;font-size:0.82rem;cursor:pointer;background:${period === '3months' ? 'var(--primary)' : 'transparent'};color:${period === '3months' ? '#fff' : 'var(--text-secondary)'}">3개월</button>
         <button class="analytics-period${period === '6months' ? ' active' : ''}" data-period="6months" style="flex:1;padding:10px;border:none;border-radius:8px;font-weight:600;font-size:0.82rem;cursor:pointer;background:${period === '6months' ? 'var(--primary)' : 'transparent'};color:${period === '6months' ? '#fff' : 'var(--text-secondary)'}">6개월</button>
         <button class="analytics-period${period === '1year' ? ' active' : ''}" data-period="1year" style="flex:1;padding:10px;border:none;border-radius:8px;font-weight:600;font-size:0.82rem;cursor:pointer;background:${period === '1year' ? 'var(--primary)' : 'transparent'};color:${period === '1year' ? '#fff' : 'var(--text-secondary)'}">1년</button>
+        <button class="analytics-period${period === 'custom' ? ' active' : ''}" data-period="custom" style="flex:1;padding:10px;border:none;border-radius:8px;font-weight:600;font-size:0.82rem;cursor:pointer;background:${period === 'custom' ? 'var(--primary)' : 'transparent'};color:${period === 'custom' ? '#fff' : 'var(--text-secondary)'}">직접</button>
       </div>
+      ${period === 'custom' ? `
+      <div style="display:flex;align-items:center;gap:8px;margin-bottom:12px;justify-content:center;flex-wrap:wrap">
+        <input type="date" id="analytics-custom-start" value="${this._customStart || periodStart}" style="padding:8px 12px;border:1.5px solid var(--border);border-radius:8px;font-size:0.85rem">
+        <span style="color:var(--text-muted)">~</span>
+        <input type="date" id="analytics-custom-end" value="${this._customEnd || today}" style="padding:8px 12px;border:1.5px solid var(--border);border-radius:8px;font-size:0.85rem">
+        <button class="btn btn-sm btn-primary" id="analytics-custom-apply">적용</button>
+      </div>` : ''}
 
-      <div style="font-size:0.82rem;color:var(--text-muted);margin-bottom:16px;text-align:center">${periodLabels[period]} (${periodStart} ~ ${today}) &middot; 총 ${records.length}건</div>
+      <div style="font-size:0.82rem;color:var(--text-muted);margin-bottom:16px;text-align:center">${periodLabels[period]} (${periodStart} ~ ${periodEnd}) &middot; 총 ${records.length}건</div>
 
       <!-- 고객 분석 -->
       <h3 style="font-size:1rem;font-weight:800;margin-bottom:12px;color:var(--text-primary)">&#x1F464; 고객 분석</h3>
@@ -418,9 +433,28 @@ App.pages.analytics = {
     // 기간 선택 이벤트
     document.querySelectorAll('.analytics-period').forEach(btn => {
       btn.addEventListener('click', () => {
-        this._period = btn.dataset.period;
+        const newPeriod = btn.dataset.period;
+        if (newPeriod !== 'custom') {
+          this._customStart = '';
+          this._customEnd = '';
+        }
+        this._period = newPeriod;
         App.handleRoute();
       });
+    });
+
+    // 커스텀 기간 적용
+    document.getElementById('analytics-custom-apply')?.addEventListener('click', () => {
+      const start = document.getElementById('analytics-custom-start').value;
+      const end = document.getElementById('analytics-custom-end').value;
+      if (!start || !end || start > end) {
+        App.showToast('올바른 기간을 선택해주세요.', 'error');
+        return;
+      }
+      this._customStart = start;
+      this._customEnd = end;
+      this._period = 'custom';
+      App.handleRoute();
     });
   }
 };

@@ -16,6 +16,7 @@ const App = {
       this.registerSW();
       this.setupOfflineIndicator();
       this.setupTabSync();
+      this.setupMobileKeyboard();
       this.handleRoute();
       window.addEventListener('hashchange', () => this.handleRoute());
       await this.updateBadges();
@@ -210,6 +211,27 @@ const App = {
     if (this._tabChannel) {
       this._tabChannel.postMessage({ type: 'DB_CHANGED' });
     }
+  },
+
+  // 모바일 키패드 올라올 때 모달 높이 조정
+  setupMobileKeyboard() {
+    if (!window.visualViewport) return;
+    const onResize = () => {
+      const modal = document.querySelector('.modal');
+      if (!modal) return;
+      const vvHeight = window.visualViewport.height;
+      const windowHeight = window.innerHeight;
+      if (vvHeight < windowHeight * 0.8) {
+        // 키패드가 올라온 상태
+        modal.style.maxHeight = vvHeight + 'px';
+        // 포커스된 input이 보이도록 스크롤
+        const focused = modal.querySelector(':focus');
+        if (focused) setTimeout(() => focused.scrollIntoView({ block: 'center', behavior: 'smooth' }), 100);
+      } else {
+        modal.style.maxHeight = '';
+      }
+    };
+    window.visualViewport.addEventListener('resize', onResize);
   },
 
   setupOfflineIndicator() {

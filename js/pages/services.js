@@ -133,14 +133,12 @@ App.pages.services = {
         </div>
       </div>
 
-      ${services.length === 0 ? `
-        <div style="margin-top:20px;background:linear-gradient(135deg,#6366F1,#8B5CF6);border-radius:var(--radius-xl);padding:28px 32px;color:#fff;position:relative;overflow:hidden">
-          <div style="position:absolute;top:-30%;right:-5%;width:200px;height:200px;background:rgba(255,255,255,0.08);border-radius:50%"></div>
-          <h3 style="font-weight:800;margin-bottom:6px;font-size:1.15rem;position:relative;z-index:1">&#x1F4A1; 기본 서비스로 빠르게 시작하세요</h3>
-          <p style="opacity:0.85;margin-bottom:16px;font-size:0.9rem;position:relative;z-index:1">미용 코스, 추가 옵션, 단독 케어 등 14개의 서비스를 자동으로 등록합니다.</p>
-          <button class="btn" id="btn-init-services" style="background:#fff;color:var(--primary);font-weight:700;position:relative;z-index:1">기본 서비스 자동 등록</button>
-        </div>
-      ` : ''}
+      <div style="margin-top:20px;background:linear-gradient(135deg,#6366F1,#8B5CF6);border-radius:var(--radius-xl);padding:28px 32px;color:#fff;position:relative;overflow:hidden">
+        <div style="position:absolute;top:-30%;right:-5%;width:200px;height:200px;background:rgba(255,255,255,0.08);border-radius:50%"></div>
+        <h3 style="font-weight:800;margin-bottom:6px;font-size:1.15rem;position:relative;z-index:1">&#x1F4A1; ${services.length === 0 ? '기본 서비스로 빠르게 시작하세요' : '기본 서비스 추가'}</h3>
+        <p style="opacity:0.85;margin-bottom:16px;font-size:0.9rem;position:relative;z-index:1">${services.length === 0 ? '미용 코스, 추가 옵션, 단독 케어 등 14개의 서비스를 자동으로 등록합니다.' : '아직 등록되지 않은 기본 서비스만 추가합니다. 기존 서비스는 유지됩니다.'}</p>
+        <button class="btn" id="btn-init-services" style="background:#fff;color:var(--primary);font-weight:700;position:relative;z-index:1">${services.length === 0 ? '기본 서비스 자동 등록' : '기본 서비스 추가 등록'}</button>
+      </div>
     `;
   },
 
@@ -246,15 +244,27 @@ App.pages.services = {
   async deleteService(id) {
     const service = await DB.get('services', id);
     if (!service) return;
-    // 기존 기록에서 참조 중이면 삭제 대신 비활성화
     const records = await DB.getAll('records');
-    const hasRef = records.some(r => (r.serviceIds || []).includes(id));
-    if (hasRef) {
-      const ok = await App.confirm(`"${App.escapeHtml(service.name)}" 서비스가 기존 기록에 사용 중입니다.<br>삭제 대신 <strong>비활성화</strong>합니다.`);
-      if (!ok) return;
-      service.isActive = false;
-      await DB.update('services', service);
-      App.showToast('서비스가 비활성화되었습니다.');
+    const refCount = records.filter(r => (r.serviceIds || []).includes(id)).length;
+
+    if (refCount > 0) {
+      // 1단계: 비활성화 제안
+      const hide = await App.confirm(
+        `"${App.escapeHtml(service.name)}" 서비스가 미용 기록 <strong>${refCount}건</strong>에서 사용 중입니다.<br>비활성화하시겠습니까?<br><small style="color:var(--text-muted)">(취소 후 완전 삭제도 가능합니다)</small>`
+      );
+      if (hide) {
+        service.isActive = false;
+        await DB.update('services', service);
+        App.showToast('서비스가 비활성화되었습니다.');
+      } else {
+        // 2단계: 완전 삭제 옵션
+        const forceDelete = await App.confirm(
+          `"${App.escapeHtml(service.name)}"을(를) 완전히 삭제하시겠습니까?<br><strong style="color:var(--danger)">기존 기록의 서비스명은 유지되지만 서비스 목록에서 사라집니다.</strong>`
+        );
+        if (!forceDelete) return;
+        await DB.delete('services', id);
+        App.showToast('서비스가 삭제되었습니다.');
+      }
     } else {
       const confirmed = await App.confirm(`"${App.escapeHtml(service.name)}" 서비스를 삭제하시겠습니까?`);
       if (!confirmed) return;
@@ -285,11 +295,22 @@ App.pages.services = {
       { name: '항문낭', description: '항문낭 짜기', priceSmall: 5000, priceMedium: 5000, priceLarge: 5000, isActive: true, category: 'care', sortOrder: 4 },
     ];
 
+    // 기존 서비스명과 비교하여 중복 제외
+    const existing = await DB.getAll('services');
+    const existingNames = new Set(existing.map(s => s.name));
+    let addedCount = 0;
     for (const service of defaults) {
-      await DB.add('services', service);
+      if (!existingNames.has(service.name)) {
+        await DB.add('services', service);
+        addedCount++;
+      }
     }
 
-    App.showToast(`기본 서비스 ${defaults.length}개가 등록되었습니다.`);
+    if (addedCount > 0) {
+      App.showToast(`기본 서비스 ${addedCount}개가 추가되었습니다.`);
+    } else {
+      App.showToast('추가할 새 서비스가 없습니다. (모두 등록 완료)', 'info');
+    }
     App.handleRoute();
   }
 };

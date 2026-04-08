@@ -577,9 +577,9 @@ App.pages.records = {
     // Re-render customer select with enhanced onChange
     await App.renderCustomerSelect('record-customer-select', record.customerId, origCustomerOnChange);
 
-    // Fix 5: Pre-check services when coming from appointment
+    // Pre-check services and auto-calculate price (from appointment or existing record)
     if (record.serviceIds && record.serviceIds.length > 0) {
-      setTimeout(() => {
+      const preCheckServices = () => {
         record.serviceIds.forEach(sid => {
           const checkbox = document.querySelector(`input[name="serviceIds"][value="${sid}"]`);
           if (checkbox) {
@@ -588,10 +588,18 @@ App.pages.records = {
             if (chip) chip.classList.add('checked');
           }
         });
-        // Trigger price calculation
         calcPrice();
-      }, 200);
+      };
+      // DOM이 준비된 후 실행 (모달 렌더링 대기)
+      if (document.querySelector('input[name="serviceIds"]')) {
+        preCheckServices();
+      } else {
+        setTimeout(preCheckServices, 300);
+      }
     }
+
+    // 서비스 미선택 + 금액 없을 때도 초기 calcPrice 호출
+    if (!record.totalPrice) calcPrice();
 
   },
 
