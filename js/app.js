@@ -436,7 +436,9 @@ const App = {
       body.innerHTML = `<p>${message}</p>`;
       const overlay = document.getElementById('confirm-overlay');
       overlay.classList.remove('hidden');
-      document.getElementById('confirm-ok').onclick = () => this.closeConfirm(true);
+      const okBtn = document.getElementById('confirm-ok');
+      okBtn.disabled = false;
+      okBtn.onclick = () => { okBtn.disabled = true; this.closeConfirm(true); };
       // Android 뒤로가기 처리
       history.pushState({ confirmOpen: true }, '');
       this._confirmPopHandler = () => { this.closeConfirm(false, true); };

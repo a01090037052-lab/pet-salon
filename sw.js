@@ -1,4 +1,4 @@
-const CACHE_NAME = 'petsalon-offline-v13';
+const CACHE_NAME = 'petsalon-offline-v14';
 const ASSETS = [
   './',
   './index.html',
@@ -15,6 +15,7 @@ const ASSETS = [
   './js/pages/revenue.js',
   './js/pages/analytics.js',
   './guide.html',
+  './startup-guide.html',
   './manifest.json',
   './icon.svg',
   './icon-192.png',
@@ -46,7 +47,7 @@ self.addEventListener('fetch', (e) => {
         const fetchPromise = fetch(e.request).then(response => {
           if (response.ok) cache.put(e.request, response.clone());
           return response;
-        }).catch(() => cached || new Response('Offline', { status: 503, statusText: 'Service Unavailable' }));
+        }).catch(() => cached || caches.match('./index.html'));
         return cached || fetchPromise;
       })
     )

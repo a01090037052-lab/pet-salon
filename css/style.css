@@ -23,7 +23,7 @@
 
   --text-primary: #1A1D23;
   --text-secondary: #6B7280;
-  --text-muted: #71717A;
+  --text-muted: #5C5C66;
   --border: #E5E7EB;
   --border-light: #F3F4F6;
 
@@ -273,7 +273,7 @@ table { width: 100%; border-collapse: collapse; }
   padding: 16px 20px;
   border-top: 1px solid rgba(255,255,255,0.06);
   font-size: 0.75rem;
-  color: rgba(255,255,255,0.25);
+  color: rgba(255,255,255,0.5);
   text-align: center;
 }
 .sidebar.collapsed .sidebar-footer { display: none; }

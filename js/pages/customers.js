@@ -643,7 +643,7 @@ App.pages.customers = {
         { store: 'customers', id }
       ];
       await DB.deleteCascade(ops);
-      App.showToast('삭제되었습니다.');
+      App.showToast('고객이 삭제되었습니다.');
       App.navigate('customers');
     } catch (err) {
       console.error('Delete customer error:', err);

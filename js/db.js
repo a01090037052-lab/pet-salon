@@ -117,6 +117,7 @@ const DB = {
   async get(storeName, id) {
     if (this.mode === 'server') {
       const res = await fetch(`/api/${storeName}/${id}`);
+      if (!res.ok) throw new Error(`DB get 실패: ${res.status}`);
       const data = await res.json();
       return data;
     }
@@ -130,6 +131,7 @@ const DB = {
   async getAll(storeName) {
     if (this.mode === 'server') {
       const res = await fetch(`/api/${storeName}`);
+      if (!res.ok) throw new Error(`DB getAll 실패: ${res.status}`);
       return await res.json() || [];
     }
     return new Promise((resolve, reject) => {
@@ -146,6 +148,7 @@ const DB = {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(data)
       });
+      if (!res.ok) throw new Error(`DB update 실패: ${res.status}`);
       return await res.json();
     }
     return new Promise((resolve, reject) => {
@@ -165,7 +168,8 @@ const DB = {
 
   async delete(storeName, id) {
     if (this.mode === 'server') {
-      await fetch(`/api/${storeName}/${id}`, { method: 'DELETE' });
+      const res = await fetch(`/api/${storeName}/${id}`, { method: 'DELETE' });
+      if (!res.ok) throw new Error(`DB delete 실패: ${res.status}`);
       return;
     }
     return new Promise((resolve, reject) => {
