@@ -34,14 +34,13 @@ App.pages.appointments = {
           <p class="page-subtitle">총 ${appointments.length}건</p>
         </div>
         <div class="page-actions">
-          <button class="btn btn-secondary" id="btn-toggle-calendar">&#x1F4C5; 캘린더 뷰</button>
           <button class="btn btn-secondary" id="btn-toggle-timetable">&#x1F552; 타임테이블</button>
           <button class="btn btn-primary" id="btn-add-appointment">+ 새 예약</button>
         </div>
       </div>
 
-      <!-- 월별 캘린더 뷰 -->
-      <div id="calendar-container" class="calendar-container" style="display:none">
+      <!-- 월별 캘린더 뷰 (항상 표시) -->
+      <div id="calendar-container" class="calendar-container">
         <div class="calendar-header">
           <button class="btn btn-sm btn-secondary" id="cal-prev">&larr; 이전</button>
           <span class="calendar-title" id="cal-title"></span>
@@ -95,7 +94,7 @@ App.pages.appointments = {
           <option value="cancelled">취소 (${statusCounts.cancelled})</option>
           <option value="noshow">노쇼 (${statusCounts.noshow})</option>
         </select>
-        <input type="date" id="filter-date" value="">
+        <input type="date" id="filter-date" value="" style="display:none">
         <button class="btn btn-secondary btn-sm" id="btn-clear-filter">필터 초기화</button>
       </div>
 
@@ -233,7 +232,7 @@ App.pages.appointments = {
 
   async renderCalendar() {
     const container = document.getElementById('calendar-container');
-    if (!container || container.style.display === 'none') return;
+    if (!container) return;
 
     // 효율적 쿼리: 현재 달 ± 1개월 데이터만 로드
     const year = this._calYear;
@@ -348,45 +347,25 @@ App.pages.appointments = {
 
     document.getElementById('btn-add-appointment')?.addEventListener('click', () => this.showForm());
 
-    // 캘린더 토글
-    document.getElementById('btn-toggle-calendar')?.addEventListener('click', () => {
-      const cal = document.getElementById('calendar-container');
-      if (cal) {
-        const isHidden = cal.style.display === 'none';
-        cal.style.display = isHidden ? 'block' : 'none';
-        sessionStorage.setItem('calendarOpen', isHidden ? 'true' : 'false');
-        // 캘린더 열 때 타임테이블 닫기
-        if (isHidden) {
-          const tt = document.getElementById('timetable-container');
-          if (tt) { tt.style.display = 'none'; sessionStorage.setItem('timetableOpen', 'false'); }
-          this._calYear = new Date().getFullYear();
-          this._calMonth = new Date().getMonth();
-          this._closedDays = null;
-          this.renderCalendar();
-        } else {
-          // 캘린더 닫을 때 날짜 필터 초기화
-          const dateInput = document.getElementById('filter-date');
-          if (dateInput) { dateInput.value = ''; this.applyFilters(); }
-        }
-        this._updateListVisibility();
-      }
-    });
-
-    // Restore calendar view state
-    if (sessionStorage.getItem('calendarOpen') === 'true') {
-      const cal = document.getElementById('calendar-container');
-      if (cal) {
-        cal.style.display = 'block';
+    // 캘린더 항상 표시 - 초기 렌더링 + 오늘 선택
+    {
         this._calYear = new Date().getFullYear();
         this._calMonth = new Date().getMonth();
         this._closedDays = null;
         this.renderCalendar();
-        this._updateListVisibility();
-      }
+        // 오늘 날짜 자동 선택
+        const todayStr = App.getToday();
+        const dateInput = document.getElementById('filter-date');
+        if (dateInput) { dateInput.value = todayStr; this.applyFilters(); }
+        // 캘린더에서 오늘 셀 선택 표시
+        setTimeout(() => {
+          const todayCell = document.querySelector(`.calendar-cell[data-date="${todayStr}"]`);
+          if (todayCell) todayCell.classList.add('selected');
+        }, 100);
     }
 
     // Restore timetable view state
-    if (sessionStorage.getItem('timetableOpen') === 'true' && sessionStorage.getItem('calendarOpen') !== 'true') {
+    if (sessionStorage.getItem('timetableOpen') === 'true') {
       const tt = document.getElementById('timetable-container');
       if (tt) {
         tt.style.display = 'block';
@@ -404,10 +383,7 @@ App.pages.appointments = {
         const isHidden = tt.style.display === 'none';
         tt.style.display = isHidden ? 'block' : 'none';
         sessionStorage.setItem('timetableOpen', isHidden ? 'true' : 'false');
-        // 타임테이블 열 때 캘린더 닫기
         if (isHidden) {
-          const cal = document.getElementById('calendar-container');
-          if (cal) { cal.style.display = 'none'; sessionStorage.setItem('calendarOpen', 'false'); }
           this._ttDate = App.getToday();
           this.renderTimetable();
         }
