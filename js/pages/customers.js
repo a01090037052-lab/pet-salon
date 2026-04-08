@@ -175,7 +175,7 @@ App.pages.customers = {
     const noshowCount = appointments.filter(a => a.status === 'noshow').length;
 
     container.innerHTML = `
-      <div class="back-link" onclick="App.navigate('customers')">&#x2190; 고객 목록</div>
+      <div class="back-link" onclick="history.length>1?history.back():App.navigate('customers')">&#x2190; 뒤로가기</div>
       <div class="detail-header">
         <div class="detail-avatar">&#x1F464;</div>
         <div class="detail-info">
@@ -611,13 +611,9 @@ App.pages.customers = {
         return;
       }
 
-      // 새 고객 등록 시 바로 예약 제안
+      // 새 고객 등록 시 예약 바로가기 토스트
       if (!id) {
-        const doAppt = await App.confirm(`"${App.escapeHtml(name)}" 고객의 예약을 바로 등록하시겠습니까?`);
-        if (doAppt) {
-          App.pages.appointments.showForm(null, newId);
-          return;
-        }
+        App.showToast(`고객 등록 완료! <a href="javascript:void(0)" onclick="App.pages.appointments.showForm(null,${newId})" style="color:#fff;text-decoration:underline;font-weight:700;margin-left:6px">바로 예약 등록 &rarr;</a>`, 'info', { html: true, duration: 5000 });
       }
 
       App.handleRoute();

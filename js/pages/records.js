@@ -731,10 +731,9 @@ App.pages.records = {
               <div style="font-size:2.5rem;margin-bottom:12px">&#x2705;</div>
               <div style="font-size:1.1rem;font-weight:700;margin-bottom:20px">미용 기록이 저장되었습니다</div>
               <div style="display:flex;flex-direction:column;gap:10px;max-width:280px;margin:0 auto">
-                <button class="btn btn-primary" id="post-save-appt">&#x1F4C5; 다음 예약 등록${nextVisitDate ? ' (' + App.formatDate(nextVisitDate) + ')' : ''}</button>
                 ${customerPhone ? `<button class="btn btn-success" id="post-save-sms">&#x1F4AC; 미용 완료 문자 보내기</button>` : ''}
-                ${hasCondition && customerPhone ? `<button class="btn btn-success" id="post-save-report-sms" style="background:var(--info)">&#x1F4CB; 리포트 문자 보내기</button>` : ''}
-                ${hasCondition ? `<button class="btn btn-secondary" id="post-save-report-copy">&#x1F4CB; 리포트 복사 (카톡용)</button>` : ''}
+                ${hasCondition ? `<button class="btn btn-success" id="post-save-report-copy" style="background:var(--info)">&#x1F4CB; 리포트 복사 (카톡용)</button>` : ''}
+                <button class="btn btn-primary" id="post-save-appt">&#x1F4C5; 다음 예약 등록${nextVisitDate ? ' (' + App.formatDate(nextVisitDate) + ')' : ''}</button>
                 <button class="btn btn-secondary" id="post-save-close">완료</button>
               </div>
             </div>
@@ -756,13 +755,6 @@ App.pages.records = {
           App.openSms(customerPhone, msg);
           // Don't close modal - just update button to show sent
           const btn = document.getElementById('post-save-sms');
-          if (btn) { btn.textContent = '\u2713 발송됨'; btn.disabled = true; btn.style.opacity = '0.6'; }
-        });
-        // 리포트 문자 보내기
-        document.getElementById('post-save-report-sms')?.addEventListener('click', async () => {
-          const report = await App.buildGroomingReport(data);
-          App.openSms(customerPhone, report);
-          const btn = document.getElementById('post-save-report-sms');
           if (btn) { btn.textContent = '\u2713 발송됨'; btn.disabled = true; btn.style.opacity = '0.6'; }
         });
         // 리포트 복사 (카톡용)

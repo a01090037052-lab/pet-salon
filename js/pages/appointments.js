@@ -757,6 +757,7 @@ App.pages.appointments = {
             <input type="time" id="f-time" value="${appt.time || ''}">
           </div>
         </div>
+        <div id="time-conflict-warning" style="display:none;background:var(--warning-light);border:1px solid var(--warning);border-radius:var(--radius);padding:8px 12px;font-size:0.82rem;color:#92400E;font-weight:600;margin-bottom:8px"></div>
         <!-- 선택사항 -->
         <div style="margin:12px 0 8px;padding-top:10px;border-top:1px dashed var(--border);font-size:0.82rem;color:var(--text-muted)">선택사항</div>
         <div class="form-group">
@@ -843,6 +844,38 @@ App.pages.appointments = {
       const btn = document.getElementById('btn-toggle-services');
       if (btn) btn.textContent = allChecked ? '전체 선택' : '전체 해제';
     });
+
+    // 시간 겹침 실시간 경고
+    const checkTimeConflict = async () => {
+      const date = document.getElementById('f-date')?.value;
+      const time = document.getElementById('f-time')?.value;
+      const groomer = document.getElementById('f-groomer')?.value?.trim();
+      const duration = Number(document.getElementById('f-duration')?.value) || 60;
+      const warningEl = document.getElementById('time-conflict-warning');
+      if (!warningEl) return;
+      if (!date || !time) { warningEl.style.display = 'none'; return; }
+      const dayAppts = await DB.getByIndex('appointments', 'date', date);
+      const toMin = (t) => { const [h, m] = t.split(':').map(Number); return h * 60 + m; };
+      const newStart = toMin(time);
+      const newEnd = newStart + duration;
+      const conflicts = dayAppts.filter(a => {
+        if (a.id === id || !a.time || a.status === 'cancelled') return false;
+        const aStart = toMin(a.time);
+        const aEnd = aStart + (a.duration || 60);
+        return newStart < aEnd && newEnd > aStart;
+      });
+      if (conflicts.length > 0) {
+        const names = conflicts.map(a => (a.time || '') + ' ' + (this._customerMap?.[a.customerId]?.name || '예약')).join(', ');
+        warningEl.innerHTML = '&#x26A0; 같은 시간대 예약: ' + App.escapeHtml(names);
+        warningEl.style.display = 'block';
+      } else {
+        warningEl.style.display = 'none';
+      }
+    };
+    document.getElementById('f-date')?.addEventListener('change', checkTimeConflict);
+    document.getElementById('f-time')?.addEventListener('change', checkTimeConflict);
+    document.getElementById('f-duration')?.addEventListener('change', checkTimeConflict);
+    document.getElementById('f-groomer')?.addEventListener('change', checkTimeConflict);
 
     // 반복 예약 UI 토글
     const repeatCycle = document.getElementById('f-repeat-cycle');

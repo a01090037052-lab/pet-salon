@@ -132,7 +132,7 @@ App.pages.pets = {
     const age = pet.birthYear ? (new Date().getFullYear() - pet.birthYear) + '살' : (pet.birthDate ? this.calculateAge(pet.birthDate) : '-');
 
     container.innerHTML = `
-      <div class="back-link" onclick="App.navigate('pets')">&#x2190; 반려견 목록</div>
+      <div class="back-link" onclick="history.length>1?history.back():App.navigate('pets')">&#x2190; 뒤로가기</div>
       <div class="detail-header">
         <div class="pet-detail-photo">
           ${pet.photo

@@ -412,6 +412,7 @@
           <li><a href="#search">검색 기능</a></li>
           <li><a href="#sms">문자(SMS) 기능</a></li>
           <li><a href="#data-management">데이터 관리</a></li>
+          <li><a href="#offline">오프라인 사용법</a></li>
           <li><a href="#troubleshooting">문제 해결</a></li>
           <li><a href="#maintenance">유지보수 불가 시 대처</a></li>
           <li><a href="#excel-notion">엑셀/노션 연동 가이드</a></li>
@@ -872,6 +873,73 @@
         <div class="warning-box">
           <strong>중요</strong>
           <p>백업 파일은 매우 중요합니다. 여러 곳에 복사본을 저장하고, 안전한 장소에 보관하세요. 기기 고장이나 분실 시에만 필요하지만, 필요할 때 없으면 모든 데이터를 잃을 수 있습니다.</p>
+        </div>
+      </section>
+
+      <!-- 오프라인 사용법 -->
+      <section id="offline">
+        <h2>오프라인 사용법</h2>
+
+        <h3>펫살롱은 오프라인에서도 작동합니다</h3>
+        <p>펫살롱은 <strong>PWA(Progressive Web App)</strong>로 만들어져서, 한 번 접속하면 인터넷 없이도 사용할 수 있습니다.</p>
+
+        <div class="card">
+          <div class="card-title">오프라인 동작 원리</div>
+          <ul>
+            <li><strong>앱 파일</strong>: 처음 접속 시 모든 파일이 기기에 자동 저장(캐시)됩니다</li>
+            <li><strong>고객 데이터</strong>: 모든 데이터는 기기 내부(IndexedDB)에 저장됩니다. 서버로 전송되지 않습니다</li>
+            <li><strong>인터넷 불필요</strong>: 고객 등록, 예약, 미용 기록, 매출 확인 등 모든 기능이 오프라인에서 동작합니다</li>
+          </ul>
+        </div>
+
+        <h3>홈 화면에 앱 설치하기 (추천)</h3>
+        <p>홈 화면에 설치하면 일반 앱처럼 사용할 수 있고, 오프라인 안정성도 높아집니다.</p>
+
+        <h4>아이폰 (Safari)</h4>
+        <ol>
+          <li>Safari로 펫살롱 접속</li>
+          <li>하단의 <strong>공유 버튼</strong> (네모+화살표) 탭</li>
+          <li><strong>"홈 화면에 추가"</strong> 선택</li>
+          <li>"추가" 탭 → 홈 화면에 펫살롱 아이콘 생성</li>
+        </ol>
+
+        <h4>안드로이드 (Chrome)</h4>
+        <ol>
+          <li>Chrome으로 펫살롱 접속</li>
+          <li>주소창 아래 <strong>"홈 화면에 추가"</strong> 배너 또는 우측 상단 <strong>⋮ > 홈 화면에 추가</strong></li>
+          <li>"설치" 탭 → 홈 화면에 앱 아이콘 생성</li>
+        </ol>
+
+        <h3>오프라인 사용 시 알아두세요</h3>
+        <table>
+          <tr><th>항목</th><th>동작 여부</th><th>설명</th></tr>
+          <tr><td>고객/반려견 등록</td><td>정상</td><td>기기에 바로 저장</td></tr>
+          <tr><td>예약 관리</td><td>정상</td><td>등록/수정/삭제 모두 가능</td></tr>
+          <tr><td>미용 기록</td><td>정상</td><td>기록 저장, 리포트 생성 가능</td></tr>
+          <tr><td>매출/분석</td><td>정상</td><td>모든 데이터가 로컬이므로 계산 가능</td></tr>
+          <tr><td>문자 보내기</td><td>제한적</td><td>문자앱은 열리지만, 통신망 필요</td></tr>
+          <tr><td>앱 업데이트</td><td>불가</td><td>인터넷 연결 시 자동 업데이트 확인</td></tr>
+          <tr><td>백업 내보내기</td><td>정상</td><td>파일 다운로드는 오프라인에서도 가능</td></tr>
+        </table>
+
+        <div class="tip-box">
+          <div class="tip-icon">💡</div>
+          <div class="tip-content">
+            <strong>데이터는 기기에만 저장됩니다</strong>
+            <p>클라우드 동기화가 없으므로, 기기를 바꾸거나 브라우저 데이터를 삭제하면 데이터가 사라집니다. <strong>정기적으로 백업</strong>(설정 > 데이터 백업)하는 것이 매우 중요합니다.</p>
+          </div>
+        </div>
+
+        <h3>오프라인 상태 확인</h3>
+        <ul>
+          <li>인터넷이 끊기면 화면 상단에 <strong>빨간색 "오프라인" 배너</strong>가 표시됩니다</li>
+          <li>다시 연결되면 자동으로 사라지고 "온라인 복귀" 알림이 나타납니다</li>
+          <li>오프라인 상태에서도 모든 데이터 조작은 정상 동작합니다</li>
+        </ul>
+
+        <div class="warning-box">
+          <strong>Safari(아이폰) 주의사항</strong>
+          <p>Safari는 오래 사용하지 않은 사이트의 캐시를 자동 삭제할 수 있습니다. <strong>홈 화면에 앱을 설치</strong>하면 이 문제가 방지됩니다. 또한 2주 이상 앱을 안 열면 캐시가 삭제될 수 있으니, 주기적으로 앱을 열어주세요.</p>
         </div>
       </section>
 
