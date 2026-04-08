@@ -2561,9 +2561,13 @@ a.stat-card { display: flex; }
 
 /* ========== Responsive additions ========== */
 @media (max-width: 768px) {
-  .calendar-cell { min-height: 40px; }
-  .cal-day-num { font-size: 0.7rem; }
-  .cal-count-btn { font-size: 0.6rem; padding: 0 4px; }
+  .calendar-container { padding: 12px; margin-bottom: 12px; }
+  .calendar-header { margin-bottom: 10px; }
+  .calendar-grid { gap: 2px; }
+  .calendar-cell { aspect-ratio: auto; min-height: 44px; padding: 3px; border-radius: 6px; }
+  .calendar-day-label { padding: 4px 0; font-size: 0.7rem; }
+  .cal-day-num { font-size: 0.72rem; }
+  .cal-count-btn { font-size: 0.55rem; padding: 0 3px; min-width: 14px; height: 14px; line-height: 14px; }
   .pet-photo-upload { flex-direction: column; align-items: flex-start; }
 
   /* Show mobile cards, hide tables (only in card-body that contains mobile-card-list) */

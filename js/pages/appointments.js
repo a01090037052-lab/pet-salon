@@ -292,17 +292,17 @@ App.pages.appointments = {
       if (count >= 3) colorClass = 'cal-red';
       else if (count >= 1) colorClass = 'cal-blue';
 
-      // 예약 미리보기 (최대 3건)
+      // 예약 미리보기 (최대 2건, 모바일 최적화)
       let previewHtml = '';
       if (!isClosed && count > 0) {
         const appts = dateAppts[dateStr] || [];
-        previewHtml = appts.slice(0, 3).map(a => {
+        previewHtml = appts.slice(0, 2).map(a => {
           const cName = customerMap[a.customerId]?.name || '?';
-          const shortName = cName.length > 3 ? cName.slice(0, 3) + '..' : cName;
-          return '<div style="font-size:0.55rem;line-height:1.3;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:var(--text-secondary)">' +
-            '<span style="color:var(--primary);font-weight:600">' + (a.time || '') + '</span> ' + App.escapeHtml(shortName) + '</div>';
+          const shortName = cName.length > 2 ? cName.slice(0, 2) : cName;
+          return '<div style="font-size:0.6rem;line-height:1.2;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:var(--text-secondary);margin-top:1px">' +
+            '<span style="color:var(--primary);font-weight:700">' + (a.time ? a.time.slice(0,5) : '') + '</span> ' + App.escapeHtml(shortName) + '</div>';
         }).join('');
-        if (count > 3) previewHtml += '<div style="font-size:0.5rem;color:var(--text-muted);text-align:center">+' + (count - 3) + '건</div>';
+        if (count > 2) previewHtml += '<div style="font-size:0.55rem;color:var(--text-muted);text-align:center">+' + (count - 2) + '</div>';
       }
 
       cellsHtml += `
