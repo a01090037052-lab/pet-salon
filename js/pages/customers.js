@@ -502,7 +502,7 @@ App.pages.customers = {
 
     App.showModal({
       title: id ? '고객 정보 수정' : '새 고객 등록',
-      content: `
+      content: id ? `
         <div class="form-group">
           <label class="form-label">이름 <span class="required">*</span></label>
           <input type="text" id="f-name" value="${App.escapeHtml(customer.name || '')}" placeholder="고객 이름" maxlength="50">
@@ -534,21 +534,26 @@ App.pages.customers = {
           <label class="form-label">메모</label>
           <textarea id="f-memo" placeholder="특이사항, 메모 등">${App.escapeHtml(customer.memo || '')}</textarea>
         </div>
-        ${!id ? `
-        <div style="border-top:1px dashed var(--border);margin-top:16px;padding-top:16px">
-          <div style="font-weight:700;margin-bottom:10px;font-size:0.95rem">&#x1F436; 반려견 함께 등록 <span style="font-weight:400;color:var(--text-muted);font-size:0.85rem">(선택)</span></div>
-          <div class="form-row">
-            <div class="form-group">
-              <label class="form-label">반려견 이름</label>
-              <input type="text" id="f-petName" placeholder="반려견 이름">
-            </div>
-            <div class="form-group">
-              <label class="form-label">견종</label>
-              <input type="text" id="f-petBreed" placeholder="예: 말티즈, 푸들">
-            </div>
+      ` : `
+        <div class="form-group">
+          <label class="form-label">고객 이름 <span class="required">*</span></label>
+          <input type="text" id="f-name" value="" placeholder="고객 이름" maxlength="50">
+        </div>
+        <div class="form-group">
+          <label class="form-label">연락처 <span class="required">*</span></label>
+          <input type="tel" id="f-phone" value="" placeholder="010-0000-0000">
+        </div>
+        <div style="border-top:1px dashed var(--border);margin-top:12px;padding-top:12px">
+          <div style="font-weight:700;margin-bottom:8px;font-size:0.95rem">&#x1F436; 반려견 정보</div>
+          <div class="form-group">
+            <label class="form-label">반려견 이름</label>
+            <input type="text" id="f-petName" placeholder="반려견 이름">
+          </div>
+          <div class="form-group">
+            <label class="form-label">견종</label>
+            <input type="text" id="f-petBreed" placeholder="예: 말티즈, 푸들">
           </div>
         </div>
-        ` : ''}
       `,
       onSave: () => this.saveCustomer(id)
     });
@@ -557,9 +562,9 @@ App.pages.customers = {
   async saveCustomer(id) {
     const name = document.getElementById('f-name').value.trim();
     const phone = document.getElementById('f-phone').value.trim();
-    const address = document.getElementById('f-address').value.trim();
+    const address = document.getElementById('f-address')?.value?.trim() || '';
     const birthday = document.getElementById('f-birthday')?.value || '';
-    const memo = document.getElementById('f-memo').value.trim();
+    const memo = document.getElementById('f-memo')?.value?.trim() || '';
 
     const tags = [];
     document.querySelectorAll('input[name="customerTag"]:checked').forEach(cb => tags.push(cb.value));
@@ -586,7 +591,6 @@ App.pages.customers = {
         App.showToast('고객 정보가 수정되었습니다.');
       } else {
         newId = await DB.add('customers', data);
-        App.showToast('새 고객이 등록되었습니다.');
 
         // 인라인 반려견 등록 (이름이 입력된 경우)
         const petName = (document.getElementById('f-petName')?.value || '').trim();
@@ -594,7 +598,6 @@ App.pages.customers = {
         if (petName) {
           try {
             await DB.add('pets', { name: petName, breed: petBreed, customerId: newId });
-            App.showToast(`반려견 "${petName}"도 함께 등록되었습니다.`);
           } catch (e) {
             console.warn('Inline pet registration error:', e);
           }
@@ -611,9 +614,36 @@ App.pages.customers = {
         return;
       }
 
-      // 새 고객 등록 시 예약 바로가기 토스트
+      // 새 고객 등록 완료 모달
       if (!id) {
-        App.showToast(`고객 등록 완료! <a href="javascript:void(0)" onclick="App.pages.appointments.showForm(null,${newId})" style="color:#fff;text-decoration:underline;font-weight:700;margin-left:6px">바로 예약 등록 &rarr;</a>`, 'info', { html: true, duration: 5000 });
+        App.handleRoute();
+        App.showModal({
+          title: '고객 등록 완료',
+          hideFooter: true,
+          content: `
+            <div style="text-align:center;padding:16px 0">
+              <div style="font-size:2.2rem;margin-bottom:10px">&#x2705;</div>
+              <div style="font-size:1rem;font-weight:700;margin-bottom:16px">${App.escapeHtml(name)}님이 등록되었습니다</div>
+              <div style="display:flex;flex-direction:column;gap:8px;max-width:260px;margin:0 auto">
+                <button class="btn btn-primary" id="post-cust-appt">&#x1F4C5; 예약 등록</button>
+                <button class="btn btn-secondary" id="post-cust-detail">&#x1F4DD; 상세 정보 입력</button>
+                <button class="btn btn-secondary" id="post-cust-close" style="opacity:0.7">완료</button>
+              </div>
+            </div>
+          `
+        });
+        document.getElementById('post-cust-appt')?.addEventListener('click', () => {
+          App.closeModal();
+          App.pages.appointments.showForm(null, newId);
+        });
+        document.getElementById('post-cust-detail')?.addEventListener('click', () => {
+          App.closeModal();
+          App.navigate('customers/' + newId);
+        });
+        document.getElementById('post-cust-close')?.addEventListener('click', () => {
+          App.closeModal();
+        });
+        return;
       }
 
       App.handleRoute();
