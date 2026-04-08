@@ -549,9 +549,15 @@ App.pages.customers = {
             <label class="form-label">반려견 이름</label>
             <input type="text" id="f-petName" placeholder="반려견 이름">
           </div>
-          <div class="form-group">
-            <label class="form-label">견종</label>
-            <input type="text" id="f-petBreed" placeholder="예: 말티즈, 푸들">
+          <div class="form-row">
+            <div class="form-group">
+              <label class="form-label">견종</label>
+              <input type="text" id="f-petBreed" placeholder="예: 말티즈, 푸들">
+            </div>
+            <div class="form-group">
+              <label class="form-label">몸무게 (kg)</label>
+              <input type="number" id="f-petWeight" placeholder="예: 3.5" step="0.1" min="0">
+            </div>
           </div>
         </div>
       `,
@@ -595,9 +601,12 @@ App.pages.customers = {
         // 인라인 반려견 등록 (이름이 입력된 경우)
         const petName = (document.getElementById('f-petName')?.value || '').trim();
         const petBreed = (document.getElementById('f-petBreed')?.value || '').trim();
+        const petWeight = parseFloat(document.getElementById('f-petWeight')?.value) || null;
         if (petName) {
           try {
-            await DB.add('pets', { name: petName, breed: petBreed, customerId: newId });
+            const petData = { name: petName, breed: petBreed, customerId: newId };
+            if (petWeight) { petData.weight = petWeight; petData.size = petWeight < 7 ? 'small' : petWeight < 15 ? 'medium' : 'large'; }
+            await DB.add('pets', petData);
           } catch (e) {
             console.warn('Inline pet registration error:', e);
           }
