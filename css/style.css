@@ -2564,7 +2564,7 @@ a.stat-card { display: flex; }
   .calendar-container { padding: 12px; margin-bottom: 12px; }
   .calendar-header { margin-bottom: 10px; }
   .calendar-grid { gap: 2px; }
-  .calendar-cell { aspect-ratio: auto; min-height: 44px; padding: 3px; border-radius: 6px; }
+  .calendar-cell { aspect-ratio: auto; min-height: 52px; padding: 3px; border-radius: 6px; }
   .calendar-day-label { padding: 4px 0; font-size: 0.7rem; }
   .cal-day-num { font-size: 0.72rem; }
   .cal-count-btn { font-size: 0.55rem; padding: 0 3px; min-width: 14px; height: 14px; line-height: 14px; }
