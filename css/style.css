@@ -1542,8 +1542,8 @@ a.stat-card { display: flex; }
   .page-title { font-size: 1.4rem; }
   .page-actions { width: 100%; }
   .page-actions .search-box { flex: 1; max-width: none; }
-  .modal, .modal.modal-lg { max-width: 100%; border-radius: var(--radius-lg) var(--radius-lg) 0 0; margin: 0; max-height: 92vh; position: fixed; bottom: 0; touch-action: pan-y; overflow-x: hidden; }
   .modal-overlay { align-items: flex-end; padding: 0; }
+  .modal, .modal.modal-lg { max-width: 100%; border-radius: var(--radius-lg) var(--radius-lg) 0 0; margin: 0; max-height: 92vh; max-height: 92dvh; overflow-x: hidden; overflow-y: auto; -webkit-overflow-scrolling: touch; }
   .detail-header { flex-direction: column; text-align: center; padding: 20px; }
   .detail-header > div:last-child { margin-left: 0; }
   .detail-meta { justify-content: center; }
@@ -1574,8 +1574,8 @@ a.stat-card { display: flex; }
   /* Appointments - card style on mobile */
   .appointment-item { padding: 12px; gap: 10px; }
   .appointment-time { min-width: 48px; font-size: 0.85rem; }
-  /* Wider modal on mobile */
-  .modal-body { padding: 16px; }
+  /* Modal body mobile */
+  .modal-body { padding: 16px; overflow-y: auto; -webkit-overflow-scrolling: touch; flex: 1; }
   /* Improve FAB on mobile - hide it, bottom nav is enough */
   .fab-container { display: none; }
   /* Search box full width */
