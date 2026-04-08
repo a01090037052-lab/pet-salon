@@ -26,119 +26,53 @@ App.pages.services = {
     const active = services.filter(s => s.isActive !== false);
     const inactive = services.filter(s => s.isActive === false);
 
+    const sorted = this._sortServices([...services]);
+
     container.innerHTML = `
       <div class="page-header">
         <div>
           <h1 class="page-title">서비스 메뉴</h1>
-          <p class="page-subtitle">총 ${services.length}개 (활성 ${active.length}개)</p>
+          <p class="page-subtitle">총 ${active.length}개${inactive.length > 0 ? ' (비활성 ' + inactive.length + '개)' : ''}</p>
         </div>
         <div class="page-actions">
+          <button class="btn btn-secondary" id="btn-init-services">기본 서비스</button>
           <button class="btn btn-primary" id="btn-add-service">+ 새 서비스</button>
         </div>
       </div>
 
-      <div class="card">
-        <div class="card-body no-padding">
-          <div class="table-container">
-            <table class="data-table" id="service-table">
-              <thead>
-                <tr>
-                  <th>서비스명</th>
-                  <th>소형견</th>
-                  <th>중형견</th>
-                  <th>대형견</th>
-                  <th>상태</th>
-                  <th>관리</th>
-                </tr>
-              </thead>
-              <tbody>
-                ${services.length === 0 ? `
-                  <tr><td colspan="6">
-                    <div class="empty-state">
-                      <div class="empty-state-icon">&#x1F4CB;</div>
-                      <div class="empty-state-text">등록된 서비스가 없습니다</div>
-                      <button class="btn btn-primary" onclick="document.getElementById('btn-add-service').click()">첫 서비스 등록하기</button>
-                    </div>
-                  </td></tr>
-                ` : ((srv) => {
-                  const sorted = this._sortServices([...srv]);
-                  let lastCat = '';
-                  return sorted.map(s => {
-                    const cat = s.category || 'grooming';
-                    const catLabel = this._categoryLabels[cat] || cat;
-                    let header = '';
-                    if (cat !== lastCat && s.isActive !== false) {
-                      lastCat = cat;
-                      header = '<tr><td colspan="6" style="background:var(--bg);font-weight:700;font-size:0.85rem;color:var(--primary);padding:10px 16px;border-bottom:2px solid var(--primary-lighter)">' + App.escapeHtml(catLabel) + '</td></tr>';
-                    }
-                    return header +
-                    '<tr data-id="' + s.id + '" style="' + (s.isActive === false ? 'opacity:0.5' : '') + '">' +
-                      '<td><strong>' + App.escapeHtml(s.name) + '</strong>' + (s.description ? '<div style="font-size:0.78rem;color:var(--text-muted);margin-top:2px">' + App.escapeHtml(s.description) + '</div>' : '') + '</td>' +
-                      '<td>' + App.formatCurrency(s.priceSmall) + '</td>' +
-                      '<td>' + App.formatCurrency(s.priceMedium) + '</td>' +
-                      '<td>' + App.formatCurrency(s.priceLarge) + '</td>' +
-                      '<td><span class="badge ' + (s.isActive !== false ? 'badge-success' : 'badge-secondary') + '">' + (s.isActive !== false ? '활성' : '비활성') + '</span></td>' +
-                      '<td class="table-actions">' +
-                        '<button class="btn-icon btn-toggle-service" data-id="' + s.id + '" title="' + (s.isActive !== false ? '비활성화' : '활성화') + '">' + (s.isActive !== false ? '&#x1F7E2;' : '&#x26AA;') + '</button>' +
-                        '<button class="btn-icon btn-edit-service" data-id="' + s.id + '" title="수정">&#x270F;</button>' +
-                        '<button class="btn-icon btn-delete-service text-danger" data-id="' + s.id + '" title="삭제">&#x1F5D1;</button>' +
-                      '</td>' +
-                    '</tr>';
-                  }).join('');
-                })(services)}
-              </tbody>
-            </table>
-          </div>
-          <!-- Mobile card list for services -->
-          <div class="mobile-card-list">
-            ${services.length === 0 ? `
-              <div class="empty-state" style="padding:40px 20px">
-                <div class="empty-state-icon">&#x1F4CB;</div>
-                <div class="empty-state-text">등록된 서비스가 없습니다</div>
-                <button class="btn btn-primary" onclick="document.getElementById('btn-add-service').click()">첫 서비스 등록하기</button>
-              </div>
-            ` : ((srv) => {
-              const sorted = this._sortServices([...srv]);
-              let lastCat = '';
-              return sorted.map(s => {
-                const cat = s.category || 'grooming';
-                const catLabel = this._categoryLabels[cat] || cat;
-                let header = '';
-                if (cat !== lastCat && s.isActive !== false) {
-                  lastCat = cat;
-                  header = '<div style="font-weight:700;font-size:0.85rem;color:var(--primary);padding:12px 0 6px;border-bottom:2px solid var(--primary-lighter);margin-bottom:8px">' + App.escapeHtml(catLabel) + '</div>';
-                }
-                return header +
-                '<div class="mobile-card" data-id="' + s.id + '" style="' + (s.isActive === false ? 'opacity:0.5' : '') + '">' +
-                  '<div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:8px">' +
-                    '<div><strong style="font-size:0.95rem">' + App.escapeHtml(s.name) + '</strong>' +
-                    (s.description ? '<div style="font-size:0.78rem;color:var(--text-muted);margin-top:2px">' + App.escapeHtml(s.description) + '</div>' : '') +
-                    '</div>' +
-                    '<span class="badge ' + (s.isActive !== false ? 'badge-success' : 'badge-secondary') + '" style="flex-shrink:0;margin-left:8px">' + (s.isActive !== false ? '활성' : '비활성') + '</span>' +
-                  '</div>' +
-                  '<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:10px;font-size:0.82rem">' +
-                    '<div style="text-align:center;background:var(--bg);border-radius:var(--radius);padding:8px 4px"><div style="color:var(--text-muted);font-size:0.72rem;margin-bottom:2px">소형견</div><div style="font-weight:700">' + App.formatCurrency(s.priceSmall) + '</div></div>' +
-                    '<div style="text-align:center;background:var(--bg);border-radius:var(--radius);padding:8px 4px"><div style="color:var(--text-muted);font-size:0.72rem;margin-bottom:2px">중형견</div><div style="font-weight:700">' + App.formatCurrency(s.priceMedium) + '</div></div>' +
-                    '<div style="text-align:center;background:var(--bg);border-radius:var(--radius);padding:8px 4px"><div style="color:var(--text-muted);font-size:0.72rem;margin-bottom:2px">대형견</div><div style="font-weight:700">' + App.formatCurrency(s.priceLarge) + '</div></div>' +
-                  '</div>' +
-                  '<div style="display:flex;gap:6px;justify-content:flex-end">' +
-                    '<button class="btn-icon btn-toggle-service" data-id="' + s.id + '" title="' + (s.isActive !== false ? '비활성화' : '활성화') + '">' + (s.isActive !== false ? '&#x1F7E2;' : '&#x26AA;') + '</button>' +
-                    '<button class="btn-icon btn-edit-service" data-id="' + s.id + '" title="수정">&#x270F;</button>' +
-                    '<button class="btn-icon btn-delete-service text-danger" data-id="' + s.id + '" title="삭제">&#x1F5D1;</button>' +
-                  '</div>' +
-                '</div>';
-              }).join('');
-            })(services)}
+      ${services.length === 0 ? `
+        <div class="empty-state" style="padding:60px 20px">
+          <div class="empty-state-icon">&#x1F4CB;</div>
+          <div class="empty-state-text">등록된 서비스가 없습니다</div>
+          <p style="color:var(--text-muted);font-size:0.85rem;margin-bottom:16px">기본 서비스를 등록하거나 직접 추가하세요</p>
+          <div style="display:flex;gap:8px;justify-content:center">
+            <button class="btn btn-primary" id="btn-init-services-empty">기본 서비스 등록</button>
+            <button class="btn btn-secondary" onclick="document.getElementById('btn-add-service').click()">직접 등록</button>
           </div>
         </div>
-      </div>
-
-      <div style="margin-top:20px;background:linear-gradient(135deg,#6366F1,#8B5CF6);border-radius:var(--radius-xl);padding:28px 32px;color:#fff;position:relative;overflow:hidden">
-        <div style="position:absolute;top:-30%;right:-5%;width:200px;height:200px;background:rgba(255,255,255,0.08);border-radius:50%"></div>
-        <h3 style="font-weight:800;margin-bottom:6px;font-size:1.15rem;position:relative;z-index:1">&#x1F4A1; ${services.length === 0 ? '기본 서비스로 빠르게 시작하세요' : '기본 서비스 추가'}</h3>
-        <p style="opacity:0.85;margin-bottom:16px;font-size:0.9rem;position:relative;z-index:1">${services.length === 0 ? '미용 코스, 추가 옵션, 단독 케어 등 14개의 서비스를 자동으로 등록합니다.' : '아직 등록되지 않은 기본 서비스만 추가합니다. 기존 서비스는 유지됩니다.'}</p>
-        <button class="btn" id="btn-init-services" style="background:#fff;color:var(--primary);font-weight:700;position:relative;z-index:1">${services.length === 0 ? '기본 서비스 자동 등록' : '기본 서비스 추가 등록'}</button>
-      </div>
+      ` : ((list) => {
+        let lastCat = '';
+        let html = '';
+        list.forEach(s => {
+          const cat = s.category || 'grooming';
+          if (cat !== lastCat && s.isActive !== false) {
+            lastCat = cat;
+            html += '<div style="font-weight:700;font-size:0.82rem;color:var(--primary);padding:14px 0 6px;border-bottom:2px solid var(--primary-lighter);margin-bottom:6px">' + (this._categoryLabels[cat] || cat) + '</div>';
+          }
+          html += '<div style="display:flex;align-items:center;gap:10px;padding:10px 0;border-bottom:1px solid var(--border-light);' + (s.isActive === false ? 'opacity:0.4' : '') + '">' +
+            '<div style="flex:1;min-width:0">' +
+              '<div style="font-weight:700;font-size:0.9rem">' + App.escapeHtml(s.name) + '</div>' +
+              '<div style="font-size:0.75rem;color:var(--text-muted);margin-top:2px">' +
+                App.formatPriceShort(s.priceSmall) + ' / ' + App.formatPriceShort(s.priceMedium) + ' / ' + App.formatPriceShort(s.priceLarge) +
+              '</div>' +
+            '</div>' +
+            '<button class="btn-icon btn-edit-service" data-id="' + s.id + '" title="수정" style="font-size:0.9rem">&#x270F;</button>' +
+            '<button class="btn-icon btn-toggle-service" data-id="' + s.id + '" title="' + (s.isActive !== false ? '비활성화' : '활성화') + '" style="font-size:0.9rem">' + (s.isActive !== false ? '&#x1F7E2;' : '&#x26AA;') + '</button>' +
+            '<button class="btn-icon btn-delete-service text-danger" data-id="' + s.id + '" title="삭제" style="font-size:0.9rem">&#x1F5D1;</button>' +
+          '</div>';
+        });
+        return html;
+      })(sorted)}
     `;
   },
 
@@ -158,6 +92,7 @@ App.pages.services = {
     });
 
     document.getElementById('btn-init-services')?.addEventListener('click', () => this.initDefaultServices());
+    document.getElementById('btn-init-services-empty')?.addEventListener('click', () => this.initDefaultServices());
   },
 
   async showForm(id) {
