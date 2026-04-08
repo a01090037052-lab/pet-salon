@@ -202,6 +202,19 @@ App.pages.services = {
       `,
       onSave: () => this.saveService(id)
     });
+
+    // 소형 가격 입력 시 중형/대형 자동 채움 (수동 수정 안 한 경우만)
+    const smallInput = document.getElementById('f-priceSmall');
+    const mediumInput = document.getElementById('f-priceMedium');
+    const largeInput = document.getElementById('f-priceLarge');
+    let mediumManual = !!id, largeManual = !!id; // 수정 모드면 자동채움 비활성
+    mediumInput?.addEventListener('input', () => { mediumManual = true; });
+    largeInput?.addEventListener('input', () => { largeManual = true; });
+    smallInput?.addEventListener('input', () => {
+      const base = Number(smallInput.value) || 0;
+      if (!mediumManual && base > 0) mediumInput.value = base + 10000;
+      if (!largeManual && base > 0) largeInput.value = base + 20000;
+    });
   },
 
   async saveService(id) {
@@ -274,43 +287,65 @@ App.pages.services = {
     App.handleRoute();
   },
 
-  async initDefaultServices() {
-    const defaults = [
-      // 미용 코스
-      { name: '목욕', description: '샴푸 + 드라이 + 발톱/귀/항문낭 기본 케어', priceSmall: 30000, priceMedium: 40000, priceLarge: 50000, isActive: true, category: 'grooming', sortOrder: 1 },
-      { name: '위생미용', description: '목욕 + 발바닥/배/항문/눈가 클리퍼 정리', priceSmall: 35000, priceMedium: 45000, priceLarge: 55000, isActive: true, category: 'grooming', sortOrder: 2 },
-      { name: '전체미용 (클리퍼)', description: '위생 + 몸 전체 클리퍼컷 (썸머컷 등)', priceSmall: 40000, priceMedium: 50000, priceLarge: 65000, isActive: true, category: 'grooming', sortOrder: 3 },
-      { name: '전체미용 (가위컷)', description: '위생 + 몸 전체 가위 스타일링 (테디베어/배냇/라이언 등)', priceSmall: 55000, priceMedium: 70000, priceLarge: 90000, isActive: true, category: 'grooming', sortOrder: 4 },
-      { name: '스포팅', description: '클리퍼 바디 + 다리/귀/꼬리 자연스럽게 남김', priceSmall: 45000, priceMedium: 55000, priceLarge: 70000, isActive: true, category: 'grooming', sortOrder: 5 },
-      { name: '부분미용', description: '얼굴/다리/꼬리 등 원하는 부위만 정리', priceSmall: 15000, priceMedium: 20000, priceLarge: 25000, isActive: true, category: 'grooming', sortOrder: 6 },
-      // 추가 옵션
-      { name: '약욕', description: '피부 상태 맞춤 약용 샴푸 + 온욕', priceSmall: 15000, priceMedium: 20000, priceLarge: 30000, isActive: true, category: 'addon', sortOrder: 1 },
-      { name: '보습팩', description: '피부 보습 + 털 윤기 케어', priceSmall: 15000, priceMedium: 20000, priceLarge: 25000, isActive: true, category: 'addon', sortOrder: 2 },
-      { name: '엉킴 제거', description: '엉킴 정도에 따라 추가 (경미/심함)', priceSmall: 10000, priceMedium: 15000, priceLarge: 20000, isActive: true, category: 'addon', sortOrder: 3 },
-      { name: '염색', description: '귀/꼬리 등 포인트 염색', priceSmall: 15000, priceMedium: 15000, priceLarge: 20000, isActive: true, category: 'addon', sortOrder: 4 },
-      // 단독 케어
-      { name: '발톱 정리', description: '발톱 커트 및 줄 다듬기', priceSmall: 5000, priceMedium: 5000, priceLarge: 8000, isActive: true, category: 'care', sortOrder: 1 },
-      { name: '귀 청소', description: '귀 세정 + 귀털 정리', priceSmall: 5000, priceMedium: 5000, priceLarge: 8000, isActive: true, category: 'care', sortOrder: 2 },
-      { name: '양치', description: '구강 관리 및 양치', priceSmall: 5000, priceMedium: 5000, priceLarge: 5000, isActive: true, category: 'care', sortOrder: 3 },
-      { name: '항문낭', description: '항문낭 짜기', priceSmall: 5000, priceMedium: 5000, priceLarge: 5000, isActive: true, category: 'care', sortOrder: 4 },
-    ];
+  _defaults: [
+    { name: '목욕', description: '샴푸 + 드라이 + 발톱/귀/항문낭 기본 케어', priceSmall: 30000, priceMedium: 40000, priceLarge: 50000, category: 'grooming', sortOrder: 1 },
+    { name: '위생미용', description: '목욕 + 발바닥/배/항문/눈가 클리퍼 정리', priceSmall: 35000, priceMedium: 45000, priceLarge: 55000, category: 'grooming', sortOrder: 2 },
+    { name: '전체미용 (클리퍼)', description: '위생 + 몸 전체 클리퍼컷 (썸머컷 등)', priceSmall: 40000, priceMedium: 50000, priceLarge: 65000, category: 'grooming', sortOrder: 3 },
+    { name: '전체미용 (가위컷)', description: '위생 + 몸 전체 가위 스타일링', priceSmall: 55000, priceMedium: 70000, priceLarge: 90000, category: 'grooming', sortOrder: 4 },
+    { name: '스포팅', description: '클리퍼 바디 + 다리/귀/꼬리 자연스럽게', priceSmall: 45000, priceMedium: 55000, priceLarge: 70000, category: 'grooming', sortOrder: 5 },
+    { name: '부분미용', description: '얼굴/다리/꼬리 등 원하는 부위만', priceSmall: 15000, priceMedium: 20000, priceLarge: 25000, category: 'grooming', sortOrder: 6 },
+    { name: '약욕', description: '피부 맞춤 약용 샴푸 + 온욕', priceSmall: 15000, priceMedium: 20000, priceLarge: 30000, category: 'addon', sortOrder: 1 },
+    { name: '보습팩', description: '피부 보습 + 털 윤기 케어', priceSmall: 15000, priceMedium: 20000, priceLarge: 25000, category: 'addon', sortOrder: 2 },
+    { name: '엉킴 제거', description: '엉킴 정도에 따라 추가', priceSmall: 10000, priceMedium: 15000, priceLarge: 20000, category: 'addon', sortOrder: 3 },
+    { name: '염색', description: '귀/꼬리 등 포인트 염색', priceSmall: 15000, priceMedium: 15000, priceLarge: 20000, category: 'addon', sortOrder: 4 },
+    { name: '발톱 정리', description: '발톱 커트 및 줄 다듬기', priceSmall: 5000, priceMedium: 5000, priceLarge: 8000, category: 'care', sortOrder: 1 },
+    { name: '귀 청소', description: '귀 세정 + 귀털 정리', priceSmall: 5000, priceMedium: 5000, priceLarge: 8000, category: 'care', sortOrder: 2 },
+    { name: '양치', description: '구강 관리 및 양치', priceSmall: 5000, priceMedium: 5000, priceLarge: 5000, category: 'care', sortOrder: 3 },
+    { name: '항문낭', description: '항문낭 짜기', priceSmall: 5000, priceMedium: 5000, priceLarge: 5000, category: 'care', sortOrder: 4 },
+  ],
 
-    // 기존 서비스명과 비교하여 중복 제외
+  async initDefaultServices() {
     const existing = await DB.getAll('services');
     const existingNames = new Set(existing.map(s => s.name));
-    let addedCount = 0;
-    for (const service of defaults) {
-      if (!existingNames.has(service.name)) {
-        await DB.add('services', service);
-        addedCount++;
-      }
+    const catLabels = this._categoryLabels;
+    const catOrder = this._categoryOrder;
+    const available = this._defaults.filter(d => !existingNames.has(d.name));
+
+    if (available.length === 0) {
+      App.showToast('추가할 새 서비스가 없습니다.', 'info');
+      return;
     }
 
-    if (addedCount > 0) {
-      App.showToast(`기본 서비스 ${addedCount}개가 추가되었습니다.`);
-    } else {
-      App.showToast('추가할 새 서비스가 없습니다. (모두 등록 완료)', 'info');
+    // 카테고리별 그룹 HTML
+    let html = '<div style="margin-bottom:12px;font-size:0.85rem;color:var(--text-secondary)">등록할 서비스를 선택하세요</div>';
+    for (const cat of catOrder) {
+      const items = available.filter(d => d.category === cat);
+      if (items.length === 0) continue;
+      html += '<div style="font-weight:700;font-size:0.82rem;color:var(--primary);margin:10px 0 6px;padding-bottom:4px;border-bottom:1px solid var(--primary-lighter)">' + catLabels[cat] + '</div>';
+      items.forEach((d, i) => {
+        const globalIdx = available.indexOf(d);
+        html += '<label style="display:flex;align-items:center;gap:8px;padding:8px 0;border-bottom:1px solid var(--border-light);cursor:pointer">' +
+          '<input type="checkbox" name="defaultSvc" value="' + globalIdx + '" checked style="width:18px;height:18px">' +
+          '<div style="flex:1"><strong style="font-size:0.9rem">' + App.escapeHtml(d.name) + '</strong>' +
+          '<div style="font-size:0.75rem;color:var(--text-muted)">' + App.escapeHtml(d.description) + ' | ' + App.formatCurrency(d.priceSmall) + '~</div></div></label>';
+      });
     }
-    App.handleRoute();
+
+    App.showModal({
+      title: '기본 서비스 선택 등록',
+      content: html,
+      saveText: '선택한 서비스 등록',
+      onSave: async () => {
+        const checked = document.querySelectorAll('input[name="defaultSvc"]:checked');
+        if (checked.length === 0) { App.showToast('서비스를 선택해주세요.', 'error'); return; }
+        for (const cb of checked) {
+          const svc = available[Number(cb.value)];
+          await DB.add('services', { ...svc, isActive: true });
+        }
+        App.showToast(`${checked.length}개 서비스가 등록되었습니다.`);
+        App.closeModal();
+        App.handleRoute();
+      }
+    });
   }
 };
