@@ -757,13 +757,17 @@ App.pages.records = {
           const btn = document.getElementById('post-save-sms');
           if (btn) { btn.textContent = '\u2713 발송됨'; btn.disabled = true; btn.style.opacity = '0.6'; }
         });
-        // 리포트 복사 (카톡용)
+        // 리포트 복사 (카톡용) -- 미리 리포트 생성 (iOS clipboard 제스처 타이밍)
+        let _cachedReport = null;
+        App.buildGroomingReport(data).then(r => { _cachedReport = r; });
         document.getElementById('post-save-report-copy')?.addEventListener('click', async () => {
-          const report = await App.buildGroomingReport(data);
+          const report = _cachedReport || await App.buildGroomingReport(data);
           navigator.clipboard.writeText(report).then(() => {
             App.showToast('리포트가 복사되었습니다. 카톡에 붙여넣기 하세요.');
             const btn = document.getElementById('post-save-report-copy');
             if (btn) { btn.textContent = '\u2713 복사됨'; btn.disabled = true; btn.style.opacity = '0.6'; }
+          }).catch(() => {
+            App.showToast('복사에 실패했습니다.', 'error');
           });
         });
         document.getElementById('post-save-close')?.addEventListener('click', () => {
@@ -1710,8 +1714,8 @@ App.pages.records = {
         if (!blob) { App.showToast('카드 생성에 실패했습니다.', 'error'); return; }
         const url = URL.createObjectURL(blob);
         const fileName = (pet?.name || 'pet') + '_미용카드_' + record.date + '.png';
-        if (navigator.share && navigator.canShare) {
-          const file = new File([blob], fileName, { type: 'image/png' });
+        const file = new File([blob], fileName, { type: 'image/png' });
+        if (navigator.share && navigator.canShare && navigator.canShare({ files: [file] })) {
           navigator.share({ files: [file], title: (pet?.name || '') + ' 미용 카드' }).catch(() => {
             const a = document.createElement('a');
             a.href = url; a.download = fileName; a.click();

@@ -1745,7 +1745,9 @@ const App = {
 
   // SMS URI 생성 유틸리티
   getSmsSep() {
-    return /iP(hone|ad|od)/.test(navigator.userAgent) ? '&' : '?';
+    const ua = navigator.userAgent;
+    const isIOS = /iP(hone|ad|od)/.test(ua) || (navigator.maxTouchPoints > 0 && /Macintosh/.test(ua));
+    return isIOS ? '&' : '?';
   },
 
   getSmsUrl(phone, body) {

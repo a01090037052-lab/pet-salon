@@ -678,6 +678,7 @@ a.stat-card { display: flex; }
   gap: 10px;
   font-size: 0.9rem;
   backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
 }
 .toast::before {
   font-size: 1.1rem;
@@ -2724,6 +2725,7 @@ a.stat-card { display: flex; }
   cursor: pointer;
   border: none;
   backdrop-filter: blur(4px);
+  -webkit-backdrop-filter: blur(4px);
 }
 .lightbox-close:hover { background: rgba(255,255,255,0.3); }
 
@@ -2753,6 +2755,7 @@ a.stat-card { display: flex; }
   border: none;
   pointer-events: all;
   backdrop-filter: blur(4px);
+  -webkit-backdrop-filter: blur(4px);
 }
 .lightbox-prev:hover, .lightbox-next:hover { background: rgba(255,255,255,0.3); }
 
