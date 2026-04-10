@@ -1054,8 +1054,24 @@ App.pages.appointments = {
     try {
       const appt = await DB.get('appointments', id);
       if (!appt) return;
-      // Don't change status here; pass appointmentId so records.saveRecord() can update it after saving
+      // 즉시 "미용중" 상태로 변경
+      const prevStatus = appt.status;
+      appt.status = 'in_progress';
+      await DB.update('appointments', appt);
+      // 기록 폼 열기 — 저장 시 records.saveRecord에서 completed로 변경
       App.pages.records.showForm(null, appt);
+      // 모달 취소 시 원래 상태로 복원
+      const _origClose = App._modalOnClose;
+      App._modalOnClose = async () => {
+        if (_origClose) _origClose();
+        // 기록이 저장되지 않았으면 (예약이 아직 in_progress) 원래 상태로
+        const current = await DB.get('appointments', id);
+        if (current && current.status === 'in_progress') {
+          current.status = prevStatus;
+          await DB.update('appointments', current);
+        }
+        App._modalOnClose = null;
+      };
     } catch (err) {
       console.error('Complete to record error:', err);
       App.showToast('처리 중 오류가 발생했습니다.', 'error');

@@ -360,6 +360,17 @@ App.pages.records = {
           <select id="f-groomer">${await App.getGroomerOptions(record.groomer)}</select>
         </div>
 
+        <!-- 컨디션 (기본 표시) -->
+        <div class="form-group" style="margin-bottom:12px">
+          <label class="form-label" style="font-size:0.85rem">컨디션 <span style="font-weight:400;color:var(--text-muted);font-size:0.78rem">(선택 — 리포트에 반영)</span></label>
+          <div id="f-condition-chips" style="display:flex;gap:6px">
+            <button type="button" class="condition-chip${record.condition === 'good' ? ' active' : ''}" data-field="condition" data-value="good" style="flex:1;padding:8px;border:1.5px solid var(--border);border-radius:8px;background:${record.condition === 'good' ? 'var(--success-light)' : 'var(--bg-white)'};cursor:pointer;font-size:0.82rem;font-weight:600">좋음</button>
+            <button type="button" class="condition-chip${record.condition === 'normal' ? ' active' : ''}" data-field="condition" data-value="normal" style="flex:1;padding:8px;border:1.5px solid var(--border);border-radius:8px;background:${record.condition === 'normal' ? 'var(--warning-light)' : 'var(--bg-white)'};cursor:pointer;font-size:0.82rem;font-weight:600">보통</button>
+            <button type="button" class="condition-chip${record.condition === 'caution' ? ' active' : ''}" data-field="condition" data-value="caution" style="flex:1;padding:8px;border:1.5px solid var(--border);border-radius:8px;background:${record.condition === 'caution' ? '#FEE2E2' : 'var(--bg-white)'};cursor:pointer;font-size:0.82rem;font-weight:600">주의</button>
+          </div>
+          <input type="hidden" id="f-condition" value="${record.condition || ''}">
+        </div>
+
         <!-- 상세 옵션 토글 -->
         <div class="form-detail-divider" onclick="this.closest('.modal-body').querySelector('.form-detail-section').classList.toggle('open');this.classList.toggle('open')">
           <span class="form-detail-divider-line"></span>
@@ -380,18 +391,9 @@ App.pages.records = {
               <input type="number" id="f-extraCharge" value="${record.extraCharge || ''}" placeholder="0" min="0" step="1000">
             </div>
           </div>
-          <!-- 컨디션 체크 (리포트용) -->
+          <!-- 상세 컨디션 (피부/귀/엉킴) -->
           <div style="border:1px solid var(--border);border-radius:var(--radius);padding:14px;margin-bottom:16px">
-            <div style="font-weight:700;font-size:0.9rem;margin-bottom:12px">컨디션 체크 <span style="font-weight:400;color:var(--text-muted);font-size:0.8rem">(선택)</span></div>
-            <div class="form-group" style="margin-bottom:10px">
-              <label class="form-label" style="font-size:0.82rem">전체 컨디션</label>
-              <div id="f-condition-chips" style="display:flex;gap:6px">
-                <button type="button" class="condition-chip${record.condition === 'good' ? ' active' : ''}" data-field="condition" data-value="good" style="flex:1;padding:8px;border:1.5px solid var(--border);border-radius:8px;background:${record.condition === 'good' ? 'var(--success-light)' : 'var(--bg-white)'};cursor:pointer;font-size:0.82rem;font-weight:600">좋음</button>
-                <button type="button" class="condition-chip${record.condition === 'normal' ? ' active' : ''}" data-field="condition" data-value="normal" style="flex:1;padding:8px;border:1.5px solid var(--border);border-radius:8px;background:${record.condition === 'normal' ? 'var(--warning-light)' : 'var(--bg-white)'};cursor:pointer;font-size:0.82rem;font-weight:600">보통</button>
-                <button type="button" class="condition-chip${record.condition === 'caution' ? ' active' : ''}" data-field="condition" data-value="caution" style="flex:1;padding:8px;border:1.5px solid var(--border);border-radius:8px;background:${record.condition === 'caution' ? '#FEE2E2' : 'var(--bg-white)'};cursor:pointer;font-size:0.82rem;font-weight:600">주의</button>
-              </div>
-              <input type="hidden" id="f-condition" value="${record.condition || ''}">
-            </div>
+            <div style="font-weight:700;font-size:0.9rem;margin-bottom:12px">상세 컨디션 <span style="font-weight:400;color:var(--text-muted);font-size:0.8rem">(선택)</span></div>
             <div class="form-group" style="margin-bottom:10px">
               <label class="form-label" style="font-size:0.82rem">피부 상태</label>
               <div style="display:flex;gap:6px;flex-wrap:wrap">
