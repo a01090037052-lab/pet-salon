@@ -26,6 +26,7 @@ App.pages.appointments = {
     const petMap = {}; pets.forEach(p => petMap[p.id] = p);
     const serviceMap = {}; services.forEach(s => serviceMap[s.id] = s.name);
     this._customerMap = customerMap;
+    this._petMap = petMap;
 
     container.innerHTML = `
       <div class="page-header">
@@ -272,6 +273,7 @@ App.pages.appointments = {
       Object.values(dateAppts).forEach(arr => arr.sort((a, b) => (a.time || '').localeCompare(b.time || '')));
     }
     const customerMap = this._customerMap || {};
+    const petMap = this._petMap || {};
 
     let cellsHtml = '';
     // 빈 칸 (이전 달)
@@ -295,8 +297,9 @@ App.pages.appointments = {
       if (!isClosed && count > 0) {
         const appts = dateAppts[dateStr] || [];
         previewHtml = appts.slice(0, 3).map(a => {
-          const cName = customerMap[a.customerId]?.name || '?';
-          const shortName = cName.length > 2 ? cName.slice(0, 2) : cName;
+          const pet = petMap[a.petId];
+          const pName = pet?.name || '?';
+          const shortName = pName.length > 2 ? pName.slice(0, 2) : pName;
           return '<div style="font-size:0.58rem;line-height:1.15;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:var(--text-secondary);margin-top:1px">' +
             '<span style="color:var(--primary);font-weight:700">' + (a.time ? a.time.slice(0,5) : '') + '</span> ' + App.escapeHtml(shortName) + '</div>';
         }).join('');
@@ -839,7 +842,7 @@ App.pages.appointments = {
         return newStart < aEnd && newEnd > aStart;
       });
       if (conflicts.length > 0) {
-        const names = conflicts.map(a => (a.time || '') + ' ' + (this._customerMap?.[a.customerId]?.name || '예약')).join(', ');
+        const names = conflicts.map(a => (a.time || '') + ' ' + (this._petMap?.[a.petId]?.name || '예약')).join(', ');
         warningEl.innerHTML = '&#x26A0; 같은 시간대 예약: ' + App.escapeHtml(names);
         warningEl.style.display = 'block';
       } else {
