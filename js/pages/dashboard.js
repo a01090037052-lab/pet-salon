@@ -149,7 +149,7 @@ App.pages.dashboard = {
       for (const a of revisitAlerts) {
         const smsType = a.visitStatus === 'churned' ? 'churned' : a.visitStatus === 'at-risk' ? 'atRisk' : 'revisit';
         const msg = await App.buildSms(smsType, {
-          '고객명': a.customer.name || '',
+          '고객명': App.getCustomerLabel(a.customer),
           '반려견명': a.pet.name || '',
           '경과일수': String(a.days),
           '마지막방문일': a.pet.lastVisitDate ? App.formatDate(a.pet.lastVisitDate) : ''
@@ -452,7 +452,7 @@ App.pages.dashboard = {
         <div class="appointment-item" style="cursor:pointer" onclick="App.navigate('appointments')">
           <div class="appointment-time">${appt.time || '--:--'}</div>
           <div class="appointment-info">
-            <div class="name">${dateLabel}<a href="#customers/${appt.customerId}" onclick="event.stopPropagation()" style="color:inherit;font-weight:700">${App.escapeHtml(customer?.name || '?')}</a> <span style="color:var(--text-muted)">/</span> <a href="#pets/${appt.petId}" onclick="event.stopPropagation()" style="color:inherit">${App.escapeHtml(pet?.name || '?')}</a></div>
+            <div class="name">${dateLabel}<a href="#customers/${appt.customerId}" onclick="event.stopPropagation()" style="color:inherit;font-weight:700">${App.escapeHtml(App.getCustomerLabel(customer))}</a> <span style="color:var(--text-muted)">/</span> <a href="#pets/${appt.petId}" onclick="event.stopPropagation()" style="color:inherit">${App.escapeHtml(pet?.name || '?')}</a></div>
             <div class="detail">${App.escapeHtml(serviceNames || '서비스 미지정')}${appt.groomer ? ' &middot; ' + App.escapeHtml(appt.groomer) : ''}</div>
             ${(() => { const w = [pet?.temperament, pet?.healthNotes, pet?.allergies].filter(Boolean); if (!w.length) return ''; const s = w.join(', '); return '<div style="font-size:0.75rem;color:var(--danger);margin-top:2px">&#x26A0; ' + App.escapeHtml(s.length > 50 ? s.slice(0, 50) + '...' : s) + '</div>'; })()}
           </div>

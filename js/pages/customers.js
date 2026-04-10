@@ -504,7 +504,7 @@ App.pages.customers = {
       title: id ? '고객 정보 수정' : '새 고객 등록',
       content: id ? `
         <div class="form-group">
-          <label class="form-label">이름 <span class="required">*</span></label>
+          <label class="form-label">보호자 이름 <span style="font-size:0.85em;color:var(--text-muted);font-weight:normal">(선택)</span></label>
           <input type="text" id="f-name" value="${App.escapeHtml(customer.name || '')}" placeholder="고객 이름" maxlength="50">
         </div>
         <div class="form-group">
@@ -536,7 +536,7 @@ App.pages.customers = {
         </div>
       ` : `
         <div class="form-group">
-          <label class="form-label">고객 이름 <span class="required">*</span></label>
+          <label class="form-label">보호자 이름 <span style="font-size:0.85em;color:var(--text-muted);font-weight:normal">(선택)</span></label>
           <input type="text" id="f-name" value="" placeholder="고객 이름" maxlength="50">
         </div>
         <div class="form-group">
@@ -575,14 +575,13 @@ App.pages.customers = {
     const tags = [];
     document.querySelectorAll('input[name="customerTag"]:checked').forEach(cb => tags.push(cb.value));
 
-    if (!name) { App.showToast('이름을 입력해주세요.', 'error'); App.highlightField('f-name'); return; }
     if (!phone) { App.showToast('연락처를 입력해주세요.', 'error'); App.highlightField('f-phone'); return; }
 
     // Check phone duplicate
     const allCustomers = await DB.getAll('customers');
     const duplicate = allCustomers.find(c => (c.phone || '').replace(/\D/g, '') === phone.replace(/\D/g, '') && c.id !== id);
     if (duplicate) {
-      App.showToast(`이미 등록된 연락처입니다 (${duplicate.name})`, 'error');
+      App.showToast(`이미 등록된 연락처입니다 (${App.getCustomerLabel(duplicate)})`, 'error');
       return;
     }
 

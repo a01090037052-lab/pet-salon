@@ -111,7 +111,7 @@ App.pages.records = {
               </thead>
               <tbody id="record-tbody">
                 ${sorted.length === 0 ? `
-                  <tr><td colspan="9">
+                  <tr><td colspan="8">
                     <div class="empty-state">
                       <div class="empty-state-icon">&#x2702;</div>
                       <div class="empty-state-text">미용 기록이 없습니다</div>
@@ -934,7 +934,7 @@ App.pages.records = {
                 const pet = petMap[r.petId];
                 return `<div style="display:flex;align-items:center;gap:12px;padding:8px 12px;background:var(--bg);border-radius:8px;font-size:0.88rem${r.paymentMethod === 'unpaid' ? ';border-left:3px solid var(--danger)' : ''}">
                   <span style="color:var(--text-muted);min-width:50px">${this.getPaymentLabel(r.paymentMethod)}</span>
-                  <span class="flex-1"><strong>${App.escapeHtml(customer?.name || '-')}</strong> / ${App.escapeHtml(pet?.name || '-')}</span>
+                  <span class="flex-1"><strong>${App.escapeHtml(App.getCustomerLabel(customer))}</strong> / ${App.escapeHtml(pet?.name || '-')}</span>
                   <span style="font-weight:600">${App.escapeHtml(r.groomer || '-')}</span>
                   <strong${r.paymentMethod === 'unpaid' ? ' class="text-danger"' : ''}>${App.formatCurrency(App.getRecordAmount(r))}</strong>
                 </div>`;
@@ -1006,7 +1006,7 @@ App.pages.records = {
           </div>
           <hr class="receipt-divider">
           <div class="receipt-row"><span>날짜</span><span>${App.formatDate(record.date)}</span></div>
-          <div class="receipt-row"><span>고객</span><span>${App.escapeHtml(customer?.name || '-')}</span></div>
+          <div class="receipt-row"><span>고객</span><span>${App.escapeHtml(App.getCustomerLabel(customer))}</span></div>
           <div class="receipt-row"><span>반려견</span><span>${App.escapeHtml(pet?.name || '-')}${pet?.breed ? ' (' + App.escapeHtml(pet.breed) + ')' : ''}</span></div>
           ${record.groomer ? `<div class="receipt-row"><span>담당</span><span>${App.escapeHtml(record.groomer)}</span></div>` : ''}
           <hr class="receipt-divider">
@@ -1946,7 +1946,7 @@ App.pages.records = {
         const payLabel = { cash: '현금', card: '카드', transfer: '이체', unpaid: '미결제' }[r.paymentMethod] || '';
         lines.push([
           r.date || '',
-          customer?.name || '',
+          App.getCustomerLabel(customer),
           pet?.name || '',
           pet?.breed || '',
           serviceNames,

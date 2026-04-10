@@ -116,7 +116,7 @@ App.pages.appointments = {
               </thead>
               <tbody id="appt-tbody">
                 ${sorted.length === 0 ? `
-                  <tr><td colspan="9">
+                  <tr><td colspan="8">
                     <div class="empty-state">
                       <div class="empty-state-icon">&#x1F4C5;</div>
                       <div class="empty-state-text">등록된 예약이 없습니다</div>
@@ -534,7 +534,7 @@ App.pages.appointments = {
     if (!phone) { App.showToast('고객 연락처가 없습니다.', 'error'); return; }
     const pet = await DB.get('pets', appt.petId);
     const msg = await App.buildSms('reminder', {
-      '고객명': customer?.name || '',
+      '고객명': App.getCustomerLabel(customer),
       '반려견명': pet?.name || '',
       '날짜': appt.date || '',
       '시간': appt.time || '',
@@ -610,8 +610,8 @@ App.pages.appointments = {
           const statusColors = { pending: 'var(--warning)', confirmed: 'var(--primary)', in_progress: 'var(--info)', completed: 'var(--success)', noshow: 'var(--danger)' };
           const durLabel = (a.duration || 60) >= 60 ? Math.floor((a.duration || 60) / 60) + '시간' + ((a.duration || 60) % 60 ? ' ' + (a.duration || 60) % 60 + '분' : '') : (a.duration || 60) + '분';
           html += `<div style="padding:4px 6px;border-bottom:1px solid var(--border);background:${statusColors[a.status] || 'var(--primary)'}15;border-left:3px solid ${statusColors[a.status] || 'var(--primary)'}">
-            <div style="font-size:0.78rem;font-weight:700">${App.escapeHtml(customer?.name || '-')}</div>
-            <div style="font-size:0.7rem;color:var(--text-secondary)">${App.escapeHtml(pet?.name || '-')}</div>
+            <div style="font-size:0.78rem;font-weight:700">${App.escapeHtml(pet?.name || '-')}</div>
+            <div style="font-size:0.7rem;color:var(--text-secondary)">${App.escapeHtml(App.getCustomerLabel(customer))}</div>
             <div style="font-size:0.65rem;color:var(--text-muted)">${durLabel}</div>
           </div>`;
         } else if (cell && !cell.isStart) {
@@ -1029,7 +1029,7 @@ App.pages.appointments = {
           if (phone) {
             const pet = await DB.get('pets', petId);
             const msg = await App.buildSms('appointment', {
-              '고객명': customer.name || '',
+              '고객명': App.getCustomerLabel(customer),
               '반려견명': pet?.name || '',
               '날짜': date,
               '시간': time || '',

@@ -1262,7 +1262,7 @@ const App = {
           try {
             const customer = await DB.get('customers', appt.customerId);
             const pet = await DB.get('pets', appt.petId);
-            if (customer) customerName = customer.name;
+            if (customer) customerName = App.getCustomerLabel(customer);
             if (pet) petName = pet.name;
           } catch (e) { /* ignore */ }
 
@@ -1438,12 +1438,13 @@ const App = {
     resultsContainer.innerHTML = matched.slice(0, 20).map(c => {
       const cPets = petsByCustomer[c.id] || [];
       const petNames = cPets.map(p => p.name).join(', ');
-      const initial = c.name ? c.name.charAt(0) : '?';
+      const label = App.getCustomerLabel(c);
+      const initial = label.charAt(0);
       return `
         <div class="gs-result-item" tabindex="0" data-customer-id="${c.id}">
           <div class="gs-result-avatar">${this.escapeHtml(initial)}</div>
           <div class="gs-result-info" style="flex:1">
-            <div class="gs-result-name">${this.escapeHtml(c.name)}</div>
+            <div class="gs-result-name">${this.escapeHtml(label)}</div>
             <div class="gs-result-phone">${this.formatPhone(c.phone)}</div>
             ${petNames ? `<div class="gs-result-pets">${this.escapeHtml(petNames)}</div>` : ''}
           </div>
@@ -1558,7 +1559,7 @@ const App = {
       <div class="gs-customer-card">
         ${showBack ? `<button class="gs-back-link" id="gs-back-btn">&#x2190; 검색 결과로 돌아가기</button>` : ''}
         <div class="gs-card-header">
-          <span class="gs-card-name">${this.escapeHtml(customer.name)}${this.pages.customers.getTagBadges(customer.tags)}</span>
+          <span class="gs-card-name">${this.escapeHtml(App.getCustomerLabel(customer))}${this.pages.customers.getTagBadges(customer.tags)}</span>
           <a href="tel:${this.escapeHtml(phoneClean)}" class="gs-card-phone">${this.formatPhone(customer.phone)}</a>
         </div>
         <div class="gs-card-body">
