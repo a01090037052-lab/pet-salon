@@ -106,8 +106,7 @@ App.pages.appointments = {
                 <tr>
                   <th>날짜</th>
                   <th>시간</th>
-                  <th>고객</th>
-                  <th>반려견</th>
+                  <th>반려견 / 보호자</th>
                   <th class="hide-mobile">서비스</th>
                   <th class="hide-mobile">담당</th>
                   <th class="hide-mobile">메모</th>
@@ -140,8 +139,7 @@ App.pages.appointments = {
                         ${isPast && a.status !== 'completed' && a.status !== 'cancelled' ? '<span class="badge badge-danger" style="margin-left:4px">지남</span>' : ''}
                       </td>
                       <td>${a.time || '-'}${a.duration && a.duration !== 60 ? `<div style="font-size:0.7rem;color:var(--text-muted)">${a.duration}분</div>` : ''}</td>
-                      <td><a href="#customers/${a.customerId}" style="color:var(--primary)" onclick="event.stopPropagation()">${App.escapeHtml(customer?.name || '-')}</a>${customer?.phone ? ` <a href="sms:${App.escapeHtml((customer.phone || '').replace(/\D/g, ''))}" onclick="event.stopPropagation()" title="문자 보내기" style="color:var(--text-muted);font-size:0.8rem">&#x1F4AC;</a>` : ''}</td>
-                      <td><a href="#pets/${a.petId}" style="color:var(--primary)" onclick="event.stopPropagation()">${App.escapeHtml(pet?.name || '-')}</a></td>
+                      <td><a href="#pets/${a.petId}" style="color:var(--primary);font-weight:700" onclick="event.stopPropagation()">${App.escapeHtml(pet?.name || '-')}</a> <span style="color:var(--text-muted);font-size:0.75rem">${App.escapeHtml(App.getCustomerLabel(customer))}</span>${customer?.phone ? ` <a href="sms:${App.escapeHtml((customer.phone || '').replace(/\D/g, ''))}" onclick="event.stopPropagation()" title="문자 보내기" style="color:var(--text-muted);font-size:0.8rem">&#x1F4AC;</a>` : ''}</td>
                       <td class="hide-mobile"><span style="font-size:0.85rem">${App.escapeHtml(serviceNames)}</span></td>
                       <td class="hide-mobile">${App.escapeHtml(a.groomer || '-')}</td>
                       <td class="hide-mobile" style="max-width:120px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${App.escapeHtml(a.memo || '')}">${App.escapeHtml(a.memo || '-')}</td>
@@ -195,7 +193,7 @@ App.pages.appointments = {
                   <span class="badge ${statusClass[a.status] || 'badge-secondary'}">${statusLabels[a.status] || a.status}</span>
                 </div>
                 <div class="mobile-card-body">
-                  <span class="mobile-card-info">&#x1F464; ${App.escapeHtml(customer?.name || '-')} &middot; &#x1F436; ${App.escapeHtml(pet?.name || '-')}</span>
+                  <span class="mobile-card-info">&#x1F436; <strong>${App.escapeHtml(pet?.name || '-')}</strong> &middot; ${App.escapeHtml(App.getCustomerLabel(customer))}</span>
                   ${a.memo ? `<div style="font-size:0.8rem;color:var(--text-secondary);margin-top:4px">&#x1F4DD; ${App.escapeHtml(a.memo.length > 40 ? a.memo.slice(0, 40) + '...' : a.memo)}</div>` : ''}
                 </div>
                 <div class="mobile-card-actions" style="flex-direction:column;gap:6px">

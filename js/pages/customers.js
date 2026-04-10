@@ -179,7 +179,7 @@ App.pages.customers = {
       <div class="detail-header">
         <div class="detail-avatar">&#x1F464;</div>
         <div class="detail-info">
-          <h2>${App.escapeHtml(customer.name)}${this.getTagBadges(customer.tags)}</h2>
+          <h2>${App.escapeHtml(App.getCustomerLabel(customer))}${this.getTagBadges(customer.tags)}</h2>
           <div class="detail-meta">
             <a href="tel:${App.escapeHtml((customer.phone || '').replace(/\D/g, ''))}" style="color:var(--primary)">&#x1F4DE; ${App.formatPhone(customer.phone)}</a>
             <a href="sms:${App.escapeHtml((customer.phone || '').replace(/\D/g, ''))}" style="color:var(--primary);font-size:0.85rem" title="문자 보내기">&#x1F4AC; 문자</a>
@@ -666,7 +666,7 @@ App.pages.customers = {
     const customer = await DB.get('customers', id);
     if (!customer) return;
 
-    const confirmed = await App.confirm(`"${App.escapeHtml(customer.name)}" 고객을 삭제하시겠습니까?<br>관련 반려견, 예약, 미용 기록도 함께 삭제됩니다.<br><strong>이 작업은 되돌릴 수 없습니다.</strong>`);
+    const confirmed = await App.confirm(`"${App.escapeHtml(App.getCustomerLabel(customer))}" 고객을 삭제하시겠습니까?<br>관련 반려견, 예약, 미용 기록도 함께 삭제됩니다.<br><strong>이 작업은 되돌릴 수 없습니다.</strong>`);
     if (!confirmed) return;
 
     try {
@@ -691,11 +691,12 @@ App.pages.customers = {
   },
 
   _renderCustomerRow(c, petCount, lastVisit) {
-    const initial = c.name ? c.name.charAt(0) : '?';
+    const displayName = App.getCustomerLabel(c);
+    const initial = c.name ? c.name.charAt(0) : (displayName.charAt(0) || '?');
     const vs = this._customerVisitStatus?.[c.id] || 'normal';
     const visitBadge = vs !== 'normal' ? `<span class="badge ${App.getVisitStatusBadge(vs)}" style="margin-left:6px;font-size:0.65rem">${App.getVisitStatusLabel(vs)}</span>` : '';
     return `<tr data-id="${c.id}" data-tags="${(c.tags || []).join(',')}" data-visit-status="${vs}" class="clickable-row" style="cursor:pointer">
-      <td><div style="display:flex;align-items:center;gap:10px"><div style="width:34px;height:34px;border-radius:10px;background:linear-gradient(135deg,var(--primary-light),#E0E7FF);display:flex;align-items:center;justify-content:center;font-weight:800;color:var(--primary);font-size:0.85rem;flex-shrink:0">${App.escapeHtml(initial)}</div><strong>${App.escapeHtml(c.name)}</strong>${this.getTagBadges(c.tags)}${visitBadge}</div></td>
+      <td><div style="display:flex;align-items:center;gap:10px"><div style="width:34px;height:34px;border-radius:10px;background:linear-gradient(135deg,var(--primary-light),#E0E7FF);display:flex;align-items:center;justify-content:center;font-weight:800;color:var(--primary);font-size:0.85rem;flex-shrink:0">${App.escapeHtml(initial)}</div><strong>${App.escapeHtml(displayName)}</strong>${this.getTagBadges(c.tags)}${visitBadge}</div></td>
       <td><a href="tel:${App.escapeHtml((c.phone || '').replace(/\D/g, ''))}" style="color:var(--primary)" onclick="event.stopPropagation()">${App.formatPhone(c.phone)}</a></td>
       <td><span class="badge badge-info">${petCount[c.id] || 0}마리</span></td>
       <td>${lastVisit[c.id] ? App.getRelativeTime(lastVisit[c.id]) : '-'}</td>
@@ -705,11 +706,12 @@ App.pages.customers = {
   },
 
   _renderCustomerCard(c, petCount, lastVisit) {
-    const initial = c.name ? c.name.charAt(0) : '?';
+    const displayName = App.getCustomerLabel(c);
+    const initial = c.name ? c.name.charAt(0) : (displayName.charAt(0) || '?');
     const vs = this._customerVisitStatus?.[c.id] || 'normal';
     const visitBadge = vs !== 'normal' ? `<span class="badge ${App.getVisitStatusBadge(vs)}" style="margin-left:6px;font-size:0.65rem">${App.getVisitStatusLabel(vs)}</span>` : '';
     return `<div class="mobile-card clickable-row" data-id="${c.id}" data-tags="${(c.tags || []).join(',')}" data-visit-status="${vs}" style="cursor:pointer">
-      <div class="mobile-card-header"><div style="display:flex;align-items:center;gap:10px"><div class="mobile-card-avatar">${App.escapeHtml(initial)}</div><strong>${App.escapeHtml(c.name)}</strong>${this.getTagBadges(c.tags)}${visitBadge}</div><span class="badge badge-info">${petCount[c.id] || 0}마리</span></div>
+      <div class="mobile-card-header"><div style="display:flex;align-items:center;gap:10px"><div class="mobile-card-avatar">${App.escapeHtml(initial)}</div><strong>${App.escapeHtml(displayName)}</strong>${this.getTagBadges(c.tags)}${visitBadge}</div><span class="badge badge-info">${petCount[c.id] || 0}마리</span></div>
       <div class="mobile-card-body"><a href="tel:${App.escapeHtml((c.phone || '').replace(/\D/g, ''))}" class="mobile-card-phone" onclick="event.stopPropagation()">&#x1F4DE; ${App.formatPhone(c.phone)}</a><span class="mobile-card-meta-text">${lastVisit[c.id] ? '최근 방문: ' + App.getRelativeTime(lastVisit[c.id]) : '방문 기록 없음'}</span>
       <div style="display:flex;gap:4px;margin-top:8px;border-top:1px solid var(--border-light);padding-top:8px"><button class="btn btn-sm btn-secondary btn-edit-customer flex-1" data-id="${c.id}" onclick="event.stopPropagation()">수정</button><button class="btn btn-sm btn-danger btn-delete-customer flex-1" data-id="${c.id}" onclick="event.stopPropagation()">삭제</button></div></div>
     </div>`;

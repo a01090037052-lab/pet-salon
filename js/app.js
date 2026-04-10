@@ -708,6 +708,25 @@ const App = {
     return lines.join('\n');
   },
 
+  // 고객 표시명 (간단 — pets 불필요)
+  getCustomerLabel(customer) {
+    if (!customer) return '-';
+    if (customer.name) return customer.name;
+    const last4 = (customer.phone || '').replace(/\D/g, '').slice(-4);
+    return last4 ? '고객(' + last4 + ')' : '미등록 고객';
+  },
+
+  // 고객 표시명 (상세 — pets 있을 때)
+  getCustomerDisplayName(customer, pets) {
+    if (!customer) return '-';
+    if (customer.name) return customer.name;
+    const petNames = (pets || []).map(p => p.name).filter(Boolean);
+    const last4 = (customer.phone || '').replace(/\D/g, '').slice(-4);
+    if (petNames.length > 0 && last4) return petNames[0] + ' 보호자(' + last4 + ')';
+    if (petNames.length > 0) return petNames[0] + ' 보호자';
+    return last4 ? '고객(' + last4 + ')' : '미등록 고객';
+  },
+
   getRelativeTime(dateStr) {
     const days = this.getDaysAgo(dateStr);
     if (days === null) return '-';
@@ -922,8 +941,8 @@ const App = {
     dropdown.innerHTML = `
       <div style="padding:14px">
         <div style="font-weight:700;margin-bottom:10px;font-size:0.95rem">새 고객 등록</div>
-        <label style="font-size:0.82rem;color:var(--text-muted)">보호자 이름 <span style="color:var(--danger)">*</span></label>
-        <input type="text" id="quick-cust-name" placeholder="보호자 이름" value="${App.escapeHtml(prefillName)}" style="margin-bottom:8px;width:100%;box-sizing:border-box">
+        <label style="font-size:0.82rem;color:var(--text-muted)">보호자 이름 <span style="color:var(--text-muted);font-size:0.75rem">(선택)</span></label>
+        <input type="text" id="quick-cust-name" placeholder="보호자 이름 (나중에 입력 가능)" value="${App.escapeHtml(prefillName)}" style="margin-bottom:8px;width:100%;box-sizing:border-box">
         <label style="font-size:0.82rem;color:var(--text-muted)">전화번호 <span style="color:var(--danger)">*</span></label>
         <input type="tel" id="quick-cust-phone" placeholder="전화번호" style="margin-bottom:8px;width:100%;box-sizing:border-box">
         <div id="quick-dup-area"></div>
@@ -1005,12 +1024,11 @@ const App = {
       const name = document.getElementById('quick-cust-name').value.trim();
       const phone = document.getElementById('quick-cust-phone').value.trim();
       const petName = document.getElementById('quick-pet-name')?.value.trim();
-      if (!name) { App.showToast('보호자 이름을 입력해주세요.', 'error'); App.highlightField('quick-cust-name'); return; }
       if (!phone) { App.showToast('전화번호를 입력해주세요.', 'error'); App.highlightField('quick-cust-phone'); return; }
       if (!petName) { App.showToast('반려견 이름을 입력해주세요.', 'error'); App.highlightField('quick-pet-name'); return; }
       const allCusts = await DB.getAll('customers');
       const dup = allCusts.find(c => (c.phone || '').replace(/\D/g, '') === phone.replace(/\D/g, ''));
-      if (dup) { App.showToast(`이미 등록된 번호입니다 (${dup.name})`, 'error'); return; }
+      if (dup) { App.showToast(`이미 등록된 번호입니다 (${App.getCustomerLabel(dup)})`, 'error'); return; }
       try {
         const newId = await DB.add('customers', { name, phone });
         const petBreed = document.getElementById('quick-pet-breed')?.value.trim() || '';
@@ -1753,6 +1771,8 @@ const App = {
       '전화번호': shopPhone,
       ...vars
     };
+    // 고객명 빈 값 폴백
+    if (!allVars['고객명']) allVars['고객명'] = '보호자';
 
     for (const [key, val] of Object.entries(allVars)) {
       tpl = tpl.replace(new RegExp(`\\{${key}\\}`, 'g'), val || '');

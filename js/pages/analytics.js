@@ -49,7 +49,7 @@ App.pages.analytics = {
     const customerTop10 = Object.entries(customerRevMap)
       .sort((a, b) => b[1].revenue - a[1].revenue)
       .slice(0, 10)
-      .map(([cid, stats]) => ({ name: customerMap[cid]?.name || '알 수 없음', ...stats }));
+      .map(([cid, stats]) => ({ name: App.getCustomerLabel(customerMap[cid] || {}), ...stats }));
     const topCustMax = customerTop10.length > 0 ? customerTop10[0].revenue || 1 : 1;
 
     // 신규 vs 재방문 (기간 내)

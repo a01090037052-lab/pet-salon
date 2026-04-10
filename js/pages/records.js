@@ -100,8 +100,7 @@ App.pages.records = {
               <thead>
                 <tr>
                   <th>날짜</th>
-                  <th>고객</th>
-                  <th>반려견</th>
+                  <th>반려견 / 보호자</th>
                   <th class="hide-mobile">서비스</th>
                   <th>금액</th>
                   <th class="hide-mobile">담당</th>
@@ -128,8 +127,7 @@ App.pages.records = {
                         data-payment="${r.paymentMethod || ''}"
                         style="${r.paymentMethod === 'unpaid' ? 'background:var(--warning-light);border-left:3px solid var(--danger)' : ''}">
                       <td>${App.formatDate(r.date)}</td>
-                      <td><a href="#customers/${r.customerId}" style="color:var(--primary)">${App.escapeHtml(customer?.name || '-')}</a></td>
-                      <td><a href="#pets/${r.petId}" style="color:var(--primary)"><strong>&#x1F436; ${App.escapeHtml(pet?.name || '-')}</strong></a></td>
+                      <td><a href="#pets/${r.petId}" style="color:var(--primary);font-weight:700" onclick="event.stopPropagation()">${App.escapeHtml(pet?.name || '-')}</a> <span style="color:var(--text-muted);font-size:0.75rem">${App.escapeHtml(App.getCustomerLabel(customer))}</span></td>
                       <td class="hide-mobile"><span style="font-size:0.85rem">${App.escapeHtml(serviceNames)}</span></td>
                       <td><strong>${App.formatCurrency(App.getRecordAmount(r))}</strong>${r.discount || r.extraCharge ? `<div style="font-size:0.7rem;color:var(--text-muted)">${r.discount ? '-' + App.formatCurrency(r.discount) : ''}${r.extraCharge ? '+' + App.formatCurrency(r.extraCharge) : ''}</div>` : ''}</td>
                       <td class="hide-mobile">${App.escapeHtml(r.groomer || '-')}</td>
@@ -169,7 +167,7 @@ App.pages.records = {
                   <span class="mobile-card-amount"><strong>${App.formatCurrency(App.getRecordAmount(r))}</strong></span>
                 </div>
                 <div class="mobile-card-body">
-                  <span class="mobile-card-info">&#x1F464; ${App.escapeHtml(customer?.name || '-')} &middot; &#x1F436; ${App.escapeHtml(pet?.name || '-')}</span>
+                  <span class="mobile-card-info">&#x1F436; <strong>${App.escapeHtml(pet?.name || '-')}</strong> &middot; ${App.escapeHtml(App.getCustomerLabel(customer))}</span>
                   <div class="mobile-card-meta">
                     <span>&#x2702; ${App.escapeHtml(r.groomer || '-')}</span>
                     <span>${this.getPaymentLabel(r.paymentMethod)}</span>

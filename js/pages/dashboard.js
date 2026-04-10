@@ -239,8 +239,8 @@ App.pages.dashboard = {
               <div class="stat-value">${todayAppointments.length}<span style="font-size:0.9rem;font-weight:500;color:var(--text-secondary)">건</span></div>
               <div class="stat-label">오늘 예약 &rarr;</div>
               ${todayAppointments.length > 0 ? `<div style="margin-top:6px;font-size:0.72rem;color:var(--text-secondary);line-height:1.4">${todayAppointments.slice(0, 3).map(a => {
-                const c = customerMap[a.customerId];
-                return (a.time || '--:--') + ' ' + App.escapeHtml(c?.name || '?');
+                const p = petMap[a.petId];
+                return (a.time || '--:--') + ' ' + App.escapeHtml(p?.name || '?');
               }).join('<br>')}${todayAppointments.length > 3 ? '<br>...' : ''}</div>` : ''}
             </div>
           </a>
@@ -294,8 +294,8 @@ App.pages.dashboard = {
                 <div class="alert-item">
                   <span style="font-weight:700;color:var(--danger)">${App.formatCurrency(App.getRecordAmount(r))}</span>
                   <div class="flex-1">
-                    <strong>${App.escapeHtml(customer?.name || '-')}</strong>
-                    ${pet ? ' / ' + App.escapeHtml(pet.name) : ''}
+                    <strong>${App.escapeHtml(pet?.name || '-')}</strong>
+                    <span style="color:var(--text-muted);font-size:0.8rem">${App.escapeHtml(App.getCustomerLabel(customer))}</span>
                     <div style="font-size:0.78rem;color:var(--text-secondary);margin-top:2px">${App.formatDate(r.date)}</div>
                   </div>
                   <div style="display:flex;gap:4px;flex-shrink:0">
@@ -355,8 +355,8 @@ App.pages.dashboard = {
               <div class="alert-item">
                 <span class="days">${a.days}일</span>
                 <div class="flex-1">
-                  <strong>${App.escapeHtml(a.customer.name)}</strong>의
                   <strong>${App.escapeHtml(a.pet.name)}</strong>
+                  <span style="color:var(--text-muted);font-size:0.8rem">${App.escapeHtml(App.getCustomerLabel(a.customer))}</span>
                   <span class="badge ${statusBadge}" style="font-size:0.65rem;margin-left:4px">${statusLabel}</span>
                   <div style="font-size:0.78rem;color:var(--text-secondary);margin-top:2px">
                     마지막 미용: ${App.formatDate(a.lastDate)}
