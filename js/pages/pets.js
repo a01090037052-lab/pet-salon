@@ -24,7 +24,18 @@ App.pages.pets = {
       }
     });
 
-    const sorted = pets.sort((a, b) => (a.name || '').localeCompare(b.name || '', 'ko'));
+    const sortKey = this._sortKey || 'name';
+    const statusPriority = { churned: 0, 'at-risk': 1, remind: 2, normal: 3 };
+    const sorted = pets.sort((a, b) => {
+      if (sortKey === 'lastVisit') return (petLastVisit[b.id] || '').localeCompare(petLastVisit[a.id] || '');
+      if (sortKey === 'breed') return (a.breed || '').localeCompare(b.breed || '', 'ko');
+      if (sortKey === 'status') {
+        const vsA = App.classifyVisitStatus(a.lastVisitDate || petLastVisit[a.id], a.groomingCycle);
+        const vsB = App.classifyVisitStatus(b.lastVisitDate || petLastVisit[b.id], b.groomingCycle);
+        return (statusPriority[vsA] ?? 3) - (statusPriority[vsB] ?? 3);
+      }
+      return (a.name || '').localeCompare(b.name || '', 'ko');
+    });
 
     container.innerHTML = `
       <div class="page-header">
@@ -33,102 +44,60 @@ App.pages.pets = {
           <p class="page-subtitle">총 ${pets.length}마리</p>
         </div>
         <div class="page-actions">
-          <div class="search-box">
-            <span class="search-icon">&#x1F50D;</span>
-            <input type="text" id="pet-search" placeholder="이름, 견종, 보호자 검색...">
-          </div>
-          <button class="btn btn-primary" id="btn-add-pet">+ 반려견 등록</button>
+          <select id="pet-sort" style="width:auto;min-width:100px;font-size:0.85rem;padding:8px 12px">
+            <option value="name">이름순</option>
+            <option value="lastVisit">최근방문순</option>
+            <option value="breed">견종별</option>
+            <option value="status">상태별</option>
+          </select>
+          <button class="btn btn-primary" id="btn-add-pet">+ 등록</button>
         </div>
       </div>
-      <div class="card">
-        <div class="card-body no-padding">
-          <div class="table-container">
-            <table class="data-table" id="pet-table">
-              <thead>
-                <tr>
-                  <th>이름</th>
-                  <th>견종</th>
-                  <th class="hide-mobile">몸무게</th>
-                  <th class="hide-mobile">성별</th>
-                  <th>보호자</th>
-                  <th>마지막 미용</th>
-                  <th>관리</th>
-                </tr>
-              </thead>
-              <tbody>
-                ${sorted.length === 0 ? `
-                  <tr><td colspan="7">
-                    <div class="empty-state">
-                      <div class="empty-state-icon">&#x1F436;</div>
-                      <div class="empty-state-text">등록된 반려견이 없습니다</div>
-                    </div>
-                  </td></tr>
-                ` : sorted.map(p => {
-                  const owner = customerMap[p.customerId];
-                  return `
-                    <tr data-id="${p.id}" class="clickable-row" style="cursor:pointer">
-                      <td><strong>${p.photo ? `<img src="${p.photo}" class="pet-list-photo photo-viewable" data-caption="${App.escapeHtml(p.name)}" style="width:40px;height:40px;object-fit:cover;border-radius:8px" alt="">` : '&#x1F436;'} ${App.escapeHtml(p.name)}</strong></td>
-                      <td>${App.escapeHtml(p.breed || '-')}</td>
-                      <td class="hide-mobile">${p.weight ? p.weight + 'kg' : '-'}</td>
-                      <td class="hide-mobile">${this.getGenderLabel(p.gender)}${p.neutered ? ' (중성화)' : ''}</td>
-                      <td>${owner ? App.escapeHtml(App.getCustomerLabel(owner)) : '-'}</td>
-                      <td>${petLastVisit[p.id] ? `<span ${App.getDaysAgo(petLastVisit[p.id]) >= 30 ? 'class="badge badge-warning"' : 'style="color:var(--text-secondary)"'}>${App.getRelativeTime(petLastVisit[p.id])}</span>` : '<span style="color:var(--text-muted)">-</span>'}</td>
-                      <td class="table-actions">
-                        <button class="btn-icon btn-edit-pet" data-id="${p.id}" title="수정">&#x270F;</button>
-                        <button class="btn-icon btn-delete-pet text-danger" data-id="${p.id}" title="삭제">&#x1F5D1;</button>
-                      </td>
-                    </tr>`;
-                }).join('')}
-              </tbody>
-            </table>
-          </div>
-
-          <!-- Mobile Card List -->
-          <div class="mobile-card-list" id="pet-card-list">
-            ${sorted.length === 0 ? `
-              <div class="empty-state">
-                <div class="empty-state-icon">&#x1F436;</div>
-                <div class="empty-state-text">등록된 반려견이 없습니다</div>
-              </div>
-            ` : sorted.map(p => {
-              const owner = customerMap[p.customerId];
-              const lastVisit = petLastVisit[p.id];
-              const vs = App.classifyVisitStatus(p.lastVisitDate || lastVisit, p.groomingCycle);
-              const visitBadge = vs !== 'normal' ? `<span class="badge ${App.getVisitStatusBadge(vs)}" style="font-size:0.65rem;margin-left:4px">${App.getVisitStatusLabel(vs)}</span>` : '';
-              let nextVisitHtml = '';
-              if (p.groomingCycle && (p.lastVisitDate || lastVisit)) {
-                const last = new Date((p.lastVisitDate || lastVisit) + 'T00:00:00');
-                const next = new Date(last); next.setDate(next.getDate() + p.groomingCycle);
-                const daysUntil = Math.floor((next - new Date()) / (1000*60*60*24));
-                nextVisitHtml = daysUntil < 0
-                  ? `<span style="color:var(--danger);font-weight:700;font-size:0.78rem">${Math.abs(daysUntil)}일 초과</span>`
-                  : `<span style="color:var(--primary);font-size:0.78rem">${daysUntil}일 후</span>`;
-              }
-              return `
-              <div class="mobile-card" data-id="${p.id}" style="cursor:pointer"
-                   data-search="${(p.name || '') + ' ' + (p.breed || '') + ' ' + (owner?.name || '') + ' ' + (owner?.phone || '')}">
-                <div class="mobile-card-header">
-                  <span style="font-weight:700;font-size:1rem">${p.photo ? `<img src="${p.photo}" class="photo-viewable" data-caption="${App.escapeHtml(p.name)}" style="width:28px;height:28px;border-radius:8px;object-fit:cover;vertical-align:middle;margin-right:4px">` : '&#x1F436;'} ${App.escapeHtml(p.name)}${visitBadge}</span>
-                  <span style="color:var(--text-secondary);font-size:0.85rem">${App.escapeHtml(p.breed || '-')}</span>
-                </div>
-                <div class="mobile-card-body">
-                  <div class="mobile-card-meta">
-                    <span>${p.weight ? p.weight + 'kg' : '-'}</span>
-                    <span>&#x1F464; ${App.escapeHtml(App.getCustomerLabel(owner))}</span>
-                    <span>${lastVisit ? App.getRelativeTime(lastVisit) : '방문 없음'}</span>
-                    ${nextVisitHtml ? '<span>다음: ' + nextVisitHtml + '</span>' : ''}
-                  </div>
-                </div>
-                <div class="mobile-card-actions">
-                  <button class="btn btn-sm btn-secondary btn-edit-pet" data-id="${p.id}">&#x270F; 수정</button>
-                  <button class="btn btn-sm btn-danger btn-delete-pet" data-id="${p.id}">&#x1F5D1; 삭제</button>
-                </div>
-              </div>`;
-            }).join('')}
-          </div>
-
-        </div>
+      <div class="search-box" style="margin-bottom:12px;max-width:none">
+        <span class="search-icon">&#x1F50D;</span>
+        <input type="text" id="pet-search" placeholder="이름, 견종, 보호자 검색..." style="width:100%">
       </div>
+
+      ${sorted.length === 0 ? `
+        <div class="empty-state" style="padding:60px 20px">
+          <div class="empty-state-icon">&#x1F436;</div>
+          <div class="empty-state-text">등록된 반려견이 없습니다</div>
+        </div>
+      ` : sorted.map(p => {
+        const owner = customerMap[p.customerId];
+        const lastVisit = petLastVisit[p.id];
+        const vs = App.classifyVisitStatus(p.lastVisitDate || lastVisit, p.groomingCycle);
+        const visitBadge = vs !== 'normal' ? '<span class="badge ' + App.getVisitStatusBadge(vs) + '" style="font-size:0.6rem;margin-left:4px">' + App.getVisitStatusLabel(vs) + '</span>' : '';
+        let nextHtml = '';
+        if (p.groomingCycle && (p.lastVisitDate || lastVisit)) {
+          const last = new Date((p.lastVisitDate || lastVisit) + 'T00:00:00');
+          const next = new Date(last); next.setDate(next.getDate() + p.groomingCycle);
+          const days = Math.floor((next - new Date()) / (1000*60*60*24));
+          nextHtml = days < 0
+            ? '<span style="color:var(--danger);font-weight:700;font-size:0.75rem">' + Math.abs(days) + '일 초과</span>'
+            : '<span style="color:var(--primary);font-size:0.75rem">' + days + '일 후</span>';
+        }
+        return '<div class="pet-list-item" data-id="' + p.id + '" data-search="' + App.escapeHtml((p.name || '') + ' ' + (p.breed || '') + ' ' + (owner?.name || '') + ' ' + (owner?.phone || '')) + '" data-visit-status="' + vs + '" data-breed="' + App.escapeHtml(p.breed || '') + '" data-last="' + (lastVisit || '') + '" style="display:flex;align-items:center;gap:10px;padding:12px 0;border-bottom:1px solid var(--border-light);cursor:pointer">' +
+          '<div style="flex-shrink:0">' +
+            (p.photo
+              ? '<img src="' + p.photo + '" style="width:36px;height:36px;border-radius:10px;object-fit:cover" alt="">'
+              : '<div style="width:36px;height:36px;border-radius:10px;background:var(--primary-light);display:flex;align-items:center;justify-content:center;font-size:1.1rem">&#x1F436;</div>') +
+          '</div>' +
+          '<div style="flex:1;min-width:0">' +
+            '<div style="display:flex;align-items:center;gap:4px;flex-wrap:wrap">' +
+              '<strong style="font-size:0.92rem">' + App.escapeHtml(p.name) + '</strong>' +
+              '<span style="color:var(--text-muted);font-size:0.78rem">' + App.escapeHtml(p.breed || '') + (p.weight ? ' ' + p.weight + 'kg' : '') + '</span>' +
+              visitBadge +
+            '</div>' +
+            '<div style="font-size:0.75rem;color:var(--text-secondary);margin-top:2px">' +
+              App.escapeHtml(App.getCustomerLabel(owner)) + ' &middot; ' +
+              (lastVisit ? App.getRelativeTime(lastVisit) : '방문 없음') +
+              (nextHtml ? ' &middot; 다음 ' + nextHtml : '') +
+            '</div>' +
+          '</div>' +
+          '<span style="color:var(--text-muted);font-size:0.8rem;flex-shrink:0">&rsaquo;</span>' +
+        '</div>';
+      }).join('')}
     `;
   },
 
@@ -244,7 +213,7 @@ App.pages.pets = {
               <thead><tr><th>날짜</th><th>서비스</th><th>금액</th><th>담당</th><th>결제</th><th>메모</th></tr></thead>
               <tbody>
                 ${records.map(r => {
-                  const serviceNames = (r.serviceNames && r.serviceNames.length > 0) ? r.serviceNames.join(', ') : (r.serviceIds || []).map(id => serviceMap[id] || '').filter(Boolean).join(', ') || '-';
+                  const serviceNames = App.getRecordServiceDisplay(r, serviceMap);
                   return `<tr${r.paymentMethod === 'unpaid' ? ' style="background:var(--warning-light)"' : ''}>
                     <td>${App.formatDate(r.date)}</td>
                     <td>${App.escapeHtml(serviceNames)}</td>
@@ -270,22 +239,24 @@ App.pages.pets = {
       const petId = Number(e.target.dataset.petId);
       App.pages.appointments.showForm(null, customerId, { petId });
     });
-    const _debouncedPetFilter = App.debounce((val) => this.filterTable(val), 300);
+    // 검색
+    const _debouncedPetFilter = App.debounce((val) => {
+      const q = (val || '').toLowerCase();
+      document.querySelectorAll('.pet-list-item').forEach(item => {
+        item.style.display = !q || (item.dataset.search || '').toLowerCase().includes(q) ? '' : 'none';
+      });
+    }, 300);
     document.getElementById('pet-search')?.addEventListener('input', (e) => _debouncedPetFilter(e.target.value));
 
-    document.querySelectorAll('.clickable-row').forEach(row => {
-      row.addEventListener('click', (e) => {
-        if (e.target.closest('.table-actions')) return;
-        App.navigate('pets/' + row.dataset.id);
-      });
+    // 정렬
+    document.getElementById('pet-sort')?.addEventListener('change', (e) => {
+      this._sortKey = e.target.value;
+      App.handleRoute();
     });
 
-    // Mobile card click to navigate
-    document.querySelectorAll('#pet-card-list .mobile-card').forEach(card => {
-      card.addEventListener('click', (e) => {
-        if (e.target.closest('.mobile-card-actions')) return;
-        App.navigate('pets/' + card.dataset.id);
-      });
+    // 리스트 아이템 클릭 → 상세
+    document.querySelectorAll('.pet-list-item').forEach(item => {
+      item.addEventListener('click', () => App.navigate('pets/' + item.dataset.id));
     });
 
     document.querySelectorAll('.btn-edit-pet').forEach(btn => {
