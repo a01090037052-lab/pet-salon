@@ -94,22 +94,32 @@ App.pages.analytics = {
     const breedMaxRev = breedList.length > 0 ? breedList[0].revenue || 1 : 1;
     const breedTotal = breedList.reduce((s, b) => s + b.count, 0) || 1;
 
-    // ===== 서비스 분석 =====
+    // ===== 서비스 분석 (신/구 호환) =====
     const serviceRevMap = {};
+    const styleCountMap = {};
+    const addonCountMap = {};
     records.forEach(r => {
-      const sNames = (r.serviceNames && r.serviceNames.length > 0) ? r.serviceNames : (r.serviceIds || []).map(id => serviceNameMap[id]).filter(Boolean);
-      sNames.forEach(name => {
-        if (!serviceRevMap[name]) serviceRevMap[name] = { count: 0, revenue: 0 };
-        serviceRevMap[name].count++;
-      });
-      if (sNames.length > 0) {
-        const perService = Math.round(App.getRecordAmount(r) / sNames.length);
-        sNames.forEach(name => { serviceRevMap[name].revenue += perService; });
+      // 서비스명 추출 (신: r.service, 구: r.serviceNames)
+      const svcName = r.service || (r.serviceNames && r.serviceNames.length > 0 ? r.serviceNames[0] : null) || (r.serviceIds ? r.serviceIds.map(id => serviceNameMap[id]).filter(Boolean)[0] : null);
+      if (svcName) {
+        if (!serviceRevMap[svcName]) serviceRevMap[svcName] = { count: 0, revenue: 0 };
+        serviceRevMap[svcName].count++;
+        serviceRevMap[svcName].revenue += r.servicePrice || App.getRecordAmount(r);
       }
+      // 스타일 집계
+      if (r.style) {
+        styleCountMap[r.style] = (styleCountMap[r.style] || 0) + 1;
+      }
+      // 추가 항목 집계
+      (r.addons || []).forEach(a => {
+        addonCountMap[a] = (addonCountMap[a] || 0) + 1;
+      });
     });
     const serviceRevList = Object.entries(serviceRevMap).sort((a, b) => b[1].revenue - a[1].revenue);
     const serviceRevTotal = serviceRevList.reduce((s, [, v]) => s + v.revenue, 0) || 1;
     const serviceCntTotal = serviceRevList.reduce((s, [, v]) => s + v.count, 0) || 1;
+    const styleList = Object.entries(styleCountMap).sort((a, b) => b[1] - a[1]);
+    const addonList = Object.entries(addonCountMap).sort((a, b) => b[1] - a[1]);
 
     // ===== 매출 추이 =====
     // 객단가 추이 (월별)
@@ -323,6 +333,36 @@ App.pages.analytics = {
         </div>
       </div>
       ` : '<div class="card" style="margin-bottom:20px"><div class="card-body"><p style="color:var(--text-muted);text-align:center">기록이 없습니다</p></div></div>'}
+
+      <!-- 스타일 인기 -->
+      ${styleList.length > 0 ? `
+      <div class="card" style="margin-bottom:20px">
+        <div class="card-header">
+          <span class="card-title">&#x2702; 인기 스타일</span>
+        </div>
+        <div class="card-body" style="padding:12px 16px">
+          ${styleList.slice(0, 8).map(([name, count], i) => {
+            const pct = Math.max(5, Math.round((count / (styleList[0][1] || 1)) * 100));
+            return '<div style="margin-bottom:10px"><div style="display:flex;justify-content:space-between;margin-bottom:3px"><span style="font-weight:700;font-size:0.85rem">' + App.escapeHtml(name) + '</span><span style="font-size:0.82rem;color:var(--primary);font-weight:700">' + count + '건</span></div><div style="height:5px;background:var(--border-light);border-radius:3px;overflow:hidden"><div style="height:100%;width:' + pct + '%;background:var(--primary);border-radius:3px"></div></div></div>';
+          }).join('')}
+        </div>
+      </div>
+      ` : ''}
+
+      <!-- 추가 항목 빈도 -->
+      ${addonList.length > 0 ? `
+      <div class="card" style="margin-bottom:20px">
+        <div class="card-header">
+          <span class="card-title">&#x2795; 추가 항목 빈도</span>
+        </div>
+        <div class="card-body" style="padding:12px 16px">
+          ${addonList.slice(0, 8).map(([name, count]) => {
+            const pct = Math.max(5, Math.round((count / (addonList[0][1] || 1)) * 100));
+            return '<div style="margin-bottom:10px"><div style="display:flex;justify-content:space-between;margin-bottom:3px"><span style="font-weight:700;font-size:0.85rem">' + App.escapeHtml(name) + '</span><span style="font-size:0.82rem;color:var(--info);font-weight:700">' + count + '건</span></div><div style="height:5px;background:var(--border-light);border-radius:3px;overflow:hidden"><div style="height:100%;width:' + pct + '%;background:var(--info);border-radius:3px"></div></div></div>';
+          }).join('')}
+        </div>
+      </div>
+      ` : ''}
 
       <!-- 매출 추이 -->
       <h3 style="font-size:1rem;font-weight:800;margin-bottom:12px;color:var(--text-primary)">&#x1F4B5; 매출 추이</h3>

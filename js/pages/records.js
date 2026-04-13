@@ -120,7 +120,7 @@ App.pages.records = {
                 ` : (this._showAll ? sorted : sorted.slice(0, 20)).map(r => {
                   const customer = customerMap[r.customerId];
                   const pet = petMap[r.petId];
-                  const serviceNames = (r.serviceNames && r.serviceNames.length > 0) ? r.serviceNames.join(', ') : (r.serviceIds || []).map(id => serviceMap[id]).filter(Boolean).join(', ') || '-';
+                  const serviceNames = App.getRecordServiceDisplay(r, serviceMap);
                   return `
                     <tr data-id="${r.id}" data-month="${(r.date || '').slice(0, 7)}"
                         data-search="${(customer?.name || '') + ' ' + (pet?.name || '') + ' ' + (customer?.phone || '')}"
@@ -296,7 +296,6 @@ App.pages.records = {
     }
 
     const petOptions = await App.getPetOptions(record.customerId, record.petId);
-    const serviceCheckboxes = await App.getServiceCheckboxes(record.serviceIds || []);
 
     App.showModal({
       title: id ? '미용 기록 수정' : '새 미용 기록',
@@ -320,16 +319,33 @@ App.pages.records = {
           <label class="form-label">날짜 <span class="required">*</span></label>
           <input type="date" id="f-date" value="${record.date || App.getToday()}">
         </div>
-        <div class="form-group">
-          <div id="f-services">
-            ${serviceCheckboxes}
+        <!-- 서비스/스타일/가격 -->
+        <div class="form-row">
+          <div class="form-group" style="flex:2">
+            <label class="form-label">서비스 <span class="required">*</span></label>
+            <input type="text" id="f-service" value="${App.escapeHtml(record.service || (record.serviceNames ? record.serviceNames[0] || '' : ''))}" placeholder="예: 전체미용, 목욕" autocomplete="off">
+            <div class="search-select-dropdown" id="service-dropdown" style="position:absolute;z-index:10;background:var(--bg-white);border:1px solid var(--border);border-radius:var(--radius);box-shadow:var(--shadow);max-height:150px;overflow-y:auto;display:none;width:100%"></div>
           </div>
+          <div class="form-group" style="flex:1">
+            <label class="form-label">기본가</label>
+            <input type="number" id="f-servicePrice" value="${record.servicePrice || record.totalPrice || ''}" placeholder="0" min="0" step="1000">
+          </div>
+        </div>
+        <div class="form-group">
+          <label class="form-label">스타일 <span style="color:var(--text-muted);font-size:0.78rem">(선택)</span></label>
+          <input type="text" id="f-style" value="${App.escapeHtml(record.style || '')}" placeholder="예: 테디베어컷, 하이바+스포팅" autocomplete="off">
+          <div class="search-select-dropdown" id="style-dropdown" style="position:absolute;z-index:10;background:var(--bg-white);border:1px solid var(--border);border-radius:var(--radius);box-shadow:var(--shadow);max-height:150px;overflow-y:auto;display:none;width:100%"></div>
+        </div>
+        <div class="form-group">
+          <label class="form-label">추가 항목 <span style="color:var(--text-muted);font-size:0.78rem">(선택 — 엉킴, 약욕, 스파 등)</span></label>
+          <div id="f-addon-tags" style="display:flex;gap:4px;flex-wrap:wrap;margin-bottom:6px">${(record.addons || []).map(a => '<span class="badge badge-info addon-tag" style="cursor:pointer;padding:6px 10px" title="클릭하여 제거">' + App.escapeHtml(a) + ' ×</span>').join('')}</div>
+          <input type="text" id="f-addon-input" placeholder="추가 항목 입력 후 Enter" autocomplete="off">
+          <div class="search-select-dropdown" id="addon-dropdown" style="position:absolute;z-index:10;background:var(--bg-white);border:1px solid var(--border);border-radius:var(--radius);box-shadow:var(--shadow);max-height:150px;overflow-y:auto;display:none;width:100%"></div>
         </div>
         <div class="form-row">
           <div class="form-group">
-            <label class="form-label">총 금액 <span class="required">*</span></label>
-            <input type="number" id="f-totalPrice" value="${record.totalPrice || ''}" placeholder="금액 입력" min="0" step="1000">
-            <div class="form-hint" id="price-hint">서비스를 선택하면 자동 계산됩니다</div>
+            <label class="form-label">추가 비용</label>
+            <input type="number" id="f-addonPrice" value="${record.addonPrice || ''}" placeholder="0" min="0" step="1000">
           </div>
           <div class="form-group">
             <label class="form-label">반려견 사이즈</label>
@@ -338,12 +354,11 @@ App.pages.records = {
               <option value="medium">중형</option>
               <option value="large">대형</option>
             </select>
-            <div class="form-hint">가격 자동 계산에 사용됩니다</div>
           </div>
         </div>
         <div class="form-group" id="final-price-display" style="background:var(--bg);border-radius:var(--radius);padding:12px 16px;display:flex;justify-content:space-between;align-items:center">
-          <span style="font-weight:700">최종 금액</span>
-          <span id="final-price-value" style="font-size:1.2rem;font-weight:800;color:var(--primary)">${App.formatCurrency((record.totalPrice || 0) - (record.discount || 0) + (record.extraCharge || 0))}</span>
+          <span style="font-weight:700">합계</span>
+          <span id="final-price-value" style="font-size:1.2rem;font-weight:800;color:var(--primary)">${App.formatCurrency((record.servicePrice || record.totalPrice || 0) + (record.addonPrice || 0))}</span>
         </div>
         <div class="form-group">
           <label class="form-label">결제 수단</label>
@@ -466,72 +481,77 @@ App.pages.records = {
       }
     }
 
-    // Auto-calculate price when services checked
-    const calcPrice = () => {
-      const sizeType = document.getElementById('f-sizeType').value;
-      let total = 0;
-      document.querySelectorAll('input[name="serviceIds"]:checked').forEach(cb => {
-        const key = 'data-price-' + sizeType;
-        total += Number(cb.getAttribute(key)) || 0;
-      });
-      if (total > 0) {
-        document.getElementById('f-totalPrice').value = total;
-        // 최종 금액 재계산 트리거
-        const event = new Event('input', { bubbles: true });
-        document.getElementById('f-totalPrice').dispatchEvent(event);
-      }
+    // ===== 자동완성 드롭다운 헬퍼 =====
+    const setupAutocomplete = (inputId, dropdownId, historyKey, defaultSuggestions) => {
+      const input = document.getElementById(inputId);
+      const dropdown = document.getElementById(dropdownId);
+      if (!input || !dropdown) return;
+      const showDropdown = async (q) => {
+        const history = await App.getAutoHistory(historyKey);
+        const all = [...new Set([...history, ...(defaultSuggestions || [])])];
+        const query = (q || '').trim().toLowerCase();
+        const filtered = query ? all.filter(v => v.toLowerCase().includes(query)) : all;
+        if (filtered.length === 0) { dropdown.style.display = 'none'; return; }
+        dropdown.innerHTML = filtered.slice(0, 10).map(v => `<div class="search-select-option" style="padding:8px 12px;cursor:pointer;font-size:0.9rem">${App.escapeHtml(v)}</div>`).join('');
+        dropdown.style.display = 'block';
+        dropdown.querySelectorAll('.search-select-option').forEach(opt => {
+          opt.addEventListener('click', (e) => { e.stopPropagation(); input.value = opt.textContent; dropdown.style.display = 'none'; input.dispatchEvent(new Event('change')); });
+        });
+      };
+      input.addEventListener('focus', () => showDropdown(input.value));
+      input.addEventListener('input', App.debounce(() => showDropdown(input.value), 200));
+      document.addEventListener('click', (e) => { if (!e.target.closest('#' + inputId) && !e.target.closest('#' + dropdownId)) dropdown.style.display = 'none'; });
     };
+    const defaultServices = ['전체미용', '목욕', '위생미용', '부분미용', '클리퍼컷', '스포팅'];
+    const defaultAddons = ['엉킴 제거', '약욕', '보습팩', '염색'];
+    const defaultStyles = ['테디베어컷', '배냇컷', '라이언컷', '하이바컷', '머쉬룸컷', '스포팅컷', '자연컷', '클린페이스'];
+    setupAutocomplete('f-service', 'service-dropdown', 'serviceHistory', defaultServices);
+    setupAutocomplete('f-style', 'style-dropdown', 'styleHistory', defaultStyles);
+    setupAutocomplete('f-addon-input', 'addon-dropdown', 'addonHistory', defaultAddons);
 
-    // 서비스 칩 토글 (checked 클래스 + calcPrice)
-    document.querySelectorAll('.service-chip input[type="checkbox"]').forEach(cb => {
-      cb.addEventListener('change', () => {
-        const chip = cb.closest('.service-chip');
-        if (chip) chip.classList.toggle('checked', cb.checked);
-        calcPrice();
-      });
+    // 추가 항목 태그 시스템
+    const addonTagsEl = document.getElementById('f-addon-tags');
+    const addonInput = document.getElementById('f-addon-input');
+    const addAddonTag = (name) => {
+      if (!name.trim()) return;
+      const tag = document.createElement('span');
+      tag.className = 'badge badge-info addon-tag';
+      tag.style.cssText = 'cursor:pointer;padding:6px 10px';
+      tag.title = '클릭하여 제거';
+      tag.textContent = name.trim() + ' ×';
+      tag.addEventListener('click', () => tag.remove());
+      addonTagsEl.appendChild(tag);
+    };
+    addonInput?.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') { e.preventDefault(); addAddonTag(addonInput.value); addonInput.value = ''; document.getElementById('addon-dropdown').style.display = 'none'; }
+    });
+    // 기존 태그 클릭 제거
+    addonTagsEl?.querySelectorAll('.addon-tag').forEach(tag => { tag.addEventListener('click', () => tag.remove()); });
+
+    // 서비스 선택 시 가격 자동 채움
+    const serviceInput = document.getElementById('f-service');
+    const servicePriceInput = document.getElementById('f-servicePrice');
+    let servicePriceManual = !!id; // 수정 모드면 자동채움 비활성
+    servicePriceInput?.addEventListener('input', () => { servicePriceManual = true; });
+    serviceInput?.addEventListener('change', async () => {
+      if (servicePriceManual) return;
+      const petId = Number(document.getElementById('f-petId')?.value);
+      const sizeType = document.getElementById('f-sizeType')?.value || 'small';
+      const price = await App.getRecentServicePrice(petId, serviceInput.value, sizeType);
+      if (price && servicePriceInput) { servicePriceInput.value = price; calcTotal(); }
     });
 
-    // sizeType 변경 시 칩 가격 업데이트
-    document.getElementById('f-sizeType')?.addEventListener('change', () => {
-      const size = document.getElementById('f-sizeType').value;
-      document.querySelectorAll('.service-chip').forEach(chip => {
-        const input = chip.querySelector('input');
-        const priceSpan = chip.querySelector('.service-chip-price');
-        if (input && priceSpan) {
-          const price = Number(input.getAttribute('data-price-' + size)) || 0;
-          priceSpan.textContent = App.formatPriceShort(price);
-        }
-      });
-      calcPrice();
-    });
-
-    // 전체 선택/해제 토글
-    document.getElementById('btn-toggle-services')?.addEventListener('click', (e) => {
-      e.preventDefault();
-      const checkboxes = document.querySelectorAll('input[name="serviceIds"]');
-      const allChecked = Array.from(checkboxes).every(cb => cb.checked);
-      checkboxes.forEach(cb => {
-        cb.checked = !allChecked;
-        const chip = cb.closest('.service-chip');
-        if (chip) chip.classList.toggle('checked', cb.checked);
-      });
-      const btn = document.getElementById('btn-toggle-services');
-      if (btn) btn.textContent = allChecked ? '전체 선택' : '전체 해제';
-      calcPrice();
-    });
-
-    // 최종 금액 자동 계산
-    const calcFinalPrice = () => {
-      const total = Number(document.getElementById('f-totalPrice').value) || 0;
-      const discount = Number(document.getElementById('f-discount').value) || 0;
-      const extra = Number(document.getElementById('f-extraCharge').value) || 0;
-      const finalPrice = total - discount + extra;
+    // 합계 자동 계산
+    const calcTotal = () => {
+      const base = Number(document.getElementById('f-servicePrice')?.value) || 0;
+      const addon = Number(document.getElementById('f-addonPrice')?.value) || 0;
+      const discount = Number(document.getElementById('f-discount')?.value) || 0;
       const el = document.getElementById('final-price-value');
-      if (el) el.textContent = App.formatCurrency(finalPrice);
+      if (el) el.textContent = App.formatCurrency(base + addon - discount);
     };
-    document.getElementById('f-totalPrice')?.addEventListener('input', calcFinalPrice);
-    document.getElementById('f-discount')?.addEventListener('input', calcFinalPrice);
-    document.getElementById('f-extraCharge')?.addEventListener('input', calcFinalPrice);
+    document.getElementById('f-servicePrice')?.addEventListener('input', calcTotal);
+    document.getElementById('f-addonPrice')?.addEventListener('input', calcTotal);
+    document.getElementById('f-discount')?.addEventListener('input', calcTotal);
 
     // Payment chip buttons
     document.querySelectorAll('.payment-chip').forEach(chip => {
@@ -577,29 +597,8 @@ App.pages.records = {
     // Re-render customer select with enhanced onChange
     await App.renderCustomerSelect('record-customer-select', record.customerId, origCustomerOnChange);
 
-    // Pre-check services and auto-calculate price (from appointment or existing record)
-    if (record.serviceIds && record.serviceIds.length > 0) {
-      const preCheckServices = () => {
-        record.serviceIds.forEach(sid => {
-          const checkbox = document.querySelector(`input[name="serviceIds"][value="${sid}"]`);
-          if (checkbox) {
-            checkbox.checked = true;
-            const chip = checkbox.closest('.service-chip');
-            if (chip) chip.classList.add('checked');
-          }
-        });
-        calcPrice();
-      };
-      // DOM이 준비된 후 실행 (모달 렌더링 대기)
-      if (document.querySelector('input[name="serviceIds"]')) {
-        preCheckServices();
-      } else {
-        setTimeout(preCheckServices, 300);
-      }
-    }
-
-    // 서비스 미선택 + 금액 없을 때도 초기 calcPrice 호출
-    if (!record.totalPrice) calcPrice();
+    // 초기 합계 계산
+    calcTotal();
 
   },
 
@@ -609,9 +608,18 @@ App.pages.records = {
       const petId = Number(document.getElementById('f-petId').value);
       const date = document.getElementById('f-date').value;
       const groomer = document.getElementById('f-groomer').value.trim();
-      const totalPrice = Number(document.getElementById('f-totalPrice').value) || 0;
       const memo = document.getElementById('f-memo').value.trim();
       const paymentMethod = document.getElementById('f-paymentMethod').value;
+
+      // 새 서비스/스타일/가격 필드
+      const service = document.getElementById('f-service')?.value?.trim() || '';
+      const servicePrice = Number(document.getElementById('f-servicePrice')?.value) || 0;
+      const style = document.getElementById('f-style')?.value?.trim() || '';
+      const addons = []; document.querySelectorAll('#f-addon-tags .addon-tag').forEach(tag => { const t = tag.textContent.replace(' ×', '').trim(); if (t) addons.push(t); });
+      const addonPrice = Number(document.getElementById('f-addonPrice')?.value) || 0;
+      const totalPrice = servicePrice + addonPrice;
+      // 호환용: serviceNames 배열도 저장
+      const serviceNames = service ? [service] : [];
 
       // 컨디션 체크 필드
       const condition = document.getElementById('f-condition')?.value || '';
@@ -632,26 +640,22 @@ App.pages.records = {
         } catch (e) { /* ignore */ }
       }
 
-      const serviceIds = [];
-      document.querySelectorAll('input[name="serviceIds"]:checked').forEach(cb => {
-        serviceIds.push(Number(cb.value));
-      });
-      // 서비스명 스냅샷 저장 (서비스 삭제/이름 변경 시에도 과거 기록 유지)
-      const allServices = await DB.getAll('services');
-      const svcMap = {}; allServices.forEach(s => { svcMap[s.id] = s.name; });
-      const serviceNames = serviceIds.map(id => svcMap[id] || '').filter(Boolean);
-
       if (!customerId) { App.showToast('고객을 선택해주세요.', 'error'); App.highlightField('record-customer-select-input'); return; }
       if (!petId) { App.showToast('반려견을 선택해주세요.', 'error'); App.highlightField('f-petId'); return; }
       if (!date) { App.showToast('날짜를 입력해주세요.', 'error'); App.highlightField('f-date'); return; }
+      if (!service) { App.showToast('서비스를 입력해주세요.', 'error'); App.highlightField('f-service'); return; }
 
-      const discount = Number(document.getElementById('f-discount').value) || 0;
-      const extraCharge = Number(document.getElementById('f-extraCharge').value) || 0;
-      const finalPrice = totalPrice - discount + extraCharge;
+      const discount = Number(document.getElementById('f-discount')?.value) || 0;
+      const finalPrice = totalPrice - discount;
       const appointmentId = document.getElementById('f-appointmentId')?.value || null;
       const status = 'completed';
 
-      const data = { customerId, petId, date, groomer, nextVisitDate, serviceIds, serviceNames, totalPrice, discount, extraCharge, finalPrice, memo, paymentMethod, appointmentId, status, condition, skinStatus, earStatus, mattingLevel };
+      const data = { customerId, petId, date, groomer, nextVisitDate, service, servicePrice, addons, addonPrice, style, serviceNames, totalPrice, discount, finalPrice, memo, paymentMethod, appointmentId, status, condition, skinStatus, earStatus, mattingLevel };
+
+      // 자동완성 이력 업데이트
+      if (service) App.addAutoHistory('serviceHistory', service);
+      if (style) App.addAutoHistory('styleHistory', style);
+      addons.forEach(a => App.addAutoHistory('addonHistory', a));
 
       if (id) {
         const existing = await DB.get('records', id);
@@ -1939,22 +1943,24 @@ App.pages.records = {
       lines.push('');
 
       // 상세 내역
-      lines.push(['날짜', '고객명', '반려견', '견종', '서비스', '기본금액', '할인', '추가요금', '최종금액', '결제수단', '담당 미용사', '메모'].map(csvEsc).join(','));
+      lines.push(['날짜', '고객명', '반려견', '견종', '서비스', '스타일', '추가항목', '기본가', '추가비', '할인', '합계', '결제수단', '담당', '메모'].map(csvEsc).join(','));
 
       filtered.forEach(r => {
         const customer = customerMap[r.customerId];
         const pet = petMap[r.petId];
-        const serviceNames = (r.serviceNames && r.serviceNames.length > 0) ? r.serviceNames.join(', ') : (r.serviceIds || []).map(id => serviceMap[id]).filter(Boolean).join(', ');
+        const svcName = r.service || (r.serviceNames || []).join(', ') || '-';
         const payLabel = { cash: '현금', card: '카드', transfer: '이체', unpaid: '미결제' }[r.paymentMethod] || '';
         lines.push([
           r.date || '',
           App.getCustomerLabel(customer),
           pet?.name || '',
           pet?.breed || '',
-          serviceNames,
-          Number(r.totalPrice) || 0,
+          svcName,
+          r.style || '',
+          (r.addons || []).join(', '),
+          r.servicePrice || r.totalPrice || 0,
+          r.addonPrice || 0,
           Number(r.discount) || 0,
-          Number(r.extraCharge) || 0,
           App.getRecordAmount(r),
           payLabel,
           r.groomer || '',

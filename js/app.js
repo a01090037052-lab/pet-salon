@@ -721,6 +721,68 @@ const App = {
     return last4 ? '고객(' + last4 + ')' : '미등록 고객';
   },
 
+  // ========== 서비스/스타일 자동완성 이력 ==========
+  async getAutoHistory(key) {
+    // key: 'serviceHistory', 'addonHistory', 'styleHistory'
+    const data = await DB.getSetting(key);
+    return data || [];
+  },
+
+  async addAutoHistory(key, value) {
+    if (!value || !value.trim()) return;
+    const val = value.trim();
+    const list = await this.getAutoHistory(key);
+    // 중복 제거 후 맨 앞에 추가 (최근 사용 우선)
+    const filtered = list.filter(v => v !== val);
+    filtered.unshift(val);
+    // 최대 50개 유지
+    await DB.setSetting(key, filtered.slice(0, 50));
+  },
+
+  // 같은 반려견 + 같은 서비스의 최근 기본가 조회
+  async getRecentServicePrice(petId, serviceName, sizeType) {
+    if (!serviceName) return null;
+    const records = await DB.getAllLight('records', ['photoBefore', 'photoAfter', 'memo', 'condition', 'skinStatus', 'earStatus', 'mattingLevel']);
+    // 1순위: 같은 반려견 + 같은 서비스 (추가 없는 것 우선)
+    const petRecords = records.filter(r => r.petId === petId && r.service === serviceName).sort((a, b) => (b.date || '').localeCompare(a.date || ''));
+    const noAddon = petRecords.find(r => !r.addons || r.addons.length === 0);
+    if (noAddon && noAddon.servicePrice) return noAddon.servicePrice;
+    if (petRecords[0]?.servicePrice) return petRecords[0].servicePrice;
+    // 2순위: 같은 사이즈 + 같은 서비스
+    if (sizeType) {
+      const pets = await DB.getAll('pets');
+      const sameSizePetIds = new Set(pets.filter(p => (p.size || (p.weight ? (p.weight < 7 ? 'small' : p.weight < 15 ? 'medium' : 'large') : '')) === sizeType).map(p => p.id));
+      const sizeRecords = records.filter(r => sameSizePetIds.has(r.petId) && r.service === serviceName && r.servicePrice).sort((a, b) => (b.date || '').localeCompare(a.date || ''));
+      if (sizeRecords[0]) return sizeRecords[0].servicePrice;
+    }
+    // 3순위: 같은 서비스 최근
+    const anyRecord = records.filter(r => r.service === serviceName && r.servicePrice).sort((a, b) => (b.date || '').localeCompare(a.date || ''));
+    if (anyRecord[0]) return anyRecord[0].servicePrice;
+    // 4순위: 기존 서비스 등록 가격 (호환)
+    const services = await DB.getAll('services');
+    const svc = services.find(s => s.name === serviceName && s.isActive !== false);
+    if (svc) {
+      const priceKey = 'price' + (sizeType || 'small').charAt(0).toUpperCase() + (sizeType || 'small').slice(1);
+      return svc[priceKey] || svc.priceSmall || null;
+    }
+    return null;
+  },
+
+  // 미용 기록의 서비스 표시 (신/구 호환)
+  getRecordServiceDisplay(r, serviceMap) {
+    // 새 구조: service + style + addons
+    if (r.service) {
+      let display = r.service;
+      if (r.style) display += ' (' + r.style + ')';
+      if (r.addons && r.addons.length) display += ' + ' + r.addons.join(', ');
+      return display;
+    }
+    // 기존 구조: serviceNames / serviceIds
+    if (r.serviceNames && r.serviceNames.length > 0) return r.serviceNames.join(', ');
+    if (r.serviceIds && serviceMap) return r.serviceIds.map(id => serviceMap[id]).filter(Boolean).join(', ') || '-';
+    return '-';
+  },
+
   getRelativeTime(dateStr) {
     const days = this.getDaysAgo(dateStr);
     if (days === null) return '-';
