@@ -71,7 +71,7 @@ App.pages.pets = {
                       <td>${App.escapeHtml(p.breed || '-')}</td>
                       <td class="hide-mobile">${p.weight ? p.weight + 'kg' : '-'}</td>
                       <td class="hide-mobile">${this.getGenderLabel(p.gender)}${p.neutered ? ' (중성화)' : ''}</td>
-                      <td>${owner ? App.escapeHtml(owner.name) : '-'}</td>
+                      <td>${owner ? App.escapeHtml(App.getCustomerLabel(owner)) : '-'}</td>
                       <td>${petLastVisit[p.id] ? `<span ${App.getDaysAgo(petLastVisit[p.id]) >= 30 ? 'class="badge badge-warning"' : 'style="color:var(--text-secondary)"'}>${App.getRelativeTime(petLastVisit[p.id])}</span>` : '<span style="color:var(--text-muted)">-</span>'}</td>
                       <td class="table-actions">
                         <button class="btn-icon btn-edit-pet" data-id="${p.id}" title="수정">&#x270F;</button>
@@ -93,18 +93,30 @@ App.pages.pets = {
             ` : sorted.map(p => {
               const owner = customerMap[p.customerId];
               const lastVisit = petLastVisit[p.id];
+              const vs = App.classifyVisitStatus(p.lastVisitDate || lastVisit, p.groomingCycle);
+              const visitBadge = vs !== 'normal' ? `<span class="badge ${App.getVisitStatusBadge(vs)}" style="font-size:0.65rem;margin-left:4px">${App.getVisitStatusLabel(vs)}</span>` : '';
+              let nextVisitHtml = '';
+              if (p.groomingCycle && (p.lastVisitDate || lastVisit)) {
+                const last = new Date((p.lastVisitDate || lastVisit) + 'T00:00:00');
+                const next = new Date(last); next.setDate(next.getDate() + p.groomingCycle);
+                const daysUntil = Math.floor((next - new Date()) / (1000*60*60*24));
+                nextVisitHtml = daysUntil < 0
+                  ? `<span style="color:var(--danger);font-weight:700;font-size:0.78rem">${Math.abs(daysUntil)}일 초과</span>`
+                  : `<span style="color:var(--primary);font-size:0.78rem">${daysUntil}일 후</span>`;
+              }
               return `
               <div class="mobile-card" data-id="${p.id}" style="cursor:pointer"
                    data-search="${(p.name || '') + ' ' + (p.breed || '') + ' ' + (owner?.name || '')}">
                 <div class="mobile-card-header">
-                  <span style="font-weight:700;font-size:1rem">${p.photo ? `<img src="${p.photo}" class="photo-viewable" data-caption="${App.escapeHtml(p.name)}" style="width:28px;height:28px;border-radius:8px;object-fit:cover;vertical-align:middle;margin-right:4px">` : '&#x1F436;'} ${App.escapeHtml(p.name)}</span>
+                  <span style="font-weight:700;font-size:1rem">${p.photo ? `<img src="${p.photo}" class="photo-viewable" data-caption="${App.escapeHtml(p.name)}" style="width:28px;height:28px;border-radius:8px;object-fit:cover;vertical-align:middle;margin-right:4px">` : '&#x1F436;'} ${App.escapeHtml(p.name)}${visitBadge}</span>
                   <span style="color:var(--text-secondary);font-size:0.85rem">${App.escapeHtml(p.breed || '-')}</span>
                 </div>
                 <div class="mobile-card-body">
                   <div class="mobile-card-meta">
                     <span>${p.weight ? p.weight + 'kg' : '-'}</span>
-                    <span>&#x1F464; ${App.escapeHtml(owner?.name || '-')}</span>
+                    <span>&#x1F464; ${App.escapeHtml(App.getCustomerLabel(owner))}</span>
                     <span>${lastVisit ? App.getRelativeTime(lastVisit) : '방문 없음'}</span>
+                    ${nextVisitHtml ? '<span>다음: ' + nextVisitHtml + '</span>' : ''}
                   </div>
                 </div>
                 <div class="mobile-card-actions">
@@ -146,14 +158,43 @@ App.pages.pets = {
           <div class="detail-meta">
             <span>${App.escapeHtml(pet.breed || '견종 미입력')}</span>
             <span>${pet.weight ? pet.weight + 'kg' : ''}</span>
-            <span>보호자: <a href="#customers/${pet.customerId}" style="color:var(--primary)">${App.escapeHtml(customer?.name || '-')}</a></span>
+            <span>보호자: <a href="#customers/${pet.customerId}" style="color:var(--primary)">${App.escapeHtml(App.getCustomerLabel(customer))}</a></span>
+            ${customer?.phone ? `<a href="tel:${App.escapeHtml((customer.phone || '').replace(/\\D/g, ''))}" style="color:var(--primary)">&#x1F4DE;</a> <a href="sms:${App.escapeHtml((customer.phone || '').replace(/\\D/g, ''))}" style="color:var(--primary)">&#x1F4AC;</a>` : ''}
           </div>
         </div>
-        <div style="margin-left:auto;display:flex;gap:8px">
+        <div style="margin-left:auto;display:flex;gap:8px;flex-wrap:wrap">
+          <button class="btn btn-primary" id="btn-pet-appt" data-pet-id="${pet.id}" data-customer-id="${pet.customerId}">예약</button>
           <button class="btn btn-secondary btn-edit-pet" data-id="${pet.id}">수정</button>
           <button class="btn btn-danger btn-delete-pet" data-id="${pet.id}">삭제</button>
         </div>
       </div>
+
+      ${records.length > 0 ? (() => {
+        const totalSpend = records.reduce((sum, r) => sum + App.getRecordAmount(r), 0);
+        const avgSpend = Math.round(totalSpend / records.length);
+        const lastVisitDate = records[0].date;
+        let avgCycle = '-';
+        if (records.length >= 2) {
+          const dates = records.map(r => new Date(r.date)).sort((a, b) => a - b);
+          let totalDays = 0;
+          for (let i = 1; i < dates.length; i++) totalDays += Math.round((dates[i] - dates[i - 1]) / (1000*60*60*24));
+          avgCycle = Math.round(totalDays / (dates.length - 1)) + '일';
+        }
+        const lastCondition = records.find(r => r.condition);
+        const condLabels = { good: '좋음', normal: '보통', caution: '주의' };
+        return `
+      <div class="detail-section">
+        <h3 class="detail-section-title">방문 통계</h3>
+        <div class="info-grid" style="grid-template-columns:repeat(auto-fit,minmax(120px,1fr))">
+          <div class="info-item"><label>총 방문</label><span style="font-weight:700;font-size:1.1rem">${records.length}회</span></div>
+          <div class="info-item"><label>총 지출</label><span style="font-weight:700;font-size:1.1rem">${App.formatCurrency(totalSpend)}</span></div>
+          <div class="info-item"><label>평균 단가</label><span style="font-weight:700;font-size:1.1rem">${App.formatCurrency(avgSpend)}</span></div>
+          <div class="info-item"><label>평균 방문 주기</label><span style="font-weight:700;font-size:1.1rem">${avgCycle}</span></div>
+          <div class="info-item"><label>최근 방문</label><span>${App.formatDate(lastVisitDate)}</span></div>
+          ${lastCondition ? `<div class="info-item"><label>최근 컨디션</label><span style="font-weight:700;color:${lastCondition.condition === 'good' ? 'var(--success)' : lastCondition.condition === 'caution' ? 'var(--danger)' : 'var(--warning)'}">${condLabels[lastCondition.condition] || '-'}</span></div>` : ''}
+        </div>
+      </div>`;
+      })() : ''}
 
       <div class="detail-section">
         <h3 class="detail-section-title">기본 정보</h3>
@@ -223,6 +264,12 @@ App.pages.pets = {
 
   async init(params) {
     document.getElementById('btn-add-pet')?.addEventListener('click', () => this.showForm());
+    // 반려견 상세 → 빠른 예약
+    document.getElementById('btn-pet-appt')?.addEventListener('click', (e) => {
+      const customerId = Number(e.target.dataset.customerId);
+      const petId = Number(e.target.dataset.petId);
+      App.pages.appointments.showForm(null, customerId, { petId });
+    });
     const _debouncedPetFilter = App.debounce((val) => this.filterTable(val), 300);
     document.getElementById('pet-search')?.addEventListener('input', (e) => _debouncedPetFilter(e.target.value));
 
