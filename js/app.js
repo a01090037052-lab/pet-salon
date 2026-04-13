@@ -683,8 +683,15 @@ const App = {
     lines.push(`[${shopName}] ${pet?.name || ''} 미용 리포트`);
     lines.push('');
     lines.push(`날짜: ${App.formatDate(record.date)}`);
-    const svcNames = (record.serviceNames || []).join(', ');
-    if (svcNames) lines.push(`서비스: ${svcNames}`);
+    let svcDisplay = '';
+    if (record.service) {
+      svcDisplay = record.service;
+      if (record.style) svcDisplay += ' (' + record.style + ')';
+      if (record.addons?.length) svcDisplay += ' + ' + record.addons.join(', ');
+    } else {
+      svcDisplay = (record.serviceNames || []).join(', ');
+    }
+    if (svcDisplay) lines.push('서비스: ' + svcDisplay);
     if (record.groomer) lines.push(`미용사: ${record.groomer}`);
     lines.push('');
 

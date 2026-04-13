@@ -285,11 +285,18 @@ App.pages.records = {
 
     // Pre-fill from appointment if provided
     if (fromAppointment && !id) {
+      let serviceName = '';
+      if (fromAppointment.serviceIds?.length) {
+        const allSvcs = await DB.getAll('services');
+        const sMap = {}; allSvcs.forEach(s => { sMap[s.id] = s.name; });
+        serviceName = sMap[fromAppointment.serviceIds[0]] || '';
+      }
       record = {
         customerId: fromAppointment.customerId,
         petId: fromAppointment.petId,
         date: fromAppointment.date,
         groomer: fromAppointment.groomer,
+        service: serviceName,
         serviceIds: fromAppointment.serviceIds || [],
         appointmentId: fromAppointment.id || null
       };
@@ -358,7 +365,7 @@ App.pages.records = {
         </div>
         <div class="form-group" id="final-price-display" style="background:var(--bg);border-radius:var(--radius);padding:12px 16px;display:flex;justify-content:space-between;align-items:center">
           <span style="font-weight:700">합계</span>
-          <span id="final-price-value" style="font-size:1.2rem;font-weight:800;color:var(--primary)">${App.formatCurrency((record.servicePrice || record.totalPrice || 0) + (record.addonPrice || 0))}</span>
+          <span id="final-price-value" style="font-size:1.2rem;font-weight:800;color:var(--primary)">${App.formatCurrency((record.servicePrice || record.totalPrice || 0) + (record.addonPrice || 0) - (record.discount || 0))}</span>
         </div>
         <div class="form-group">
           <label class="form-label">결제 수단</label>
@@ -646,11 +653,12 @@ App.pages.records = {
       if (!service) { App.showToast('서비스를 입력해주세요.', 'error'); App.highlightField('f-service'); return; }
 
       const discount = Number(document.getElementById('f-discount')?.value) || 0;
-      const finalPrice = totalPrice - discount;
+      const extraCharge = Number(document.getElementById('f-extraCharge')?.value) || 0;
+      const finalPrice = totalPrice - discount + extraCharge;
       const appointmentId = document.getElementById('f-appointmentId')?.value || null;
       const status = 'completed';
 
-      const data = { customerId, petId, date, groomer, nextVisitDate, service, servicePrice, addons, addonPrice, style, serviceNames, totalPrice, discount, finalPrice, memo, paymentMethod, appointmentId, status, condition, skinStatus, earStatus, mattingLevel };
+      const data = { customerId, petId, date, groomer, nextVisitDate, service, servicePrice, addons, addonPrice, style, serviceNames, totalPrice, discount, extraCharge, finalPrice, memo, paymentMethod, appointmentId, status, condition, skinStatus, earStatus, mattingLevel };
 
       // 자동완성 이력 업데이트
       if (service) App.addAutoHistory('serviceHistory', service);
@@ -746,14 +754,14 @@ App.pages.records = {
 
         document.getElementById('post-save-appt')?.addEventListener('click', () => {
           App.closeModal();
-          App.pages.appointments.showForm(null, customerId, { petId, date: nextVisitDate, groomer, serviceIds });
+          App.pages.appointments.showForm(null, customerId, { petId, date: nextVisitDate, groomer });
         });
         document.getElementById('post-save-sms')?.addEventListener('click', async () => {
-          const serviceNames = await App.getServiceNames(serviceIds);
+          const svcDisplay = [data.service, data.style].filter(Boolean).join(' / ');
           const msg = await App.buildSms('complete', {
             '고객명': App.getCustomerLabel(customer),
             '반려견명': pet?.name || '',
-            '서비스': serviceNames !== '-' ? serviceNames : '',
+            '서비스': svcDisplay,
             '금액': String(finalPrice)
           });
           App.openSms(customerPhone, msg);
@@ -980,6 +988,11 @@ App.pages.records = {
     const shopAddress = await DB.getSetting('shopAddress') || '';
 
     const serviceItems = (record.serviceIds || []).map(id => serviceMap[id]).filter(Boolean);
+    // 새 형식 처리
+    if (record.service && serviceItems.length === 0) {
+      serviceItems.push(record.service);
+      if (record.addons) record.addons.forEach(a => serviceItems.push(a));
+    }
     const totalPrice = Number(record.totalPrice) || 0;
     const discount = Number(record.discount) || 0;
     const extraCharge = Number(record.extraCharge) || 0;
@@ -1018,6 +1031,9 @@ App.pages.records = {
           <hr class="receipt-divider">
           <div style="font-weight:700;margin-bottom:4px">서비스 내역</div>
           ${serviceItems.length > 0 ? serviceItems.map(s => {
+            if (typeof s === 'string') {
+              return `<div class="receipt-row"><span>${App.escapeHtml(s)}</span><span></span></div>`;
+            }
             const sizeType = pet?.size || (pet?.weight ? (pet.weight < 7 ? 'small' : pet.weight < 15 ? 'medium' : 'large') : 'small');
             const priceKey = 'price' + sizeType.charAt(0).toUpperCase() + sizeType.slice(1);
             const price = Number(s[priceKey]) || 0;
@@ -1692,7 +1708,7 @@ App.pages.records = {
       const pet = await DB.get('pets', record.petId);
       const shopName = await DB.getSetting('shopName') || '펫살롱';
       const shopPhone = await DB.getSetting('shopPhone') || '';
-      const serviceNames = await App.getServiceNames(record.serviceIds);
+      const serviceNames = record.service ? App.getRecordServiceDisplay(record) : await App.getServiceNames(record.serviceIds);
 
       // Merge picker selections with saved detail settings
       const ds = await DB.getSetting('cardDesignSettings') || {};

@@ -506,7 +506,7 @@ a.stat-card { display: flex; }
 .table-actions { display: flex; gap: 2px; }
 
 /* ========== Forms ========== */
-.form-group { margin-bottom: 18px; }
+.form-group { margin-bottom: 18px; position: relative; }
 .form-label {
   display: block;
   font-size: 0.82rem;
