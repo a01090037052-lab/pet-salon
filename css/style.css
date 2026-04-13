@@ -1800,6 +1800,31 @@ a.stat-card { display: flex; }
   color: #991B1B;
 }
 
+/* 캘린더 셀 예약 미리보기 */
+.cal-preview {
+  font-size: 0.7rem;
+  line-height: 1.2;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  color: var(--text-secondary);
+  margin-top: 2px;
+}
+.cal-preview-time {
+  color: var(--primary);
+  font-weight: 700;
+}
+.cal-preview-more {
+  font-size: 0.65rem;
+  color: var(--text-muted);
+  text-align: center;
+  margin-top: 1px;
+}
+/* 모바일(≤600px): 셀이 좁아 미리보기 숨기고 카운트 뱃지만 */
+@media (max-width: 600px) {
+  .cal-preview, .cal-preview-more { display: none; }
+}
+
 /* ========== Pet Photo Upload ========== */
 .pet-photo-upload {
   display: flex;
@@ -2570,7 +2595,7 @@ a.stat-card { display: flex; }
   .calendar-cell { aspect-ratio: auto; min-height: 52px; padding: 3px; border-radius: 6px; }
   .calendar-day-label { padding: 4px 0; font-size: 0.7rem; }
   .cal-day-num { font-size: 0.72rem; }
-  .cal-count-btn { font-size: 0.55rem; padding: 0 3px; min-width: 14px; height: 14px; line-height: 14px; }
+  .cal-count-btn { font-size: 0.72rem; padding: 0 5px; min-width: 18px; height: 18px; line-height: 18px; font-weight: 700; }
   .pet-photo-upload { flex-direction: column; align-items: flex-start; }
 
   /* Show mobile cards, hide tables (only in card-body that contains mobile-card-list) */

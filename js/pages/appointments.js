@@ -3,6 +3,8 @@ App.pages.appointments = {
   _showAll: false,
 
   async render(container) {
+    // 휴무일 설정 등 외부 설정은 매 진입 시 재로드 (stale 방지)
+    this._closedDays = null;
     const today = App.getToday();
     // 최근 3개월 + 미래 예약만 로드 (성능 최적화)
     const threeMonthsAgo = (() => { const d = new Date(); d.setMonth(d.getMonth() - 3); return App.formatLocalDate(d); })();
@@ -124,7 +126,7 @@ App.pages.appointments = {
                       <button class="btn btn-primary" onclick="App.pages.appointments.showForm()">+ 첫 예약 등록하기</button>
                     </div>
                   </td></tr>
-                ` : (this._showAll ? sorted : sorted.slice(0, 20)).map(a => {
+                ` : sorted.map(a => {
                   const customer = customerMap[a.customerId];
                   const pet = petMap[a.petId];
                   const serviceNames = (a.serviceIds || []).map(id => serviceMap[id] || '').filter(Boolean).join(', ');
@@ -132,7 +134,7 @@ App.pages.appointments = {
                   const isPast = a.date < today;
                   return `
                     <tr data-id="${a.id}" data-status="${a.status || 'pending'}" data-date="${a.date}"
-                        data-search="${(customer?.name || '') + ' ' + (customer?.phone || '') + ' ' + (pet?.name || '')}"
+                        data-search="${((customer?.name || '') + ' ' + (customer?.phone || '') + ' ' + (pet?.name || '') + ' ' + (a.memo || '') + ' ' + (a.groomer || '')).toLowerCase()}"
                         style="${isToday ? 'background:#F0F9FF' : ''}">
                       <td>
                         <strong>${App.formatDate(a.date)}</strong>
@@ -174,7 +176,7 @@ App.pages.appointments = {
                 <div class="empty-state-text">등록된 예약이 없습니다</div>
                 <button class="btn btn-primary" onclick="App.pages.appointments.showForm()">+ 첫 예약 등록하기</button>
               </div>
-            ` : (this._showAll ? sorted : sorted.slice(0, 20)).map(a => {
+            ` : sorted.map(a => {
               const customer = customerMap[a.customerId];
               const pet = petMap[a.petId];
               const isToday = a.date === today;
@@ -183,7 +185,7 @@ App.pages.appointments = {
               const statusClass = { pending: 'badge-warning', confirmed: 'badge-info', in_progress: 'badge-info', completed: 'badge-success', cancelled: 'badge-secondary', noshow: 'badge-danger' };
               return `
               <div class="mobile-card" data-id="${a.id}" data-status="${a.status || 'pending'}" data-date="${a.date}"
-                   data-search="${(customer?.name || '') + ' ' + (customer?.phone || '') + ' ' + (pet?.name || '')}"
+                   data-search="${((customer?.name || '') + ' ' + (customer?.phone || '') + ' ' + (pet?.name || '') + ' ' + (a.memo || '') + ' ' + (a.groomer || '')).toLowerCase()}"
                    style="${isToday ? 'border-left:3px solid var(--primary)' : ''}${isPast && a.status !== 'completed' && a.status !== 'cancelled' ? 'border-left:3px solid var(--danger)' : ''}">
                 <div class="mobile-card-header">
                   <div class="mobile-card-date">
@@ -216,7 +218,7 @@ App.pages.appointments = {
               </div>`;
             }).join('')}
           </div>
-          ${!this._showAll && sorted.length > 20 ? `<div style="text-align:center;padding:16px"><button class="btn btn-secondary" id="btn-load-more-appts" style="min-width:200px">더 보기 (${sorted.length - 20}건 남음)</button></div>` : ''}
+          ${!this._showAll ? `<div style="text-align:center;padding:16px"><button class="btn btn-secondary" id="btn-load-more-appts" style="min-width:200px;min-height:44px">&#x1F4DA; 3개월 이전 예약도 불러오기</button></div>` : ''}
 
         </div>
       </div>
@@ -292,25 +294,25 @@ App.pages.appointments = {
       if (count >= 3) colorClass = 'cal-red';
       else if (count >= 1) colorClass = 'cal-blue';
 
-      // 예약 미리보기 (최대 3건, 모바일 최적화)
+      // 예약 미리보기 (데스크톱만 노출, 모바일은 CSS로 숨김)
       let previewHtml = '';
       if (!isClosed && count > 0) {
         const appts = dateAppts[dateStr] || [];
         previewHtml = appts.slice(0, 3).map(a => {
           const pet = petMap[a.petId];
           const pName = pet?.name || '?';
-          const shortName = pName.length > 2 ? pName.slice(0, 2) : pName;
-          return '<div style="font-size:0.58rem;line-height:1.15;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:var(--text-secondary);margin-top:1px">' +
-            '<span style="color:var(--primary);font-weight:700">' + (a.time ? a.time.slice(0,5) : '') + '</span> ' + App.escapeHtml(shortName) + '</div>';
+          const shortName = pName.length > 3 ? pName.slice(0, 3) : pName;
+          return '<div class="cal-preview">' +
+            '<span class="cal-preview-time">' + (a.time ? a.time.slice(0,5) : '') + '</span> ' + App.escapeHtml(shortName) + '</div>';
         }).join('');
-        if (count > 3) previewHtml += '<div style="font-size:0.5rem;color:var(--text-muted);text-align:center">+' + (count - 3) + '</div>';
+        if (count > 3) previewHtml += '<div class="cal-preview-more">+' + (count - 3) + '</div>';
       }
 
       cellsHtml += `
         <div class="calendar-cell ${isToday ? 'today' : ''} ${isClosed ? 'closed' : ''}" data-date="${dateStr}" style="${isClosed ? 'background:var(--bg);opacity:0.6' : ''}">
           <div style="display:flex;justify-content:space-between;align-items:center">
             <span class="cal-day-num">${d}</span>
-            ${isClosed ? '<span style="font-size:0.6rem;color:var(--danger);font-weight:700">휴무</span>' : count > 0 ? `<span class="cal-count-btn ${colorClass}" style="font-size:0.6rem;min-width:16px;height:16px;line-height:16px;padding:0 3px">${count}</span>` : ''}
+            ${isClosed ? '<span style="font-size:0.7rem;color:var(--danger);font-weight:700">휴무</span>' : count > 0 ? `<span class="cal-count-btn ${colorClass}">${count}</span>` : ''}
           </div>
           ${previewHtml}
         </div>`;
