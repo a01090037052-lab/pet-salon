@@ -64,18 +64,17 @@ App.pages.dashboard = {
       twoMonthsAgo.setMonth(twoMonthsAgo.getMonth() - 2);
       const twoMonthsAgoStr = `${twoMonthsAgo.getFullYear()}-${String(twoMonthsAgo.getMonth() + 1).padStart(2, '0')}-01`;
 
-      const [customers, pets, todayAppointmentsRaw, recentRecords, services, customerCount] = await Promise.all([
+      const [customers, pets, todayAppointmentsRaw, recentRecords, services] = await Promise.all([
         DB.getAllLight('customers', ['memo']),
         DB.getAllLight('pets', ['preferredStyle']),
         DB.getByIndex('appointments', 'date', today),
         DB.getByDateRange('records', 'date', twoMonthsAgoStr, today),
-        DB.getAll('services'),
-        DB.count('customers')
+        DB.getAll('services')
       ]);
+      const customerCount = customers.length;
 
-      // 미수금 조회: 금액 계산에 필요한 최소 필드만 로드
-      const allRecordsMin = await DB.getAllLight('records', ['photoBefore', 'photoAfter', 'memo', 'serviceIds', 'groomer', 'nextVisitDate', 'appointmentId']);
-      const unpaidRecords = allRecordsMin.filter(r => r.paymentMethod === 'unpaid');
+      // 미수금 조회: paymentMethod 인덱스로 직접 조회 (전체 records 스캔 회피)
+      const unpaidRecords = await DB.getByIndex('records', 'paymentMethod', 'unpaid');
       const unpaidTotal = unpaidRecords.reduce((sum, r) => sum + App.getRecordAmount(r), 0);
 
       // Build lookup maps once
@@ -126,6 +125,8 @@ App.pages.dashboard = {
       };
       pets.forEach(p => {
         if (!p.birthDate) return;
+        // 사망/양도 반려견은 생일 알림에서 제외
+        if (p.petStatus && p.petStatus !== 'active') return;
         const diffDays = getBirthdayDaysUntil(p.birthDate);
         if (diffDays >= 0 && diffDays <= 7) {
           const customer = customerMap[p.customerId];
@@ -183,10 +184,10 @@ App.pages.dashboard = {
         </div>
       ` : '';
 
-      // Onboarding card for new users
-      const shopInfo = await DB.getSetting('shopName');
+      // Onboarding card for new users (shopName 재사용, services는 기 로드된 배열 길이 사용)
+      const shopInfo = shopName;
       const groomersSet = await DB.getSetting('groomers') || [];
-      const serviceCount = await DB.count('services');
+      const serviceCount = services.length;
       const onboardingHtml = customerCount === 0 ? `
         <div class="card onboarding-card" style="margin-bottom:20px;border:2px solid var(--primary-lighter);background:linear-gradient(135deg,var(--primary-light),#fff)">
           <div class="card-body" style="padding:24px">
@@ -223,6 +224,7 @@ App.pages.dashboard = {
       ` : '';
 
       container.innerHTML = `
+        <div id="storage-quota-banner"></div>
         ${backupWarning}
 
         <div class="welcome-section">
@@ -238,10 +240,6 @@ App.pages.dashboard = {
             <div>
               <div class="stat-value">${todayAppointments.length}<span style="font-size:0.9rem;font-weight:500;color:var(--text-secondary)">건</span></div>
               <div class="stat-label">오늘 예약 &rarr;</div>
-              ${todayAppointments.length > 0 ? `<div style="margin-top:6px;font-size:0.72rem;color:var(--text-secondary);line-height:1.4">${todayAppointments.slice(0, 3).map(a => {
-                const p = petMap[a.petId];
-                return (a.time || '--:--') + ' ' + App.escapeHtml(p?.name || '?');
-              }).join('<br>')}${todayAppointments.length > 3 ? '<br>...' : ''}</div>` : ''}
             </div>
           </a>
           <div class="stat-card gradient-purple" style="cursor:pointer" onclick="App.pages.records?.showDailyReport()">
@@ -249,12 +247,20 @@ App.pages.dashboard = {
             <div>
               <div class="stat-value" style="font-size:1.3rem">${App.formatCurrency(todayRevenue)}</div>
               <div class="stat-label">오늘 매출 (${todayRecords.length}건) &rarr;</div>
-              ${monthlyGoal > 0 ? (() => {
-                const pct = Math.min(Math.round((monthRevenue / monthlyGoal) * 100), 100);
-                return '<div style="margin-top:6px"><div style="height:6px;background:rgba(255,255,255,0.3);border-radius:3px;overflow:hidden"><div style="height:100%;width:' + pct + '%;background:#fff;border-radius:3px;transition:width 0.3s"></div></div><div style="font-size:0.7rem;margin-top:2px;opacity:0.9">월 목표 ' + pct + '% (' + App.formatCurrency(monthlyGoal) + ')</div></div>';
-              })() : ''}
             </div>
           </div>
+          <a href="#revenue" class="stat-card gradient-green" style="text-decoration:none;color:inherit">
+            <div class="stat-icon green">&#x1F4C8;</div>
+            <div>
+              <div class="stat-value" style="font-size:1.3rem">${App.formatCurrency(monthRevenue)}</div>
+              <div class="stat-label">이번 달 매출 (${monthRecords.length}건) &rarr;</div>
+              ${revenueChange !== null ? `<div style="font-size:0.78rem;margin-top:2px;opacity:0.9">전월 대비 ${revenueChange >= 0 ? '+' : ''}${revenueChange}%</div>` : ''}
+              ${monthlyGoal > 0 ? (() => {
+                const pct = Math.min(Math.round((monthRevenue / monthlyGoal) * 100), 100);
+                return '<div style="margin-top:6px"><div style="height:6px;background:rgba(255,255,255,0.3);border-radius:3px;overflow:hidden"><div style="height:100%;width:' + pct + '%;background:#fff;border-radius:3px;transition:width 0.3s"></div></div><div style="font-size:0.78rem;margin-top:2px;opacity:0.9">월 목표 ' + pct + '% (' + App.formatCurrency(monthlyGoal) + ')</div></div>';
+              })() : ''}
+            </div>
+          </a>
         </div>
 
         <!-- 오늘 예약 목록 -->
@@ -357,7 +363,7 @@ App.pages.dashboard = {
                 <div class="flex-1">
                   <strong>${App.escapeHtml(a.pet.name)}</strong>
                   <span style="color:var(--text-muted);font-size:0.8rem">${App.escapeHtml(App.getCustomerLabel(a.customer))}</span>
-                  <span class="badge ${statusBadge}" style="font-size:0.65rem;margin-left:4px">${statusLabel}</span>
+                  <span class="badge ${statusBadge}" style="font-size:0.72rem;margin-left:4px;padding:3px 8px">${statusLabel}</span>
                   <div style="font-size:0.78rem;color:var(--text-secondary);margin-top:2px">
                     마지막 미용: ${App.formatDate(a.lastDate)}
                     ${a.pet.groomingCycle ? ' | 미용 주기 ' + a.cycleDays + '일 초과' : ''}
@@ -407,8 +413,6 @@ App.pages.dashboard = {
           </div>
         </div>
         ` : ''}
-
-        <div id="storage-quota-banner"></div>
       `;
 
       // Storage quota monitoring (async, non-blocking)
@@ -419,7 +423,7 @@ App.pages.dashboard = {
             const usedMB = (quota.used / (1024 * 1024)).toFixed(1);
             const quotaMB = (quota.quota / (1024 * 1024)).toFixed(0);
             banner.innerHTML = `
-              <div style="background:${quota.percentage > 95 ? 'var(--danger-light)' : 'var(--warning-light)'};border:1px solid ${quota.percentage > 95 ? 'var(--danger)' : 'var(--warning)'};border-radius:var(--radius);padding:12px 16px;margin-top:16px;display:flex;align-items:center;gap:12px">
+              <div style="background:${quota.percentage > 95 ? 'var(--danger-light)' : 'var(--warning-light)'};border:1px solid ${quota.percentage > 95 ? 'var(--danger)' : 'var(--warning)'};border-radius:var(--radius);padding:12px 16px;margin-bottom:16px;display:flex;align-items:center;gap:12px">
                 <span style="font-size:1.3rem">${quota.percentage > 95 ? '&#x1F6A8;' : '&#x26A0;'}</span>
                 <div class="flex-1">
                   <strong>${quota.percentage > 95 ? '저장 공간 부족!' : '저장 공간 경고'}</strong>:
@@ -479,23 +483,25 @@ App.pages.dashboard = {
   },
 
   async init() {
-    // Accordion toggles for alert sections
+    // Accordion toggles for alert sections (localStorage로 펼침 상태 유지)
     document.querySelectorAll('.dash-accordion-toggle').forEach(header => {
-      // Set initial chevron state for sections that start open
       const targetId = header.dataset.target;
       const body = document.getElementById(targetId);
-      if (body && body.style.display !== 'none') {
-        const chevron = header.querySelector('.dash-chevron');
-        if (chevron) chevron.style.transform = 'rotate(180deg)';
+      if (!body) return;
+      // 저장된 상태 복원 (기본: 펼침)
+      const savedState = localStorage.getItem('dashAccordion-' + targetId);
+      if (savedState === 'closed') {
+        body.style.display = 'none';
+      }
+      const chevron = header.querySelector('.dash-chevron');
+      if (chevron && body.style.display !== 'none') {
+        chevron.style.transform = 'rotate(180deg)';
       }
       header.addEventListener('click', () => {
-        const targetId = header.dataset.target;
-        const body = document.getElementById(targetId);
-        if (!body) return;
         const isOpen = body.style.display !== 'none';
         body.style.display = isOpen ? 'none' : 'block';
-        const chevron = header.querySelector('.dash-chevron');
         if (chevron) chevron.style.transform = isOpen ? '' : 'rotate(180deg)';
+        localStorage.setItem('dashAccordion-' + targetId, isOpen ? 'closed' : 'open');
       });
     });
 
@@ -537,6 +543,7 @@ App.pages.dashboard = {
                 await DB.update('records', record);
                 App.showToast('결제가 완료 처리되었습니다.');
                 App.closeModal();
+                App._dashboardDirty = true;
                 App.handleRoute();
               }
             } catch (err) {

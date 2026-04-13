@@ -1628,8 +1628,11 @@ a.stat-card { display: flex; }
   .grid-2 { grid-template-columns: 1fr; }
 }
 
-@media (max-width: 480px) {
+@media (max-width: 600px) {
   .stats-grid { grid-template-columns: 1fr; }
+}
+
+@media (max-width: 480px) {
   .page-title { font-size: 1.3rem; }
   .form-row.three { grid-template-columns: 1fr; }
 }

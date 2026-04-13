@@ -9,7 +9,7 @@ App.pages.pets = {
   },
 
   async renderList(container) {
-    const pets = await DB.getAll('pets');
+    const allPets = await DB.getAll('pets');
     const customers = await DB.getAllLight('customers', ['memo', 'address']);
     // 효율적 쿼리: 목록에서는 사진/메모 등 큰 필드 제외
     const records = await DB.getAllLight('records', ['photoBefore', 'photoAfter', 'memo']);
@@ -24,31 +24,46 @@ App.pages.pets = {
       }
     });
 
+    // 사망/양도 반려견은 기본 목록에서 제외 (재방문 알림·통계 오염 방지)
+    const showInactive = !!this._showInactive;
+    const pets = showInactive ? allPets : allPets.filter(p => (p.petStatus || 'active') === 'active');
+    const inactiveCount = allPets.length - allPets.filter(p => (p.petStatus || 'active') === 'active').length;
+
+    // 방문 상태 사전 계산 (정렬 비교 중 반복 호출 방지)
+    const visitStatusMap = {};
+    pets.forEach(p => {
+      visitStatusMap[p.id] = App.classifyVisitStatus(p.lastVisitDate || petLastVisit[p.id], p.groomingCycle);
+    });
+
     const sortKey = this._sortKey || 'name';
     const statusPriority = { churned: 0, 'at-risk': 1, remind: 2, normal: 3 };
     const sorted = pets.sort((a, b) => {
       if (sortKey === 'lastVisit') return (petLastVisit[b.id] || '').localeCompare(petLastVisit[a.id] || '');
       if (sortKey === 'breed') return (a.breed || '').localeCompare(b.breed || '', 'ko');
       if (sortKey === 'status') {
-        const vsA = App.classifyVisitStatus(a.lastVisitDate || petLastVisit[a.id], a.groomingCycle);
-        const vsB = App.classifyVisitStatus(b.lastVisitDate || petLastVisit[b.id], b.groomingCycle);
-        return (statusPriority[vsA] ?? 3) - (statusPriority[vsB] ?? 3);
+        return (statusPriority[visitStatusMap[a.id]] ?? 3) - (statusPriority[visitStatusMap[b.id]] ?? 3);
       }
       return (a.name || '').localeCompare(b.name || '', 'ko');
     });
+
+    const sortOptions = [
+      { v: 'name', l: '이름순' },
+      { v: 'lastVisit', l: '최근방문순' },
+      { v: 'breed', l: '견종별' },
+      { v: 'status', l: '상태별' }
+    ];
 
     container.innerHTML = `
       <div class="page-header">
         <div>
           <h1 class="page-title">반려견 관리</h1>
-          <p class="page-subtitle">총 ${pets.length}마리</p>
+          <p class="page-subtitle">
+            총 ${pets.length}마리${inactiveCount > 0 ? ` <a href="#" id="pet-toggle-inactive" style="color:var(--primary);text-decoration:underline;font-size:0.85rem;margin-left:4px">${showInactive ? '비활성 숨기기' : `비활성 ${inactiveCount}마리 보기`}</a>` : ''}
+          </p>
         </div>
         <div class="page-actions">
-          <select id="pet-sort" style="width:auto;min-width:100px;font-size:0.85rem;padding:8px 12px">
-            <option value="name">이름순</option>
-            <option value="lastVisit">최근방문순</option>
-            <option value="breed">견종별</option>
-            <option value="status">상태별</option>
+          <select id="pet-sort" style="width:auto;min-width:100px;font-size:0.88rem;padding:10px 12px;min-height:40px">
+            ${sortOptions.map(o => `<option value="${o.v}"${sortKey === o.v ? ' selected' : ''}>${o.l}</option>`).join('')}
           </select>
           <button class="btn btn-primary" id="btn-add-pet">+ 등록</button>
         </div>
@@ -66,10 +81,15 @@ App.pages.pets = {
       ` : sorted.map(p => {
         const owner = customerMap[p.customerId];
         const lastVisit = petLastVisit[p.id];
-        const vs = App.classifyVisitStatus(p.lastVisitDate || lastVisit, p.groomingCycle);
-        const visitBadge = vs !== 'normal' ? '<span class="badge ' + App.getVisitStatusBadge(vs) + '" style="font-size:0.6rem;margin-left:4px">' + App.getVisitStatusLabel(vs) + '</span>' : '';
+        const vs = visitStatusMap[p.id];
+        const isInactive = (p.petStatus || 'active') !== 'active';
+        const inactiveLabel = p.petStatus === 'deceased' ? '사망' : p.petStatus === 'transferred' ? '양도' : '';
+        const visitBadge = isInactive
+          ? '<span class="badge badge-secondary" style="font-size:0.7rem;margin-left:4px;padding:3px 8px">' + inactiveLabel + '</span>'
+          : (vs !== 'normal' ? '<span class="badge ' + App.getVisitStatusBadge(vs) + '" style="font-size:0.7rem;margin-left:4px;padding:3px 8px">' + App.getVisitStatusLabel(vs) + '</span>' : '');
         let nextHtml = '';
-        if (p.groomingCycle && (p.lastVisitDate || lastVisit)) {
+        // 사망/양도 반려견은 "다음 미용일" 계산 생략 (오해 방지)
+        if (!isInactive && p.groomingCycle && (p.lastVisitDate || lastVisit)) {
           const last = new Date((p.lastVisitDate || lastVisit) + 'T00:00:00');
           const next = new Date(last); next.setDate(next.getDate() + p.groomingCycle);
           const days = Math.floor((next - new Date()) / (1000*60*60*24));
@@ -77,7 +97,8 @@ App.pages.pets = {
             ? '<span style="color:var(--danger);font-weight:700;font-size:0.75rem">' + Math.abs(days) + '일 초과</span>'
             : '<span style="color:var(--primary);font-size:0.75rem">' + days + '일 후</span>';
         }
-        return '<div class="pet-list-item" data-id="' + p.id + '" data-search="' + App.escapeHtml((p.name || '') + ' ' + (p.breed || '') + ' ' + (owner?.name || '') + ' ' + (owner?.phone || '')) + '" data-visit-status="' + vs + '" data-breed="' + App.escapeHtml(p.breed || '') + '" data-last="' + (lastVisit || '') + '" style="display:flex;align-items:center;gap:10px;padding:12px 0;border-bottom:1px solid var(--border-light);cursor:pointer">' +
+        const rowOpacity = isInactive ? 'opacity:0.55;' : '';
+        return '<div class="pet-list-item" data-id="' + p.id + '" data-search="' + App.escapeHtml((p.name || '') + ' ' + (p.breed || '') + ' ' + (owner?.name || '') + ' ' + (owner?.phone || '') + ' ' + (p.memo || '') + ' ' + (p.healthNotes || '') + ' ' + (p.allergies || '')) + '" style="display:flex;align-items:center;gap:10px;padding:12px 0;border-bottom:1px solid var(--border-light);cursor:pointer;' + rowOpacity + '">' +
           '<div style="flex-shrink:0">' +
             (p.photo
               ? '<img src="' + p.photo + '" style="width:36px;height:36px;border-radius:10px;object-fit:cover" alt="">'
@@ -251,6 +272,13 @@ App.pages.pets = {
     // 정렬
     document.getElementById('pet-sort')?.addEventListener('change', (e) => {
       this._sortKey = e.target.value;
+      App.handleRoute();
+    });
+
+    // 비활성(사망/양도) 토글
+    document.getElementById('pet-toggle-inactive')?.addEventListener('click', (e) => {
+      e.preventDefault();
+      this._showInactive = !this._showInactive;
       App.handleRoute();
     });
 
@@ -552,21 +580,6 @@ App.pages.pets = {
     if (months < 0) { years--; months += 12; }
     if (years > 0) return `${years}살 ${months}개월`;
     return `${months}개월`;
-  },
-
-  filterTable(query) {
-    const q = query.toLowerCase();
-    // Filter table rows
-    const rows = document.querySelectorAll('#pet-table tbody tr');
-    rows.forEach(row => {
-      const text = row.textContent.toLowerCase();
-      row.style.display = text.includes(q) ? '' : 'none';
-    });
-    // Filter mobile cards
-    document.querySelectorAll('#pet-card-list .mobile-card').forEach(card => {
-      const search = (card.dataset.search || '').toLowerCase();
-      card.style.display = search.includes(q) ? '' : 'none';
-    });
   },
 
   resizeImage(dataUrl, callback) {

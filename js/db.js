@@ -4,14 +4,14 @@ const DB = {
   mode: 'idb', // 'server' or 'idb'
   db: null,
   name: 'PetGroomingShop',
-  version: 4,
+  version: 5,
 
   stores: {
     customers: { keyPath: 'id', autoIncrement: true, indexes: [{ name: 'name', keyPath: 'name' }, { name: 'phone', keyPath: 'phone' }] },
     pets: { keyPath: 'id', autoIncrement: true, indexes: [{ name: 'customerId', keyPath: 'customerId' }, { name: 'name', keyPath: 'name' }] },
     services: { keyPath: 'id', autoIncrement: true, indexes: [{ name: 'name', keyPath: 'name' }, { name: 'isActive', keyPath: 'isActive' }] },
     appointments: { keyPath: 'id', autoIncrement: true, indexes: [{ name: 'customerId', keyPath: 'customerId' }, { name: 'petId', keyPath: 'petId' }, { name: 'date', keyPath: 'date' }, { name: 'status', keyPath: 'status' }] },
-    records: { keyPath: 'id', autoIncrement: true, indexes: [{ name: 'customerId', keyPath: 'customerId' }, { name: 'petId', keyPath: 'petId' }, { name: 'date', keyPath: 'date' }] },
+    records: { keyPath: 'id', autoIncrement: true, indexes: [{ name: 'customerId', keyPath: 'customerId' }, { name: 'petId', keyPath: 'petId' }, { name: 'date', keyPath: 'date' }, { name: 'paymentMethod', keyPath: 'paymentMethod' }] },
     settings: { keyPath: 'key' },
     photos: { keyPath: 'id', autoIncrement: true, indexes: [{ name: 'ownerId', keyPath: 'ownerId' }, { name: 'type', keyPath: 'type' }] },
     expenses: { keyPath: 'id', autoIncrement: true, indexes: [{ name: 'month', keyPath: 'month' }, { name: 'category', keyPath: 'category' }] }
