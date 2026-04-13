@@ -757,7 +757,7 @@ const App = {
     const customers = await DB.getAll('customers');
     return customers
       .sort((a, b) => (a.name || '').localeCompare(b.name || '', 'ko'))
-      .map(c => `<option value="${c.id}" ${c.id === selectedId ? 'selected' : ''}>${this.escapeHtml(c.name)} (${this.formatPhone(c.phone)})</option>`)
+      .map(c => `<option value="${c.id}" ${c.id === selectedId ? 'selected' : ''}>${this.escapeHtml(App.getCustomerLabel(c))} (${this.formatPhone(c.phone)})</option>`)
       .join('');
   },
 
@@ -860,9 +860,9 @@ const App = {
         dropdown.innerHTML = filtered.slice(0, 20).map(c => {
           const pl = _petDisplay(c.id, q);
           const display = pl
-            ? `${this.escapeHtml(pl)} · ${this.escapeHtml(c.name)} <span class="sub">${this.formatPhone(c.phone)}</span>`
-            : `${this.escapeHtml(c.name)} <span class="sub">${this.formatPhone(c.phone)}</span>`;
-          const dataName = pl ? `${pl} · ${c.name}` : `${c.name} (${this.formatPhone(c.phone)})`;
+            ? `${this.escapeHtml(pl)} · ${this.escapeHtml(App.getCustomerLabel(c))} <span class="sub">${this.formatPhone(c.phone)}</span>`
+            : `${this.escapeHtml(App.getCustomerLabel(c))} <span class="sub">${this.formatPhone(c.phone)}</span>`;
+          const dataName = pl ? `${pl} · ${App.getCustomerLabel(c)}` : `${App.getCustomerLabel(c)} (${this.formatPhone(c.phone)})`;
           return `<div class="search-select-option" data-id="${c.id}" data-name="${this.escapeHtml(dataName)}">
             ${display}
           </div>`;

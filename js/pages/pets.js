@@ -106,7 +106,7 @@ App.pages.pets = {
               }
               return `
               <div class="mobile-card" data-id="${p.id}" style="cursor:pointer"
-                   data-search="${(p.name || '') + ' ' + (p.breed || '') + ' ' + (owner?.name || '')}">
+                   data-search="${(p.name || '') + ' ' + (p.breed || '') + ' ' + (owner?.name || '') + ' ' + (owner?.phone || '')}">
                 <div class="mobile-card-header">
                   <span style="font-weight:700;font-size:1rem">${p.photo ? `<img src="${p.photo}" class="photo-viewable" data-caption="${App.escapeHtml(p.name)}" style="width:28px;height:28px;border-radius:8px;object-fit:cover;vertical-align:middle;margin-right:4px">` : '&#x1F436;'} ${App.escapeHtml(p.name)}${visitBadge}</span>
                   <span style="color:var(--text-secondary);font-size:0.85rem">${App.escapeHtml(p.breed || '-')}</span>

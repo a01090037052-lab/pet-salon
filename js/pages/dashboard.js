@@ -129,14 +129,14 @@ App.pages.dashboard = {
         const diffDays = getBirthdayDaysUntil(p.birthDate);
         if (diffDays >= 0 && diffDays <= 7) {
           const customer = customerMap[p.customerId];
-          if (customer) upcomingBirthdays.push({ type: 'pet', name: p.name, ownerName: customer.name, phone: customer.phone, daysUntil: diffDays, photo: p.photo });
+          if (customer) upcomingBirthdays.push({ type: 'pet', name: p.name, ownerName: App.getCustomerLabel(customer), phone: customer.phone, daysUntil: diffDays, photo: p.photo });
         }
       });
       customers.forEach(c => {
         if (!c.birthday) return;
         const diffDays = getBirthdayDaysUntil(c.birthday);
         if (diffDays >= 0 && diffDays <= 7) {
-          upcomingBirthdays.push({ type: 'customer', name: c.name, ownerName: c.name, phone: c.phone, daysUntil: diffDays });
+          upcomingBirthdays.push({ type: 'customer', name: App.getCustomerLabel(c), ownerName: App.getCustomerLabel(c), phone: c.phone, daysUntil: diffDays });
         }
       });
       upcomingBirthdays.sort((a, b) => a.daysUntil - b.daysUntil);

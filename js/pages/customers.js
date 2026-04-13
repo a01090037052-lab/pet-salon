@@ -467,7 +467,7 @@ App.pages.customers = {
       const selPet = pets.find(p => p.id === selPetId) || firstPet;
       const days = selPet?.lastVisitDate ? App.getDaysAgo(selPet.lastVisitDate) : '';
       const msg = await App.buildSms(typeEl.value, {
-        '고객명': customer.name || '',
+        '고객명': App.getCustomerLabel(customer),
         '반려견명': selPet?.name || '',
         '경과일수': String(days || ''),
         '마지막방문일': selPet?.lastVisitDate ? App.formatDate(selPet.lastVisitDate) : ''

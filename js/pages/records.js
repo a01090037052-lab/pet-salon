@@ -123,7 +123,7 @@ App.pages.records = {
                   const serviceNames = (r.serviceNames && r.serviceNames.length > 0) ? r.serviceNames.join(', ') : (r.serviceIds || []).map(id => serviceMap[id]).filter(Boolean).join(', ') || '-';
                   return `
                     <tr data-id="${r.id}" data-month="${(r.date || '').slice(0, 7)}"
-                        data-search="${(customer?.name || '') + ' ' + (pet?.name || '')}"
+                        data-search="${(customer?.name || '') + ' ' + (pet?.name || '') + ' ' + (customer?.phone || '')}"
                         data-payment="${r.paymentMethod || ''}"
                         style="${r.paymentMethod === 'unpaid' ? 'background:var(--warning-light);border-left:3px solid var(--danger)' : ''}">
                       <td>${App.formatDate(r.date)}</td>
@@ -160,7 +160,7 @@ App.pages.records = {
               const isUnpaid = r.paymentMethod === 'unpaid';
               return `
               <div class="mobile-card${isUnpaid ? ' mobile-card-unpaid' : ''}" data-id="${r.id}" data-month="${(r.date || '').slice(0, 7)}"
-                   data-search="${(customer?.name || '') + ' ' + (pet?.name || '')}"
+                   data-search="${(customer?.name || '') + ' ' + (pet?.name || '') + ' ' + (customer?.phone || '')}"
                    data-payment="${r.paymentMethod || ''}">
                 <div class="mobile-card-header">
                   <span class="mobile-card-date"><strong>${App.formatDate(r.date)}</strong>${r.status === 'in_progress' ? ' <span class="badge badge-warning" style="font-size:0.65rem">진행중</span>' : ''}</span>
@@ -747,7 +747,7 @@ App.pages.records = {
         document.getElementById('post-save-sms')?.addEventListener('click', async () => {
           const serviceNames = await App.getServiceNames(serviceIds);
           const msg = await App.buildSms('complete', {
-            '고객명': customer?.name || '',
+            '고객명': App.getCustomerLabel(customer),
             '반려견명': pet?.name || '',
             '서비스': serviceNames !== '-' ? serviceNames : '',
             '금액': String(finalPrice)
