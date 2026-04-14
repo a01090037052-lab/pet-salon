@@ -10,6 +10,8 @@ App.pages.settings = {
     const notifEnabled = await DB.getSetting('notifEnabled');
     const notifMinutes = await DB.getSetting('notifMinutes');
     const closedDays = await DB.getSetting('closedDays') || [];
+    const openTime = await DB.getSetting('openTime') || '09:00';
+    const closeTime = await DB.getSetting('closeTime') || '19:00';
     const themeColor = await DB.getSetting('themeColor') || '#6366F1';
 
     const DEFAULT_TEMPLATES = {
@@ -125,6 +127,17 @@ App.pages.settings = {
                 </div>
                 <div class="form-hint">선택한 요일은 캘린더에 휴무로 표시되고, 예약 시 경고가 나타납니다</div>
               </div>
+              <div class="form-row">
+                <div class="form-group">
+                  <label class="form-label">영업 시작</label>
+                  <input type="time" id="s-openTime" value="${openTime}">
+                </div>
+                <div class="form-group">
+                  <label class="form-label">영업 종료</label>
+                  <input type="time" id="s-closeTime" value="${closeTime}">
+                </div>
+              </div>
+              <div class="form-hint">예약 타임테이블의 시간 범위에 적용됩니다</div>
             </div>
           </div>
         </div>
@@ -397,6 +410,11 @@ App.pages.settings = {
       const checks = document.querySelectorAll('input[name="closedDay"]:checked');
       const closedDays = Array.from(checks).map(cb => Number(cb.value));
       await DB.setSetting('closedDays', closedDays);
+      // 영업시간
+      const openVal = document.getElementById('s-openTime')?.value || '09:00';
+      const closeVal = document.getElementById('s-closeTime')?.value || '19:00';
+      await DB.setSetting('openTime', openVal);
+      await DB.setSetting('closeTime', closeVal);
       // 테마 색상
       const activeColor = document.querySelector('.theme-color-btn.active');
       if (activeColor) {

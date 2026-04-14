@@ -3,9 +3,11 @@ App.pages.appointments = {
   _showAll: false,
 
   async render(container) {
-    // 휴무일 설정 등 외부 설정은 매 진입 시 재로드 (stale 방지)
+    // 휴무일·영업시간 설정 등 외부 설정은 매 진입 시 재로드 (stale 방지)
     this._closedDays = null;
+    this._businessHours = null;
     const today = App.getToday();
+    const isMobile = window.matchMedia('(max-width: 768px)').matches;
     // 최근 3개월 + 미래 예약만 로드 (성능 최적화)
     const threeMonthsAgo = (() => { const d = new Date(); d.setMonth(d.getMonth() - 3); return App.formatLocalDate(d); })();
     const appointments = this._showAll
@@ -103,7 +105,7 @@ App.pages.appointments = {
 
       <div class="card">
         <div class="card-body no-padding">
-          <div class="table-container">
+          ${isMobile ? '' : `<div class="table-container">
             <table class="data-table" id="appt-table">
               <thead>
                 <tr>
@@ -166,10 +168,10 @@ App.pages.appointments = {
                 }).join('')}
               </tbody>
             </table>
-          </div>
+          </div>`}
 
-          <!-- Mobile Card List -->
-          <div class="mobile-card-list" id="appt-card-list">
+          <!-- Mobile Card List (모바일 뷰포트에서만 렌더, DOM 절약) -->
+          ${!isMobile ? '' : `<div class="mobile-card-list" id="appt-card-list" style="display:block">
             ${sorted.length === 0 ? `
               <div class="empty-state">
                 <div class="empty-state-icon">&#x1F4C5;</div>
@@ -217,7 +219,7 @@ App.pages.appointments = {
                 </div>
               </div>`;
             }).join('')}
-          </div>
+          </div>`}
           ${!this._showAll ? `<div style="text-align:center;padding:16px"><button class="btn btn-secondary" id="btn-load-more-appts" style="min-width:200px;min-height:44px">&#x1F4DA; 3개월 이전 예약도 불러오기</button></div>` : ''}
 
         </div>
@@ -418,10 +420,21 @@ App.pages.appointments = {
       this.renderCalendar();
     });
 
-    // 예약 데이터 캐시 (캘린더용) - 현재 월 기준으로 로드
-    const calStart = `${this._calYear}-${String(this._calMonth + 1).padStart(2, '0')}-01`;
-    const calEnd = `${this._calYear}-${String(this._calMonth + 1).padStart(2, '0')}-31`;
-    this._appointments = await DB.getByDateRange('appointments', 'date', calStart, calEnd);
+    // 캘린더 데이터는 renderCalendar 내부에서 이미 로드함 (중복 쿼리 제거)
+
+    // 모바일↔데스크톱 뷰포트 경계 변화 시 재렌더 (한 번만 바인딩)
+    if (!this._resizeBound) {
+      this._resizeBound = true;
+      let lastIsMobile = window.matchMedia('(max-width: 768px)').matches;
+      const onResize = App.debounce(() => {
+        const nowIsMobile = window.matchMedia('(max-width: 768px)').matches;
+        if (nowIsMobile !== lastIsMobile) {
+          lastIsMobile = nowIsMobile;
+          if (location.hash.startsWith('#appointments')) App.handleRoute();
+        }
+      }, 250);
+      window.addEventListener('resize', onResize);
+    }
 
     // Quick date filters
     document.querySelectorAll('.quick-filter-btn').forEach(btn => {
@@ -558,20 +571,34 @@ App.pages.appointments = {
     const dayApptsRaw = await DB.getByIndex('appointments', 'date', this._ttDate);
 
     const dayAppts = dayApptsRaw.filter(a => a.status !== 'cancelled');
-    const [customers, pets] = await Promise.all([DB.getAll('customers'), DB.getAll('pets')]);
-    const customerMap = {}; customers.forEach(c => customerMap[c.id] = c);
-    const petMap = {}; pets.forEach(p => petMap[p.id] = p);
+    // render()에서 캐시한 맵 재사용, 없으면 로드
+    let customerMap = this._customerMap;
+    let petMap = this._petMap;
+    if (!customerMap || !petMap) {
+      const [customers, pets] = await Promise.all([DB.getAll('customers'), DB.getAll('pets')]);
+      customerMap = {}; customers.forEach(c => customerMap[c.id] = c);
+      petMap = {}; pets.forEach(p => petMap[p.id] = p);
+      this._customerMap = customerMap;
+      this._petMap = petMap;
+    }
 
     // 미용사 목록 수집
     const groomers = await DB.getSetting('groomers') || [];
     const activeGroomers = groomers.length > 0 ? groomers : [...new Set(dayAppts.map(a => a.groomer || '미지정').filter(Boolean))];
     if (activeGroomers.length === 0) activeGroomers.push('미지정');
 
-    // 시간 슬롯 (9:00 ~ 19:00, 30분 단위)
+    // 시간 슬롯: 매장 영업시간 설정 사용 (기본 9~19시), 30분 단위
+    if (!this._businessHours) {
+      const open = await DB.getSetting('openTime') || '09:00';
+      const close = await DB.getSetting('closeTime') || '19:00';
+      this._businessHours = { open, close };
+    }
+    const startHour = parseInt((this._businessHours.open || '09:00').split(':')[0], 10);
+    const endHour = parseInt((this._businessHours.close || '19:00').split(':')[0], 10);
     const slots = [];
-    for (let h = 9; h <= 19; h++) {
+    for (let h = startHour; h <= endHour; h++) {
       slots.push(`${String(h).padStart(2, '0')}:00`);
-      if (h < 19) slots.push(`${String(h).padStart(2, '0')}:30`);
+      if (h < endHour) slots.push(`${String(h).padStart(2, '0')}:30`);
     }
 
     // 예약을 시간+미용사로 매핑 (duration-aware)
@@ -745,6 +772,27 @@ App.pages.appointments = {
           </div>
         </div>
 
+        ${!id ? `<div class="form-group">
+          <label class="form-label">반복 예약</label>
+          <div class="form-row">
+            <select id="f-repeat-cycle" class="flex-1">
+              <option value="0">반복 없음</option>
+              <option value="7">매주</option>
+              <option value="14">2주마다</option>
+              <option value="28">4주마다</option>
+            </select>
+            <select id="f-repeat-count" style="flex:1;display:none">
+              <option value="2">2회</option>
+              <option value="3">3회</option>
+              <option value="4" selected>4회</option>
+              <option value="6">6회</option>
+              <option value="8">8회</option>
+              <option value="12">12회</option>
+            </select>
+          </div>
+          <div class="form-hint" id="repeat-hint" style="display:none"></div>
+        </div>` : ''}
+
         <!-- 상세 옵션 토글 -->
         <div class="form-detail-divider" onclick="this.closest('.modal-body').querySelector('.form-detail-section').classList.toggle('open');this.classList.toggle('open')">
           <span class="form-detail-divider-line"></span>
@@ -776,26 +824,6 @@ App.pages.appointments = {
             <label class="form-label">메모</label>
             <textarea id="f-memo" placeholder="예약 관련 메모">${App.escapeHtml(appt.memo || '')}</textarea>
           </div>
-          ${!id ? `<div class="form-group">
-            <label class="form-label">반복 예약</label>
-            <div class="form-row">
-              <select id="f-repeat-cycle" class="flex-1">
-                <option value="0">반복 없음</option>
-                <option value="7">매주</option>
-                <option value="14">2주마다</option>
-                <option value="28">4주마다</option>
-              </select>
-              <select id="f-repeat-count" style="flex:1;display:none">
-                <option value="2">2회</option>
-                <option value="3">3회</option>
-                <option value="4" selected>4회</option>
-                <option value="6">6회</option>
-                <option value="8">8회</option>
-                <option value="12">12회</option>
-              </select>
-            </div>
-            <div class="form-hint" id="repeat-hint" style="display:none"></div>
-          </div>` : ''}
         </div>
       `,
       onSave: () => this.saveAppointment(id)
