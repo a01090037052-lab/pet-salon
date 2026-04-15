@@ -53,11 +53,6 @@ App.pages.records = {
         </div>
       </div>
 
-      <!-- 매출 통계는 매출 페이지로 이동 -->
-      <div style="margin-bottom:16px">
-        <a href="#revenue" class="btn btn-secondary btn-sm" style="display:inline-flex;align-items:center;gap:6px">&#x1F4B0; 매출 현황 보기 &rarr;</a>
-      </div>
-
       ${unpaidRecs.length > 0 ? `
       <div id="unpaid-warning-card" class="card" style="margin-bottom:16px;border:1.5px solid var(--danger);cursor:pointer">
         <div class="card-body" style="padding:16px 20px;display:flex;align-items:center;gap:14px;background:linear-gradient(135deg,var(--danger-light),#FEE2E2)">
