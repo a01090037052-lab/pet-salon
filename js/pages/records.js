@@ -21,9 +21,6 @@ App.pages.records = {
     const unpaidRecs = records.filter(r => r.paymentMethod === 'unpaid');
     const unpaidTotal = unpaidRecs.reduce((sum, r) => sum + App.getRecordAmount(r), 0);
 
-    // 매출 데이터 캐시
-    this._records = records;
-
     container.innerHTML = `
       <div class="page-header">
         <div>
@@ -634,9 +631,11 @@ App.pages.records = {
       if (style) App.addAutoHistory('styleHistory', style);
       addons.forEach(a => App.addAutoHistory('addonHistory', a));
 
+      let prevCustomerId = null;
       if (id) {
         const existing = await DB.get('records', id);
         if (!existing) { App.showToast('기록을 찾을 수 없습니다.', 'error'); return; }
+        prevCustomerId = existing.customerId;
         Object.assign(existing, data);
         await DB.update('records', existing);
         App.showToast('미용 기록이 수정되었습니다.');
@@ -655,32 +654,16 @@ App.pages.records = {
             console.warn('Failed to update appointment status:', e);
           }
         }
+      }
 
-        // 고객 자동 분류 (방문 횟수 기반, 신규 1-3, 일반 4-10, 단골 11+)
-        // 사용자가 수동으로 태그 변경한 경우는 덮어쓰지 않음 (customer.autoTag로 마지막 자동 값 추적)
-        try {
-          const custRecords = await DB.getByIndex('records', 'customerId', customerId);
-          const visitCount = custRecords.length;
-          const cust = await DB.get('customers', customerId);
-          if (cust) {
-            const newAutoTag = visitCount <= 3 ? 'new' : visitCount <= 10 ? 'normal' : 'regular';
-            const prevAutoTag = cust.autoTag;
-            const existingTags = cust.tags || [];
-            const levelTags = existingTags.filter(t => ['new', 'normal', 'regular'].includes(t));
-            // 이전 자동값과 현재 태그가 같으면 교체, 다르면 사용자가 건드린 것으로 보고 보존
-            const isUntouched = levelTags.length === 0 || (levelTags.length === 1 && levelTags[0] === prevAutoTag);
-            if (isUntouched) {
-              const filtered = existingTags.filter(t => t !== prevAutoTag);
-              if (!filtered.includes(newAutoTag)) filtered.push(newAutoTag);
-              cust.tags = filtered;
-              cust.autoTag = newAutoTag;
-              await DB.update('customers', cust);
-            }
-          }
-        } catch (e) {
-          console.warn('Auto-tag error:', e);
+      // 고객 자동 태그 재계산 (신규/수정 공통). 고객 변경 시 양쪽 재계산
+      try {
+        await this._recalcCustomerTag(customerId);
+        if (prevCustomerId && prevCustomerId !== customerId) {
+          await this._recalcCustomerTag(prevCustomerId);
         }
-
+      } catch (e) {
+        console.warn('Auto-tag error:', e);
       }
 
       // 반려건 lastVisitDate 업데이트
@@ -792,23 +775,8 @@ App.pages.records = {
       }
       // 고객 태그 재계산 (방문 횟수 기반, 수동 변경 보존)
       if (record && record.customerId) {
-        const custRecords = await DB.getByIndex('records', 'customerId', record.customerId);
-        const cust = await DB.get('customers', record.customerId);
-        if (cust) {
-          const vc = custRecords.length;
-          const newAutoTag = vc <= 3 ? 'new' : vc <= 10 ? 'normal' : 'regular';
-          const prevAutoTag = cust.autoTag;
-          const existingTags = cust.tags || [];
-          const levelTags = existingTags.filter(t => ['new', 'normal', 'regular'].includes(t));
-          const isUntouched = levelTags.length === 0 || (levelTags.length === 1 && levelTags[0] === prevAutoTag);
-          if (isUntouched) {
-            const filtered = existingTags.filter(t => t !== prevAutoTag);
-            if (!filtered.includes(newAutoTag)) filtered.push(newAutoTag);
-            cust.tags = filtered;
-            cust.autoTag = newAutoTag;
-            await DB.update('customers', cust);
-          }
-        }
+        try { await this._recalcCustomerTag(record.customerId); }
+        catch (e) { console.warn('Auto-tag error:', e); }
       }
       App.showToast('미용 기록이 삭제되었습니다.');
       App.handleRoute();
@@ -816,6 +784,25 @@ App.pages.records = {
       console.error('deleteRecord error:', err);
       App.showToast('삭제 중 오류가 발생했습니다.', 'error');
     }
+  },
+
+  // 고객 자동 태그 재계산 — 수동으로 바꾼 태그는 보존
+  async _recalcCustomerTag(customerId) {
+    const custRecords = await DB.getByIndex('records', 'customerId', customerId);
+    const cust = await DB.get('customers', customerId);
+    if (!cust) return;
+    const vc = custRecords.length;
+    const newAutoTag = vc === 0 ? null : vc <= 3 ? 'new' : vc <= 10 ? 'normal' : 'regular';
+    const prevAutoTag = cust.autoTag;
+    const existingTags = cust.tags || [];
+    const levelTags = existingTags.filter(t => ['new', 'normal', 'regular'].includes(t));
+    const isUntouched = levelTags.length === 0 || (levelTags.length === 1 && levelTags[0] === prevAutoTag);
+    if (!isUntouched) return;
+    const filtered = existingTags.filter(t => t !== prevAutoTag);
+    if (newAutoTag && !filtered.includes(newAutoTag)) filtered.push(newAutoTag);
+    cust.tags = filtered;
+    cust.autoTag = newAutoTag;
+    await DB.update('customers', cust);
   },
 
   async showPetInfoBox(pet) {
@@ -842,9 +829,9 @@ App.pages.records = {
 
   // 일일 정산표
   async showDailyReport(targetDate) {
-    const records = this._records || await DB.getAll('records');
     const reportDate = targetDate || App.getToday();
-    const todayRecs = records.filter(r => r.date === reportDate);
+    // date 인덱스로 해당 날짜만 직접 조회 (전체 스캔 회피)
+    const todayRecs = await DB.getByDateRange('records', 'date', reportDate, reportDate);
     const totalRevenue = todayRecs.reduce((sum, r) => sum + App.getRecordAmount(r), 0);
 
     // 결제 수단별 집계
