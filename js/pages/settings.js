@@ -1,4 +1,14 @@
 // ========== Settings Page ==========
+const DEFAULT_SMS_TEMPLATES = {
+  revisit: '[{매장명}] {고객명}님 안녕하세요! {반려견명}의 마지막 미용 후 {경과일수}일이 지났습니다. 예약 문의: {전화번호}',
+  atRisk: '[{매장명}] {고객명}님, {반려견명}이(가) 보고 싶어요! 미용 시기가 많이 지났는데 괜찮으신가요? 예약 문의: {전화번호}',
+  churned: '[{매장명}] {고객명}님 안녕하세요! 오랫동안 뵙지 못했네요. {반려견명} 잘 지내고 있나요? 다시 방문해주시면 특별 케어 해드릴게요! 문의: {전화번호}',
+  appointment: '[{매장명}] {고객명}님, {날짜} {시간}에 {반려견명} 예약이 확인되었습니다. 담당: {미용사}. 문의: {전화번호}',
+  reminder: '[{매장명}] {고객명}님, 내일({날짜}) {시간}에 {반려견명} 미용 예약이 있습니다. 변경/취소는 {전화번호}로 연락 부탁드립니다.',
+  birthday: '[{매장명}] {고객명}님! {반려견명}의 생일을 축하합니다! 🎂 생일 기념 특별 할인을 준비했어요. 문의: {전화번호}',
+  complete: '[{매장명}] {고객명}님, {반려견명}의 미용이 완료되었습니다! 서비스: {서비스}, 금액: {금액}원. 감사합니다! 💕'
+};
+
 App.pages.settings = {
   async render(container) {
     const shopName = await DB.getSetting('shopName') || '';
@@ -12,23 +22,16 @@ App.pages.settings = {
     const closedDays = await DB.getSetting('closedDays') || [];
     const themeColor = await DB.getSetting('themeColor') || '#6366F1';
 
-    const DEFAULT_TEMPLATES = {
-      revisit: '[{매장명}] {고객명}님 안녕하세요! {반려견명}의 마지막 미용 후 {경과일수}일이 지났습니다. 예약 문의: {전화번호}',
-      atRisk: '[{매장명}] {고객명}님, {반려견명}이(가) 보고 싶어요! 미용 시기가 많이 지났는데 괜찮으신가요? 예약 문의: {전화번호}',
-      churned: '[{매장명}] {고객명}님 안녕하세요! 오랫동안 뵙지 못했네요. {반려견명} 잘 지내고 있나요? 다시 방문해주시면 특별 케어 해드릴게요! 문의: {전화번호}',
-      appointment: '[{매장명}] {고객명}님, {날짜} {시간}에 {반려견명} 예약이 확인되었습니다. 담당: {미용사}. 문의: {전화번호}',
-      reminder: '[{매장명}] {고객명}님, 내일({날짜}) {시간}에 {반려견명} 미용 예약이 있습니다. 변경/취소는 {전화번호}로 연락 부탁드립니다.',
-      birthday: '[{매장명}] {고객명}님! {반려견명}의 생일을 축하합니다! 🎂 생일 기념 특별 할인을 준비했어요. 문의: {전화번호}',
-      complete: '[{매장명}] {고객명}님, {반려견명}의 미용이 완료되었습니다! 서비스: {서비스}, 금액: {금액}원. 감사합니다! 💕'
-    };
     const savedTemplates = await DB.getSetting('messageTemplates') || {};
-    const revisitTpl = savedTemplates.revisit || DEFAULT_TEMPLATES.revisit;
-    const atRiskTpl = savedTemplates.atRisk || DEFAULT_TEMPLATES.atRisk;
-    const churnedTpl = savedTemplates.churned || DEFAULT_TEMPLATES.churned;
-    const appointmentTpl = savedTemplates.appointment || DEFAULT_TEMPLATES.appointment;
-    const reminderTpl = savedTemplates.reminder || DEFAULT_TEMPLATES.reminder;
-    const birthdayTpl = savedTemplates.birthday || DEFAULT_TEMPLATES.birthday;
-    const completeTpl = savedTemplates.complete || DEFAULT_TEMPLATES.complete;
+    const revisitTpl = savedTemplates.revisit || DEFAULT_SMS_TEMPLATES.revisit;
+    const atRiskTpl = savedTemplates.atRisk || DEFAULT_SMS_TEMPLATES.atRisk;
+    const churnedTpl = savedTemplates.churned || DEFAULT_SMS_TEMPLATES.churned;
+    const appointmentTpl = savedTemplates.appointment || DEFAULT_SMS_TEMPLATES.appointment;
+    const reminderTpl = savedTemplates.reminder || DEFAULT_SMS_TEMPLATES.reminder;
+    const birthdayTpl = savedTemplates.birthday || DEFAULT_SMS_TEMPLATES.birthday;
+    const completeTpl = savedTemplates.complete || DEFAULT_SMS_TEMPLATES.complete;
+    // 사용자가 템플릿 수정했는지 (기본 펼침 판단)
+    const hasCustomTemplate = Object.keys(savedTemplates).length > 0;
 
     const [customers, pets, appointments, records, services] = await Promise.all([
       DB.count('customers'),
@@ -138,8 +141,17 @@ App.pages.settings = {
             <div class="form-group">
               <label class="form-label">매장 테마 컬러</label>
               <div id="theme-color-picker" style="display:flex;gap:10px;flex-wrap:wrap;margin-top:8px">
-                ${['#6366F1','#EC4899','#10B981','#F59E0B','#3B82F6','#8B5CF6','#EF4444','#14B8A6'].map(c => `
-                  <button type="button" class="theme-color-btn${(themeColor || '#6366F1') === c ? ' active' : ''}" data-color="${c}" style="background:${c}" title="${c}"></button>
+                ${[
+                  { c: '#6366F1', name: '보라' },
+                  { c: '#EC4899', name: '핑크' },
+                  { c: '#10B981', name: '그린' },
+                  { c: '#F59E0B', name: '오렌지' },
+                  { c: '#3B82F6', name: '블루' },
+                  { c: '#8B5CF6', name: '퍼플' },
+                  { c: '#EF4444', name: '레드' },
+                  { c: '#14B8A6', name: '틸' }
+                ].map(({c, name}) => `
+                  <button type="button" class="theme-color-btn${(themeColor || '#6366F1') === c ? ' active' : ''}" data-color="${c}" style="background:${c}" title="${name} (${c})" aria-label="테마 색상: ${name}"></button>
                 `).join('')}
               </div>
               <div class="form-hint">선택한 색상이 앱 전체 테마에 적용됩니다</div>
@@ -185,8 +197,8 @@ App.pages.settings = {
             </div>
             <div class="card-body">
               <div class="form-group">
-                <label class="form-label">월 매출 목표</label>
-                <input type="number" id="s-monthlyGoal" value="${(await DB.getSetting('monthlyGoal')) || ''}" placeholder="예: 5000000" min="0" step="100000">
+                <label class="form-label">월 매출 목표 (원)</label>
+                <input type="number" id="s-monthlyGoal" value="${(await DB.getSetting('monthlyGoal')) || ''}" placeholder="예: 5000000 (500만원)" min="0" step="100000">
                 <div class="form-hint">매출 페이지와 대시보드에 목표 달성률이 표시됩니다</div>
               </div>
             </div>
@@ -208,12 +220,12 @@ App.pages.settings = {
 
         </div>
 
-        <!-- 메시지 템플릿 (접이식) -->
+        <!-- 메시지 템플릿 (접이식) — 수정된 템플릿 있으면 자동 펼침 -->
         <div class="card" style="margin-top:20px">
           <div class="card-header" style="cursor:pointer" onclick="this.parentElement.querySelector('.card-body').classList.toggle('hidden');this.querySelector('.toggle-icon').textContent=this.parentElement.querySelector('.card-body').classList.contains('hidden')?'&#x25B6;':'&#x25BC;'">
-            <span class="card-title">&#x1F4AC; 메시지 템플릿 <span class="toggle-icon" style="font-size:0.75rem">&#x25B6;</span></span>
+            <span class="card-title">&#x1F4AC; 메시지 템플릿 <span class="toggle-icon" style="font-size:0.75rem">${hasCustomTemplate ? '&#x25BC;' : '&#x25B6;'}</span></span>
           </div>
-          <div class="card-body hidden">
+          <div class="card-body${hasCustomTemplate ? '' : ' hidden'}">
             <p style="color:var(--text-secondary);font-size:0.85rem;margin-bottom:16px">
               문자 발송 시 사용되는 메시지를 수정할 수 있습니다.<br>
               사용 가능한 변수: <code>{매장명}</code> <code>{고객명}</code> <code>{반려견명}</code> <code>{경과일수}</code> <code>{날짜}</code> <code>{시간}</code> <code>{서비스}</code> <code>{금액}</code> <code>{미용사}</code> <code>{전화번호}</code>
@@ -263,21 +275,21 @@ App.pages.settings = {
             </div>
             <div class="card-body">
               <div style="display:flex;flex-direction:column;gap:12px;margin-bottom:20px">
-                <div style="display:flex;justify-content:space-between;padding:8px 0;border-bottom:1px solid var(--border)">
-                  <span>고객</span><strong>${customers}명</strong>
-                </div>
-                <div style="display:flex;justify-content:space-between;padding:8px 0;border-bottom:1px solid var(--border)">
-                  <span>반려견</span><strong>${pets}마리</strong>
-                </div>
-                <div style="display:flex;justify-content:space-between;padding:8px 0;border-bottom:1px solid var(--border)">
-                  <span>예약</span><strong>${appointments}건</strong>
-                </div>
-                <div style="display:flex;justify-content:space-between;padding:8px 0;border-bottom:1px solid var(--border)">
-                  <span>미용 기록</span><strong>${records}건</strong>
-                </div>
-                <div style="display:flex;justify-content:space-between;padding:8px 0">
-                  <span>서비스 메뉴</span><strong>${services}개</strong>
-                </div>
+                <a href="#customers" style="display:flex;justify-content:space-between;align-items:center;padding:10px 4px;border-bottom:1px solid var(--border);color:inherit;text-decoration:none">
+                  <span>고객</span><span><strong>${customers}명</strong> <span style="color:var(--text-muted);margin-left:6px">&rsaquo;</span></span>
+                </a>
+                <a href="#pets" style="display:flex;justify-content:space-between;align-items:center;padding:10px 4px;border-bottom:1px solid var(--border);color:inherit;text-decoration:none">
+                  <span>반려견</span><span><strong>${pets}마리</strong> <span style="color:var(--text-muted);margin-left:6px">&rsaquo;</span></span>
+                </a>
+                <a href="#appointments" style="display:flex;justify-content:space-between;align-items:center;padding:10px 4px;border-bottom:1px solid var(--border);color:inherit;text-decoration:none">
+                  <span>예약</span><span><strong>${appointments}건</strong> <span style="color:var(--text-muted);margin-left:6px">&rsaquo;</span></span>
+                </a>
+                <a href="#records" style="display:flex;justify-content:space-between;align-items:center;padding:10px 4px;border-bottom:1px solid var(--border);color:inherit;text-decoration:none">
+                  <span>미용 기록</span><span><strong>${records}건</strong> <span style="color:var(--text-muted);margin-left:6px">&rsaquo;</span></span>
+                </a>
+                <a href="#services" style="display:flex;justify-content:space-between;align-items:center;padding:10px 4px;color:inherit;text-decoration:none">
+                  <span>서비스 메뉴</span><span><strong>${services}개</strong> <span style="color:var(--text-muted);margin-left:6px">&rsaquo;</span></span>
+                </a>
               </div>
             </div>
           </div>
@@ -336,7 +348,6 @@ App.pages.settings = {
         </div>
       </div>
 
-      <div style="text-align:center;padding:20px 0;font-size:0.75rem;color:var(--text-muted)">v1.1 (0401)</div>
     `;
   },
 
@@ -344,8 +355,9 @@ App.pages.settings = {
     // Tab switching with unsaved changes warning
     document.querySelectorAll('.settings-tab').forEach(tab => {
       tab.addEventListener('click', async () => {
-        // Check for unsaved changes in current tab
-        const currentTab = document.querySelector('.settings-tab-content:not([style*="display: none"])') || document.querySelector('.settings-tab-content:not([style*="display:none"])');
+        // 현재 보이는 탭 감지 — getComputedStyle로 견고하게
+        const currentTab = Array.from(document.querySelectorAll('.settings-tab-content'))
+          .find(el => getComputedStyle(el).display !== 'none');
         if (currentTab && currentTab._modified) {
           const proceed = await App.confirm('저장하지 않은 변경사항이 있습니다. 이동하시겠습니까?');
           if (!proceed) return;
@@ -359,16 +371,15 @@ App.pages.settings = {
       });
     });
 
-    // Mark tab as modified when any input changes
+    // Mark tab as modified when any input changes (input이면 change도 커버)
     document.querySelectorAll('.settings-tab-content input, .settings-tab-content select, .settings-tab-content textarea').forEach(el => {
-      el.addEventListener('change', () => {
+      const handler = () => {
         const tabContent = el.closest('.settings-tab-content');
         if (tabContent) tabContent._modified = true;
-      });
-      el.addEventListener('input', () => {
-        const tabContent = el.closest('.settings-tab-content');
-        if (tabContent) tabContent._modified = true;
-      });
+      };
+      // select는 input 이벤트가 없으므로 change도 동시 바인딩 필요
+      el.addEventListener('input', handler);
+      if (el.tagName === 'SELECT') el.addEventListener('change', handler);
     });
 
     // Tab 1: 매장 관리 전체 저장
@@ -482,23 +493,11 @@ App.pages.settings = {
 
     // Reset templates to defaults
     document.getElementById('btn-reset-templates')?.addEventListener('click', async () => {
-      const defaults = {
-        revisit: '[{매장명}] {고객명}님 안녕하세요! {반려견명}의 마지막 미용 후 {경과일수}일이 지났습니다. 예약 문의: {전화번호}',
-        atRisk: '[{매장명}] {고객명}님, {반려견명}이(가) 보고 싶어요! 미용 시기가 많이 지났는데 괜찮으신가요? 예약 문의: {전화번호}',
-        churned: '[{매장명}] {고객명}님 안녕하세요! 오랫동안 뵙지 못했네요. {반려견명} 잘 지내고 있나요? 다시 방문해주시면 특별 케어 해드릴게요! 문의: {전화번호}',
-        appointment: '[{매장명}] {고객명}님, {날짜} {시간}에 {반려견명} 예약이 확인되었습니다. 담당: {미용사}. 문의: {전화번호}',
-        reminder: '[{매장명}] {고객명}님, 내일({날짜}) {시간}에 {반려견명} 미용 예약이 있습니다. 변경/취소는 {전화번호}로 연락 부탁드립니다.',
-        birthday: '[{매장명}] {고객명}님! {반려견명}의 생일을 축하합니다! 🎂 생일 기념 특별 할인을 준비했어요. 문의: {전화번호}',
-        complete: '[{매장명}] {고객명}님, {반려견명}의 미용이 완료되었습니다! 서비스: {서비스}, 금액: {금액}원. 감사합니다! 💕'
-      };
-      await DB.setSetting('messageTemplates', defaults);
-      document.getElementById('tpl-revisit').value = defaults.revisit;
-      document.getElementById('tpl-atRisk').value = defaults.atRisk;
-      document.getElementById('tpl-churned').value = defaults.churned;
-      document.getElementById('tpl-appointment').value = defaults.appointment;
-      document.getElementById('tpl-reminder').value = defaults.reminder;
-      document.getElementById('tpl-birthday').value = defaults.birthday;
-      document.getElementById('tpl-complete').value = defaults.complete;
+      await DB.setSetting('messageTemplates', { ...DEFAULT_SMS_TEMPLATES });
+      Object.entries(DEFAULT_SMS_TEMPLATES).forEach(([key, val]) => {
+        const el = document.getElementById('tpl-' + key);
+        if (el) el.value = val;
+      });
       App.showToast('기본값으로 복원되었습니다.');
     });
 
@@ -507,29 +506,8 @@ App.pages.settings = {
       App.pages.records?.showExportModal();
     });
 
-    // Export
-    document.getElementById('btn-export')?.addEventListener('click', async () => {
-      try {
-        const data = await DB.exportAll();
-        const json = JSON.stringify(data, null, 2);
-        const blob = new Blob([json], { type: 'application/json' });
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        const date = App.getToday();
-        a.href = url;
-        const backupName = await DB.getSetting('shopName') || '펫살롱';
-        a.download = `${backupName}_백업_${date}.json`;
-        document.body.appendChild(a);
-        a.click();
-        document.body.removeChild(a);
-        URL.revokeObjectURL(url);
-        App.showToast('백업 완료! 이전 백업 파일은 삭제해도 됩니다.', 'info');
-        await DB.setSetting('lastBackupDate', App.getToday());
-      } catch (err) {
-        console.error('Export error:', err);
-        App.showToast('백업 중 오류가 발생했습니다.', 'error');
-      }
-    });
+    // Export (directBackup 재사용으로 중복 제거)
+    document.getElementById('btn-export')?.addEventListener('click', () => this.directBackup());
 
     // Import
     document.getElementById('btn-import')?.addEventListener('click', () => {
@@ -617,7 +595,17 @@ App.pages.settings = {
 
   bindGroomerRemove() {
     document.querySelectorAll('.btn-remove-groomer').forEach(btn => {
-      btn.onclick = () => btn.parentElement.remove();
+      btn.onclick = async () => {
+        const input = btn.parentElement.querySelector('.groomer-input');
+        const name = input?.value?.trim();
+        if (name) {
+          const ok = await App.confirm(`"${App.escapeHtml(name)}" 미용사를 목록에서 제거하시겠습니까?<br><small style="color:var(--text-muted)">저장 전까지는 실제 삭제되지 않습니다.</small>`);
+          if (!ok) return;
+        }
+        btn.parentElement.remove();
+        const tabShop = document.getElementById('tab-shop');
+        if (tabShop) tabShop._modified = true;
+      };
     });
   },
 
@@ -628,17 +616,20 @@ App.pages.settings = {
       const blob = new Blob([json], { type: 'application/json' });
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
+      const now = new Date();
       const date = App.getToday();
-      a.href = url;
+      const time = `${String(now.getHours()).padStart(2, '0')}${String(now.getMinutes()).padStart(2, '0')}`;
       const backupName = await DB.getSetting('shopName') || '펫살롱';
-      a.download = `${backupName}_백업_${date}.json`;
+      a.href = url;
+      a.download = `${backupName}_백업_${date}_${time}.json`;
       document.body.appendChild(a);
       a.click();
       document.body.removeChild(a);
       URL.revokeObjectURL(url);
-      await DB.setSetting('lastBackupDate', App.getToday());
+      await DB.setSetting('lastBackupDate', date);
       App.showToast('백업 완료! 이전 백업 파일은 삭제해도 됩니다.', 'info');
     } catch (err) {
+      console.error('Backup error:', err);
       App.showToast('백업 중 오류가 발생했습니다.', 'error');
     }
   }
