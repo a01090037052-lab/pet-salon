@@ -1972,8 +1972,34 @@ a.stat-card { display: flex; }
   box-shadow: none;
 }
 .mobile-card-unpaid {
-  border-left: 3px solid var(--danger);
-  background: var(--warning-light);
+  border-left: 5px solid var(--danger);
+  background: linear-gradient(90deg, #FEE2E2 0%, var(--warning-light) 40%);
+  box-shadow: inset 0 0 0 1px rgba(220,38,38,0.08);
+}
+
+/* 기록 그룹 헤더 (날짜 섹션) */
+.record-group-header {
+  font-size: 0.88rem;
+  font-weight: 700;
+  color: var(--text-secondary);
+  padding: 14px 16px 6px;
+  background: var(--bg);
+  border-top: 1px solid var(--border-light);
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+}
+.record-group-header .group-count {
+  font-size: 0.78rem;
+  font-weight: 500;
+  color: var(--text-muted);
+}
+.record-group-header-cell {
+  background: var(--bg) !important;
+  font-weight: 700 !important;
+  color: var(--text-secondary) !important;
+  font-size: 0.88rem !important;
+  padding: 10px 16px !important;
 }
 .mobile-card-header {
   display: flex;

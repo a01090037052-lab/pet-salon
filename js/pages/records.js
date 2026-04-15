@@ -6,6 +6,26 @@ App.pages.records = {
     const records = await DB.getAllLight('records', ['photoBefore', 'photoAfter']);
     const sorted = records.sort((a, b) => (b.date || '').localeCompare(a.date || ''));
 
+    // 날짜별 그룹 라벨 및 집계 (오늘/어제/이번 주/월별)
+    const todayStr = App.getToday();
+    const _y = new Date(); _y.setDate(_y.getDate() - 1);
+    const yesterdayStr = App.formatLocalDate(_y);
+    const _w = new Date(); _w.setDate(_w.getDate() - 7);
+    const weekAgoStr = App.formatLocalDate(_w);
+    const getGroupLabel = (date) => {
+      if (!date) return '날짜 없음';
+      if (date === todayStr) return '오늘';
+      if (date === yesterdayStr) return '어제';
+      if (date >= weekAgoStr) return '이번 주';
+      const [yy, mm] = date.split('-');
+      return `${yy}년 ${Number(mm)}월`;
+    };
+    const groupCounts = {};
+    sorted.forEach(r => {
+      const lbl = getGroupLabel(r.date);
+      groupCounts[lbl] = (groupCounts[lbl] || 0) + 1;
+    });
+
     const [customers, pets, services] = await Promise.all([
       DB.getAllLight('customers', ['memo', 'address']),
       DB.getAllLight('pets', ['photo', 'temperament', 'healthNotes', 'preferredStyle']),
@@ -54,7 +74,7 @@ App.pages.records = {
       <div class="filter-bar">
         <div class="search-box">
           <span class="search-icon">&#x1F50D;</span>
-          <input type="text" id="record-search" placeholder="고객, 반려견 검색...">
+          <input type="text" id="record-search" placeholder="고객, 반려견, 서비스, 메모 검색...">
         </div>
         <input type="month" id="filter-month" value="${thisMonth}">
         <select id="filter-payment" style="min-width:100px">
@@ -93,12 +113,18 @@ App.pages.records = {
                       <div class="empty-state-text">미용 기록이 없습니다</div>
                     </div>
                   </td></tr>
-                ` : sorted.map(r => {
+                ` : (() => { let _lastG = null; return sorted.map(r => {
                   const customer = customerMap[r.customerId];
                   const pet = petMap[r.petId];
                   const serviceNames = App.getRecordServiceDisplay(r, serviceMap);
-                  return `
-                    <tr data-id="${r.id}" data-month="${(r.date || '').slice(0, 7)}"
+                  const gLabel = getGroupLabel(r.date);
+                  let hdr = '';
+                  if (gLabel !== _lastG) {
+                    hdr = `<tr class="record-group-header-row" data-group="${gLabel}"><td colspan="8" class="record-group-header-cell">${gLabel} <span style="color:var(--text-muted);font-weight:400;margin-left:6px">(${groupCounts[gLabel]}건)</span></td></tr>`;
+                    _lastG = gLabel;
+                  }
+                  return hdr + `
+                    <tr data-id="${r.id}" data-month="${(r.date || '').slice(0, 7)}" data-group="${gLabel}"
                         data-search="${((customer?.name || '') + ' ' + (pet?.name || '') + ' ' + (customer?.phone || '') + ' ' + (r.service || '') + ' ' + (r.style || '') + ' ' + (r.memo || '') + ' ' + (r.groomer || '')).toLowerCase()}"
                         data-payment="${r.paymentMethod || ''}"
                         data-amount="${App.getRecordAmount(r)}"
@@ -119,7 +145,7 @@ App.pages.records = {
                         <button class="btn-icon btn-delete-record text-danger" data-id="${r.id}" title="삭제">&#x1F5D1;</button>
                       </td>
                     </tr>`;
-                }).join('')}
+                }).join(''); })()}
               </tbody>
             </table>
           </div>`}
@@ -131,17 +157,23 @@ App.pages.records = {
                 <div class="empty-state-icon">&#x2702;</div>
                 <div class="empty-state-text">미용 기록이 없습니다</div>
               </div>
-            ` : sorted.map(r => {
+            ` : (() => { let _lastG = null; return sorted.map(r => {
               const customer = customerMap[r.customerId];
               const pet = petMap[r.petId];
               const isUnpaid = r.paymentMethod === 'unpaid';
-              return `
-              <div class="mobile-card${isUnpaid ? ' mobile-card-unpaid' : ''}" data-id="${r.id}" data-month="${(r.date || '').slice(0, 7)}"
+              const gLabel = getGroupLabel(r.date);
+              let hdr = '';
+              if (gLabel !== _lastG) {
+                hdr = `<div class="record-group-header" data-group="${gLabel}">${gLabel}<span class="group-count">${groupCounts[gLabel]}건</span></div>`;
+                _lastG = gLabel;
+              }
+              return hdr + `
+              <div class="mobile-card${isUnpaid ? ' mobile-card-unpaid' : ''}" data-id="${r.id}" data-month="${(r.date || '').slice(0, 7)}" data-group="${gLabel}"
                    data-search="${((customer?.name || '') + ' ' + (pet?.name || '') + ' ' + (customer?.phone || '') + ' ' + (r.service || '') + ' ' + (r.style || '') + ' ' + (r.memo || '') + ' ' + (r.groomer || '')).toLowerCase()}"
                    data-payment="${r.paymentMethod || ''}"
                    data-amount="${App.getRecordAmount(r)}">
                 <div class="mobile-card-header">
-                  <span class="mobile-card-date"><strong>${App.formatDate(r.date)}</strong>${r.status === 'in_progress' ? ' <span class="badge badge-warning" style="font-size:0.65rem">진행중</span>' : ''}</span>
+                  <span class="mobile-card-date"><strong>${App.formatDate(r.date)}</strong>${r.status === 'in_progress' ? ' <span class="badge badge-warning" style="font-size:0.72rem;padding:3px 8px">진행중</span>' : ''}</span>
                   <span class="mobile-card-amount"><strong>${App.formatCurrency(App.getRecordAmount(r))}</strong></span>
                 </div>
                 <div class="mobile-card-body">
@@ -151,6 +183,7 @@ App.pages.records = {
                     <span>${this.getPaymentLabel(r.paymentMethod)}</span>
                     ${isUnpaid ? '<span class="badge badge-danger">미결제</span>' : ''}
                   </div>
+                  ${r.memo ? `<div style="font-size:0.82rem;color:var(--text-secondary);margin-top:6px;padding-top:6px;border-top:1px dashed var(--border-light);white-space:nowrap;overflow:hidden;text-overflow:ellipsis" title="${App.escapeHtml(r.memo)}">&#x1F4DD; ${App.escapeHtml(r.memo.length > 60 ? r.memo.slice(0, 60) + '...' : r.memo)}</div>` : ''}
                 </div>
                 <div class="mobile-card-actions">
                   <button class="btn btn-sm btn-info btn-photo-card" data-id="${r.id}">&#x1F4F8; 카드</button>
@@ -159,7 +192,7 @@ App.pages.records = {
                   <button class="btn btn-sm btn-danger btn-delete-record" data-id="${r.id}">&#x1F5D1; 삭제</button>
                 </div>
               </div>`;
-            }).join('')}
+            }).join(''); })()}
           </div>`}
         </div>
       </div>
@@ -277,8 +310,17 @@ App.pages.records = {
         }
       });
     };
-    process(document.querySelectorAll('#record-tbody tr'));
+    process(document.querySelectorAll('#record-tbody tr:not(.record-group-header-row)'));
     process(document.querySelectorAll('#record-card-list .mobile-card'));
+
+    // 그룹 헤더: 해당 그룹에 보이는 항목이 없으면 숨김
+    document.querySelectorAll('.record-group-header-row, .record-group-header').forEach(hdr => {
+      const label = hdr.dataset.group;
+      if (!label) return;
+      const items = document.querySelectorAll(`[data-group="${label}"]:not(.record-group-header-row):not(.record-group-header)`);
+      const anyVisible = Array.from(items).some(el => el.style.display !== 'none');
+      hdr.style.display = anyVisible ? '' : 'none';
+    });
 
     // 필터 결과 합계 바 업데이트
     const totalEl = document.getElementById('record-filter-total');
