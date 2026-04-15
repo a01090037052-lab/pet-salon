@@ -9,6 +9,7 @@ App.pages.customers = {
   },
 
   async renderList(container) {
+    const isMobile = window.matchMedia('(max-width: 768px)').matches;
     // 효율적 쿼리: 목록에서는 사진 등 큰 필드 제외
     const customers = await DB.getAll('customers');
     const pets = await DB.getAllLight('pets', ['photo', 'temperament', 'healthNotes', 'preferredStyle']);
@@ -44,13 +45,20 @@ App.pages.customers = {
       }
     });
 
-    // Restore sort key from sessionStorage if not already set
-    if (!this._sortKey) {
+    // Restore sort/filter from sessionStorage (render 시점에 selected 적용용)
+    if (!this._sortKey || this._tagFilter === undefined || this._visitFilter === undefined) {
       try {
         const sf = sessionStorage.getItem('customer-filter');
-        if (sf) { const f = JSON.parse(sf); if (f.sort) this._sortKey = f.sort; }
+        if (sf) {
+          const f = JSON.parse(sf);
+          if (f.sort && !this._sortKey) this._sortKey = f.sort;
+          if (f.tag && !this._tagFilter) this._tagFilter = f.tag;
+          if (f.visitStatus && !this._visitFilter) this._visitFilter = f.visitStatus;
+        }
       } catch (e) { /* ignore */ }
     }
+    const curVisit = this._visitFilter || '';
+    const curTag = this._tagFilter || '';
 
     // 정렬 기준 적용
     const sortKey = this._sortKey || 'name';
@@ -74,22 +82,22 @@ App.pages.customers = {
           <p class="page-subtitle">총 ${customers.length}명의 고객</p>
         </div>
         <div class="page-actions">
-          <select id="customer-visit-filter" style="width:auto;min-width:100px;font-size:0.85rem;padding:8px 12px">
-            <option value="">방문 상태</option>
-            <option value="normal">정상</option>
-            <option value="remind">리마인드</option>
-            <option value="at-risk">이탈위험</option>
-            <option value="churned">이탈</option>
+          <select id="customer-visit-filter" style="width:auto;min-width:100px;font-size:0.88rem;padding:10px 12px;min-height:40px">
+            <option value="" ${curVisit === '' ? 'selected' : ''}>방문 상태</option>
+            <option value="normal" ${curVisit === 'normal' ? 'selected' : ''}>정상</option>
+            <option value="remind" ${curVisit === 'remind' ? 'selected' : ''}>리마인드</option>
+            <option value="at-risk" ${curVisit === 'at-risk' ? 'selected' : ''}>이탈위험</option>
+            <option value="churned" ${curVisit === 'churned' ? 'selected' : ''}>이탈</option>
           </select>
-          <select id="customer-tag-filter" style="width:auto;min-width:100px;font-size:0.85rem;padding:8px 12px">
-            <option value="">전체 분류</option>
-            <option value="vip">VIP</option>
-            <option value="new">신규</option>
-            <option value="normal">일반</option>
-            <option value="regular">단골</option>
-            <option value="caution">주의</option>
+          <select id="customer-tag-filter" style="width:auto;min-width:100px;font-size:0.88rem;padding:10px 12px;min-height:40px">
+            <option value="" ${curTag === '' ? 'selected' : ''}>전체 분류</option>
+            <option value="vip" ${curTag === 'vip' ? 'selected' : ''}>VIP</option>
+            <option value="new" ${curTag === 'new' ? 'selected' : ''}>신규</option>
+            <option value="normal" ${curTag === 'normal' ? 'selected' : ''}>일반</option>
+            <option value="regular" ${curTag === 'regular' ? 'selected' : ''}>단골</option>
+            <option value="caution" ${curTag === 'caution' ? 'selected' : ''}>주의</option>
           </select>
-          <select id="customer-sort" style="width:auto;min-width:120px;font-size:0.85rem;padding:8px 12px">
+          <select id="customer-sort" style="width:auto;min-width:120px;font-size:0.88rem;padding:10px 12px;min-height:40px">
             <option value="name" ${sortKey === 'name' ? 'selected' : ''}>이름순</option>
             <option value="lastVisit" ${sortKey === 'lastVisit' ? 'selected' : ''}>최근방문순</option>
             <option value="createdAt" ${sortKey === 'createdAt' ? 'selected' : ''}>등록일순</option>
@@ -100,11 +108,11 @@ App.pages.customers = {
       </div>
       <div class="search-box" style="margin-bottom:16px;max-width:none">
         <span class="search-icon">&#x1F50D;</span>
-        <input type="text" id="customer-search" placeholder="고객 이름, 전화번호 검색..." style="width:100%">
+        <input type="text" id="customer-search" placeholder="고객 이름, 전화번호, 메모 검색..." style="width:100%">
       </div>
       <div class="card">
         <div class="card-body no-padding">
-          <div class="table-container">
+          ${isMobile ? '' : `<div class="table-container">
             <table class="data-table" id="customer-table">
               <thead>
                 <tr>
@@ -125,34 +133,25 @@ App.pages.customers = {
                       <button class="btn btn-primary" onclick="document.getElementById('btn-add-customer').click()">첫 고객 등록하기</button>
                     </div>
                   </td></tr>
-                ` : sorted.slice(0, 20).map(c => this._renderCustomerRow(c, petCount, lastVisit)).join('')}
+                ` : sorted.map(c => this._renderCustomerRow(c, petCount, lastVisit)).join('')}
               </tbody>
             </table>
-          </div>
+          </div>`}
 
-          <!-- Mobile Card List -->
-          <div class="mobile-card-list" id="customer-card-list">
+          ${!isMobile ? '' : `<div class="mobile-card-list" id="customer-card-list" style="display:block">
             ${sorted.length === 0 ? `
               <div class="empty-state">
                 <div class="empty-state-icon">&#x1F464;</div>
                 <div class="empty-state-text">등록된 고객이 없습니다</div>
                 <button class="btn btn-primary" onclick="document.getElementById('btn-add-customer').click()">첫 고객 등록하기</button>
               </div>
-            ` : sorted.slice(0, 20).map(c => this._renderCustomerCard(c, petCount, lastVisit)).join('')}
-          </div>
-
-          ${sorted.length > 20 ? `<div style="text-align:center;padding:16px"><button class="btn btn-secondary" id="btn-load-more-customers" style="min-width:200px">더 보기 (${sorted.length - 20}명 남음)</button></div>` : ''}
-
+            ` : sorted.map(c => this._renderCustomerCard(c, petCount, lastVisit)).join('')}
+          </div>`}
         </div>
       </div>
     `;
 
-    // 더 보기 데이터 캐시
-    this._sortedCustomers = sorted;
-    this._petCount = petCount;
-    this._lastVisit = lastVisit;
     this._customerVisitStatus = customerVisitStatus;
-    this._loadedCount = 20;
   },
 
   async renderDetail(container, customerId) {
@@ -295,29 +294,19 @@ App.pages.customers = {
     // Add customer button
     document.getElementById('btn-add-customer')?.addEventListener('click', () => this.showForm());
 
-    // 더 보기 버튼
-    document.getElementById('btn-load-more-customers')?.addEventListener('click', () => {
-      if (!this._sortedCustomers) return;
-      const next = this._sortedCustomers.slice(this._loadedCount, this._loadedCount + 20);
-      if (next.length === 0) return;
-      // 테이블에 추가
-      const tbody = document.querySelector('#customer-table tbody');
-      if (tbody) tbody.insertAdjacentHTML('beforeend', next.map(c => this._renderCustomerRow(c, this._petCount, this._lastVisit)).join(''));
-      // 모바일 카드에 추가
-      const cardList = document.getElementById('customer-card-list');
-      if (cardList) cardList.insertAdjacentHTML('beforeend', next.map(c => this._renderCustomerCard(c, this._petCount, this._lastVisit)).join(''));
-      this._loadedCount += next.length;
-      // 이벤트 재바인딩
-      this._bindRowEvents();
-      // 더 보기 버튼 업데이트
-      const btn = document.getElementById('btn-load-more-customers');
-      const remaining = this._sortedCustomers.length - this._loadedCount;
-      if (remaining <= 0) {
-        btn?.remove();
-      } else {
-        if (btn) btn.textContent = `더 보기 (${remaining}명 남음)`;
-      }
-    });
+    // 뷰포트 경계 변화 시 재렌더 (모바일↔데스크톱 전환, 한 번만 바인딩)
+    if (!this._resizeBound) {
+      this._resizeBound = true;
+      let lastIsMobile = window.matchMedia('(max-width: 768px)').matches;
+      const onResize = App.debounce(() => {
+        const nowIsMobile = window.matchMedia('(max-width: 768px)').matches;
+        if (nowIsMobile !== lastIsMobile) {
+          lastIsMobile = nowIsMobile;
+          if (location.hash.startsWith('#customers') && !location.hash.includes('/')) App.handleRoute();
+        }
+      }, 250);
+      window.addEventListener('resize', onResize);
+    }
 
     // Sort
     document.getElementById('customer-sort')?.addEventListener('change', (e) => {
@@ -526,6 +515,7 @@ App.pages.customers = {
           <div style="display:flex;gap:6px;flex-wrap:wrap">
             <label class="checkbox-label"><input type="checkbox" name="customerTag" value="vip" ${(customer.tags || []).includes('vip') ? 'checked' : ''}> VIP</label>
             <label class="checkbox-label"><input type="checkbox" name="customerTag" value="new" ${(customer.tags || []).includes('new') ? 'checked' : ''}> 신규</label>
+            <label class="checkbox-label"><input type="checkbox" name="customerTag" value="normal" ${(customer.tags || []).includes('normal') ? 'checked' : ''}> 일반</label>
             <label class="checkbox-label"><input type="checkbox" name="customerTag" value="regular" ${(customer.tags || []).includes('regular') ? 'checked' : ''}> 단골</label>
             <label class="checkbox-label"><input type="checkbox" name="customerTag" value="caution" ${(customer.tags || []).includes('caution') ? 'checked' : ''}> 주의</label>
           </div>
@@ -634,7 +624,7 @@ App.pages.customers = {
               <div style="font-size:1rem;font-weight:700;margin-bottom:16px">${App.escapeHtml(name)}님이 등록되었습니다</div>
               <div style="display:flex;flex-direction:column;gap:8px;max-width:260px;margin:0 auto">
                 <button class="btn btn-primary" id="post-cust-appt">&#x1F4C5; 예약 등록</button>
-                <button class="btn btn-secondary" id="post-cust-detail">&#x1F4DD; 상세 정보 입력</button>
+                <button class="btn btn-secondary" id="post-cust-detail">&#x1F4DD; 상세 보기</button>
                 <button class="btn btn-secondary" id="post-cust-close" style="opacity:0.7">완료</button>
               </div>
             </div>
@@ -691,11 +681,14 @@ App.pages.customers = {
 
   _renderCustomerRow(c, petCount, lastVisit) {
     const displayName = App.getCustomerLabel(c);
-    const initial = c.name ? c.name.charAt(0) : (displayName.charAt(0) || '?');
+    const initial = c.name ? App.escapeHtml(c.name.charAt(0)) : '&#x1F464;';
     const vs = this._customerVisitStatus?.[c.id] || 'normal';
-    const visitBadge = vs !== 'normal' ? `<span class="badge ${App.getVisitStatusBadge(vs)}" style="margin-left:6px;font-size:0.65rem">${App.getVisitStatusLabel(vs)}</span>` : '';
-    return `<tr data-id="${c.id}" data-tags="${(c.tags || []).join(',')}" data-visit-status="${vs}" class="clickable-row" style="cursor:pointer">
-      <td><div style="display:flex;align-items:center;gap:10px"><div style="width:34px;height:34px;border-radius:10px;background:linear-gradient(135deg,var(--primary-light),#E0E7FF);display:flex;align-items:center;justify-content:center;font-weight:800;color:var(--primary);font-size:0.85rem;flex-shrink:0">${App.escapeHtml(initial)}</div><strong>${App.escapeHtml(displayName)}</strong>${this.getTagBadges(c.tags)}${visitBadge}</div></td>
+    const visitBadge = vs !== 'normal' ? `<span class="badge ${App.getVisitStatusBadge(vs)}" style="margin-left:6px;font-size:0.72rem;padding:3px 8px">${App.getVisitStatusLabel(vs)}</span>` : '';
+    const tagLabelMap = { vip: 'VIP', 'new': '신규', normal: '일반', regular: '단골', caution: '주의' };
+    const tagText = (c.tags || []).map(t => tagLabelMap[t] || t).join(' ');
+    const searchText = ((c.name || '') + ' ' + (c.phone || '') + ' ' + (c.phone || '').replace(/\D/g, '') + ' ' + (c.memo || '') + ' ' + tagText).toLowerCase();
+    return `<tr data-id="${c.id}" data-tags="${(c.tags || []).join(',')}" data-visit-status="${vs}" data-search="${App.escapeHtml(searchText)}" class="clickable-row" style="cursor:pointer">
+      <td><div style="display:flex;align-items:center;gap:10px"><div style="width:34px;height:34px;border-radius:10px;background:linear-gradient(135deg,var(--primary-light),#E0E7FF);display:flex;align-items:center;justify-content:center;font-weight:800;color:var(--primary);font-size:0.85rem;flex-shrink:0">${initial}</div><strong>${App.escapeHtml(displayName)}</strong>${this.getTagBadges(c.tags)}${visitBadge}</div></td>
       <td><a href="tel:${App.escapeHtml((c.phone || '').replace(/\D/g, ''))}" style="color:var(--primary)" onclick="event.stopPropagation()">${App.formatPhone(c.phone)}</a></td>
       <td><span class="badge badge-info">${petCount[c.id] || 0}마리</span></td>
       <td>${lastVisit[c.id] ? App.getRelativeTime(lastVisit[c.id]) : '-'}</td>
@@ -706,42 +699,24 @@ App.pages.customers = {
 
   _renderCustomerCard(c, petCount, lastVisit) {
     const displayName = App.getCustomerLabel(c);
-    const initial = c.name ? c.name.charAt(0) : (displayName.charAt(0) || '?');
+    const initial = c.name ? App.escapeHtml(c.name.charAt(0)) : '&#x1F464;';
     const vs = this._customerVisitStatus?.[c.id] || 'normal';
-    const visitBadge = vs !== 'normal' ? `<span class="badge ${App.getVisitStatusBadge(vs)}" style="margin-left:6px;font-size:0.65rem">${App.getVisitStatusLabel(vs)}</span>` : '';
-    return `<div class="mobile-card clickable-row" data-id="${c.id}" data-tags="${(c.tags || []).join(',')}" data-visit-status="${vs}" style="cursor:pointer">
-      <div class="mobile-card-header"><div style="display:flex;align-items:center;gap:10px"><div class="mobile-card-avatar">${App.escapeHtml(initial)}</div><strong>${App.escapeHtml(displayName)}</strong>${this.getTagBadges(c.tags)}${visitBadge}</div><span class="badge badge-info">${petCount[c.id] || 0}마리</span></div>
+    const visitBadge = vs !== 'normal' ? `<span class="badge ${App.getVisitStatusBadge(vs)}" style="margin-left:6px;font-size:0.72rem;padding:3px 8px">${App.getVisitStatusLabel(vs)}</span>` : '';
+    const tagLabelMap = { vip: 'VIP', 'new': '신규', normal: '일반', regular: '단골', caution: '주의' };
+    const tagText = (c.tags || []).map(t => tagLabelMap[t] || t).join(' ');
+    const searchText = ((c.name || '') + ' ' + (c.phone || '') + ' ' + (c.phone || '').replace(/\D/g, '') + ' ' + (c.memo || '') + ' ' + tagText).toLowerCase();
+    return `<div class="mobile-card clickable-row" data-id="${c.id}" data-tags="${(c.tags || []).join(',')}" data-visit-status="${vs}" data-search="${App.escapeHtml(searchText)}" style="cursor:pointer">
+      <div class="mobile-card-header"><div style="display:flex;align-items:center;gap:10px"><div class="mobile-card-avatar">${initial}</div><strong>${App.escapeHtml(displayName)}</strong>${this.getTagBadges(c.tags)}${visitBadge}</div><span class="badge badge-info">${petCount[c.id] || 0}마리</span></div>
       <div class="mobile-card-body"><a href="tel:${App.escapeHtml((c.phone || '').replace(/\D/g, ''))}" class="mobile-card-phone" onclick="event.stopPropagation()">&#x1F4DE; ${App.formatPhone(c.phone)}</a><span class="mobile-card-meta-text">${lastVisit[c.id] ? '최근 방문: ' + App.getRelativeTime(lastVisit[c.id]) : '방문 기록 없음'}</span>
       <div style="display:flex;gap:4px;margin-top:8px;border-top:1px solid var(--border-light);padding-top:8px"><button class="btn btn-sm btn-secondary btn-edit-customer flex-1" data-id="${c.id}" onclick="event.stopPropagation()">수정</button><button class="btn btn-sm btn-danger btn-delete-customer flex-1" data-id="${c.id}" onclick="event.stopPropagation()">삭제</button></div></div>
     </div>`;
-  },
-
-  _bindRowEvents() {
-    document.querySelectorAll('.clickable-row').forEach(row => {
-      if (row._bound) return;
-      row._bound = true;
-      row.addEventListener('click', (e) => {
-        if (e.target.closest('.table-actions') || e.target.closest('.btn-edit-customer') || e.target.closest('.btn-delete-customer')) return;
-        App.navigate('customers/' + row.dataset.id);
-      });
-    });
-    document.querySelectorAll('.btn-edit-customer').forEach(btn => {
-      if (btn._bound) return;
-      btn._bound = true;
-      btn.addEventListener('click', (e) => { e.stopPropagation(); this.showForm(Number(btn.dataset.id)); });
-    });
-    document.querySelectorAll('.btn-delete-customer').forEach(btn => {
-      if (btn._bound) return;
-      btn._bound = true;
-      btn.addEventListener('click', (e) => { e.stopPropagation(); this.deleteCustomer(Number(btn.dataset.id)); });
-    });
   },
 
   getTagBadges(tags) {
     if (!tags || tags.length === 0) return '';
     const tagLabels = { vip: 'VIP', 'new': '신규', normal: '일반', regular: '단골', caution: '주의' };
     const tagColors = { vip: 'badge-warning', 'new': 'badge-info', normal: 'badge-secondary', regular: 'badge-success', caution: 'badge-danger' };
-    return tags.map(t => `<span class="badge ${tagColors[t] || 'badge-secondary'}" style="font-size:0.6rem;margin-left:4px">${tagLabels[t] || t}</span>`).join('');
+    return tags.map(t => `<span class="badge ${tagColors[t] || 'badge-secondary'}" style="font-size:0.7rem;margin-left:4px;padding:3px 8px">${tagLabels[t] || t}</span>`).join('');
   },
 
   _searchQuery: '',
@@ -762,7 +737,7 @@ App.pages.customers = {
     }));
 
     const matchesFilter = (el) => {
-      const textMatch = !q || el.textContent.toLowerCase().includes(q);
+      const textMatch = !q || (el.dataset.search || '').includes(q);
       const tagMatch = !tag || (el.dataset.tags || '').split(',').includes(tag);
       const visitMatch = !visit || (el.dataset.visitStatus || '') === visit;
       return textMatch && tagMatch && visitMatch;
