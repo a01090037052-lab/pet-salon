@@ -204,11 +204,11 @@ App.pages.analytics = {
 
       <!-- 기간 선택 -->
       <div style="display:flex;gap:4px;margin-bottom:8px;background:var(--bg-white);border-radius:var(--radius);padding:4px;box-shadow:var(--shadow-xs)">
-        <button class="analytics-period${period === '1month' ? ' active' : ''}" data-period="1month" style="flex:1;padding:10px;border:none;border-radius:8px;font-weight:600;font-size:0.82rem;cursor:pointer;background:${period === '1month' ? 'var(--primary)' : 'transparent'};color:${period === '1month' ? '#fff' : 'var(--text-secondary)'}">1개월</button>
-        <button class="analytics-period${period === '3months' ? ' active' : ''}" data-period="3months" style="flex:1;padding:10px;border:none;border-radius:8px;font-weight:600;font-size:0.82rem;cursor:pointer;background:${period === '3months' ? 'var(--primary)' : 'transparent'};color:${period === '3months' ? '#fff' : 'var(--text-secondary)'}">3개월</button>
-        <button class="analytics-period${period === '6months' ? ' active' : ''}" data-period="6months" style="flex:1;padding:10px;border:none;border-radius:8px;font-weight:600;font-size:0.82rem;cursor:pointer;background:${period === '6months' ? 'var(--primary)' : 'transparent'};color:${period === '6months' ? '#fff' : 'var(--text-secondary)'}">6개월</button>
-        <button class="analytics-period${period === '1year' ? ' active' : ''}" data-period="1year" style="flex:1;padding:10px;border:none;border-radius:8px;font-weight:600;font-size:0.82rem;cursor:pointer;background:${period === '1year' ? 'var(--primary)' : 'transparent'};color:${period === '1year' ? '#fff' : 'var(--text-secondary)'}">1년</button>
-        <button class="analytics-period${period === 'custom' ? ' active' : ''}" data-period="custom" style="flex:1;padding:10px;border:none;border-radius:8px;font-weight:600;font-size:0.82rem;cursor:pointer;background:${period === 'custom' ? 'var(--primary)' : 'transparent'};color:${period === 'custom' ? '#fff' : 'var(--text-secondary)'}">직접</button>
+        <button class="analytics-period${period === '1month' ? ' active' : ''}" data-period="1month" style="flex:1;padding:10px;border:none;border-radius:8px;font-weight:600;font-size:0.85rem;cursor:pointer;min-height:40px;background:${period === '1month' ? 'var(--primary)' : 'transparent'};color:${period === '1month' ? '#fff' : 'var(--text-secondary)'}">1개월</button>
+        <button class="analytics-period${period === '3months' ? ' active' : ''}" data-period="3months" style="flex:1;padding:10px;border:none;border-radius:8px;font-weight:600;font-size:0.85rem;cursor:pointer;min-height:40px;background:${period === '3months' ? 'var(--primary)' : 'transparent'};color:${period === '3months' ? '#fff' : 'var(--text-secondary)'}">3개월</button>
+        <button class="analytics-period${period === '6months' ? ' active' : ''}" data-period="6months" style="flex:1;padding:10px;border:none;border-radius:8px;font-weight:600;font-size:0.85rem;cursor:pointer;min-height:40px;background:${period === '6months' ? 'var(--primary)' : 'transparent'};color:${period === '6months' ? '#fff' : 'var(--text-secondary)'}">6개월</button>
+        <button class="analytics-period${period === '1year' ? ' active' : ''}" data-period="1year" style="flex:1;padding:10px;border:none;border-radius:8px;font-weight:600;font-size:0.85rem;cursor:pointer;min-height:40px;background:${period === '1year' ? 'var(--primary)' : 'transparent'};color:${period === '1year' ? '#fff' : 'var(--text-secondary)'}">1년</button>
+        <button class="analytics-period${period === 'custom' ? ' active' : ''}" data-period="custom" style="flex:1;padding:10px;border:none;border-radius:8px;font-weight:600;font-size:0.85rem;cursor:pointer;min-height:40px;background:${period === 'custom' ? 'var(--primary)' : 'transparent'};color:${period === 'custom' ? '#fff' : 'var(--text-secondary)'}">직접</button>
       </div>
       ${period === 'custom' ? `
       <div style="display:flex;align-items:center;gap:8px;margin-bottom:12px;justify-content:center;flex-wrap:wrap">
@@ -258,7 +258,7 @@ App.pages.analytics = {
         <div class="card-body" style="padding:12px 16px">
           ${customerTop10.map((c, i) => {
             const pct = Math.max(5, Math.round((c.revenue / topCustMax) * 100));
-            return `<div style="margin-bottom:10px">
+            return `<a href="#customers/${c.id}" style="display:block;margin-bottom:10px;text-decoration:none;color:inherit">
               <div style="display:flex;justify-content:space-between;margin-bottom:3px;align-items:center">
                 <span style="font-weight:700;font-size:0.85rem"><span style="color:${i < 3 ? 'var(--warning)' : 'var(--text-muted)'};margin-right:4px">${i + 1}</span>${App.escapeHtml(c.name)}</span>
                 <span style="font-size:0.82rem;color:var(--primary);font-weight:700">${App.formatCurrency(c.revenue)} <span style="font-weight:400;color:var(--text-muted)">(${c.count}회)</span></span>
@@ -266,7 +266,7 @@ App.pages.analytics = {
               <div style="height:5px;background:var(--border-light);border-radius:3px;overflow:hidden">
                 <div style="height:100%;width:${pct}%;background:${i < 3 ? 'var(--warning)' : 'var(--primary)'};border-radius:3px"></div>
               </div>
-            </div>`;
+            </a>`;
           }).join('')}
         </div>
       </div>
@@ -374,8 +374,8 @@ App.pages.analytics = {
       <!-- 매출 추이 -->
       <h3 style="font-size:1rem;font-weight:800;margin-bottom:12px;color:var(--text-primary)">&#x1F4B5; 매출 추이</h3>
 
-      <!-- 객단가 추이 -->
-      ${avgPriceByMonth.length > 1 ? `
+      <!-- 객단가 추이 (3개월 이상일 때만 의미 있음) -->
+      ${avgPriceByMonth.length >= 3 ? `
       <div class="card" style="margin-bottom:16px">
         <div class="card-header">
           <span class="card-title">객단가 추이</span>
