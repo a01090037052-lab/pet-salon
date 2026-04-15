@@ -1,6 +1,7 @@
 // ========== Grooming Records Page ==========
 App.pages.records = {
   async render(container) {
+    const isMobile = window.matchMedia('(max-width: 768px)').matches;
     // 효율적 쿼리: 목록에서는 사진 필드 제외 (큰 base64 데이터)
     const records = await DB.getAllLight('records', ['photoBefore', 'photoAfter']);
     const sorted = records.sort((a, b) => (b.date || '').localeCompare(a.date || ''));
@@ -66,9 +67,11 @@ App.pages.records = {
         <button class="btn btn-secondary btn-sm" id="btn-clear-filter">필터 초기화</button>
       </div>
 
+      <div id="record-filter-total" hidden style="padding:10px 14px;margin-bottom:12px;background:var(--bg);border-radius:var(--radius);font-size:0.9rem;font-weight:600;justify-content:space-between;align-items:center;display:flex;gap:8px;flex-wrap:wrap"></div>
+
       <div class="card">
         <div class="card-body no-padding">
-          <div class="table-container">
+          ${isMobile ? '' : `<div class="table-container">
             <table class="data-table" id="record-table">
               <thead>
                 <tr>
@@ -98,6 +101,7 @@ App.pages.records = {
                     <tr data-id="${r.id}" data-month="${(r.date || '').slice(0, 7)}"
                         data-search="${((customer?.name || '') + ' ' + (pet?.name || '') + ' ' + (customer?.phone || '') + ' ' + (r.service || '') + ' ' + (r.style || '') + ' ' + (r.memo || '') + ' ' + (r.groomer || '')).toLowerCase()}"
                         data-payment="${r.paymentMethod || ''}"
+                        data-amount="${App.getRecordAmount(r)}"
                         style="${r.paymentMethod === 'unpaid' ? 'background:var(--warning-light);border-left:3px solid var(--danger)' : ''}">
                       <td>${App.formatDate(r.date)}</td>
                       <td><a href="#pets/${r.petId}" style="color:var(--primary);font-weight:700" onclick="event.stopPropagation()">${App.escapeHtml(pet?.name || '-')}</a> <span style="color:var(--text-muted);font-size:0.75rem">${App.escapeHtml(App.getCustomerLabel(customer))}</span></td>
@@ -118,10 +122,10 @@ App.pages.records = {
                 }).join('')}
               </tbody>
             </table>
-          </div>
+          </div>`}
 
-          <!-- Mobile Card List -->
-          <div class="mobile-card-list" id="record-card-list">
+          <!-- Mobile Card List (모바일 뷰포트에서만 렌더) -->
+          ${!isMobile ? '' : `<div class="mobile-card-list" id="record-card-list" style="display:block">
             ${sorted.length === 0 ? `
               <div class="empty-state">
                 <div class="empty-state-icon">&#x2702;</div>
@@ -134,7 +138,8 @@ App.pages.records = {
               return `
               <div class="mobile-card${isUnpaid ? ' mobile-card-unpaid' : ''}" data-id="${r.id}" data-month="${(r.date || '').slice(0, 7)}"
                    data-search="${((customer?.name || '') + ' ' + (pet?.name || '') + ' ' + (customer?.phone || '') + ' ' + (r.service || '') + ' ' + (r.style || '') + ' ' + (r.memo || '') + ' ' + (r.groomer || '')).toLowerCase()}"
-                   data-payment="${r.paymentMethod || ''}">
+                   data-payment="${r.paymentMethod || ''}"
+                   data-amount="${App.getRecordAmount(r)}">
                 <div class="mobile-card-header">
                   <span class="mobile-card-date"><strong>${App.formatDate(r.date)}</strong>${r.status === 'in_progress' ? ' <span class="badge badge-warning" style="font-size:0.65rem">진행중</span>' : ''}</span>
                   <span class="mobile-card-amount"><strong>${App.formatCurrency(App.getRecordAmount(r))}</strong></span>
@@ -155,7 +160,7 @@ App.pages.records = {
                 </div>
               </div>`;
             }).join('')}
-          </div>
+          </div>`}
         </div>
       </div>
 
@@ -195,6 +200,23 @@ App.pages.records = {
         if (f.payment) document.getElementById('filter-payment').value = f.payment;
         this.applyFilters();
       } catch (e) { /* ignore parse errors */ }
+    } else {
+      // 필터 없어도 전체 합계는 초기 표시
+      this.applyFilters();
+    }
+
+    // 뷰포트 경계 변화 시 재렌더 (모바일↔데스크톱 전환, 한 번만 바인딩)
+    if (!this._resizeBound) {
+      this._resizeBound = true;
+      let lastIsMobile = window.matchMedia('(max-width: 768px)').matches;
+      const onResize = App.debounce(() => {
+        const nowIsMobile = window.matchMedia('(max-width: 768px)').matches;
+        if (nowIsMobile !== lastIsMobile) {
+          lastIsMobile = nowIsMobile;
+          if (location.hash.startsWith('#records')) App.handleRoute();
+        }
+      }, 250);
+      window.addEventListener('resize', onResize);
     }
 
     document.querySelectorAll('.btn-photo-card').forEach(btn => {
@@ -227,22 +249,50 @@ App.pages.records = {
       payment
     }));
 
-    document.querySelectorAll('#record-tbody tr').forEach(row => {
-      if (!row.dataset.id) return;
-      const matchSearch = !search || (row.dataset.search || '').toLowerCase().includes(search);
-      const matchMonth = !month || (row.dataset.month || '') === month;
-      const matchPayment = !payment || (row.dataset.payment || '') === payment;
-      row.style.display = (matchSearch && matchMonth && matchPayment) ? '' : 'none';
-    });
+    // 뷰포트 기준 한쪽만 렌더되므로 둘 중 존재하는 쪽만 순회
+    const matchFn = (el) => {
+      const ms = !search || (el.dataset.search || '').toLowerCase().includes(search);
+      const mm = !month || (el.dataset.month || '') === month;
+      const mp = !payment || (el.dataset.payment || '') === payment;
+      return ms && mm && mp;
+    };
 
-    // Also filter mobile cards
-    document.querySelectorAll('#record-card-list .mobile-card').forEach(card => {
-      if (!card.dataset.id) return;
-      const matchSearch = !search || (card.dataset.search || '').toLowerCase().includes(search);
-      const matchMonth = !month || (card.dataset.month || '') === month;
-      const matchPayment = !payment || (card.dataset.payment || '') === payment;
-      card.style.display = (matchSearch && matchMonth && matchPayment) ? '' : 'none';
-    });
+    let visibleCount = 0;
+    let visibleSum = 0;
+    let unpaidCount = 0;
+    let unpaidSum = 0;
+    const process = (els) => {
+      els.forEach(el => {
+        if (!el.dataset.id) return;
+        const visible = matchFn(el);
+        el.style.display = visible ? '' : 'none';
+        if (visible) {
+          const amt = Number(el.dataset.amount) || 0;
+          visibleCount++;
+          visibleSum += amt;
+          if ((el.dataset.payment || '') === 'unpaid') {
+            unpaidCount++;
+            unpaidSum += amt;
+          }
+        }
+      });
+    };
+    process(document.querySelectorAll('#record-tbody tr'));
+    process(document.querySelectorAll('#record-card-list .mobile-card'));
+
+    // 필터 결과 합계 바 업데이트
+    const totalEl = document.getElementById('record-filter-total');
+    if (totalEl) {
+      if (visibleCount === 0) {
+        totalEl.hidden = true;
+      } else {
+        totalEl.hidden = false;
+        totalEl.innerHTML = `
+          <span>${visibleCount}건 · <strong>${App.formatCurrency(visibleSum)}</strong></span>
+          ${unpaidCount > 0 ? `<span style="color:var(--danger);font-size:0.82rem">미결제 ${unpaidCount}건 · ${App.formatCurrency(unpaidSum)}</span>` : ''}
+        `;
+      }
+    }
   },
 
   async showForm(id, fromAppointment) {
