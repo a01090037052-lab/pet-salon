@@ -22,9 +22,21 @@ App.pages.services = {
   },
 
   async render(container) {
-    const services = await DB.getAll('services');
+    const [services, records] = await Promise.all([
+      DB.getAll('services'),
+      DB.getAllLight('records', ['photoBefore', 'photoAfter', 'memo', 'groomer', 'nextVisitDate', 'appointmentId'])
+    ]);
     const active = services.filter(s => s.isActive !== false);
     const inactive = services.filter(s => s.isActive === false);
+
+    // 서비스 사용 횟수 집계 (신형 r.service 문자열 + 구형 r.serviceIds 배열 모두 매칭)
+    const usageByName = {};
+    const usageById = {};
+    records.forEach(r => {
+      if (r.service) usageByName[r.service] = (usageByName[r.service] || 0) + 1;
+      (r.serviceIds || []).forEach(id => { usageById[id] = (usageById[id] || 0) + 1; });
+    });
+    const getUsage = (s) => (usageByName[s.name] || 0) + (usageById[s.id] || 0);
 
     const sorted = this._sortServices([...services]);
 
@@ -35,7 +47,7 @@ App.pages.services = {
           <p class="page-subtitle">총 ${active.length}개${inactive.length > 0 ? ' (비활성 ' + inactive.length + '개)' : ''}</p>
         </div>
         <div class="page-actions">
-          <button class="btn btn-secondary" id="btn-init-services">기본 서비스</button>
+          <button class="btn btn-secondary" id="btn-init-services">+ 기본 템플릿</button>
           <button class="btn btn-primary" id="btn-add-service">+ 새 서비스</button>
         </div>
       </div>
@@ -52,23 +64,36 @@ App.pages.services = {
         </div>
       ` : ((list) => {
         let lastCat = '';
+        let inInactive = false;
         let html = '';
         list.forEach(s => {
-          const cat = s.category || 'grooming';
-          if (cat !== lastCat && s.isActive !== false) {
-            lastCat = cat;
-            html += '<div style="font-weight:700;font-size:0.82rem;color:var(--primary);padding:14px 0 6px;border-bottom:2px solid var(--primary-lighter);margin-bottom:6px">' + (this._categoryLabels[cat] || cat) + '</div>';
+          const isOff = s.isActive === false;
+          // 활성 → 비활성 구간 진입 시 섹션 구분 헤더
+          if (isOff && !inInactive) {
+            inInactive = true;
+            lastCat = '__inactive__';
+            html += '<div style="font-weight:700;font-size:0.82rem;color:var(--text-muted);padding:18px 0 6px;border-bottom:2px solid var(--border-light);margin-bottom:6px">&#x26AA; 비활성 (' + inactive.length + '개)</div>';
           }
-          html += '<div style="display:flex;align-items:center;gap:10px;padding:10px 0;border-bottom:1px solid var(--border-light);' + (s.isActive === false ? 'opacity:0.4' : '') + '">' +
+          // 활성 서비스만 카테고리 헤더 노출
+          if (!isOff) {
+            const cat = s.category || 'grooming';
+            if (cat !== lastCat) {
+              lastCat = cat;
+              html += '<div style="font-weight:700;font-size:0.82rem;color:var(--primary);padding:14px 0 6px;border-bottom:2px solid var(--primary-lighter);margin-bottom:6px">' + (this._categoryLabels[cat] || cat) + '</div>';
+            }
+          }
+          const usage = getUsage(s);
+          const usageBadge = usage > 0 ? '<span class="badge badge-secondary" style="font-size:0.7rem;padding:2px 8px;margin-left:6px;color:var(--text-secondary)">누적 ' + usage + '회</span>' : '';
+          html += '<div style="display:flex;align-items:center;gap:10px;padding:10px 0;border-bottom:1px solid var(--border-light);' + (isOff ? 'opacity:0.5' : '') + '">' +
             '<div style="flex:1;min-width:0">' +
-              '<div style="font-weight:700;font-size:0.9rem">' + App.escapeHtml(s.name) + '</div>' +
-              '<div style="font-size:0.75rem;color:var(--text-muted);margin-top:2px">' +
+              '<div style="font-weight:700;font-size:0.9rem">' + App.escapeHtml(s.name) + usageBadge + '</div>' +
+              '<div style="font-size:0.78rem;color:var(--text-muted);margin-top:2px">' +
                 App.formatPriceShort(s.priceSmall) + ' / ' + App.formatPriceShort(s.priceMedium) + ' / ' + App.formatPriceShort(s.priceLarge) +
               '</div>' +
             '</div>' +
-            '<button class="btn-icon btn-edit-service" data-id="' + s.id + '" title="수정" style="font-size:0.9rem">&#x270F;</button>' +
-            '<button class="btn-icon btn-toggle-service" data-id="' + s.id + '" title="' + (s.isActive !== false ? '비활성화' : '활성화') + '" style="font-size:0.9rem">' + (s.isActive !== false ? '&#x1F7E2;' : '&#x26AA;') + '</button>' +
-            '<button class="btn-icon btn-delete-service text-danger" data-id="' + s.id + '" title="삭제" style="font-size:0.9rem">&#x1F5D1;</button>' +
+            '<button class="btn-icon btn-edit-service" data-id="' + s.id + '" title="수정" style="font-size:0.95rem;min-width:36px;min-height:36px">&#x270F;</button>' +
+            '<button class="btn-icon btn-toggle-service" data-id="' + s.id + '" title="' + (!isOff ? '비활성화' : '활성화') + '" style="font-size:0.95rem;min-width:36px;min-height:36px">' + (!isOff ? '&#x1F7E2;' : '&#x26AA;') + '</button>' +
+            '<button class="btn-icon btn-delete-service text-danger" data-id="' + s.id + '" title="삭제" style="font-size:0.95rem;min-width:36px;min-height:36px">&#x1F5D1;</button>' +
           '</div>';
         });
         return html;
@@ -104,7 +129,7 @@ App.pages.services = {
         <div class="form-row">
           <div class="form-group" style="flex:2">
             <label class="form-label">서비스명 <span class="required">*</span></label>
-            <input type="text" id="f-name" value="${App.escapeHtml(service.name || '')}" placeholder="예: 전체 미용, 부분 목욕">
+            <input type="text" id="f-name" value="${App.escapeHtml(service.name || '')}" placeholder="예: 전체 미용, 부분 목욕" maxlength="40">
           </div>
           <div class="form-group" style="flex:1">
             <label class="form-label">분류</label>
