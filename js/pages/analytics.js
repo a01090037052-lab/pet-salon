@@ -35,46 +35,53 @@ App.pages.analytics = {
     const customerMap = {}; customers.forEach(c => { customerMap[c.id] = c; });
     const petMap = {}; pets.forEach(p => { petMap[p.id] = p; });
     const serviceNameMap = {}; services.forEach(s => { serviceNameMap[s.id] = s.name; });
-    const thisMonth = today.slice(0, 7);
 
     // ===== 고객 분석 =====
-    // 고객별 매출 TOP 10
+    // 고객별 매출 + 방문 날짜 집계 (period 내, O(N) 단일 순회)
     const customerRevMap = {};
+    const custDatesMap = {};
     records.forEach(r => {
       if (!r.customerId) return;
       if (!customerRevMap[r.customerId]) customerRevMap[r.customerId] = { count: 0, revenue: 0 };
       customerRevMap[r.customerId].count++;
       customerRevMap[r.customerId].revenue += App.getRecordAmount(r);
+      if (r.date) (custDatesMap[r.customerId] = custDatesMap[r.customerId] || []).push(r.date);
     });
     const customerTop10 = Object.entries(customerRevMap)
       .sort((a, b) => b[1].revenue - a[1].revenue)
       .slice(0, 10)
-      .map(([cid, stats]) => ({ name: App.getCustomerLabel(customerMap[cid] || {}), ...stats }));
+      .map(([cid, stats]) => ({ id: Number(cid), name: App.getCustomerLabel(customerMap[cid] || {}), ...stats }));
     const topCustMax = customerTop10.length > 0 ? customerTop10[0].revenue || 1 : 1;
 
-    // 신규 vs 재방문 (기간 내)
-    const monthRecords = records.filter(r => r.date && r.date.startsWith(thisMonth));
-    const monthCustomerIds = [...new Set(monthRecords.map(r => r.customerId).filter(Boolean))];
-    let newCount = 0, returnCount = 0;
-    const allRecordsForHistory = await DB.getAllLight('records', ['photoBefore', 'photoAfter', 'memo', 'serviceIds', 'serviceNames', 'groomer']);
-    for (const cid of monthCustomerIds) {
-      const hasHistory = allRecordsForHistory.some(r => r.customerId === cid && r.date < thisMonth + '-01');
-      if (hasHistory) returnCount++; else newCount++;
-    }
+    // 과거 기록 로드 (period 시작 이전만, 전체 스캔 회피)
+    const _ps = new Date(periodStart + 'T00:00:00'); _ps.setDate(_ps.getDate() - 1);
+    const dayBeforeStart = App.formatLocalDate(_ps);
+    const pastRecords = await DB.getByDateRange('records', 'date', '1900-01-01', dayBeforeStart);
+    const pastCustSet = new Set(pastRecords.map(r => r.customerId).filter(Boolean));
 
-    // 고객당 평균 방문 주기
+    // 신규 vs 재방문 — period 내 고객 중 period 시작 이전 방문 이력이 있는지로 판정
+    const periodCustomerIds = Object.keys(customerRevMap).map(Number);
+    let newCount = 0, returnCount = 0;
+    periodCustomerIds.forEach(cid => {
+      if (pastCustSet.has(cid)) returnCount++;
+      else newCount++;
+    });
+
+    // 평균 방문 주기 — period + past 결합해 고객별 전체 이력 기반
+    pastRecords.forEach(r => {
+      if (!r.customerId || !r.date) return;
+      (custDatesMap[r.customerId] = custDatesMap[r.customerId] || []).push(r.date);
+    });
     let totalCycles = 0, cycleCount = 0;
-    Object.entries(customerRevMap).forEach(([cid, stats]) => {
-      if (stats.count >= 2) {
-        const dates = records.filter(r => r.customerId === Number(cid)).map(r => r.date).sort();
-        let sum = 0;
-        for (let i = 1; i < dates.length; i++) {
-          const diff = Math.round((new Date(dates[i] + 'T00:00:00') - new Date(dates[i-1] + 'T00:00:00')) / (1000*60*60*24));
-          sum += diff;
-        }
-        totalCycles += sum / (dates.length - 1);
-        cycleCount++;
+    Object.values(custDatesMap).forEach(dates => {
+      if (dates.length < 2) return;
+      dates.sort();
+      let sum = 0;
+      for (let i = 1; i < dates.length; i++) {
+        sum += Math.round((new Date(dates[i] + 'T00:00:00') - new Date(dates[i-1] + 'T00:00:00')) / (1000*60*60*24));
       }
+      totalCycles += sum / (dates.length - 1);
+      cycleCount++;
     });
     const avgCycle = cycleCount > 0 ? Math.round(totalCycles / cycleCount) : 0;
 
@@ -229,14 +236,14 @@ App.pages.analytics = {
               <div style="font-size:0.82rem;color:var(--text-secondary)">재방문 고객</div>
             </div>
             <div style="flex:1;text-align:center;padding:14px;background:var(--bg);border-radius:var(--radius)">
-              <div style="font-size:1.4rem;font-weight:800;color:var(--primary)">${monthCustomerIds.length > 0 ? Math.round((returnCount / monthCustomerIds.length) * 100) : 0}%</div>
+              <div style="font-size:1.4rem;font-weight:800;color:var(--primary)">${periodCustomerIds.length > 0 ? Math.round((returnCount / periodCustomerIds.length) * 100) : 0}%</div>
               <div style="font-size:0.82rem;color:var(--text-secondary)">재방문율</div>
             </div>
           </div>
-          ${monthCustomerIds.length > 0 ? `
+          ${periodCustomerIds.length > 0 ? `
           <div style="height:12px;border-radius:6px;overflow:hidden;display:flex;margin-bottom:8px">
-            <div style="width:${Math.round((newCount / monthCustomerIds.length) * 100)}%;background:var(--info)"></div>
-            <div style="width:${Math.round((returnCount / monthCustomerIds.length) * 100)}%;background:var(--success)"></div>
+            <div style="width:${Math.round((newCount / periodCustomerIds.length) * 100)}%;background:var(--info)"></div>
+            <div style="width:${Math.round((returnCount / periodCustomerIds.length) * 100)}%;background:var(--success)"></div>
           </div>` : ''}
           ${avgCycle > 0 ? `<div style="text-align:center;font-size:0.88rem;color:var(--text-secondary);padding-top:8px;border-top:1px solid var(--border)">평균 방문 주기: <strong style="color:var(--primary)">${avgCycle}일</strong></div>` : ''}
         </div>
@@ -379,9 +386,9 @@ App.pages.analytics = {
               const barH = m.avg > 0 ? Math.max(8, Math.round((m.avg / avgPriceMax) * 100)) : 4;
               const isCurrent = i === avgPriceByMonth.length - 1;
               return `<div style="flex:1;position:relative;text-align:center">
-                <span style="font-size:0.65rem;color:${isCurrent ? 'var(--success)' : 'var(--text-secondary)'};font-weight:700;position:absolute;top:0;left:0;right:0">${m.avg > 0 ? App.formatCurrency(m.avg) : ''}</span>
+                <span style="font-size:0.72rem;color:${isCurrent ? 'var(--success)' : 'var(--text-secondary)'};font-weight:700;position:absolute;top:0;left:0;right:0">${m.avg > 0 ? App.formatCurrency(m.avg) : ''}</span>
                 <div style="position:absolute;bottom:18px;left:15%;right:15%;height:${barH}px;background:${isCurrent ? 'linear-gradient(to top,var(--success),#34D399)' : 'linear-gradient(to top,var(--info),#60A5FA)'};border-radius:6px 6px 0 0"></div>
-                <span style="font-size:0.7rem;color:${isCurrent ? 'var(--primary)' : 'var(--text-muted)'};font-weight:${isCurrent ? '700' : '400'};position:absolute;bottom:0;left:0;right:0">${m.label}</span>
+                <span style="font-size:0.75rem;color:${isCurrent ? 'var(--primary)' : 'var(--text-muted)'};font-weight:${isCurrent ? '700' : '500'};position:absolute;bottom:0;left:0;right:0">${m.label}</span>
               </div>`;
             }).join('')}
           </div>
@@ -402,7 +409,7 @@ App.pages.analytics = {
                 const isTop = i === 0;
                 return `<div>
                   <div style="display:flex;justify-content:space-between;margin-bottom:3px">
-                    <span style="font-weight:${isTop ? '800' : '600'};font-size:0.88rem">${d.label}요일${isTop ? ' <span style="font-size:0.68rem;color:var(--success)">(최다)</span>' : ''}</span>
+                    <span style="font-weight:${isTop ? '800' : '600'};font-size:0.88rem">${d.label}요일${isTop ? ' <span style="font-size:0.75rem;color:var(--success)">(최다)</span>' : ''}</span>
                     <span style="font-weight:700;font-size:0.85rem;color:${isTop ? 'var(--success)' : 'var(--text-secondary)'}">${d.avg >= 10000 ? Math.round(d.avg / 10000) + '만원' : App.formatCurrency(d.avg)}</span>
                   </div>
                   <div style="height:6px;background:var(--border-light);border-radius:3px;overflow:hidden">
@@ -426,9 +433,9 @@ App.pages.analytics = {
                 const barH = h.count > 0 ? Math.max(6, Math.round((h.count / hourMax) * 90)) : 3;
                 const isPeak = h.count === hourMax && h.count > 0;
                 return `<div style="flex:1;position:relative;text-align:center" title="${h.label}: ${h.count}건 (${App.formatCurrency(h.revenue)})">
-                  <span style="font-size:0.6rem;color:${isPeak ? 'var(--success)' : 'var(--text-muted)'};font-weight:700;position:absolute;top:0;left:0;right:0">${h.count > 0 ? h.count : ''}</span>
+                  <span style="font-size:0.72rem;color:${isPeak ? 'var(--success)' : 'var(--text-muted)'};font-weight:700;position:absolute;top:0;left:0;right:0">${h.count > 0 ? h.count : ''}</span>
                   <div style="position:absolute;bottom:16px;left:10%;right:10%;height:${barH}px;background:${isPeak ? 'var(--success)' : 'var(--primary)'};border-radius:4px 4px 0 0"></div>
-                  <span style="font-size:0.6rem;color:var(--text-muted);position:absolute;bottom:0;left:0;right:0">${h.hour}</span>
+                  <span style="font-size:0.72rem;color:var(--text-muted);position:absolute;bottom:0;left:0;right:0">${h.hour}</span>
                 </div>`;
               }).join('')}
             </div>`}
