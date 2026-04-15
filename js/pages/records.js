@@ -1,7 +1,5 @@
 // ========== Grooming Records Page ==========
 App.pages.records = {
-  _showAll: false,
-
   async render(container) {
     // 효율적 쿼리: 목록에서는 사진 필드 제외 (큰 base64 데이터)
     const records = await DB.getAllLight('records', ['photoBefore', 'photoAfter']);
@@ -16,32 +14,10 @@ App.pages.records = {
     const petMap = {}; pets.forEach(p => petMap[p.id] = p);
     const serviceMap = {}; services.forEach(s => serviceMap[s.id] = s.name);
 
-    // 매출 계산
     const today = App.getToday();
     const thisMonth = today.slice(0, 7);
-    const monthRecords = records.filter(r => r.date && r.date.startsWith(thisMonth));
-    const monthRevenue = monthRecords.reduce((sum, r) => sum + App.getRecordAmount(r), 0);
-    const totalRevenue = records.reduce((sum, r) => sum + App.getRecordAmount(r), 0);
 
-    // 오늘 매출
-    const todayRecords = records.filter(r => r.date === today);
-    const todayRevenue = todayRecords.reduce((sum, r) => sum + App.getRecordAmount(r), 0);
-
-    // 이번 주 매출
-    const nowDate = new Date();
-    const dayOfWeek = nowDate.getDay();
-    const mondayOffset = dayOfWeek === 0 ? -6 : 1 - dayOfWeek;
-    const monday = new Date(nowDate);
-    monday.setDate(nowDate.getDate() + mondayOffset);
-    monday.setHours(0, 0, 0, 0);
-    const sunday = new Date(monday);
-    sunday.setDate(monday.getDate() + 6);
-    const mondayStr = `${monday.getFullYear()}-${String(monday.getMonth() + 1).padStart(2, '0')}-${String(monday.getDate()).padStart(2, '0')}`;
-    const sundayStr = `${sunday.getFullYear()}-${String(sunday.getMonth() + 1).padStart(2, '0')}-${String(sunday.getDate()).padStart(2, '0')}`;
-    const weekRecords = records.filter(r => r.date >= mondayStr && r.date <= sundayStr);
-    const weekRevenue = weekRecords.reduce((sum, r) => sum + App.getRecordAmount(r), 0);
-
-    // 미수금 집계
+    // 미수금 경고 카드용 집계 (렌더에서 실제 사용하는 값만)
     const unpaidRecs = records.filter(r => r.paymentMethod === 'unpaid');
     const unpaidTotal = unpaidRecs.reduce((sum, r) => sum + App.getRecordAmount(r), 0);
 
@@ -117,13 +93,13 @@ App.pages.records = {
                       <div class="empty-state-text">미용 기록이 없습니다</div>
                     </div>
                   </td></tr>
-                ` : (this._showAll ? sorted : sorted.slice(0, 20)).map(r => {
+                ` : sorted.map(r => {
                   const customer = customerMap[r.customerId];
                   const pet = petMap[r.petId];
                   const serviceNames = App.getRecordServiceDisplay(r, serviceMap);
                   return `
                     <tr data-id="${r.id}" data-month="${(r.date || '').slice(0, 7)}"
-                        data-search="${(customer?.name || '') + ' ' + (pet?.name || '') + ' ' + (customer?.phone || '')}"
+                        data-search="${((customer?.name || '') + ' ' + (pet?.name || '') + ' ' + (customer?.phone || '') + ' ' + (r.service || '') + ' ' + (r.style || '') + ' ' + (r.memo || '') + ' ' + (r.groomer || '')).toLowerCase()}"
                         data-payment="${r.paymentMethod || ''}"
                         style="${r.paymentMethod === 'unpaid' ? 'background:var(--warning-light);border-left:3px solid var(--danger)' : ''}">
                       <td>${App.formatDate(r.date)}</td>
@@ -154,13 +130,13 @@ App.pages.records = {
                 <div class="empty-state-icon">&#x2702;</div>
                 <div class="empty-state-text">미용 기록이 없습니다</div>
               </div>
-            ` : (this._showAll ? sorted : sorted.slice(0, 20)).map(r => {
+            ` : sorted.map(r => {
               const customer = customerMap[r.customerId];
               const pet = petMap[r.petId];
               const isUnpaid = r.paymentMethod === 'unpaid';
               return `
               <div class="mobile-card${isUnpaid ? ' mobile-card-unpaid' : ''}" data-id="${r.id}" data-month="${(r.date || '').slice(0, 7)}"
-                   data-search="${(customer?.name || '') + ' ' + (pet?.name || '') + ' ' + (customer?.phone || '')}"
+                   data-search="${((customer?.name || '') + ' ' + (pet?.name || '') + ' ' + (customer?.phone || '') + ' ' + (r.service || '') + ' ' + (r.style || '') + ' ' + (r.memo || '') + ' ' + (r.groomer || '')).toLowerCase()}"
                    data-payment="${r.paymentMethod || ''}">
                 <div class="mobile-card-header">
                   <span class="mobile-card-date"><strong>${App.formatDate(r.date)}</strong>${r.status === 'in_progress' ? ' <span class="badge badge-warning" style="font-size:0.65rem">진행중</span>' : ''}</span>
@@ -183,8 +159,6 @@ App.pages.records = {
               </div>`;
             }).join('')}
           </div>
-          ${!this._showAll && sorted.length > 20 ? `<div style="text-align:center;padding:16px"><button class="btn btn-secondary" id="btn-load-more-records" style="min-width:200px">더 보기 (${sorted.length - 20}건 남음)</button></div>` : ''}
-
         </div>
       </div>
 
@@ -192,11 +166,6 @@ App.pages.records = {
   },
 
   async init() {
-    document.getElementById('btn-load-more-records')?.addEventListener('click', () => {
-      this._showAll = true;
-      App.handleRoute();
-    });
-
     document.getElementById('btn-add-record')?.addEventListener('click', () => this.showForm());
 
     // 미수금 경고 카드 클릭 -> 미결제 필터
@@ -688,23 +657,25 @@ App.pages.records = {
         }
 
         // 고객 자동 분류 (방문 횟수 기반, 신규 1-3, 일반 4-10, 단골 11+)
+        // 사용자가 수동으로 태그 변경한 경우는 덮어쓰지 않음 (customer.autoTag로 마지막 자동 값 추적)
         try {
           const custRecords = await DB.getByIndex('records', 'customerId', customerId);
-          const visitCount = custRecords.length; // 이미 DB에 저장된 후 조회이므로 현재 기록 포함됨
-
+          const visitCount = custRecords.length;
           const cust = await DB.get('customers', customerId);
           if (cust) {
-            const autoTags = ['new', 'normal', 'regular'];
-            const tags = (cust.tags || []).filter(t => !autoTags.includes(t));
-            if (visitCount <= 3) {
-              tags.push('new');
-            } else if (visitCount <= 10) {
-              tags.push('normal');
-            } else {
-              tags.push('regular');
+            const newAutoTag = visitCount <= 3 ? 'new' : visitCount <= 10 ? 'normal' : 'regular';
+            const prevAutoTag = cust.autoTag;
+            const existingTags = cust.tags || [];
+            const levelTags = existingTags.filter(t => ['new', 'normal', 'regular'].includes(t));
+            // 이전 자동값과 현재 태그가 같으면 교체, 다르면 사용자가 건드린 것으로 보고 보존
+            const isUntouched = levelTags.length === 0 || (levelTags.length === 1 && levelTags[0] === prevAutoTag);
+            if (isUntouched) {
+              const filtered = existingTags.filter(t => t !== prevAutoTag);
+              if (!filtered.includes(newAutoTag)) filtered.push(newAutoTag);
+              cust.tags = filtered;
+              cust.autoTag = newAutoTag;
+              await DB.update('customers', cust);
             }
-            cust.tags = tags;
-            await DB.update('customers', cust);
           }
         } catch (e) {
           console.warn('Auto-tag error:', e);
@@ -819,19 +790,24 @@ App.pages.records = {
           await DB.update('pets', pet);
         }
       }
-      // 고객 태그 재계산 (방문 횟수 기반)
+      // 고객 태그 재계산 (방문 횟수 기반, 수동 변경 보존)
       if (record && record.customerId) {
         const custRecords = await DB.getByIndex('records', 'customerId', record.customerId);
         const cust = await DB.get('customers', record.customerId);
         if (cust) {
           const vc = custRecords.length;
-          const autoTags = ['new', 'normal', 'regular'];
-          const tags = (cust.tags || []).filter(t => !autoTags.includes(t));
-          if (vc <= 3) tags.push('new');
-          else if (vc <= 10) tags.push('normal');
-          else tags.push('regular');
-          cust.tags = tags;
-          await DB.update('customers', cust);
+          const newAutoTag = vc <= 3 ? 'new' : vc <= 10 ? 'normal' : 'regular';
+          const prevAutoTag = cust.autoTag;
+          const existingTags = cust.tags || [];
+          const levelTags = existingTags.filter(t => ['new', 'normal', 'regular'].includes(t));
+          const isUntouched = levelTags.length === 0 || (levelTags.length === 1 && levelTags[0] === prevAutoTag);
+          if (isUntouched) {
+            const filtered = existingTags.filter(t => t !== prevAutoTag);
+            if (!filtered.includes(newAutoTag)) filtered.push(newAutoTag);
+            cust.tags = filtered;
+            cust.autoTag = newAutoTag;
+            await DB.update('customers', cust);
+          }
         }
       }
       App.showToast('미용 기록이 삭제되었습니다.');
