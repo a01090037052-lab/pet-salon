@@ -38,9 +38,6 @@ App.pages.revenue = {
     const monthRecords = records.filter(r => r.date && r.date.startsWith(thisMonth));
     const monthRevenue = monthRecords.reduce((sum, r) => sum + App.getRecordAmount(r), 0);
 
-    // 전체 매출 (경량 데이터에서 집계)
-    const totalRevenue = allRecordsMin.reduce((sum, r) => sum + App.getRecordAmount(r), 0);
-
     // 미수금 집계 (경량 데이터에서 집계)
     const unpaidRecs = allRecordsMin.filter(r => r.paymentMethod === 'unpaid');
     const unpaidTotal = unpaidRecs.reduce((sum, r) => sum + App.getRecordAmount(r), 0);
@@ -52,11 +49,14 @@ App.pages.revenue = {
       paymentStats[method] = (paymentStats[method] || 0) + App.getRecordAmount(r);
     });
 
-    // 오늘 결제 수단 간이 요약
-    const todayPayment = { cash: 0, card: 0, transfer: 0, unpaid: 0 };
+    // 오늘 결제 수단 요약 (건수 + 금액)
+    const todayPayment = { cash: { count: 0, amount: 0 }, card: { count: 0, amount: 0 }, transfer: { count: 0, amount: 0 }, unpaid: { count: 0, amount: 0 } };
     todayRecords.forEach(r => {
       const m = r.paymentMethod || 'none';
-      if (todayPayment[m] !== undefined) todayPayment[m]++;
+      if (todayPayment[m]) {
+        todayPayment[m].count++;
+        todayPayment[m].amount += App.getRecordAmount(r);
+      }
     });
 
     // Same-day pacing: 지난달 같은 일차까지의 매출
@@ -103,9 +103,6 @@ App.pages.revenue = {
     });
     const groomerStatList = Object.entries(groomerStats).sort((a, b) => b[1].revenue - a[1].revenue);
     const groomerMaxRev = groomerStatList.length > 0 ? groomerStatList[0][1].revenue || 1 : 1;
-
-    // 매출 데이터 캐시
-    this._records = records;
 
     const now = new Date();
     const year = now.getFullYear();
@@ -192,37 +189,15 @@ App.pages.revenue = {
         </div>
       </div>
 
-      <!-- 매출 요약 카드 -->
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:20px">
-        <div class="stat-card gradient-purple">
-          <div>
-            <div class="stat-value" style="font-size:1.4rem">${App.formatCurrency(todayRevenue)}</div>
-            <div class="stat-label">오늘 매출 (${todayRecords.length}건)</div>
-            ${yesterdayRevenue > 0 ? (() => {
-              const diff = todayRevenue - yesterdayRevenue;
-              const diffPct = Math.round((diff / yesterdayRevenue) * 100);
-              return `<div style="font-size:0.75rem;font-weight:700;color:${diff >= 0 ? 'var(--success)' : 'var(--danger)'}">어제 대비 ${diff >= 0 ? '▲' : '▼'} ${Math.abs(diffPct)}%</div>`;
-            })() : '<div style="font-size:0.7rem;color:var(--text-muted)">어제 데이터 없음</div>'}
-          </div>
-        </div>
-        <div class="stat-card gradient-green">
-          <div>
-            <div class="stat-value" style="font-size:1.4rem">${App.formatCurrency(monthRevenue)}</div>
-            <div class="stat-label">이번 달 (${monthRecords.length}건)</div>
-            ${lastMonthPacing > 0 ? `<div style="font-size:0.75rem;font-weight:700;color:${pacingChange >= 0 ? 'var(--success)' : 'var(--danger)'}">전월 동기 ${pacingChange >= 0 ? '▲' : '▼'} ${Math.abs(pacingChange)}%</div>` : '<div style="font-size:0.7rem;color:var(--text-muted)">비교 데이터 없음</div>'}
-          </div>
-        </div>
-      </div>
-
-      <!-- 매출 탭 분리 -->
+      <!-- 매출 탭 분리 (기본: 이번 달) -->
       <div class="revenue-tabs" style="display:flex;gap:4px;margin-bottom:16px;background:var(--bg-white);border-radius:var(--radius);padding:4px;box-shadow:var(--shadow-xs)">
-        <button class="revenue-tab active" data-tab="today" style="flex:1;padding:10px;border:none;border-radius:8px;font-weight:600;font-size:0.85rem;cursor:pointer;background:var(--primary);color:#fff">오늘</button>
-        <button class="revenue-tab" data-tab="month" style="flex:1;padding:10px;border:none;border-radius:8px;font-weight:600;font-size:0.85rem;cursor:pointer;background:transparent;color:var(--text-secondary)">이번 달</button>
+        <button class="revenue-tab" data-tab="today" style="flex:1;padding:10px;border:none;border-radius:8px;font-weight:600;font-size:0.85rem;cursor:pointer;background:transparent;color:var(--text-secondary)">오늘</button>
+        <button class="revenue-tab active" data-tab="month" style="flex:1;padding:10px;border:none;border-radius:8px;font-weight:600;font-size:0.85rem;cursor:pointer;background:var(--primary);color:#fff">이번 달</button>
         <button class="revenue-tab" data-tab="analysis" style="flex:1;padding:10px;border:none;border-radius:8px;font-weight:600;font-size:0.85rem;cursor:pointer;background:transparent;color:var(--text-secondary)">인사이트</button>
       </div>
 
       <!-- 오늘 탭 -->
-      <div class="revenue-tab-content" id="rev-tab-today" style="display:block">
+      <div class="revenue-tab-content" id="rev-tab-today" style="display:none">
         ${monthlyGoal > 0 ? (() => {
           const pct = Math.min(Math.round((monthRevenue / monthlyGoal) * 100), 100);
           const barColor = pct >= 100 ? 'var(--success)' : pct >= 70 ? 'var(--primary)' : 'var(--warning)';
@@ -268,14 +243,14 @@ App.pages.revenue = {
           </div>
         </div>
 
-        <!-- 오늘 결제 수단 요약 -->
+        <!-- 오늘 결제 수단 요약 (건수 + 금액) -->
         ${todayRecords.length > 0 ? `
         <div class="card" style="margin-bottom:16px">
-          <div class="card-body" style="padding:12px 20px;display:flex;gap:16px;justify-content:center;flex-wrap:wrap">
-            ${todayPayment.card > 0 ? `<span style="font-size:0.88rem"><strong style="color:var(--primary)">카드</strong> ${todayPayment.card}건</span>` : ''}
-            ${todayPayment.cash > 0 ? `<span style="font-size:0.88rem"><strong style="color:var(--success)">현금</strong> ${todayPayment.cash}건</span>` : ''}
-            ${todayPayment.transfer > 0 ? `<span style="font-size:0.88rem"><strong style="color:var(--info)">이체</strong> ${todayPayment.transfer}건</span>` : ''}
-            ${todayPayment.unpaid > 0 ? `<span style="font-size:0.88rem"><strong style="color:var(--danger)">미결제</strong> ${todayPayment.unpaid}건</span>` : ''}
+          <div class="card-body" style="padding:12px 20px;display:flex;gap:14px;justify-content:center;flex-wrap:wrap">
+            ${todayPayment.card.count > 0 ? `<span style="font-size:0.88rem"><strong style="color:var(--primary)">카드</strong> ${todayPayment.card.count}건 · ${App.formatCurrency(todayPayment.card.amount)}</span>` : ''}
+            ${todayPayment.cash.count > 0 ? `<span style="font-size:0.88rem"><strong style="color:var(--success)">현금</strong> ${todayPayment.cash.count}건 · ${App.formatCurrency(todayPayment.cash.amount)}</span>` : ''}
+            ${todayPayment.transfer.count > 0 ? `<span style="font-size:0.88rem"><strong style="color:var(--info)">이체</strong> ${todayPayment.transfer.count}건 · ${App.formatCurrency(todayPayment.transfer.amount)}</span>` : ''}
+            ${todayPayment.unpaid.count > 0 ? `<span style="font-size:0.88rem"><strong style="color:var(--danger)">미결제</strong> ${todayPayment.unpaid.count}건 · ${App.formatCurrency(todayPayment.unpaid.amount)}</span>` : ''}
           </div>
         </div>
         ` : ''}
@@ -292,9 +267,9 @@ App.pages.revenue = {
               const weekAvg = weekData.filter(d => d.rev > 0).length > 0 ? Math.round(weekData.reduce((s, d) => s + d.rev, 0) / weekData.filter(d => d.rev > 0).length) : 0;
               const avgPct = weekAvg > 0 ? Math.round((weekAvg / gMax) * 90) : 0;
               return `<div style="position:relative;height:200px;padding:0 4px;margin-left:32px">
-                <div style="position:absolute;left:0;right:0;bottom:45%;border-bottom:1px dashed var(--border-light)"><span style="position:absolute;left:-34px;top:-8px;font-size:0.65rem;color:var(--text-muted)">${Math.round(gMax * 0.5 / 10000)}만</span></div>
-                <div style="position:absolute;left:0;right:0;bottom:90%;border-bottom:1px dashed var(--border-light)"><span style="position:absolute;left:-34px;top:-8px;font-size:0.65rem;color:var(--text-muted)">${Math.round(gMax / 10000)}만</span></div>
-                ${weekAvg > 0 ? `<div style="position:absolute;left:0;right:0;bottom:${avgPct}%;border-bottom:2px dotted var(--warning);z-index:2"><span style="position:absolute;right:0;top:-16px;font-size:0.62rem;color:var(--warning);font-weight:700">평균 ${Math.round(weekAvg / 10000)}만</span></div>` : ''}
+                <div style="position:absolute;left:0;right:0;bottom:45%;border-bottom:1px dashed var(--border-light)"><span style="position:absolute;left:-34px;top:-8px;font-size:0.72rem;color:var(--text-muted)">${Math.round(gMax * 0.5 / 10000)}만</span></div>
+                <div style="position:absolute;left:0;right:0;bottom:90%;border-bottom:1px dashed var(--border-light)"><span style="position:absolute;left:-34px;top:-8px;font-size:0.72rem;color:var(--text-muted)">${Math.round(gMax / 10000)}만</span></div>
+                ${weekAvg > 0 ? `<div style="position:absolute;left:0;right:0;bottom:${avgPct}%;border-bottom:2px dotted var(--warning);z-index:2"><span style="position:absolute;right:0;top:-16px;font-size:0.72rem;color:var(--warning);font-weight:700">평균 ${Math.round(weekAvg / 10000)}만</span></div>` : ''}
                 <div style="display:flex;gap:8px;height:160px;position:relative;z-index:1">
                   ${weekData.map(d => {
                     const barH = d.rev > 0 ? Math.max(8, Math.round((d.rev / gMax) * 130)) : 4;
@@ -314,8 +289,8 @@ App.pages.revenue = {
         </div>
       </div>
 
-      <!-- 이번 달 탭 -->
-      <div class="revenue-tab-content" id="rev-tab-month" style="display:none">
+      <!-- 이번 달 탭 (기본) -->
+      <div class="revenue-tab-content" id="rev-tab-month" style="display:block">
         <!-- 이번 달 페이스 -->
         <div class="card" style="margin-bottom:20px">
           <div class="card-header">
@@ -373,9 +348,9 @@ App.pages.revenue = {
               const mAvg = monthData.filter(d => d.rev > 0).length > 0 ? Math.round(monthData.reduce((s, d) => s + d.rev, 0) / monthData.filter(d => d.rev > 0).length) : 0;
               const mAvgPct = mAvg > 0 ? Math.round((mAvg / mMax) * 90) : 0;
               return `<div style="position:relative;height:200px;padding:0;overflow-x:auto;margin-left:32px">
-                <div style="position:absolute;left:0;right:0;bottom:45%;border-bottom:1px dashed var(--border-light)"><span style="position:absolute;left:-34px;top:-8px;font-size:0.6rem;color:var(--text-muted)">${Math.round(mMax * 0.5 / 10000)}만</span></div>
-                <div style="position:absolute;left:0;right:0;bottom:90%;border-bottom:1px dashed var(--border-light)"><span style="position:absolute;left:-34px;top:-8px;font-size:0.6rem;color:var(--text-muted)">${Math.round(mMax / 10000)}만</span></div>
-                ${mAvg > 0 ? `<div style="position:absolute;left:0;right:0;bottom:${mAvgPct}%;border-bottom:2px dotted var(--warning);z-index:2"><span style="position:absolute;right:0;top:-16px;font-size:0.62rem;color:var(--warning);font-weight:700">일평균 ${Math.round(mAvg / 10000)}만</span></div>` : ''}
+                <div style="position:absolute;left:0;right:0;bottom:45%;border-bottom:1px dashed var(--border-light)"><span style="position:absolute;left:-34px;top:-8px;font-size:0.72rem;color:var(--text-muted)">${Math.round(mMax * 0.5 / 10000)}만</span></div>
+                <div style="position:absolute;left:0;right:0;bottom:90%;border-bottom:1px dashed var(--border-light)"><span style="position:absolute;left:-34px;top:-8px;font-size:0.72rem;color:var(--text-muted)">${Math.round(mMax / 10000)}만</span></div>
+                ${mAvg > 0 ? `<div style="position:absolute;left:0;right:0;bottom:${mAvgPct}%;border-bottom:2px dotted var(--warning);z-index:2"><span style="position:absolute;right:0;top:-16px;font-size:0.72rem;color:var(--warning);font-weight:700">일평균 ${Math.round(mAvg / 10000)}만</span></div>` : ''}
                 <div style="display:flex;gap:2px;height:160px;position:relative;z-index:1">
                   ${monthData.map(d => {
                     const barH = d.rev > 0 ? Math.max(4, Math.round((d.rev / mMax) * 140)) : 2;
@@ -383,7 +358,7 @@ App.pages.revenue = {
                     const barBg = d.rev === 0 ? 'var(--border-light)' : isToday ? 'linear-gradient(to top,var(--success),#34D399)' : 'linear-gradient(to top,var(--primary),#818CF8)';
                     return `<div style="flex:1;min-width:8px;position:relative" title="${d.date}: ${App.formatCurrency(d.rev)}">
                       <div style="position:absolute;bottom:16px;left:0;right:0;height:${barH}px;background:${barBg};border-radius:3px 3px 0 0"></div>
-                      <span style="font-size:0.55rem;color:${isToday ? 'var(--primary)' : 'var(--text-muted)'};font-weight:${isToday ? '800' : '400'};position:absolute;bottom:0;left:0;right:0;text-align:center">${d.day % 5 === 1 || isToday ? d.day : ''}</span>
+                      <span style="font-size:0.68rem;color:${isToday ? 'var(--primary)' : 'var(--text-muted)'};font-weight:${isToday ? '800' : '500'};position:absolute;bottom:0;left:0;right:0;text-align:center">${d.day % 5 === 1 || isToday ? d.day : ''}</span>
                     </div>`;
                   }).join('')}
                 </div>
@@ -466,9 +441,9 @@ App.pages.revenue = {
               const tAvg = monthlyTrend.filter(m => m.rev > 0).length > 0 ? Math.round(monthlyTrend.reduce((s, m) => s + m.rev, 0) / monthlyTrend.filter(m => m.rev > 0).length) : 0;
               const tAvgPct = tAvg > 0 ? Math.round((tAvg / tMax) * 90) : 0;
               return `<div style="position:relative;height:220px;padding:0 8px;margin-left:36px">
-                <div style="position:absolute;left:0;right:0;bottom:45%;border-bottom:1px dashed var(--border-light)"><span style="position:absolute;left:-38px;top:-8px;font-size:0.65rem;color:var(--text-muted)">${Math.round(tMax * 0.5 / 10000)}만</span></div>
-                <div style="position:absolute;left:0;right:0;bottom:90%;border-bottom:1px dashed var(--border-light)"><span style="position:absolute;left:-38px;top:-8px;font-size:0.65rem;color:var(--text-muted)">${Math.round(tMax / 10000)}만</span></div>
-                ${tAvg > 0 ? `<div style="position:absolute;left:0;right:0;bottom:${tAvgPct}%;border-bottom:2px dotted var(--warning);z-index:2"><span style="position:absolute;right:0;top:-16px;font-size:0.62rem;color:var(--warning);font-weight:700">월평균 ${Math.round(tAvg / 10000)}만</span></div>` : ''}
+                <div style="position:absolute;left:0;right:0;bottom:45%;border-bottom:1px dashed var(--border-light)"><span style="position:absolute;left:-38px;top:-8px;font-size:0.72rem;color:var(--text-muted)">${Math.round(tMax * 0.5 / 10000)}만</span></div>
+                <div style="position:absolute;left:0;right:0;bottom:90%;border-bottom:1px dashed var(--border-light)"><span style="position:absolute;left:-38px;top:-8px;font-size:0.72rem;color:var(--text-muted)">${Math.round(tMax / 10000)}만</span></div>
+                ${tAvg > 0 ? `<div style="position:absolute;left:0;right:0;bottom:${tAvgPct}%;border-bottom:2px dotted var(--warning);z-index:2"><span style="position:absolute;right:0;top:-16px;font-size:0.72rem;color:var(--warning);font-weight:700">월평균 ${Math.round(tAvg / 10000)}만</span></div>` : ''}
                 <div style="display:flex;gap:12px;height:180px;position:relative;z-index:1">
                   ${monthlyTrend.map(m => {
                     const barH = m.rev > 0 ? Math.max(8, Math.round((m.rev / tMax) * 130)) : 4;
