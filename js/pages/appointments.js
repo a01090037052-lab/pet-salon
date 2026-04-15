@@ -3,9 +3,8 @@ App.pages.appointments = {
   _showAll: false,
 
   async render(container) {
-    // 휴무일·영업시간 설정 등 외부 설정은 매 진입 시 재로드 (stale 방지)
+    // 휴무일 설정은 매 진입 시 재로드 (stale 방지)
     this._closedDays = null;
-    this._businessHours = null;
     const today = App.getToday();
     const isMobile = window.matchMedia('(max-width: 768px)').matches;
     // 최근 3개월 + 미래 예약만 로드 (성능 최적화)
@@ -587,18 +586,11 @@ App.pages.appointments = {
     const activeGroomers = groomers.length > 0 ? groomers : [...new Set(dayAppts.map(a => a.groomer || '미지정').filter(Boolean))];
     if (activeGroomers.length === 0) activeGroomers.push('미지정');
 
-    // 시간 슬롯: 매장 영업시간 설정 사용 (기본 9~19시), 30분 단위
-    if (!this._businessHours) {
-      const open = await DB.getSetting('openTime') || '09:00';
-      const close = await DB.getSetting('closeTime') || '19:00';
-      this._businessHours = { open, close };
-    }
-    const startHour = parseInt((this._businessHours.open || '09:00').split(':')[0], 10);
-    const endHour = parseInt((this._businessHours.close || '19:00').split(':')[0], 10);
+    // 시간 슬롯: 8~22시 고정 (영업시간 변동 대응 — 새벽/야간 특별 예약 포함 수용)
     const slots = [];
-    for (let h = startHour; h <= endHour; h++) {
+    for (let h = 8; h <= 22; h++) {
       slots.push(`${String(h).padStart(2, '0')}:00`);
-      if (h < endHour) slots.push(`${String(h).padStart(2, '0')}:30`);
+      if (h < 22) slots.push(`${String(h).padStart(2, '0')}:30`);
     }
 
     // 예약을 시간+미용사로 매핑 (duration-aware)
