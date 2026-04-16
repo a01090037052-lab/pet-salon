@@ -1,7 +1,5 @@
 // ========== Appointments Page ==========
 App.pages.appointments = {
-  _showAll: false,
-
   async render(container) {
     // 휴무일 설정은 매 진입 시 재로드 (stale 방지)
     this._closedDays = null;
@@ -9,9 +7,7 @@ App.pages.appointments = {
     const isMobile = window.matchMedia('(max-width: 768px)').matches;
     // 최근 3개월 + 미래 예약만 로드 (성능 최적화)
     const threeMonthsAgo = (() => { const d = new Date(); d.setMonth(d.getMonth() - 3); return App.formatLocalDate(d); })();
-    const appointments = this._showAll
-      ? await DB.getAll('appointments')
-      : await DB.getByDateRange('appointments', 'date', threeMonthsAgo, '9999-12-31');
+    const appointments = await DB.getByDateRange('appointments', 'date', threeMonthsAgo, '9999-12-31');
 
     const sorted = appointments.sort((a, b) => {
       const dateComp = (b.date || '').localeCompare(a.date || '');
@@ -219,7 +215,6 @@ App.pages.appointments = {
               </div>`;
             }).join('')}
           </div>`}
-          ${!this._showAll ? `<div style="text-align:center;padding:16px"><button class="btn btn-secondary" id="btn-load-more-appts" style="min-width:200px;min-height:44px">&#x1F4DA; 3개월 이전 예약도 불러오기</button></div>` : ''}
 
         </div>
       </div>
@@ -344,11 +339,6 @@ App.pages.appointments = {
   },
 
   async init() {
-    document.getElementById('btn-load-more-appts')?.addEventListener('click', () => {
-      this._showAll = true;
-      App.handleRoute();
-    });
-
     document.getElementById('btn-add-appointment')?.addEventListener('click', () => this.showForm());
 
     // 캘린더 항상 표시 - 초기 렌더링 + 오늘 선택
