@@ -208,9 +208,12 @@ App.pages.services = {
   async toggleService(id) {
     const service = await DB.get('services', id);
     if (!service) return;
-    service.isActive = service.isActive === false ? true : false;
+    const newState = service.isActive === false;
+    const ok = await App.confirm(`"${App.escapeHtml(service.name)}" 서비스를 ${newState ? '활성화' : '비활성화'}하시겠습니까?`);
+    if (!ok) return;
+    service.isActive = newState;
     await DB.update('services', service);
-    App.showToast(service.isActive ? '서비스가 활성화되었습니다.' : '서비스가 비활성화되었습니다.');
+    App.showToast(newState ? '서비스가 활성화되었습니다.' : '서비스가 비활성화되었습니다.');
     App.handleRoute();
   },
 

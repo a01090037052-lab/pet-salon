@@ -349,10 +349,12 @@ App.pages.appointments = {
         this._calMonth = new Date().getMonth();
         this._closedDays = null;
         this.renderCalendar();
-        // 오늘 날짜 자동 선택
+        // 오늘 날짜 자동 선택 + 퀵필터 "오늘" 동기화
         const todayStr = App.getToday();
         const dateInput = document.getElementById('filter-date');
         if (dateInput) { dateInput.value = todayStr; this.applyFilters(); }
+        document.querySelectorAll('.quick-filter-btn').forEach(b => b.classList.remove('active'));
+        document.querySelector('.quick-filter-btn[data-filter="today"]')?.classList.add('active');
         // 캘린더에서 오늘 셀 선택 표시
         setTimeout(() => {
           const todayCell = document.querySelector(`.calendar-cell[data-date="${todayStr}"]`);
