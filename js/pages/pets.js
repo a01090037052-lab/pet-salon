@@ -77,6 +77,7 @@ App.pages.pets = {
         <div class="empty-state" style="padding:60px 20px">
           <div class="empty-state-icon">&#x1F436;</div>
           <div class="empty-state-text">등록된 반려견이 없습니다</div>
+          <button class="btn btn-primary" onclick="App.pages.pets.showForm()" style="margin-top:12px">+ 반려견 등록</button>
         </div>
       ` : sorted.map(p => {
         const owner = customerMap[p.customerId];
