@@ -1062,7 +1062,7 @@ const App = {
         if (dup) {
           dupArea.innerHTML = `<div style="background:var(--warning-bg, #fff8e1);border:1px solid var(--warning, #f0ad4e);border-radius:8px;padding:8px 10px;margin-bottom:8px;font-size:0.85rem">
             이미 등록된 번호입니다: <b>${App.escapeHtml(dup.name)}</b>
-            <button class="btn btn-sm btn-primary" id="quick-dup-select" style="margin-left:8px;min-height:32px">이 고객 선택</button>
+            <button class="btn btn-sm btn-primary" id="quick-dup-select" style="margin-left:8px">이 고객 선택</button>
           </div>`;
           document.getElementById('quick-dup-select')?.addEventListener('click', (ev) => {
             ev.stopPropagation();

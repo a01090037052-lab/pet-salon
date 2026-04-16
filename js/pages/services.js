@@ -91,9 +91,9 @@ App.pages.services = {
                 App.formatPriceShort(s.priceSmall) + ' / ' + App.formatPriceShort(s.priceMedium) + ' / ' + App.formatPriceShort(s.priceLarge) +
               '</div>' +
             '</div>' +
-            '<button class="btn-icon btn-edit-service" data-id="' + s.id + '" title="수정" style="font-size:0.95rem;min-width:36px;min-height:36px">&#x270F;</button>' +
-            '<button class="btn-icon btn-toggle-service" data-id="' + s.id + '" title="' + (!isOff ? '비활성화' : '활성화') + '" style="font-size:0.95rem;min-width:36px;min-height:36px">' + (!isOff ? '&#x1F7E2;' : '&#x26AA;') + '</button>' +
-            '<button class="btn-icon btn-delete-service text-danger" data-id="' + s.id + '" title="삭제" style="font-size:0.95rem;min-width:36px;min-height:36px">&#x1F5D1;</button>' +
+            '<button class="btn-icon btn-edit-service" data-id="' + s.id + '" title="수정" style="font-size:0.95rem">&#x270F;</button>' +
+            '<button class="btn-icon btn-toggle-service" data-id="' + s.id + '" title="' + (!isOff ? '비활성화' : '활성화') + '" style="font-size:0.95rem">' + (!isOff ? '&#x1F7E2;' : '&#x26AA;') + '</button>' +
+            '<button class="btn-icon btn-delete-service text-danger" data-id="' + s.id + '" title="삭제" style="font-size:0.95rem">&#x1F5D1;</button>' +
           '</div>';
         });
         return html;

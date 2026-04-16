@@ -626,7 +626,7 @@ App.pages.appointments = {
           html += `<div style="padding:4px 6px;border-bottom:1px solid var(--border);background:${statusColors[a.status] || 'var(--primary)'}15;border-left:3px solid ${statusColors[a.status] || 'var(--primary)'}">
             <div style="font-size:0.78rem;font-weight:700">${App.escapeHtml(pet?.name || '-')}</div>
             <div style="font-size:0.7rem;color:var(--text-secondary)">${App.escapeHtml(App.getCustomerLabel(customer))}</div>
-            <div style="font-size:0.65rem;color:var(--text-muted)">${durLabel}</div>
+            <div style="font-size:0.75rem;color:var(--text-muted)">${durLabel}</div>
           </div>`;
         } else if (cell && !cell.isStart) {
           const a = cell.appt;

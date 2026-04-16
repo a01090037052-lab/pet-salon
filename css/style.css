@@ -1503,8 +1503,8 @@ a.stat-card { display: flex; }
   .global-search-btn {
     top: 12px;
     right: 14px;
-    width: 40px;
-    height: 40px;
+    width: 44px;
+    height: 44px;
     font-size: 1rem;
   }
   .global-search-overlay {
@@ -1574,7 +1574,7 @@ a.stat-card { display: flex; }
   /* Better table on mobile */
   .data-table th, .data-table td { padding: 8px 10px; font-size: 0.8rem; }
   .data-table .table-actions { gap: 0; }
-  .data-table .btn-icon { width: 30px; height: 30px; }
+  .data-table .btn-icon { min-width: 44px; min-height: 44px; }
   .btn { min-height: 44px; }
   .btn-sm { min-height: 44px; }
   .btn-icon { min-width: 44px; min-height: 44px; }
@@ -1788,7 +1788,7 @@ a.stat-card { display: flex; }
   color: var(--text-primary);
 }
 .cal-count-btn {
-  font-size: 0.65rem;
+  font-size: 0.72rem;
   font-weight: 700;
   border: none;
   border-radius: 10px;
@@ -1825,7 +1825,7 @@ a.stat-card { display: flex; }
   font-weight: 700;
 }
 .cal-preview-more {
-  font-size: 0.65rem;
+  font-size: 0.72rem;
   color: var(--text-muted);
   text-align: center;
   margin-top: 1px;
@@ -2631,7 +2631,7 @@ a.stat-card { display: flex; }
   .calendar-cell { aspect-ratio: auto; min-height: 52px; padding: 3px; border-radius: 6px; }
   .calendar-day-label { padding: 4px 0; font-size: 0.7rem; }
   .cal-day-num { font-size: 0.72rem; }
-  .cal-count-btn { font-size: 0.72rem; padding: 0 5px; min-width: 18px; height: 18px; line-height: 18px; font-weight: 700; }
+  .cal-count-btn { font-size: 0.72rem; padding: 2px 6px; min-width: 24px; height: 24px; line-height: 24px; font-weight: 700; }
   .pet-photo-upload { flex-direction: column; align-items: flex-start; }
 
   /* Show mobile cards, hide tables (only in card-body that contains mobile-card-list) */
@@ -2852,7 +2852,7 @@ a.stat-card { display: flex; }
   white-space: nowrap;
 }
 .form-detail-divider-chevron {
-  font-size: 0.65rem;
+  font-size: 0.75rem;
   color: var(--text-muted);
   transition: transform var(--transition);
 }
