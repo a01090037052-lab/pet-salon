@@ -651,6 +651,10 @@ a.stat-card { display: flex; }
   display: flex;
   justify-content: flex-end;
   gap: 10px;
+  position: sticky;
+  bottom: 0;
+  background: var(--bg-white);
+  z-index: 10;
 }
 .confirm-modal { max-width: 420px; }
 .confirm-modal .modal-body p { font-size: 0.95rem; line-height: 1.6; color: var(--text-secondary); }

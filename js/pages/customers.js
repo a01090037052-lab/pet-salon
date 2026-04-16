@@ -82,14 +82,23 @@ App.pages.customers = {
           <p class="page-subtitle">총 ${customers.length}명의 고객</p>
         </div>
         <div class="page-actions">
-          <select id="customer-visit-filter" style="width:auto;min-width:100px;font-size:0.88rem;padding:10px 12px;min-height:40px">
+          <button class="btn btn-primary" id="btn-add-customer">+ 새 고객</button>
+        </div>
+      </div>
+      <div class="filter-bar">
+        <div class="search-box" style="max-width:none">
+          <span class="search-icon">&#x1F50D;</span>
+          <input type="text" id="customer-search" placeholder="고객 이름, 전화번호, 메모 검색..." style="width:100%;min-height:40px">
+        </div>
+        <div class="filter-bar-row">
+          <select id="customer-visit-filter" style="flex:1;min-height:44px;font-size:max(16px,0.88rem)">
             <option value="" ${curVisit === '' ? 'selected' : ''}>방문 상태</option>
             <option value="normal" ${curVisit === 'normal' ? 'selected' : ''}>정상</option>
             <option value="remind" ${curVisit === 'remind' ? 'selected' : ''}>리마인드</option>
             <option value="at-risk" ${curVisit === 'at-risk' ? 'selected' : ''}>이탈위험</option>
             <option value="churned" ${curVisit === 'churned' ? 'selected' : ''}>이탈</option>
           </select>
-          <select id="customer-tag-filter" style="width:auto;min-width:100px;font-size:0.88rem;padding:10px 12px;min-height:40px">
+          <select id="customer-tag-filter" style="flex:1;min-height:44px;font-size:max(16px,0.88rem)">
             <option value="" ${curTag === '' ? 'selected' : ''}>전체 분류</option>
             <option value="vip" ${curTag === 'vip' ? 'selected' : ''}>VIP</option>
             <option value="new" ${curTag === 'new' ? 'selected' : ''}>신규</option>
@@ -97,18 +106,13 @@ App.pages.customers = {
             <option value="regular" ${curTag === 'regular' ? 'selected' : ''}>단골</option>
             <option value="caution" ${curTag === 'caution' ? 'selected' : ''}>주의</option>
           </select>
-          <select id="customer-sort" style="width:auto;min-width:120px;font-size:0.88rem;padding:10px 12px;min-height:40px">
+          <select id="customer-sort" style="flex:1;min-height:44px;font-size:max(16px,0.88rem)">
             <option value="name" ${sortKey === 'name' ? 'selected' : ''}>이름순</option>
             <option value="lastVisit" ${sortKey === 'lastVisit' ? 'selected' : ''}>최근방문순</option>
             <option value="createdAt" ${sortKey === 'createdAt' ? 'selected' : ''}>등록일순</option>
             <option value="visitCount" ${sortKey === 'visitCount' ? 'selected' : ''}>방문횟수순</option>
           </select>
-          <button class="btn btn-primary" id="btn-add-customer">+ 새 고객</button>
         </div>
-      </div>
-      <div class="search-box" style="margin-bottom:16px;max-width:none">
-        <span class="search-icon">&#x1F50D;</span>
-        <input type="text" id="customer-search" placeholder="고객 이름, 전화번호, 메모 검색..." style="width:100%">
       </div>
       <div class="card">
         <div class="card-body no-padding">

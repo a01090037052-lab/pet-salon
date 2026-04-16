@@ -196,20 +196,22 @@ App.pages.appointments = {
                   <span class="mobile-card-info">&#x1F436; <strong>${App.escapeHtml(pet?.name || '-')}</strong> &middot; ${App.escapeHtml(App.getCustomerLabel(customer))}</span>
                   ${a.memo ? `<div style="font-size:0.8rem;color:var(--text-secondary);margin-top:4px">&#x1F4DD; ${App.escapeHtml(a.memo.length > 40 ? a.memo.slice(0, 40) + '...' : a.memo)}</div>` : ''}
                 </div>
-                <div class="mobile-card-actions" style="flex-direction:column;gap:6px">
-                  <select class="status-select" data-id="${a.id}" style="width:100%;padding:8px 10px;font-size:0.8rem;min-width:70px;min-height:48px">
-                    <option value="pending" ${a.status === 'pending' ? 'selected' : ''}>대기</option>
-                    <option value="confirmed" ${a.status === 'confirmed' ? 'selected' : ''}>확정</option>
-                    <option value="in_progress" ${a.status === 'in_progress' ? 'selected' : ''}>미용중</option>
-                    <option value="completed" ${a.status === 'completed' ? 'selected' : ''}>완료</option>
-                    <option value="cancelled" ${a.status === 'cancelled' ? 'selected' : ''}>취소</option>
-                    <option value="noshow" ${a.status === 'noshow' ? 'selected' : ''}>노쇼</option>
-                  </select>
+                <div class="mobile-card-actions" style="flex-direction:column;gap:8px">
+                  <div style="display:flex;gap:6px;align-items:center">
+                    <select class="status-select" data-id="${a.id}" style="flex:1;padding:8px 10px;font-size:max(16px,0.85rem);min-height:44px">
+                      <option value="pending" ${a.status === 'pending' ? 'selected' : ''}>대기</option>
+                      <option value="confirmed" ${a.status === 'confirmed' ? 'selected' : ''}>확정</option>
+                      <option value="in_progress" ${a.status === 'in_progress' ? 'selected' : ''}>미용중</option>
+                      <option value="completed" ${a.status === 'completed' ? 'selected' : ''}>완료</option>
+                      <option value="cancelled" ${a.status === 'cancelled' ? 'selected' : ''}>취소</option>
+                      <option value="noshow" ${a.status === 'noshow' ? 'selected' : ''}>노쇼</option>
+                    </select>
+                    ${a.status !== 'completed' ? `<button class="btn btn-sm btn-success btn-complete-appt" data-id="${a.id}" style="white-space:nowrap;min-height:44px">&#x2702; 미용 완료</button>` : ''}
+                  </div>
                   <div style="display:flex;gap:6px">
-                    <button class="btn btn-sm btn-info btn-reminder-appt flex-1" data-id="${a.id}">&#x1F4E9; 재확인</button>
-                    <button class="btn btn-sm btn-secondary btn-edit-appt flex-1" data-id="${a.id}">&#x270F; 수정</button>
-                    <button class="btn btn-sm btn-success btn-complete-appt flex-1" data-id="${a.id}">&#x2702; 미용 완료</button>
-                    <button class="btn btn-sm btn-danger btn-delete-appt" data-id="${a.id}" style="flex:0 0 auto;padding:6px 12px;min-width:44px" title="삭제">&#x1F5D1;</button>
+                    <button class="btn btn-sm btn-info btn-reminder-appt flex-1" data-id="${a.id}" style="min-height:40px">&#x1F4E9; 재확인</button>
+                    <button class="btn btn-sm btn-secondary btn-edit-appt flex-1" data-id="${a.id}" style="min-height:40px">&#x270F; 수정</button>
+                    <button class="btn btn-sm btn-danger btn-delete-appt" data-id="${a.id}" style="flex:0 0 auto;padding:6px 12px;min-width:44px;min-height:40px" title="삭제">&#x1F5D1;</button>
                   </div>
                 </div>
               </div>`;
