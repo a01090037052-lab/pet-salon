@@ -792,7 +792,7 @@ App.pages.appointments = {
           <div class="form-row">
             <div class="form-group">
               <label class="form-label">담당 미용사</label>
-              <select id="f-groomer">${await App.getGroomerOptions(appt.groomer)}</select>
+              ${await App.getGroomerFieldHTML(appt.groomer)}
             </div>
             <div class="form-group">
               <label class="form-label">예상 소요시간</label>

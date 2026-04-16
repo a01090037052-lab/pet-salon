@@ -182,14 +182,18 @@ App.pages.analytics = {
     const hourMax = Math.max(...hours.map(h => h.count), 1);
 
     // ===== 미용사 성과 =====
+    // 미용사명이 전혀 없으면 (1인 살롱·미설정) 섹션 생략
+    const hasAnyGroomer = records.some(r => r.groomer);
     const groomerStats = {};
-    records.forEach(r => {
-      const name = r.groomer || '미지정';
-      if (!groomerStats[name]) groomerStats[name] = { count: 0, revenue: 0, customers: new Set() };
-      groomerStats[name].count++;
-      groomerStats[name].revenue += App.getRecordAmount(r);
-      if (r.customerId) groomerStats[name].customers.add(r.customerId);
-    });
+    if (hasAnyGroomer) {
+      records.forEach(r => {
+        const name = r.groomer || '미지정';
+        if (!groomerStats[name]) groomerStats[name] = { count: 0, revenue: 0, customers: new Set() };
+        groomerStats[name].count++;
+        groomerStats[name].revenue += App.getRecordAmount(r);
+        if (r.customerId) groomerStats[name].customers.add(r.customerId);
+      });
+    }
     const groomerList = Object.entries(groomerStats).sort((a, b) => b[1].revenue - a[1].revenue);
     const groomerMaxRev = groomerList.length > 0 ? groomerList[0][1].revenue || 1 : 1;
 
@@ -442,10 +446,9 @@ App.pages.analytics = {
         </div>
       </div>
 
-      <!-- 미용사 성과 -->
-      <h3 style="font-size:1rem;font-weight:800;margin-bottom:12px;color:var(--text-primary)">&#x1F9D1; 미용사 성과</h3>
-
+      <!-- 미용사 성과 (미용사 배정된 기록이 있을 때만) -->
       ${groomerList.length > 0 ? `
+      <h3 style="font-size:1rem;font-weight:800;margin-bottom:12px;color:var(--text-primary)">&#x1F9D1; 미용사 성과</h3>
       <div class="card" style="margin-bottom:20px">
         <div class="card-body" style="padding:12px 16px">
           ${groomerList.map(([name, stats]) => {
@@ -472,7 +475,7 @@ App.pages.analytics = {
           }).join('')}
         </div>
       </div>
-      ` : '<div class="card" style="margin-bottom:20px"><div class="card-body"><p style="color:var(--text-muted);text-align:center">미용 기록이 없습니다</p></div></div>'}
+      ` : ''}
     `;
   },
 

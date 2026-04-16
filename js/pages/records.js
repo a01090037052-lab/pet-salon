@@ -434,7 +434,7 @@ App.pages.records = {
         </div>
         <div class="form-group">
           <label class="form-label">담당 미용사</label>
-          <select id="f-groomer">${await App.getGroomerOptions(record.groomer)}</select>
+          ${await App.getGroomerFieldHTML(record.groomer)}
         </div>
 
         <!-- 컨디션 (기본 표시) -->

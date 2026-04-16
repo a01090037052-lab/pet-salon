@@ -92,7 +92,8 @@ App.pages.settings = {
             </div>
             <div class="card-body">
               <div class="form-group">
-                <label class="form-label">등록된 미용사</label>
+                <label class="form-label">등록된 미용사 <span style="font-size:0.78rem;color:var(--text-muted);font-weight:400">(선택)</span></label>
+                <div class="form-hint" style="margin-bottom:8px">1인 살롱은 비워두세요. 예약·기록 폼에서 직접 입력 가능합니다.</div>
                 <div id="groomer-list" style="display:flex;flex-direction:column;gap:8px;margin-bottom:12px">
                   ${(groomers || []).map((g, i) => `
                     <div style="display:flex;align-items:center;gap:8px">

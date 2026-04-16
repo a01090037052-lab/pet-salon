@@ -1218,10 +1218,21 @@ const App = {
   },
 
   // Get groomer dropdown options
-  async getGroomerOptions(selected) {
-    const groomers = await DB.getSetting('groomers');
-    if (!groomers || groomers.length === 0) return '<option value="">미용사 직접 입력</option>';
-    return groomers.map(g => `<option value="${this.escapeHtml(g)}" ${g === selected ? 'selected' : ''}>${this.escapeHtml(g)}</option>`).join('') + '<option value="">직접 입력...</option>';
+  // 미용사 입력 필드 — 등록된 미용사 + 과거 기록의 미용사까지 datalist로 제안,
+  // 자유 입력 가능 (1인 살롱·미등록 상태 모두 자연스럽게 동작)
+  async getGroomerFieldHTML(selected = '') {
+    const registered = (await DB.getSetting('groomers')) || [];
+    let pastGroomers = [];
+    try {
+      const recs = await DB.getAllLight('records', ['photoBefore', 'photoAfter', 'memo', 'serviceIds', 'serviceNames', 'nextVisitDate', 'appointmentId']);
+      pastGroomers = [...new Set(recs.map(r => r.groomer).filter(g => g && !registered.includes(g)))];
+    } catch (e) { /* ignore */ }
+    const suggestions = [...registered, ...pastGroomers];
+    const placeholder = registered.length === 0 ? '미용사 이름 (선택 입력)' : '미용사 이름';
+    return `<input type="text" id="f-groomer" list="groomer-suggestions" value="${this.escapeHtml(selected || '')}" placeholder="${placeholder}" autocomplete="off" style="min-height:44px;font-size:max(16px,0.95rem)">
+      <datalist id="groomer-suggestions">
+        ${suggestions.map(g => `<option value="${this.escapeHtml(g)}">`).join('')}
+      </datalist>`;
   },
 
   // Apply shop name throughout the app
