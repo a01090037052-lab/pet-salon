@@ -228,6 +228,20 @@ App.pages.pets = {
           if (records.length === 0) return '<p style="color:var(--text-muted)">미용 기록이 없습니다.</p>';
           const allServices = await DB.getAll('services');
           const serviceMap = {}; allServices.forEach(s => serviceMap[s.id] = s.name);
+          const _isMobile = window.matchMedia('(max-width: 768px)').matches;
+          if (_isMobile) {
+            return records.map(r => {
+              const serviceNames = App.getRecordServiceDisplay(r, serviceMap);
+              return `<div style="padding:12px 0;border-bottom:1px solid var(--border-light)${r.paymentMethod === 'unpaid' ? ';border-left:4px solid var(--danger);padding-left:12px' : ''}">
+                <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px">
+                  <strong style="font-size:0.9rem">${App.formatDate(r.date)}</strong>
+                  <strong style="color:var(--primary)">${App.formatCurrency(App.getRecordAmount(r))}</strong>
+                </div>
+                <div style="font-size:0.85rem;color:var(--text-secondary)">${App.escapeHtml(serviceNames)} · ${App.escapeHtml(r.groomer || '-')} · ${App.pages.records.getPaymentLabel(r.paymentMethod)}</div>
+                ${r.memo ? `<div style="font-size:0.82rem;color:var(--text-muted);margin-top:4px">${App.escapeHtml(r.memo.length > 60 ? r.memo.slice(0, 60) + '...' : r.memo)}</div>` : ''}
+              </div>`;
+            }).join('');
+          }
           return `
           <div class="table-container">
             <table class="data-table">
