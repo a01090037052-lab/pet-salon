@@ -67,22 +67,24 @@ App.pages.records = {
       ` : ''}
 
       <div class="filter-bar">
-        <div class="search-box">
+        <div class="search-box" style="max-width:none">
           <span class="search-icon">&#x1F50D;</span>
-          <input type="text" id="record-search" placeholder="고객, 반려견, 서비스, 메모 검색...">
+          <input type="text" id="record-search" placeholder="고객, 반려견, 서비스, 메모 검색..." style="min-height:40px">
         </div>
-        <input type="month" id="filter-month" value="${thisMonth}">
-        <select id="filter-payment" style="min-width:100px">
-          <option value="">전체 결제</option>
-          <option value="cash">현금</option>
-          <option value="card">카드</option>
-          <option value="transfer">이체</option>
-          <option value="unpaid">미결제</option>
-        </select>
-        <button class="btn btn-secondary btn-sm" id="btn-clear-filter">필터 초기화</button>
+        <div class="filter-bar-row">
+          <input type="month" id="filter-month" value="${thisMonth}" style="flex:1;min-height:44px">
+          <select id="filter-payment" style="flex:1;min-height:44px">
+            <option value="">전체 결제</option>
+            <option value="cash">현금</option>
+            <option value="card">카드</option>
+            <option value="transfer">이체</option>
+            <option value="unpaid">미결제</option>
+          </select>
+          <button class="btn btn-secondary btn-sm" id="btn-clear-filter" style="flex:0 0 auto;min-height:44px;white-space:nowrap">초기화</button>
+        </div>
       </div>
 
-      <div id="record-filter-total" hidden style="padding:10px 14px;margin-bottom:12px;background:var(--bg);border-radius:var(--radius);font-size:0.9rem;font-weight:600;justify-content:space-between;align-items:center;display:flex;gap:8px;flex-wrap:wrap"></div>
+      <div id="record-filter-total" style="display:none;padding:12px 16px;margin-bottom:12px;background:var(--bg);border-radius:var(--radius);font-size:0.9rem;font-weight:600;gap:8px;flex-wrap:wrap;justify-content:space-between;align-items:center"></div>
 
       <div class="card">
         <div class="card-body no-padding">
@@ -321,9 +323,9 @@ App.pages.records = {
     const totalEl = document.getElementById('record-filter-total');
     if (totalEl) {
       if (visibleCount === 0) {
-        totalEl.hidden = true;
+        totalEl.style.display = 'none';
       } else {
-        totalEl.hidden = false;
+        totalEl.style.display = 'flex';
         totalEl.innerHTML = `
           <span>${visibleCount}건 · <strong>${App.formatCurrency(visibleSum)}</strong></span>
           ${unpaidCount > 0 ? `<span style="color:var(--danger);font-size:0.82rem">미결제 ${unpaidCount}건 · ${App.formatCurrency(unpaidSum)}</span>` : ''}

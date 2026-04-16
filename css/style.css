@@ -914,11 +914,19 @@ a.stat-card { display: flex; }
   box-shadow: var(--shadow-xs);
   border: 1px solid var(--border-light);
 }
+.filter-bar-row {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  width: 100%;
+}
 .filter-bar select, .filter-bar input[type="date"], .filter-bar input[type="month"] {
   width: auto;
   min-width: 140px;
-  font-size: max(16px, 0.85rem);
-  padding: 8px 12px;
+  font-size: max(16px, 0.88rem);
+  padding: 10px 12px;
+  border-radius: var(--radius);
+  -webkit-appearance: none;
 }
 
 /* ========== Pet Card ========== */
@@ -1551,8 +1559,10 @@ a.stat-card { display: flex; }
   .welcome-section { padding: 14px 16px; border-radius: var(--radius-lg); }
   .welcome-title { font-size: 1rem; }
   .welcome-subtitle { font-size: 0.8rem; }
-  .filter-bar { padding: 8px 10px; flex-direction: column; gap: 6px; }
+  .filter-bar { padding: 12px 14px; flex-direction: column; gap: 10px; }
   .filter-bar > * { width: 100% !important; min-width: 0 !important; }
+  .filter-bar-row { display: flex; gap: 8px; width: 100%; }
+  .filter-bar-row > * { min-width: 0 !important; }
   .data-table th, .data-table td { padding: 10px 12px; font-size: 0.82rem; }
   .btn { padding: 10px 16px; }
   .btn-sm { min-height: 40px; padding: 8px 14px; }
