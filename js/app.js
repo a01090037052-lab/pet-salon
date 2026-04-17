@@ -1494,15 +1494,25 @@ const App = {
           <button class="btn btn-primary" id="gs-new-customer-btn">+ 새 고객 등록</button>
         </div>`;
       document.getElementById('gs-new-customer-btn')?.addEventListener('click', () => {
+        const searchQuery = document.getElementById('global-search-input')?.value?.trim() || '';
         App.closeSearch();
-        App.pages.customers?.showForm(null, async (newCustomerId) => {
-          const newCustomer = await DB.get('customers', newCustomerId);
-          App.showToast(`${newCustomer?.name || ''} 고객이 등록되었습니다.`);
-          // 바로 예약 폼 열기
-          setTimeout(() => {
-            App.pages.appointments?.showForm(null, newCustomerId);
-          }, 300);
-        });
+        // history.back() popstate가 소화된 후 모달 열기 (타이밍 충돌 방지)
+        setTimeout(() => {
+          App.pages.customers?.showForm(null, async (newCustomerId) => {
+            const newCustomer = await DB.get('customers', newCustomerId);
+            App.showToast(`${newCustomer?.name || ''} 고객이 등록되었습니다.`);
+            setTimeout(() => {
+              App.pages.appointments?.showForm(null, newCustomerId);
+            }, 300);
+          });
+          // 검색어를 고객명 필드에 pre-fill
+          if (searchQuery) {
+            setTimeout(() => {
+              const nameInput = document.getElementById('f-name');
+              if (nameInput && !nameInput.value) nameInput.value = searchQuery;
+            }, 50);
+          }
+        }, 150);
       });
       return;
     }
@@ -1527,7 +1537,7 @@ const App = {
             <div class="gs-result-phone">${this.formatPhone(c.phone)}</div>
             ${petNames ? `<div class="gs-result-pets">${this.escapeHtml(petNames)}</div>` : ''}
           </div>
-          <button class="btn-icon" onclick="event.stopPropagation();App.closeSearch();App.pages.appointments.showForm(null,${c.id})" title="예약" style="color:var(--primary);font-size:1.1rem;flex-shrink:0">&#x1F4C5;</button>
+          <button class="btn-icon" onclick="event.stopPropagation();App.closeSearch();setTimeout(()=>App.pages.appointments.showForm(null,${c.id}),150)" title="예약" style="color:var(--primary);font-size:1.1rem;flex-shrink:0">&#x1F4C5;</button>
           <div class="gs-result-arrow">&#x276F;</div>
         </div>`;
     }).join('');
@@ -1682,22 +1692,26 @@ const App = {
       if (q) this.performSearch(q);
     });
 
-    // Appointment button
+    // Appointment button (closeSearch의 history.back() popstate 소화 후 모달 열기)
     document.getElementById('gs-action-appt')?.addEventListener('click', () => {
       const petId = cPets.length === 1 ? cPets[0].id : undefined;
       this.closeSearch();
-      if (this.pages.appointments?.showForm) {
-        this.pages.appointments.showForm(null, customer.id, petId ? { petId } : undefined);
-      } else {
-        this.navigate('appointments');
-      }
+      setTimeout(() => {
+        if (this.pages.appointments?.showForm) {
+          this.pages.appointments.showForm(null, customer.id, petId ? { petId } : undefined);
+        } else {
+          this.navigate('appointments');
+        }
+      }, 150);
     });
 
     // Per-pet appointment buttons (다견 고객)
     document.querySelectorAll('.gs-appt-pet').forEach(btn => {
       btn.addEventListener('click', () => {
         this.closeSearch();
-        this.pages.appointments?.showForm(null, Number(btn.dataset.customerId), { petId: Number(btn.dataset.petId) });
+        setTimeout(() => {
+          this.pages.appointments?.showForm(null, Number(btn.dataset.customerId), { petId: Number(btn.dataset.petId) });
+        }, 150);
       });
     });
 
@@ -1705,9 +1719,11 @@ const App = {
     document.getElementById('gs-action-record')?.addEventListener('click', () => {
       const petId = cPets.length === 1 ? cPets[0].id : undefined;
       this.closeSearch();
-      if (this.pages.records?.showForm) {
-        this.pages.records.showForm(null, { customerId: customer.id, petId: petId || undefined });
-      }
+      setTimeout(() => {
+        if (this.pages.records?.showForm) {
+          this.pages.records.showForm(null, { customerId: customer.id, petId: petId || undefined });
+        }
+      }, 150);
     });
 
     // Detail button
