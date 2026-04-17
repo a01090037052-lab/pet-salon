@@ -26,6 +26,7 @@ App.pages.appointments = {
     const serviceMap = {}; services.forEach(s => serviceMap[s.id] = s.name);
     this._customerMap = customerMap;
     this._petMap = petMap;
+    this._serviceMap = serviceMap;
 
     container.innerHTML = `
       <div class="page-header">
@@ -55,6 +56,13 @@ App.pages.appointments = {
           <div class="calendar-day-label">토</div>
           <div class="calendar-day-label">일</div>
         </div>
+      </div>
+
+      <!-- 날짜 선택 요약 패널 (셀 클릭 시 표시) -->
+      <div id="cal-date-summary" style="display:none;margin-bottom:16px;padding:14px 16px;background:var(--bg-white);border-radius:var(--radius);box-shadow:var(--shadow-xs);border:1px solid var(--border-light)">
+        <div id="cal-date-summary-header" style="font-weight:700;font-size:0.95rem;margin-bottom:10px"></div>
+        <div id="cal-date-summary-list" style="display:flex;flex-direction:column;gap:6px;margin-bottom:12px"></div>
+        <button class="btn btn-primary" id="cal-date-add-appt" style="width:100%;min-height:44px">+ 이 날짜에 예약 추가</button>
       </div>
 
       <!-- 타임테이블 뷰 -->
@@ -335,9 +343,56 @@ App.pages.appointments = {
           // 선택 표시
           grid.querySelectorAll('.calendar-cell').forEach(c => c.classList.remove('selected'));
           cell.classList.add('selected');
+          // 요약 패널 업데이트
+          this._updateDateSummary(date);
         });
       });
     }
+  },
+
+  _updateDateSummary(date) {
+    const panel = document.getElementById('cal-date-summary');
+    if (!panel) return;
+    const header = document.getElementById('cal-date-summary-header');
+    const list = document.getElementById('cal-date-summary-list');
+    if (!date) { panel.style.display = 'none'; return; }
+
+    const d = new Date(date + 'T00:00:00');
+    const dayNames = ['일', '월', '화', '수', '목', '금', '토'];
+    const dayLabel = `${d.getMonth() + 1}월 ${d.getDate()}일 (${dayNames[d.getDay()]})`;
+    const isClosed = (this._closedDays || []).includes(d.getDay());
+
+    const dayAppts = (this._appointments || [])
+      .filter(a => a.date === date && a.status !== 'cancelled')
+      .sort((a, b) => (a.time || '').localeCompare(b.time || ''));
+
+    header.innerHTML = `📅 ${dayLabel} · ${dayAppts.length}건${isClosed ? ' <span style="color:var(--danger);font-size:0.82rem">휴무</span>' : ''}`;
+
+    if (dayAppts.length === 0) {
+      list.innerHTML = '<div style="color:var(--text-muted);font-size:0.88rem;padding:8px 0">예약 없음</div>';
+    } else {
+      const petMap = this._petMap || {};
+      const serviceMap = this._serviceMap || {};
+      const show = dayAppts.slice(0, 5);
+      list.innerHTML = show.map(a => {
+        const pet = petMap[a.petId];
+        const svcName = (a.serviceIds || []).map(id => serviceMap[id]).filter(Boolean).join(', ') || '';
+        return `<div style="display:flex;align-items:center;gap:8px;padding:6px 0;border-bottom:1px solid var(--border-light);font-size:0.88rem">
+          <strong style="color:var(--primary);min-width:42px">${a.time || '--:--'}</strong>
+          <span style="font-weight:600">${App.escapeHtml(pet?.name || '?')}</span>
+          ${svcName ? `<span style="color:var(--text-muted);font-size:0.82rem">${App.escapeHtml(svcName)}</span>` : ''}
+        </div>`;
+      }).join('') + (dayAppts.length > 5 ? `<div style="font-size:0.82rem;color:var(--text-muted);padding:4px 0">+${dayAppts.length - 5}건 더</div>` : '');
+    }
+
+    this._selectedCalDate = date;
+    panel.style.display = 'block';
+  },
+
+  _hideDateSummary() {
+    const panel = document.getElementById('cal-date-summary');
+    if (panel) panel.style.display = 'none';
+    this._selectedCalDate = null;
   },
 
   async init() {
@@ -355,10 +410,11 @@ App.pages.appointments = {
         if (dateInput) { dateInput.value = todayStr; this.applyFilters(); }
         document.querySelectorAll('.quick-filter-btn').forEach(b => b.classList.remove('active'));
         document.querySelector('.quick-filter-btn[data-filter="today"]')?.classList.add('active');
-        // 캘린더에서 오늘 셀 선택 표시
+        // 캘린더에서 오늘 셀 선택 표시 + 요약 패널
         setTimeout(() => {
           const todayCell = document.querySelector(`.calendar-cell[data-date="${todayStr}"]`);
           if (todayCell) todayCell.classList.add('selected');
+          this._updateDateSummary(todayStr);
         }, 100);
     }
 
@@ -401,16 +457,25 @@ App.pages.appointments = {
       this.renderTimetable();
     });
 
-    // 캘린더 이전/다음 버튼
+    // 캘린더 이전/다음 버튼 (월 전환 시 요약 패널 숨김)
     document.getElementById('cal-prev')?.addEventListener('click', () => {
       this._calMonth--;
       if (this._calMonth < 0) { this._calMonth = 11; this._calYear--; }
+      this._hideDateSummary();
       this.renderCalendar();
     });
     document.getElementById('cal-next')?.addEventListener('click', () => {
       this._calMonth++;
       if (this._calMonth > 11) { this._calMonth = 0; this._calYear++; }
+      this._hideDateSummary();
       this.renderCalendar();
+    });
+
+    // 요약 패널 "예약 추가" 버튼
+    document.getElementById('cal-date-add-appt')?.addEventListener('click', () => {
+      if (this._selectedCalDate) {
+        this.showForm(null, null, { date: this._selectedCalDate });
+      }
     });
 
     // 캘린더 데이터는 renderCalendar 내부에서 이미 로드함 (중복 쿼리 제거)
@@ -449,6 +514,14 @@ App.pages.appointments = {
           // Week filter handled in applyFilters
         }
         document.getElementById('filter-status').value = '';
+        // 전체/이번주는 특정 날짜 아님 → 요약 패널 숨김. 오늘/내일은 해당 날짜 패널 표시.
+        if (filter === 'all' || filter === 'week') {
+          this._hideDateSummary();
+        } else if (filter === 'today') {
+          this._updateDateSummary(today);
+        } else if (filter === 'tomorrow') {
+          this._updateDateSummary(dateInput.value);
+        }
         this.applyFilters(filter === 'week' ? 'week' : null);
       });
     });
