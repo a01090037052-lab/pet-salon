@@ -350,7 +350,7 @@ App.pages.appointments = {
     }
   },
 
-  _updateDateSummary(date) {
+  async _updateDateSummary(date) {
     const panel = document.getElementById('cal-date-summary');
     if (!panel) return;
     const header = document.getElementById('cal-date-summary-header');
@@ -360,11 +360,17 @@ App.pages.appointments = {
     const d = new Date(date + 'T00:00:00');
     const dayNames = ['일', '월', '화', '수', '목', '금', '토'];
     const dayLabel = `${d.getMonth() + 1}월 ${d.getDate()}일 (${dayNames[d.getDay()]})`;
-    const isClosed = (this._closedDays || []).includes(d.getDay());
+    const isClosed = (this._closedDays || []).map(Number).includes(d.getDay());
 
-    const dayAppts = (this._appointments || [])
-      .filter(a => a.date === date && a.status !== 'cancelled')
-      .sort((a, b) => (a.time || '').localeCompare(b.time || ''));
+    // 현재 캘린더 월과 다른 달이면 DB에서 직접 조회 (월말→내일 등)
+    const calMonth = `${this._calYear}-${String(this._calMonth + 1).padStart(2, '0')}`;
+    let dayAppts;
+    if (date.startsWith(calMonth)) {
+      dayAppts = (this._appointments || []).filter(a => a.date === date && a.status !== 'cancelled');
+    } else {
+      dayAppts = (await DB.getByIndex('appointments', 'date', date)).filter(a => a.status !== 'cancelled');
+    }
+    dayAppts.sort((a, b) => (a.time || '').localeCompare(b.time || ''));
 
     header.innerHTML = `📅 ${dayLabel} · ${dayAppts.length}건${isClosed ? ' <span style="color:var(--danger);font-size:0.82rem">휴무</span>' : ''}`;
 
@@ -403,19 +409,19 @@ App.pages.appointments = {
         this._calYear = new Date().getFullYear();
         this._calMonth = new Date().getMonth();
         this._closedDays = null;
-        this.renderCalendar();
-        // 오늘 날짜 자동 선택 + 퀵필터 "오늘" 동기화
-        const todayStr = App.getToday();
+        await this.renderCalendar();
+        // 이전 선택 날짜 복원 또는 오늘 자동 선택
+        const restoreDate = this._selectedCalDate || App.getToday();
         const dateInput = document.getElementById('filter-date');
-        if (dateInput) { dateInput.value = todayStr; this.applyFilters(); }
+        if (dateInput) { dateInput.value = restoreDate; this.applyFilters(); }
         document.querySelectorAll('.quick-filter-btn').forEach(b => b.classList.remove('active'));
-        document.querySelector('.quick-filter-btn[data-filter="today"]')?.classList.add('active');
-        // 캘린더에서 오늘 셀 선택 표시 + 요약 패널
-        setTimeout(() => {
-          const todayCell = document.querySelector(`.calendar-cell[data-date="${todayStr}"]`);
-          if (todayCell) todayCell.classList.add('selected');
-          this._updateDateSummary(todayStr);
-        }, 100);
+        if (!this._selectedCalDate || restoreDate === App.getToday()) {
+          document.querySelector('.quick-filter-btn[data-filter="today"]')?.classList.add('active');
+        }
+        // 캘린더에서 셀 선택 표시 + 요약 패널
+        const restoreCell = document.querySelector(`.calendar-cell[data-date="${restoreDate}"]`);
+        if (restoreCell) restoreCell.classList.add('selected');
+        await this._updateDateSummary(restoreDate);
     }
 
     // Restore timetable view state
