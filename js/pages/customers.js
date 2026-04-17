@@ -508,7 +508,7 @@ App.pages.customers = {
     this._afterSaveCallback = afterSaveCallback || null;
 
     App.showModal({
-      title: id ? '고객 정보 수정' : '새 고객 등록',
+      title: id ? '고객 정보 수정' : '새 반려견 · 보호자 등록',
       content: id ? `
         <div class="form-group">
           <label class="form-label">보호자 이름 <span style="font-size:0.85em;color:var(--text-muted);font-weight:normal">(선택)</span></label>
@@ -543,18 +543,10 @@ App.pages.customers = {
           <textarea id="f-memo" placeholder="특이사항, 메모 등">${App.escapeHtml(customer.memo || '')}</textarea>
         </div>
       ` : `
-        <div class="form-group">
-          <label class="form-label">보호자 이름 <span style="font-size:0.85em;color:var(--text-muted);font-weight:normal">(선택)</span></label>
-          <input type="text" id="f-name" value="" placeholder="고객 이름" maxlength="50">
-        </div>
-        <div class="form-group">
-          <label class="form-label">연락처 <span class="required">*</span></label>
-          <input type="tel" id="f-phone" value="" placeholder="010-0000-0000">
-        </div>
-        <div style="border-top:1px dashed var(--border);margin-top:12px;padding-top:12px">
+        <div style="margin-bottom:12px">
           <div style="font-weight:700;margin-bottom:8px;font-size:0.95rem">&#x1F436; 반려견 정보</div>
           <div class="form-group">
-            <label class="form-label">반려견 이름</label>
+            <label class="form-label">반려견 이름 <span class="required">*</span></label>
             <input type="text" id="f-petName" placeholder="반려견 이름">
           </div>
           <div class="form-row">
@@ -566,6 +558,17 @@ App.pages.customers = {
               <label class="form-label">몸무게 (kg)</label>
               <input type="number" id="f-petWeight" placeholder="예: 3.5" step="0.1" min="0">
             </div>
+          </div>
+        </div>
+        <div style="border-top:1px dashed var(--border);padding-top:12px">
+          <div style="font-weight:700;margin-bottom:8px;font-size:0.95rem">&#x1F464; 보호자 정보</div>
+          <div class="form-group">
+            <label class="form-label">보호자 이름 <span style="font-size:0.85em;color:var(--text-muted);font-weight:normal">(선택)</span></label>
+            <input type="text" id="f-name" value="" placeholder="보호자 이름" maxlength="50">
+          </div>
+          <div class="form-group">
+            <label class="form-label">연락처 <span class="required">*</span></label>
+            <input type="tel" id="f-phone" value="" placeholder="010-0000-0000">
           </div>
         </div>
       `,
@@ -584,6 +587,9 @@ App.pages.customers = {
     document.querySelectorAll('input[name="customerTag"]:checked').forEach(cb => tags.push(cb.value));
 
     if (!phone) { App.showToast('연락처를 입력해주세요.', 'error'); App.highlightField('f-phone'); return; }
+    // 신규 등록 시 반려견 이름 필수
+    const petNameVal = document.getElementById('f-petName')?.value?.trim();
+    if (!id && !petNameVal) { App.showToast('반려견 이름을 입력해주세요.', 'error'); App.highlightField('f-petName'); return; }
 
     // Check phone duplicate
     const allCustomers = await DB.getAll('customers');

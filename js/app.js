@@ -1491,7 +1491,7 @@ const App = {
         <div class="gs-no-results">
           <div class="gs-no-results-icon">&#x1F50D;</div>
           <div class="gs-no-results-text">검색 결과 없음</div>
-          <button class="btn btn-primary" id="gs-new-customer-btn">+ 새 고객 등록</button>
+          <button class="btn btn-primary" id="gs-new-customer-btn">+ 새 반려견 등록</button>
         </div>`;
       document.getElementById('gs-new-customer-btn')?.addEventListener('click', () => {
         const searchQuery = document.getElementById('global-search-input')?.value?.trim() || '';
@@ -1505,11 +1505,11 @@ const App = {
               App.pages.appointments?.showForm(null, newCustomerId);
             }, 300);
           });
-          // 검색어를 고객명 필드에 pre-fill
+          // 검색어를 반려견 이름 필드에 pre-fill
           if (searchQuery) {
             setTimeout(() => {
-              const nameInput = document.getElementById('f-name');
-              if (nameInput && !nameInput.value) nameInput.value = searchQuery;
+              const petNameInput = document.getElementById('f-petName');
+              if (petNameInput && !petNameInput.value) petNameInput.value = searchQuery;
             }, 50);
           }
         }, 150);
