@@ -546,7 +546,7 @@ App.pages.customers = {
         <!-- 필수 항목 먼저 -->
         <div class="form-group">
           <label class="form-label">&#x1F436; 반려견 이름 <span class="required">*</span></label>
-          <input type="text" id="f-petName" placeholder="반려견 이름" autofocus>
+          <input type="text" id="f-petName" placeholder="반려견 이름">
         </div>
         <div class="form-group">
           <label class="form-label">&#x1F4DE; 연락처 <span class="required">*</span></label>
@@ -574,6 +574,11 @@ App.pages.customers = {
       `,
       onSave: () => this.saveCustomer(id)
     });
+
+    // 신규: 반려견 이름에 포커스 (iOS 모달 autofocus 미지원 대응)
+    if (!id) {
+      setTimeout(() => document.getElementById('f-petName')?.focus(), 300);
+    }
 
     // 신규 등록: 연락처 실시간 중복 매칭 힌트
     if (!id) {
@@ -665,14 +670,16 @@ App.pages.customers = {
 
       // 새 고객 등록 완료 모달
       if (!id) {
+        const petNameForDisplay = (document.getElementById('f-petName')?.value || '').trim();
+        const displayLabel = petNameForDisplay ? petNameForDisplay + (name ? ' (' + name + ')' : '') : (name || '신규 고객');
         App.handleRoute();
         App.showModal({
-          title: '고객 등록 완료',
+          title: '등록 완료',
           hideFooter: true,
           content: `
             <div style="text-align:center;padding:16px 0">
               <div style="font-size:2.2rem;margin-bottom:10px">&#x2705;</div>
-              <div style="font-size:1rem;font-weight:700;margin-bottom:16px">${App.escapeHtml(name)}님이 등록되었습니다</div>
+              <div style="font-size:1rem;font-weight:700;margin-bottom:16px">${App.escapeHtml(displayLabel)} 등록되었습니다</div>
               <div style="display:flex;flex-direction:column;gap:8px;max-width:260px;margin:0 auto">
                 <button class="btn btn-primary" id="post-cust-appt">&#x1F4C5; 예약 등록</button>
                 <button class="btn btn-secondary" id="post-cust-detail">&#x1F4DD; 상세 보기</button>

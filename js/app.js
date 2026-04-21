@@ -1500,7 +1500,9 @@ const App = {
         setTimeout(() => {
           App.pages.customers?.showForm(null, async (newCustomerId) => {
             const newCustomer = await DB.get('customers', newCustomerId);
-            App.showToast(`${newCustomer?.name || ''} 고객이 등록되었습니다.`);
+            const petName = document.getElementById('f-petName')?.value?.trim() || '';
+            const displayLabel = petName ? petName + (newCustomer?.name ? ' (' + newCustomer.name + ')' : '') : App.getCustomerLabel(newCustomer);
+            App.showToast(`${displayLabel} 등록되었습니다.`);
             setTimeout(() => {
               App.pages.appointments?.showForm(null, newCustomerId);
             }, 300);
