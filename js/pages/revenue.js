@@ -256,11 +256,11 @@ App.pages.revenue = {
         ` : ''}
 
         <!-- 이번 주 일별 차트 -->
-        <div class="card">
+        <div class="card chart-card">
           <div class="card-header">
             <span class="card-title">&#x1F4CA; 이번 주 매출 &middot; ${App.formatCurrency(weekRevenue)}</span>
           </div>
-          <div class="card-body">
+          <div class="card-body chart-wrapper">
             ${(() => {
               const niceMax = (v) => { if (v <= 0) return 100000; const mag = Math.pow(10, Math.floor(Math.log10(v))); const norm = v / mag; return Math.ceil(norm * 4) / 4 * mag; };
               const gMax = niceMax(weekMax);
@@ -337,11 +337,11 @@ App.pages.revenue = {
         </div>
 
         <!-- 이번 달 일별 차트 -->
-        <div class="card" style="margin-top:20px">
+        <div class="card chart-card" style="margin-top:20px">
           <div class="card-header">
             <span class="card-title">&#x1F4C5; 이번 달 일별 매출 (${year}년 ${month + 1}월)</span>
           </div>
-          <div class="card-body">
+          <div class="card-body chart-wrapper">
             ${(() => {
               const niceMax = (v) => { if (v <= 0) return 100000; const mag = Math.pow(10, Math.floor(Math.log10(v))); const norm = v / mag; return Math.ceil(norm * 4) / 4 * mag; };
               const mMax = niceMax(monthMax);
@@ -430,11 +430,11 @@ App.pages.revenue = {
         </div>
 
         <!-- 월별 매출 추이 -->
-        <div class="card" style="margin-bottom:20px">
+        <div class="card chart-card" style="margin-bottom:20px">
           <div class="card-header">
             <span class="card-title">&#x1F4C8; 최근 6개월 매출 추이</span>
           </div>
-          <div class="card-body">
+          <div class="card-body chart-wrapper">
             ${(() => {
               const niceMax = (v) => { if (v <= 0) return 1000000; const mag = Math.pow(10, Math.floor(Math.log10(v))); const norm = v / mag; return Math.ceil(norm * 4) / 4 * mag; };
               const tMax = niceMax(trendMax);

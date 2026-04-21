@@ -1630,6 +1630,8 @@ a.stat-card { display: flex; }
   .filter-bar select, .filter-bar input { max-width: 100%; min-width: 0; }
   .card { overflow-x: hidden; max-width: 100%; }
   .card-body { overflow-x: hidden; overflow-y: visible; word-break: break-word; padding: 16px; }
+  .chart-wrapper { overflow: visible !important; }
+  .chart-card { overflow: visible !important; }
   .card-header { padding: 14px 16px; }
   .modal .search-select-dropdown { max-height: 40vh; }
   .modal .search-select-dropdown.open { overflow-y: auto; -webkit-overflow-scrolling: touch; }
