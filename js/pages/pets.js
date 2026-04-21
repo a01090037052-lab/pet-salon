@@ -101,7 +101,7 @@ App.pages.pets = {
         const rowOpacity = isInactive ? 'opacity:0.55;' : '';
         return '<div class="pet-list-item" data-id="' + p.id + '" data-search="' + App.escapeHtml((p.name || '') + ' ' + (p.breed || '') + ' ' + (owner?.name || '') + ' ' + (owner?.phone || '') + ' ' + (p.memo || '') + ' ' + (p.healthNotes || '') + ' ' + (p.allergies || '')) + '" style="display:flex;align-items:center;gap:10px;padding:12px 0;border-bottom:1px solid var(--border-light);cursor:pointer;' + rowOpacity + '">' +
           '<div style="flex-shrink:0">' +
-            (p.photo
+            ((p.photoThumb || p.photo)
               ? '<img src="' + (p.photoThumb || p.photo) + '" style="width:36px;height:36px;border-radius:10px;object-fit:cover" alt="">'
               : '<div style="width:36px;height:36px;border-radius:10px;background:var(--primary-light);display:flex;align-items:center;justify-content:center;font-size:1.1rem">&#x1F436;</div>') +
           '</div>' +
@@ -519,22 +519,66 @@ App.pages.pets = {
       const preferredStyle = document.getElementById('f-preferredStyle')?.value.trim() || '';
       const groomingCycle = Number(document.getElementById('f-groomingCycle')?.value) || null;
       const petStatus = document.getElementById('f-petStatus')?.value || 'active';
-      const photo = document.getElementById('f-photo-data')?.value || '';
+      const photoRaw = document.getElementById('f-photo-data')?.value || '';
 
       if (!customerId) { App.showToast('보호자를 선택해주세요.', 'error'); App.highlightField('f-customerId'); return; }
       if (!name) { App.showToast('이름을 입력해주세요.', 'error'); App.highlightField('f-name'); return; }
 
-      const data = { customerId, name, breed, weight, gender, birthDate, birthYear, neutered, size, temperament, healthNotes, allergies, memo, preferredStyle, groomingCycle, petStatus, photo };
+      const data = { customerId, name, breed, weight, gender, birthDate, birthYear, neutered, size, temperament, healthNotes, allergies, memo, preferredStyle, groomingCycle, petStatus };
 
       if (id) {
         const existing = await DB.get('pets', id);
+        // 사진 처리: 마이그레이션된 사진 보존 + 새 사진은 photos 스토어 사용
+        if (!photoRaw) {
+          // 사진 삭제됨 → 기존 photos 스토어 엔트리도 제거
+          if (existing.photoId) { await DB.deletePhoto(existing.photoId); }
+          data.photo = '';
+          data.photoId = null;
+          data.photoThumb = null;
+        } else if (photoRaw !== existing.photo && !(existing.photoId && !existing.photo)) {
+          // 새 사진 업로드됨 → photos 스토어에 저장
+          if (existing.photoId) { await DB.deletePhoto(existing.photoId); }
+          try {
+            const photoId = await DB.savePhoto(photoRaw, { type: 'pet-profile', ownerId: id });
+            data.photoId = photoId;
+            data.photoThumb = await DB._createThumb(photoRaw, 150, 0.5);
+            data.photo = null;
+          } catch (e) {
+            data.photo = photoRaw; // fallback: 인라인 저장
+          }
+        } else {
+          // 사진 변경 없음 → 기존 photoId/photoThumb/photo 유지
+          data.photoId = existing.photoId;
+          data.photoThumb = existing.photoThumb;
+          data.photo = existing.photo;
+        }
         Object.assign(existing, data);
         await DB.update('pets', existing);
         App.showToast('반려견 정보가 수정되었습니다.');
         App.closeModal();
         App.handleRoute();
       } else {
-        const newPetId = await DB.add('pets', data);
+        // 새 반려견: 사진은 photos 스토어에 저장
+        if (photoRaw) {
+          try {
+            data.photo = null;
+            const newPetId = await DB.add('pets', data);
+            const photoId = await DB.savePhoto(photoRaw, { type: 'pet-profile', ownerId: newPetId });
+            const thumb = await DB._createThumb(photoRaw, 150, 0.5);
+            const pet = await DB.get('pets', newPetId);
+            pet.photoId = photoId;
+            pet.photoThumb = thumb;
+            await DB.update('pets', pet);
+            data._newPetId = newPetId;
+          } catch (e) {
+            // fallback: 인라인 저장
+            data.photo = photoRaw;
+            data._newPetId = await DB.add('pets', data);
+          }
+        } else {
+          data._newPetId = await DB.add('pets', data);
+        }
+        const newPetId = data._newPetId;
         App.showToast('새 반려견이 등록되었습니다.');
         App.closeModal();
         const doAppt = await App.confirm('바로 예약을 등록하시겠습니까?');
@@ -562,6 +606,13 @@ App.pages.pets = {
         DB.getByIndex('appointments', 'petId', id),
         DB.getByIndex('records', 'petId', id)
       ]);
+      // photos 스토어 정리 (반려견 프로필 + 기록 사진)
+      if (pet.photoId) await DB.deletePhoto(pet.photoId).catch(() => {});
+      for (const r of records) {
+        for (const f of ['photoBeforeId', 'photoAfterId', 'photo3Id', 'photo4Id']) {
+          if (r[f]) await DB.deletePhoto(r[f]).catch(() => {});
+        }
+      }
       const ops = [
         ...appointments.map(a => ({ store: 'appointments', id: a.id })),
         ...records.map(r => ({ store: 'records', id: r.id })),

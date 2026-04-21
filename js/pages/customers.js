@@ -722,6 +722,15 @@ App.pages.customers = {
         DB.getByIndex('appointments', 'customerId', id),
         DB.getByIndex('records', 'customerId', id)
       ]);
+      // photos 스토어 정리 (반려견 프로필 + 기록 사진)
+      for (const p of pets) {
+        if (p.photoId) await DB.deletePhoto(p.photoId).catch(() => {});
+      }
+      for (const r of records) {
+        for (const f of ['photoBeforeId', 'photoAfterId', 'photo3Id', 'photo4Id']) {
+          if (r[f]) await DB.deletePhoto(r[f]).catch(() => {});
+        }
+      }
       const ops = [
         ...pets.map(p => ({ store: 'pets', id: p.id })),
         ...appointments.map(a => ({ store: 'appointments', id: a.id })),
