@@ -319,9 +319,12 @@ App.pages.settings = {
               <div>
                 <h4 style="margin-bottom:8px">백업 (내보내기)</h4>
                 <p style="color:var(--text-secondary);font-size:0.9rem;margin-bottom:12px">
-                  모든 데이터를 JSON 파일로 저장합니다. 정기적으로 백업하는 것을 권장합니다.
+                  데이터를 JSON 파일로 저장합니다. 사진 제외 시 파일 크기가 대폭 줄어 빠르고 안전합니다.
                 </p>
-                <button class="btn btn-success" id="btn-export">&#x1F4E5; 데이터 백업하기</button>
+                <div style="display:flex;flex-direction:column;gap:8px">
+                  <button class="btn btn-success" id="btn-export">&#x1F4E5; 백업 (사진 제외 · 권장)</button>
+                  <button class="btn btn-secondary" id="btn-export-full" style="font-size:0.85rem">&#x1F4F7; 사진 포함 백업 (용량 주의)</button>
+                </div>
               </div>
               <div>
                 <h4 style="margin-bottom:8px">복원 (가져오기)</h4>
@@ -508,7 +511,11 @@ App.pages.settings = {
     });
 
     // Export (directBackup 재사용으로 중복 제거)
-    document.getElementById('btn-export')?.addEventListener('click', () => this.directBackup());
+    document.getElementById('btn-export')?.addEventListener('click', () => this.directBackup(false));
+    document.getElementById('btn-export-full')?.addEventListener('click', async () => {
+      const ok = await App.confirm('사진 포함 백업은 파일 크기가 매우 클 수 있습니다 (수백 MB).<br>기기 저장 공간을 확인해주세요.<br>계속하시겠습니까?');
+      if (ok) this.directBackup(true);
+    });
 
     // Import
     document.getElementById('btn-import')?.addEventListener('click', () => {
@@ -610,9 +617,9 @@ App.pages.settings = {
     });
   },
 
-  async directBackup() {
+  async directBackup(includePhotos = false) {
     try {
-      const data = await DB.exportAll();
+      const data = await DB.exportAll({ excludePhotos: !includePhotos });
       const json = JSON.stringify(data, null, 2);
       const blob = new Blob([json], { type: 'application/json' });
       const url = URL.createObjectURL(blob);

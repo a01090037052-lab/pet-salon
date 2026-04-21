@@ -61,12 +61,17 @@ const DB = {
       req.onsuccess = (e) => {
         this.db = e.target.result;
         // Safari ITP 데이터 자동 삭제 방지
+        const isIOS = /iPhone|iPad|iPod/.test(navigator.userAgent);
         if (navigator.storage && navigator.storage.persist) {
           navigator.storage.persist().then(granted => {
             if (!granted && typeof App !== 'undefined' && App.showToast) {
-              // PWA 홈 화면 추가 안내 (persist 실패 시 데이터 삭제 위험)
               const isStandalone = window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone;
-              if (!isStandalone) {
+              if (isIOS && !isStandalone) {
+                // iOS 비홈스크린: 7일 미사용 시 데이터 삭제 위험 — 강력 경고
+                setTimeout(() => {
+                  App.showToast('⚠️ iPhone에서는 홈 화면에 추가하지 않으면 7일 미사용 시 데이터가 삭제될 수 있습니다. 정기 백업을 권장합니다.', 'warning', { duration: 15000 });
+                }, 2000);
+              } else if (!isStandalone) {
                 setTimeout(() => {
                   App.showToast('데이터 보호를 위해 앱을 홈 화면에 추가해주세요.', 'warning', { duration: 8000 });
                 }, 3000);
@@ -459,13 +464,17 @@ const DB = {
 
   // ========== Existing Methods ==========
 
-  async exportAll() {
+  async exportAll(options = {}) {
     if (this.mode === 'server') {
       const res = await fetch('/api/export');
       return await res.json();
     }
+    const excludePhotos = options.excludePhotos || false;
+    const photoFields = ['photo', 'photoBefore', 'photoAfter', 'photo3', 'photo4'];
     const data = {};
     for (const storeName of Object.keys(this.stores)) {
+      // 사진 제외 모드: photos 스토어 건너뛰기
+      if (storeName === 'photos' && excludePhotos) { data[storeName] = []; continue; }
       // photos 스토어는 별도 처리 (Blob을 base64로 변환)
       if (storeName === 'photos') {
         const photos = await this.getAll('photos');
@@ -486,10 +495,20 @@ const DB = {
         data[storeName] = exportPhotos;
         continue;
       }
-      data[storeName] = await this.getAll(storeName);
+      let items = await this.getAll(storeName);
+      // 사진 제��� 모드: 인라인 base64 사진 필드 제거 (pets, records)
+      if (excludePhotos && (storeName === 'pets' || storeName === 'records')) {
+        items = items.map(item => {
+          const cleaned = { ...item };
+          photoFields.forEach(f => { if (cleaned[f] && typeof cleaned[f] === 'string' && cleaned[f].length > 500) delete cleaned[f]; });
+          return cleaned;
+        });
+      }
+      data[storeName] = items;
     }
     data._exportDate = new Date().toISOString();
     data._version = this.version;
+    data._excludePhotos = excludePhotos;
     return data;
   },
 

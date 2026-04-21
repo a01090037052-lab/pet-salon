@@ -1740,7 +1740,10 @@ const App = {
     const lastBackup = await DB.getSetting('lastBackupDate');
     if (!lastBackup) return true; // never backed up
     const days = this.getDaysAgo(lastBackup);
-    return days >= 30;
+    // iOS Safari는 7일 미사용 시 데이터 삭제 위험 → 7일 주기, 그 외 14일
+    const isIOS = /iPhone|iPad|iPod/.test(navigator.userAgent);
+    const threshold = isIOS ? 7 : 14;
+    return days >= threshold;
   },
 
   // ========== SMS Template System ==========
