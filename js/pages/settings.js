@@ -309,6 +309,20 @@ App.pages.settings = {
           </div>
         </div>
 
+        <!-- 저장 공간 최적화 -->
+        <div class="card" style="margin-top:20px">
+          <div class="card-header">
+            <span class="card-title">&#x1F9F9; 저장 공간 최적화</span>
+          </div>
+          <div class="card-body">
+            <p style="color:var(--text-secondary);font-size:0.9rem;margin-bottom:12px">
+              사진 데이터를 최적화하여 저장 공간을 확보합니다. 반려견·기록에 저장된 큰 사진을 압축 분리합니다.
+            </p>
+            <button class="btn btn-primary" id="btn-optimize-storage">&#x1F9F9; 저장 공간 최적화</button>
+            <div id="optimize-result" style="margin-top:8px"></div>
+          </div>
+        </div>
+
         <!-- Backup & Restore -->
         <div class="card" style="margin-top:20px">
           <div class="card-header">
@@ -503,6 +517,27 @@ App.pages.settings = {
         if (el) el.value = val;
       });
       App.showToast('기본값으로 복원되었습니다.');
+    });
+
+    // 저장 공간 최적화
+    document.getElementById('btn-optimize-storage')?.addEventListener('click', async () => {
+      const btn = document.getElementById('btn-optimize-storage');
+      const result = document.getElementById('optimize-result');
+      btn.disabled = true;
+      btn.textContent = '최적화 중...';
+      try {
+        const { migratedCount, savedMB } = await DB.optimizeStorage();
+        if (migratedCount === 0) {
+          result.innerHTML = '<div style="color:var(--success);font-size:0.88rem">이미 최적화되어 있습니다.</div>';
+        } else {
+          result.innerHTML = `<div style="color:var(--success);font-size:0.88rem;font-weight:600">✅ ${migratedCount}장 사진 최적화 완료 (약 ${savedMB}MB 절약)</div>`;
+        }
+      } catch (e) {
+        console.error('Storage optimize error:', e);
+        result.innerHTML = '<div style="color:var(--danger);font-size:0.88rem">최적화 중 오류가 발생했습니다.</div>';
+      }
+      btn.disabled = false;
+      btn.textContent = '🧹 저장 공간 최적화';
     });
 
     // Revenue CSV export

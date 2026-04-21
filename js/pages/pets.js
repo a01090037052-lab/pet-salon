@@ -102,7 +102,7 @@ App.pages.pets = {
         return '<div class="pet-list-item" data-id="' + p.id + '" data-search="' + App.escapeHtml((p.name || '') + ' ' + (p.breed || '') + ' ' + (owner?.name || '') + ' ' + (owner?.phone || '') + ' ' + (p.memo || '') + ' ' + (p.healthNotes || '') + ' ' + (p.allergies || '')) + '" style="display:flex;align-items:center;gap:10px;padding:12px 0;border-bottom:1px solid var(--border-light);cursor:pointer;' + rowOpacity + '">' +
           '<div style="flex-shrink:0">' +
             (p.photo
-              ? '<img src="' + p.photo + '" style="width:36px;height:36px;border-radius:10px;object-fit:cover" alt="">'
+              ? '<img src="' + (p.photoThumb || p.photo) + '" style="width:36px;height:36px;border-radius:10px;object-fit:cover" alt="">'
               : '<div style="width:36px;height:36px;border-radius:10px;background:var(--primary-light);display:flex;align-items:center;justify-content:center;font-size:1.1rem">&#x1F436;</div>') +
           '</div>' +
           '<div style="flex:1;min-width:0">' +
@@ -138,8 +138,8 @@ App.pages.pets = {
       <div class="back-link" onclick="history.length>1?history.back():App.navigate('pets')">&#x2190; 뒤로가기</div>
       <div class="detail-header">
         <div class="pet-detail-photo">
-          ${pet.photo
-            ? `<img src="${pet.photo}" class="photo-viewable" data-caption="${App.escapeHtml(pet.name)}"
+          ${(pet.photoThumb || pet.photo)
+            ? `<img src="${pet.photoThumb || pet.photo}" class="photo-viewable" data-caption="${App.escapeHtml(pet.name)}"
                 style="width:200px;height:200px;object-fit:cover;border-radius:var(--radius-lg);cursor:pointer" alt="${App.escapeHtml(pet.name)}">`
             : `<div style="width:200px;height:200px;border-radius:var(--radius-lg);background:linear-gradient(135deg,#FEF3C7,#FDE68A);display:flex;align-items:center;justify-content:center;font-size:4rem">&#x1F436;</div>`
           }
@@ -337,12 +337,12 @@ App.pages.pets = {
           <label class="form-label">사진</label>
           <div class="pet-photo-upload">
             <div class="pet-photo-preview" id="f-photo-preview">
-              ${pet.photo ? `<img src="${pet.photo}" alt="반려견 사진">` : '<span class="pet-photo-placeholder">&#x1F436;</span>'}
+              ${(pet.photoThumb || pet.photo) ? `<img src="${pet.photoThumb || pet.photo}" alt="반려견 사진">` : '<span class="pet-photo-placeholder">&#x1F436;</span>'}
             </div>
             <div class="flex-1">
               <input type="file" id="f-photo" accept="image/*" style="display:none">
               <button type="button" class="btn btn-sm btn-secondary" id="f-photo-btn">&#x1F4F7; 사진 선택</button>
-              ${pet.photo ? '<button type="button" class="btn btn-sm btn-danger" id="f-photo-remove" style="margin-left:8px">삭제</button>' : ''}
+              ${(pet.photoThumb || pet.photo || pet.photoId) ? '<button type="button" class="btn btn-sm btn-danger" id="f-photo-remove" style="margin-left:8px">삭제</button>' : ''}
               <div class="form-hint">JPG, PNG 등 이미지 파일 (최대 1MB 권장)</div>
             </div>
           </div>
@@ -441,10 +441,17 @@ App.pages.pets = {
       onSave: () => this.savePet(id, presetCustomerId)
     });
 
-    // 기존 사진 데이터 설정 (base64 문자열은 HTML attribute에 넣지 않음)
-    if (pet.photo) {
+    // 기존 사진 데이터 설정 (photos 스토어 마이그레이션 대응)
+    if (pet.photo || pet.photoId) {
       const photoData = document.getElementById('f-photo-data');
-      if (photoData) photoData.value = pet.photo;
+      if (photoData) {
+        if (pet.photo) {
+          photoData.value = pet.photo;
+        } else if (pet.photoId) {
+          const fullPhoto = await DB.getPhoto(pet.photoId);
+          if (fullPhoto) photoData.value = fullPhoto;
+        }
+      }
     }
 
     // 사진 업로드 이벤트

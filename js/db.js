@@ -462,6 +462,73 @@ const DB = {
     }
   },
 
+  // 저장 공간 최적화: 인라인 base64 사진 → photos 스토어 마이그레이션
+  async optimizeStorage() {
+    const photoFields = ['photoBefore', 'photoAfter', 'photo3', 'photo4'];
+    let migratedCount = 0;
+    let savedBytes = 0;
+
+    // 1) Records: 인라인 사진 → photos 스토어
+    const records = await this.getAll('records');
+    for (const r of records) {
+      let changed = false;
+      for (const field of photoFields) {
+        if (r[field] && typeof r[field] === 'string' && r[field].length > 500) {
+          try {
+            const photoId = await this.savePhoto(r[field], { type: 'record-' + field, ownerId: r.id });
+            savedBytes += r[field].length;
+            r[field + 'Id'] = photoId;
+            r[field] = null;
+            changed = true;
+            migratedCount++;
+          } catch (e) { console.warn('Record photo migration failed:', r.id, field, e); }
+        }
+      }
+      if (changed) await this.update('records', r);
+    }
+
+    // 2) Pets: 큰 사진 → photos 스토어 + 작은 썸네일 유지
+    const pets = await this.getAll('pets');
+    for (const p of pets) {
+      if (p.photo && typeof p.photo === 'string' && p.photo.length > 10000) {
+        try {
+          const photoId = await this.savePhoto(p.photo, { type: 'pet-profile', ownerId: p.id });
+          savedBytes += p.photo.length;
+          p.photoId = photoId;
+          // 작은 썸네일 생성 (동기 표시용)
+          p.photoThumb = await this._createThumb(p.photo, 150, 0.5);
+          p.photo = null;
+          await this.update('pets', p);
+          migratedCount++;
+        } catch (e) { console.warn('Pet photo migration failed:', p.id, e); }
+      }
+    }
+
+    const savedMB = (savedBytes / (1024 * 1024)).toFixed(1);
+    return { migratedCount, savedMB };
+  },
+
+  // 썸네일 생성 (base64 → 작은 base64)
+  _createThumb(dataUrl, maxSize = 150, quality = 0.5) {
+    return new Promise((resolve) => {
+      const img = new Image();
+      img.onload = () => {
+        const canvas = document.createElement('canvas');
+        let w = img.width, h = img.height;
+        if (w > maxSize || h > maxSize) {
+          if (w > h) { h = Math.round(h * maxSize / w); w = maxSize; }
+          else { w = Math.round(w * maxSize / h); h = maxSize; }
+        }
+        canvas.width = w;
+        canvas.height = h;
+        canvas.getContext('2d').drawImage(img, 0, 0, w, h);
+        resolve(canvas.toDataURL('image/jpeg', quality));
+      };
+      img.onerror = () => resolve(null);
+      img.src = dataUrl;
+    });
+  },
+
   // ========== Existing Methods ==========
 
   async exportAll(options = {}) {

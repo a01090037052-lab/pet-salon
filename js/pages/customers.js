@@ -245,8 +245,8 @@ App.pages.customers = {
               const petNotes = [p.temperament, p.healthNotes, p.allergies].filter(Boolean);
               return `
               <div class="pet-card" onclick="App.navigate('pets/${p.id}')">
-                ${p.photo
-                  ? `<img src="${p.photo}" class="photo-viewable" data-caption="${App.escapeHtml(p.name)}" style="width:48px;height:48px;object-fit:cover;border-radius:var(--radius);flex-shrink:0" alt="${App.escapeHtml(p.name)}" onclick="event.stopPropagation()">`
+                ${(p.photoThumb || p.photo)
+                  ? `<img src="${p.photoThumb || p.photo}" class="photo-viewable" data-caption="${App.escapeHtml(p.name)}" style="width:48px;height:48px;object-fit:cover;border-radius:var(--radius);flex-shrink:0" alt="${App.escapeHtml(p.name)}" onclick="event.stopPropagation()">`
                   : `<div class="pet-avatar">&#x1F436;</div>`
                 }
                 <div>

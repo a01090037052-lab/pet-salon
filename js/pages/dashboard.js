@@ -130,7 +130,7 @@ App.pages.dashboard = {
         const diffDays = getBirthdayDaysUntil(p.birthDate);
         if (diffDays >= 0 && diffDays <= 7) {
           const customer = customerMap[p.customerId];
-          if (customer) upcomingBirthdays.push({ type: 'pet', name: p.name, ownerName: App.getCustomerLabel(customer), phone: customer.phone, daysUntil: diffDays, photo: p.photo });
+          if (customer) upcomingBirthdays.push({ type: 'pet', name: p.name, ownerName: App.getCustomerLabel(customer), phone: customer.phone, daysUntil: diffDays, photo: p.photoThumb || p.photo });
         }
       });
       customers.forEach(c => {
