@@ -1575,9 +1575,9 @@ const App = {
         <div class="gs-card-section">
           <div class="gs-card-section-title">&#x1F415; 반려견</div>
           ${cPets.map(p => {
-            const hasPhoto = p.photo;
+            const hasPhoto = p.photoThumb || p.photo;
             const photoHtml = hasPhoto
-              ? `<img src="${p.photo}" alt="${this.escapeHtml(p.name)}">`
+              ? `<img src="${p.photoThumb || p.photo}" alt="${this.escapeHtml(p.name)}">`
               : '&#x1F436;';
             const details = [p.breed, p.weight ? p.weight + 'kg' : null].filter(Boolean).join(' | ');
             const notes = [p.temperament, p.healthNotes, p.allergies].filter(Boolean);

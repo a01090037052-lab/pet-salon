@@ -851,6 +851,12 @@ App.pages.records = {
           await DB.update('appointments', appt);
         }
       }
+      // photos 스토어 정리
+      if (record) {
+        for (const f of ['photoBeforeId', 'photoAfterId', 'photo3Id', 'photo4Id']) {
+          if (record[f]) await DB.deletePhoto(record[f]).catch(() => {});
+        }
+      }
       await DB.delete('records', id);
       // pet lastVisitDate 재계산
       if (record && record.petId) {
@@ -1240,8 +1246,11 @@ App.pages.records = {
     const s = designSettings; // shorthand
 
     const infoLines = this._buildInfoLines(record, pet, serviceNames, s);
-    const imgBefore = await this._loadImg(record.photoBefore);
-    const imgAfter = await this._loadImg(record.photoAfter);
+    // 마이그레이션된 사진은 photos 스토어에서 로드, 아니면 인라인
+    const photoBefore = record.photoBefore || (record.photoBeforeId ? await DB.getPhoto(record.photoBeforeId) : null);
+    const photoAfter = record.photoAfter || (record.photoAfterId ? await DB.getPhoto(record.photoAfterId) : null);
+    const imgBefore = await this._loadImg(photoBefore);
+    const imgAfter = await this._loadImg(photoAfter);
 
     // Determine if dark background for text color decisions
     const _isDark = (hex) => {
