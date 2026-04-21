@@ -1269,14 +1269,20 @@ App.pages.records = {
     const petName = pet?.name || '';
     const dateStr = App.formatDate(record.date);
 
+    // 3·4번째 사진도 로드 (photos 스토어 fallback 포함)
+    const photo3Raw = record.photo3 || (record.photo3Id ? await DB.getPhoto(record.photo3Id) : null);
+    const photo4Raw = record.photo4 || (record.photo4Id ? await DB.getPhoto(record.photo4Id) : null);
+    const img3 = await this._loadImg(photo3Raw);
+    const img4 = await this._loadImg(photo4Raw);
+
     // Build photo slots based on available images
     const photos2 = [imgBefore || imgAfter, imgAfter || imgBefore];
-    const photos3 = [imgBefore || imgAfter, imgAfter || imgBefore, imgAfter || imgBefore];
+    const photos3 = [imgBefore || imgAfter, imgAfter || imgBefore, img3 || imgBefore || imgAfter];
     const photos4 = [
       imgBefore || imgAfter,
       imgAfter || imgBefore,
-      imgBefore || imgAfter,
-      imgAfter || imgBefore
+      img3 || imgBefore || imgAfter,
+      img4 || imgAfter || imgBefore
     ];
 
     // Helper: draw placeholder

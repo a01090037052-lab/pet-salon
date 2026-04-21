@@ -529,13 +529,17 @@ App.pages.pets = {
       if (id) {
         const existing = await DB.get('pets', id);
         // 사진 처리: 마이그레이션된 사진 보존 + 새 사진은 photos 스토어 사용
+        // 원본 비교 기준: 인라인 photo 또는 photos 스토어 데이터
+        const originalPhoto = existing.photo || (existing.photoId ? await DB.getPhoto(existing.photoId) : null);
+        const photoChanged = photoRaw && photoRaw !== originalPhoto;
+
         if (!photoRaw) {
           // 사진 삭제됨 → 기존 photos 스토어 엔트리도 제거
           if (existing.photoId) { await DB.deletePhoto(existing.photoId); }
           data.photo = '';
           data.photoId = null;
           data.photoThumb = null;
-        } else if (photoRaw !== existing.photo && !(existing.photoId && !existing.photo)) {
+        } else if (photoChanged) {
           // 새 사진 업로드됨 → photos 스토어에 저장
           if (existing.photoId) { await DB.deletePhoto(existing.photoId); }
           try {
