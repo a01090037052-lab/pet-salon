@@ -543,11 +543,22 @@ App.pages.customers = {
           <textarea id="f-memo" placeholder="특이사항, 메모 등">${App.escapeHtml(customer.memo || '')}</textarea>
         </div>
       ` : `
-        <div style="margin-bottom:12px">
-          <div style="font-weight:700;margin-bottom:8px;font-size:0.95rem">&#x1F436; 반려견 정보</div>
+        <!-- 필수 항목 먼저 -->
+        <div class="form-group">
+          <label class="form-label">&#x1F436; 반려견 이름 <span class="required">*</span></label>
+          <input type="text" id="f-petName" placeholder="반려견 이름" autofocus>
+        </div>
+        <div class="form-group">
+          <label class="form-label">&#x1F4DE; 연락처 <span class="required">*</span></label>
+          <input type="tel" id="f-phone" value="" placeholder="010-0000-0000">
+          <div id="phone-match-hint"></div>
+        </div>
+        <!-- 선택 항목 -->
+        <div style="border-top:1px dashed var(--border);margin-top:14px;padding-top:14px">
+          <div style="font-size:0.82rem;color:var(--text-muted);margin-bottom:10px">선택 항목 (나중에 수정 가능)</div>
           <div class="form-group">
-            <label class="form-label">반려견 이름 <span class="required">*</span></label>
-            <input type="text" id="f-petName" placeholder="반려견 이름">
+            <label class="form-label">보호자 이름</label>
+            <input type="text" id="f-name" value="" placeholder="보호자 이름" maxlength="50">
           </div>
           <div class="form-row">
             <div class="form-group">
@@ -560,20 +571,36 @@ App.pages.customers = {
             </div>
           </div>
         </div>
-        <div style="border-top:1px dashed var(--border);padding-top:12px">
-          <div style="font-weight:700;margin-bottom:8px;font-size:0.95rem">&#x1F464; 보호자 정보</div>
-          <div class="form-group">
-            <label class="form-label">보호자 이름 <span style="font-size:0.85em;color:var(--text-muted);font-weight:normal">(선택)</span></label>
-            <input type="text" id="f-name" value="" placeholder="보호자 이름" maxlength="50">
-          </div>
-          <div class="form-group">
-            <label class="form-label">연락처 <span class="required">*</span></label>
-            <input type="tel" id="f-phone" value="" placeholder="010-0000-0000">
-          </div>
-        </div>
       `,
       onSave: () => this.saveCustomer(id)
     });
+
+    // 신규 등록: 연락처 실시간 중복 매칭 힌트
+    if (!id) {
+      const phoneInput = document.getElementById('f-phone');
+      const hintEl = document.getElementById('phone-match-hint');
+      if (phoneInput && hintEl) {
+        const allCustomers = await DB.getAll('customers');
+        const checkPhone = App.debounce(() => {
+          const digits = (phoneInput.value || '').replace(/\D/g, '');
+          hintEl.innerHTML = '';
+          if (digits.length < 4) return;
+          const match = allCustomers.find(c => (c.phone || '').replace(/\D/g, '') === digits);
+          if (match) {
+            const pets = this._petNames?.[match.id] || '';
+            hintEl.innerHTML = `<div style="color:var(--warning);font-size:0.85rem;margin-top:6px;font-weight:600">&#x26A0; 이미 등록된 번호: ${App.escapeHtml(App.getCustomerLabel(match))}${pets ? ' (' + App.escapeHtml(pets) + ')' : ''} <a href="#customers/${match.id}" style="color:var(--primary);margin-left:6px" onclick="App.closeModal()">상세 보기</a></div>`;
+          }
+        }, 300);
+        phoneInput.addEventListener('input', checkPhone);
+        // 반려견 이름 캐시 (힌트용)
+        const allPets = await DB.getAllLight('pets', ['photo', 'temperament', 'healthNotes', 'preferredStyle']);
+        this._petNames = {};
+        allPets.forEach(p => {
+          if (!this._petNames[p.customerId]) this._petNames[p.customerId] = p.name;
+          else this._petNames[p.customerId] += ', ' + p.name;
+        });
+      }
+    }
   },
 
   async saveCustomer(id) {
