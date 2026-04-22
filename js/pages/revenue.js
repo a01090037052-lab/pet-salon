@@ -269,7 +269,6 @@ App.pages.revenue = {
               return `<div style="position:relative;height:200px;padding:0 4px;margin-left:32px">
                 <div style="position:absolute;left:0;right:0;bottom:45%;border-bottom:1px dashed var(--border-light)"><span style="position:absolute;left:-34px;top:-8px;font-size:0.72rem;color:var(--text-muted)">${Math.round(gMax * 0.5 / 10000)}만</span></div>
                 <div style="position:absolute;left:0;right:0;bottom:90%;border-bottom:1px dashed var(--border-light)"><span style="position:absolute;left:-34px;top:-8px;font-size:0.72rem;color:var(--text-muted)">${Math.round(gMax / 10000)}만</span></div>
-                ${weekAvg > 0 ? `<div style="position:absolute;left:0;right:0;bottom:${avgPct}%;border-bottom:3px dotted rgba(245,158,11,0.5);z-index:3"><span style="position:absolute;left:0;top:-20px;font-size:0.72rem;color:var(--warning);font-weight:700;background:var(--bg-white);padding:1px 6px;border-radius:4px;box-shadow:0 1px 3px rgba(0,0,0,0.1)">평균 ${Math.round(weekAvg / 10000)}만</span></div>` : ''}
                 <div style="display:flex;gap:8px;height:160px;position:relative;z-index:1">
                   ${weekData.map(d => {
                     const barH = d.rev > 0 ? Math.max(8, Math.round((d.rev / gMax) * 130)) : 4;
@@ -283,7 +282,8 @@ App.pages.revenue = {
                     </div>`;
                   }).join('')}
                 </div>
-              </div>`;
+              </div>
+              ${weekAvg > 0 ? `<div style="text-align:center;margin-top:10px;padding-top:8px;border-top:1px solid var(--border-light);font-size:0.85rem;color:var(--text-secondary)">일평균 <strong style="color:var(--warning)">${App.formatCurrency(weekAvg)}</strong></div>` : ''}`;
             })()}
           </div>
         </div>
@@ -350,7 +350,6 @@ App.pages.revenue = {
               return `<div style="position:relative;height:200px;padding:0;overflow-x:auto;margin-left:32px">
                 <div style="position:absolute;left:0;right:0;bottom:45%;border-bottom:1px dashed var(--border-light)"><span style="position:absolute;left:-34px;top:-8px;font-size:0.72rem;color:var(--text-muted)">${Math.round(mMax * 0.5 / 10000)}만</span></div>
                 <div style="position:absolute;left:0;right:0;bottom:90%;border-bottom:1px dashed var(--border-light)"><span style="position:absolute;left:-34px;top:-8px;font-size:0.72rem;color:var(--text-muted)">${Math.round(mMax / 10000)}만</span></div>
-                ${mAvg > 0 ? `<div style="position:absolute;left:0;right:0;bottom:${mAvgPct}%;border-bottom:3px dotted rgba(245,158,11,0.5);z-index:3"><span style="position:absolute;left:0;top:-20px;font-size:0.72rem;color:var(--warning);font-weight:700;background:var(--bg-white);padding:1px 6px;border-radius:4px;box-shadow:0 1px 3px rgba(0,0,0,0.1)">일평균 ${Math.round(mAvg / 10000)}만</span></div>` : ''}
                 <div style="display:flex;gap:2px;height:160px;position:relative;z-index:1">
                   ${monthData.map(d => {
                     const barH = d.rev > 0 ? Math.max(4, Math.round((d.rev / mMax) * 140)) : 2;
@@ -362,7 +361,8 @@ App.pages.revenue = {
                     </div>`;
                   }).join('')}
                 </div>
-              </div>`;
+              </div>
+              ${mAvg > 0 ? `<div style="text-align:center;margin-top:10px;padding-top:8px;border-top:1px solid var(--border-light);font-size:0.85rem;color:var(--text-secondary)">일평균 <strong style="color:var(--warning)">${App.formatCurrency(mAvg)}</strong></div>` : ''}`;
             })()}
           </div>
         </div>
