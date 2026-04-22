@@ -1,6 +1,7 @@
 // ========== Revenue (매출) Page ==========
 App.pages.revenue = {
   async render(container) {
+   try {
     const today = App.getToday();
     // 최근 1년 records만 로드 (성능 최적화), 미수금/전체 매출은 경량 집계
     const oneYearAgo = (() => { const d = new Date(); d.setFullYear(d.getFullYear() - 1); return App.formatLocalDate(d); })();
@@ -526,6 +527,10 @@ App.pages.revenue = {
 
       </div>
     `;
+   } catch (err) {
+    console.error('Revenue render error:', err);
+    container.innerHTML = `<div class="empty-state"><div class="empty-state-icon">&#x26A0;</div><div class="empty-state-text">매출 페이지 로드 중 오류<br><small style="color:var(--text-muted)">${err.message || ''}</small></div><button class="btn btn-primary" onclick="App.navigate('revenue')">다시 시도</button></div>`;
+   }
   },
 
   async init() {
