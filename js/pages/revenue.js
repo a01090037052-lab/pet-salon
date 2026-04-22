@@ -269,7 +269,7 @@ App.pages.revenue = {
               return `<div style="position:relative;height:200px;padding:0 4px;margin-left:32px">
                 <div style="position:absolute;left:0;right:0;bottom:45%;border-bottom:1px dashed var(--border-light)"><span style="position:absolute;left:-34px;top:-8px;font-size:0.72rem;color:var(--text-muted)">${Math.round(gMax * 0.5 / 10000)}만</span></div>
                 <div style="position:absolute;left:0;right:0;bottom:90%;border-bottom:1px dashed var(--border-light)"><span style="position:absolute;left:-34px;top:-8px;font-size:0.72rem;color:var(--text-muted)">${Math.round(gMax / 10000)}만</span></div>
-                ${weekAvg > 0 ? `<div style="position:absolute;left:0;right:0;bottom:${avgPct}%;border-bottom:2px dotted var(--warning);z-index:2"><span style="position:absolute;right:0;top:-16px;font-size:0.72rem;color:var(--warning);font-weight:700">평균 ${Math.round(weekAvg / 10000)}만</span></div>` : ''}
+                ${weekAvg > 0 ? `<div style="position:absolute;left:0;right:0;bottom:${avgPct}%;border-bottom:3px dotted rgba(245,158,11,0.5);z-index:3"><span style="position:absolute;left:0;top:-20px;font-size:0.72rem;color:var(--warning);font-weight:700;background:var(--bg-white);padding:1px 6px;border-radius:4px;box-shadow:0 1px 3px rgba(0,0,0,0.1)">평균 ${Math.round(weekAvg / 10000)}만</span></div>` : ''}
                 <div style="display:flex;gap:8px;height:160px;position:relative;z-index:1">
                   ${weekData.map(d => {
                     const barH = d.rev > 0 ? Math.max(8, Math.round((d.rev / gMax) * 130)) : 4;
@@ -350,7 +350,7 @@ App.pages.revenue = {
               return `<div style="position:relative;height:200px;padding:0;overflow-x:auto;margin-left:32px">
                 <div style="position:absolute;left:0;right:0;bottom:45%;border-bottom:1px dashed var(--border-light)"><span style="position:absolute;left:-34px;top:-8px;font-size:0.72rem;color:var(--text-muted)">${Math.round(mMax * 0.5 / 10000)}만</span></div>
                 <div style="position:absolute;left:0;right:0;bottom:90%;border-bottom:1px dashed var(--border-light)"><span style="position:absolute;left:-34px;top:-8px;font-size:0.72rem;color:var(--text-muted)">${Math.round(mMax / 10000)}만</span></div>
-                ${mAvg > 0 ? `<div style="position:absolute;left:0;right:0;bottom:${mAvgPct}%;border-bottom:2px dotted var(--warning);z-index:2"><span style="position:absolute;right:0;top:-16px;font-size:0.72rem;color:var(--warning);font-weight:700">일평균 ${Math.round(mAvg / 10000)}만</span></div>` : ''}
+                ${mAvg > 0 ? `<div style="position:absolute;left:0;right:0;bottom:${mAvgPct}%;border-bottom:3px dotted rgba(245,158,11,0.5);z-index:3"><span style="position:absolute;left:0;top:-20px;font-size:0.72rem;color:var(--warning);font-weight:700;background:var(--bg-white);padding:1px 6px;border-radius:4px;box-shadow:0 1px 3px rgba(0,0,0,0.1)">일평균 ${Math.round(mAvg / 10000)}만</span></div>` : ''}
                 <div style="display:flex;gap:2px;height:160px;position:relative;z-index:1">
                   ${monthData.map(d => {
                     const barH = d.rev > 0 ? Math.max(4, Math.round((d.rev / mMax) * 140)) : 2;
@@ -358,7 +358,7 @@ App.pages.revenue = {
                     const barBg = d.rev === 0 ? 'var(--border-light)' : isToday ? 'linear-gradient(to top,var(--success),#34D399)' : 'linear-gradient(to top,var(--primary),#818CF8)';
                     return `<div style="flex:1;min-width:8px;position:relative" title="${d.date}: ${App.formatCurrency(d.rev)}">
                       <div style="position:absolute;bottom:16px;left:0;right:0;height:${barH}px;background:${barBg};border-radius:3px 3px 0 0"></div>
-                      <span style="font-size:0.68rem;color:${isToday ? 'var(--primary)' : 'var(--text-muted)'};font-weight:${isToday ? '800' : '500'};position:absolute;bottom:0;left:0;right:0;text-align:center">${d.day % 5 === 1 || isToday ? d.day : ''}</span>
+                      <span style="font-size:0.68rem;color:${isToday ? 'var(--primary)' : 'var(--text-muted)'};font-weight:${isToday ? '800' : '500'};position:absolute;bottom:-2px;left:50%;transform:translateX(-50%);white-space:nowrap">${d.day % 5 === 1 || isToday ? d.day : ''}</span>
                     </div>`;
                   }).join('')}
                 </div>
@@ -443,7 +443,7 @@ App.pages.revenue = {
               return `<div style="position:relative;height:220px;padding:0 8px;margin-left:36px">
                 <div style="position:absolute;left:0;right:0;bottom:45%;border-bottom:1px dashed var(--border-light)"><span style="position:absolute;left:-38px;top:-8px;font-size:0.72rem;color:var(--text-muted)">${Math.round(tMax * 0.5 / 10000)}만</span></div>
                 <div style="position:absolute;left:0;right:0;bottom:90%;border-bottom:1px dashed var(--border-light)"><span style="position:absolute;left:-38px;top:-8px;font-size:0.72rem;color:var(--text-muted)">${Math.round(tMax / 10000)}만</span></div>
-                ${tAvg > 0 ? `<div style="position:absolute;left:0;right:0;bottom:${tAvgPct}%;border-bottom:2px dotted var(--warning);z-index:2"><span style="position:absolute;right:0;top:-16px;font-size:0.72rem;color:var(--warning);font-weight:700">월평균 ${Math.round(tAvg / 10000)}만</span></div>` : ''}
+                ${tAvg > 0 ? `<div style="position:absolute;left:0;right:0;bottom:${tAvgPct}%;border-bottom:3px dotted rgba(245,158,11,0.5);z-index:3"><span style="position:absolute;left:0;top:-20px;font-size:0.72rem;color:var(--warning);font-weight:700;background:var(--bg-white);padding:1px 6px;border-radius:4px;box-shadow:0 1px 3px rgba(0,0,0,0.1)">월평균 ${Math.round(tAvg / 10000)}만</span></div>` : ''}
                 <div style="display:flex;gap:12px;height:180px;position:relative;z-index:1">
                   ${monthlyTrend.map(m => {
                     const barH = m.rev > 0 ? Math.max(8, Math.round((m.rev / tMax) * 130)) : 4;
