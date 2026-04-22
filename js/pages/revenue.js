@@ -358,7 +358,7 @@ App.pages.revenue = {
                     const barBg = d.rev === 0 ? 'var(--border-light)' : isToday ? 'linear-gradient(to top,var(--success),#34D399)' : 'linear-gradient(to top,var(--primary),#818CF8)';
                     return `<div style="flex:1;min-width:8px;position:relative" title="${d.date}: ${App.formatCurrency(d.rev)}">
                       <div style="position:absolute;bottom:16px;left:0;right:0;height:${barH}px;background:${barBg};border-radius:3px 3px 0 0"></div>
-                      <span style="font-size:0.68rem;color:${isToday ? 'var(--primary)' : 'var(--text-muted)'};font-weight:${isToday ? '800' : '500'};position:absolute;bottom:-2px;left:50%;transform:translateX(-50%);white-space:nowrap">${d.day % 5 === 1 || isToday ? d.day : ''}</span>
+                      <span style="font-size:0.68rem;color:${isToday ? 'var(--primary)' : 'var(--text-muted)'};font-weight:${isToday ? '800' : '500'};position:absolute;bottom:-2px;left:50%;transform:translateX(-50%);white-space:nowrap">${isToday ? d.day : (d.day % 5 === 1 && Math.abs(d.day - new Date().getDate()) > 1 ? d.day : '')}</span>
                     </div>`;
                   }).join('')}
                 </div>
@@ -443,7 +443,6 @@ App.pages.revenue = {
               return `<div style="position:relative;height:220px;padding:0 8px;margin-left:36px">
                 <div style="position:absolute;left:0;right:0;bottom:45%;border-bottom:1px dashed var(--border-light)"><span style="position:absolute;left:-38px;top:-8px;font-size:0.72rem;color:var(--text-muted)">${Math.round(tMax * 0.5 / 10000)}만</span></div>
                 <div style="position:absolute;left:0;right:0;bottom:90%;border-bottom:1px dashed var(--border-light)"><span style="position:absolute;left:-38px;top:-8px;font-size:0.72rem;color:var(--text-muted)">${Math.round(tMax / 10000)}만</span></div>
-                ${tAvg > 0 ? `<div style="position:absolute;left:0;right:0;bottom:${tAvgPct}%;border-bottom:3px dotted rgba(245,158,11,0.5);z-index:3"><span style="position:absolute;left:0;top:-20px;font-size:0.72rem;color:var(--warning);font-weight:700;background:var(--bg-white);padding:1px 6px;border-radius:4px;box-shadow:0 1px 3px rgba(0,0,0,0.1)">월평균 ${Math.round(tAvg / 10000)}만</span></div>` : ''}
                 <div style="display:flex;gap:12px;height:180px;position:relative;z-index:1">
                   ${monthlyTrend.map(m => {
                     const barH = m.rev > 0 ? Math.max(8, Math.round((m.rev / tMax) * 130)) : 4;
@@ -462,6 +461,7 @@ App.pages.revenue = {
                 </div>
               </div>`;
             })()}
+            ${tAvg > 0 ? `<div style="text-align:center;margin-top:12px;padding-top:10px;border-top:1px solid var(--border-light);font-size:0.85rem;color:var(--text-secondary)">월평균 <strong style="color:var(--warning)">${App.formatCurrency(tAvg)}</strong></div>` : ''}
             </div>
           </div>
 
