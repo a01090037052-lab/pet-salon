@@ -223,24 +223,26 @@ App.pages.revenue = {
           <div class="card-header">
             <span class="card-title">&#x1F4CB; 오늘 매출 내역 (${todayRecords.length}건)</span>
           </div>
-          <div class="card-body" style="padding:0">
-            ${todayRecords.length === 0 ? '<p style="color:var(--text-muted);text-align:center;padding:20px">아직 오늘 기록이 없습니다</p>' :
-              `<div style="overflow-x:auto"><table class="data-table" style="font-size:0.85rem">
-                <thead><tr><th>시간</th><th>고객/반려견</th><th>금액</th><th>결제</th></tr></thead>
-                <tbody>${todayRecords.sort((a, b) => (b.date + (b.createdAt || '')).localeCompare(a.date + (a.createdAt || ''))).slice(0, 10).map(r => {
-                  const c = customerMap[r.customerId];
-                  const p = petMap[r.petId];
-                  const payLabel = { cash: '현금', card: '카드', transfer: '이체', unpaid: '미결제' };
-                  const time = r.createdAt ? new Date(r.createdAt).toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' }) : '-';
-                  return `<tr${r.paymentMethod === 'unpaid' ? ' style="background:var(--warning-light)"' : ''}>
-                    <td>${time}</td>
-                    <td>${App.escapeHtml((c?.name || '-') + '/' + (p?.name || '-'))}</td>
-                    <td><strong>${App.formatCurrency(App.getRecordAmount(r))}</strong></td>
-                    <td>${payLabel[r.paymentMethod] || '-'}</td>
-                  </tr>`;
-                }).join('')}</tbody>
-              </table></div>
-              ${todayRecords.length > 10 ? '<div style="text-align:center;padding:8px;font-size:0.82rem;color:var(--text-muted)">최근 10건 표시 중</div>' : ''}`}
+          <div class="card-body" style="padding:8px 16px">
+            ${todayRecords.length === 0 ? '<p style="color:var(--text-muted);text-align:center;padding:12px 0">아직 오늘 기록이 없습니다</p>' :
+              todayRecords.sort((a, b) => (b.date + (b.createdAt || '')).localeCompare(a.date + (a.createdAt || ''))).slice(0, 10).map(r => {
+                const c = customerMap[r.customerId];
+                const p = petMap[r.petId];
+                const payLabel = { cash: '현금', card: '카드', transfer: '이체', unpaid: '미결제' };
+                const time = r.createdAt ? new Date(r.createdAt).toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' }) : '-';
+                const isUnpaid = r.paymentMethod === 'unpaid';
+                return `<div style="display:flex;align-items:center;gap:10px;padding:10px 0;border-bottom:1px solid var(--border-light)${isUnpaid ? ';border-left:3px solid var(--danger);padding-left:10px' : ''}">
+                  <span style="font-weight:700;color:var(--primary);min-width:42px;font-size:0.88rem">${time}</span>
+                  <div style="flex:1;min-width:0">
+                    <div style="font-size:0.9rem;font-weight:600">${App.escapeHtml(p?.name || '-')} <span style="color:var(--text-muted);font-weight:400;font-size:0.82rem">${App.escapeHtml(App.getCustomerLabel(c))}</span></div>
+                  </div>
+                  <div style="text-align:right;flex-shrink:0">
+                    <div style="font-weight:700;font-size:0.9rem">${App.formatCurrency(App.getRecordAmount(r))}</div>
+                    <div style="font-size:0.75rem;color:${isUnpaid ? 'var(--danger)' : 'var(--text-muted)'}">${payLabel[r.paymentMethod] || '-'}</div>
+                  </div>
+                </div>`;
+              }).join('') +
+              (todayRecords.length > 10 ? '<div style="text-align:center;padding:8px;font-size:0.82rem;color:var(--text-muted)">최근 10건 표시 중</div>' : '')}
           </div>
         </div>
 
