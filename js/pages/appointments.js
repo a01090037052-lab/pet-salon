@@ -312,40 +312,26 @@ App.pages.appointments = {
       const heatClass = count === 0 ? '' : count <= 1 ? 'cal-heat-1' : count <= 2 ? 'cal-heat-2' : 'cal-heat-3';
       const weekendClass = dow === 6 ? 'cal-sat' : dow === 0 ? 'cal-sun' : '';
 
-      // 예약 바 생성
+      // 예약 바 생성 (전체 너비 사용 — 이름 잘림 방지)
       let barsHtml = '';
       if (!isClosed && count > 0) {
         const appts = dateAppts[dateStr] || [];
         const show = appts.slice(0, maxBars);
-        barsHtml = show.map((a, i) => {
+        barsHtml = show.map(a => {
           const pet = petMap[a.petId];
           const pName = pet?.name || '?';
-          const shortName = pName.length > 3 ? pName.slice(0, 3) : pName;
           const barClass = 'cal-bar-' + (statusMap[a.status] || 'default');
           const timeStr = !isMobile && a.time ? a.time.slice(0,5) + ' ' : '';
-          // 첫 번째 바는 헤더에 포함
-          if (i === 0) return '';
-          return `<div class="cal-bar ${barClass}">${timeStr}${App.escapeHtml(shortName)}</div>`;
+          return `<div class="cal-bar ${barClass}">${timeStr}${App.escapeHtml(pName)}</div>`;
         }).join('');
         if (count > maxBars) barsHtml += `<div class="cal-overflow">+${count - maxBars}</div>`;
-      }
-
-      // 첫 번째 바 (헤더에 통합)
-      const firstAppt = (!isClosed && count > 0) ? (dateAppts[dateStr] || [])[0] : null;
-      let firstBarHtml = '';
-      if (firstAppt) {
-        const pet = petMap[firstAppt.petId];
-        const pName = pet?.name || '?';
-        const shortName = pName.length > 3 ? pName.slice(0, 3) : pName;
-        const barClass = 'cal-bar-' + (statusMap[firstAppt.status] || 'default');
-        firstBarHtml = `<div class="cal-bar ${barClass}" style="flex:1;min-width:0">${App.escapeHtml(shortName)}</div>`;
       }
 
       cellsHtml += `
         <div class="calendar-cell ${isToday ? 'today' : ''} ${isClosed ? 'closed' : ''} ${heatClass}" data-date="${dateStr}">
           <div class="cal-cell-header">
             <span class="cal-day-num ${weekendClass}">${d}</span>
-            ${isClosed ? '<span style="font-size:0.58rem;color:var(--danger);font-weight:700">휴무</span>' : firstBarHtml}
+            ${isClosed ? '<span style="font-size:0.58rem;color:var(--danger);font-weight:700">휴무</span>' : ''}
           </div>
           ${barsHtml}
         </div>`;

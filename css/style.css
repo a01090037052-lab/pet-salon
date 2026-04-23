@@ -1776,12 +1776,10 @@ a.stat-card { display: flex; }
 .calendar-cell.cal-heat-2 { background: rgba(99,102,241, 0.10); }
 .calendar-cell.cal-heat-3 { background: rgba(99,102,241, 0.18); }
 
-/* 일자 + 첫 바 헤더 */
+/* 일자 헤더 */
 .cal-cell-header {
-  display: flex;
-  align-items: center;
-  gap: 3px;
-  margin-bottom: 1px;
+  margin-bottom: 2px;
+  line-height: 1;
 }
 .cal-day-num {
   font-size: 0.78rem;
