@@ -40,12 +40,13 @@ App.pages.appointments = {
         </div>
       </div>
 
-      <!-- 월별 캘린더 뷰 (항상 표시) -->
+      <!-- 월별 캘린더 뷰 -->
       <div id="calendar-container" class="calendar-container">
         <div class="calendar-header">
-          <button class="btn btn-sm btn-secondary" id="cal-prev">&larr; 이전</button>
+          <button class="btn btn-sm btn-secondary" id="cal-prev">&#x25C0;</button>
           <span class="calendar-title" id="cal-title"></span>
-          <button class="btn btn-sm btn-secondary" id="cal-next">다음 &rarr;</button>
+          <button class="btn btn-sm btn-secondary" id="cal-next">&#x25B6;</button>
+          <button class="cal-today-btn" id="cal-today-btn">오늘</button>
         </div>
         <div class="calendar-grid" id="cal-grid">
           <div class="calendar-day-label">월</div>
@@ -53,8 +54,8 @@ App.pages.appointments = {
           <div class="calendar-day-label">수</div>
           <div class="calendar-day-label">목</div>
           <div class="calendar-day-label">금</div>
-          <div class="calendar-day-label">토</div>
-          <div class="calendar-day-label">일</div>
+          <div class="calendar-day-label cal-sat">토</div>
+          <div class="calendar-day-label cal-sun">일</div>
         </div>
       </div>
 
@@ -256,6 +257,13 @@ App.pages.appointments = {
     const title = document.getElementById('cal-title');
     if (title) title.textContent = `${year}년 ${month + 1}월`;
 
+    // 오늘 버튼: 현재 달이면 숨김
+    const todayBtn = document.getElementById('cal-today-btn');
+    const todayDate = new Date();
+    if (todayBtn) {
+      todayBtn.style.display = (year === todayDate.getFullYear() && month === todayDate.getMonth()) ? 'none' : '';
+    }
+
     const firstDay = new Date(year, month, 1);
     const lastDay = new Date(year, month + 1, 0);
     const startDow = firstDay.getDay(); // 0=Sun
@@ -283,44 +291,63 @@ App.pages.appointments = {
     const customerMap = this._customerMap || {};
     const petMap = this._petMap || {};
 
+    const isMobile = window.matchMedia('(max-width: 768px)').matches;
+    const statusMap = { pending: 'pending', confirmed: 'confirmed', in_progress: 'in_progress', completed: 'completed' };
+    const maxBars = 3;
+
     let cellsHtml = '';
     // 빈 칸 (이전 달)
     for (let i = 0; i < offset; i++) {
       cellsHtml += '<div class="calendar-cell empty"></div>';
     }
     // 날짜 셀
-    const closedDays = this._closedDays || [];
+    const closedDays = (this._closedDays || []).map(Number);
     for (let d = 1; d <= daysInMonth; d++) {
       const dateStr = `${year}-${String(month + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
       const count = dateCounts[dateStr] || 0;
       const isToday = dateStr === today;
       const cellDate = new Date(year, month, d);
-      const isClosed = closedDays.includes(cellDate.getDay());
-      let colorClass = 'cal-gray';
-      if (count >= 3) colorClass = 'cal-red';
-      else if (count >= 1) colorClass = 'cal-blue';
+      const dow = cellDate.getDay();
+      const isClosed = closedDays.includes(dow);
+      const heatClass = count === 0 ? '' : count <= 1 ? 'cal-heat-1' : count <= 2 ? 'cal-heat-2' : 'cal-heat-3';
+      const weekendClass = dow === 6 ? 'cal-sat' : dow === 0 ? 'cal-sun' : '';
 
-      // 예약 미리보기 (데스크톱만 노출, 모바일은 CSS로 숨김)
-      let previewHtml = '';
+      // 예약 바 생성
+      let barsHtml = '';
       if (!isClosed && count > 0) {
         const appts = dateAppts[dateStr] || [];
-        previewHtml = appts.slice(0, 3).map(a => {
+        const show = appts.slice(0, maxBars);
+        barsHtml = show.map((a, i) => {
           const pet = petMap[a.petId];
           const pName = pet?.name || '?';
           const shortName = pName.length > 3 ? pName.slice(0, 3) : pName;
-          return '<div class="cal-preview">' +
-            '<span class="cal-preview-time">' + (a.time ? a.time.slice(0,5) : '') + '</span> ' + App.escapeHtml(shortName) + '</div>';
+          const barClass = 'cal-bar-' + (statusMap[a.status] || 'default');
+          const timeStr = !isMobile && a.time ? a.time.slice(0,5) + ' ' : '';
+          // 첫 번째 바는 헤더에 포함
+          if (i === 0) return '';
+          return `<div class="cal-bar ${barClass}">${timeStr}${App.escapeHtml(shortName)}</div>`;
         }).join('');
-        if (count > 3) previewHtml += '<div class="cal-preview-more">+' + (count - 3) + '</div>';
+        if (count > maxBars) barsHtml += `<div class="cal-overflow">+${count - maxBars}</div>`;
+      }
+
+      // 첫 번째 바 (헤더에 통합)
+      const firstAppt = (!isClosed && count > 0) ? (dateAppts[dateStr] || [])[0] : null;
+      let firstBarHtml = '';
+      if (firstAppt) {
+        const pet = petMap[firstAppt.petId];
+        const pName = pet?.name || '?';
+        const shortName = pName.length > 3 ? pName.slice(0, 3) : pName;
+        const barClass = 'cal-bar-' + (statusMap[firstAppt.status] || 'default');
+        firstBarHtml = `<div class="cal-bar ${barClass}" style="flex:1;min-width:0">${App.escapeHtml(shortName)}</div>`;
       }
 
       cellsHtml += `
-        <div class="calendar-cell ${isToday ? 'today' : ''} ${isClosed ? 'closed' : ''}" data-date="${dateStr}" style="${isClosed ? 'background:var(--bg);opacity:0.6' : ''}">
-          <div style="display:flex;justify-content:space-between;align-items:center">
-            <span class="cal-day-num">${d}</span>
-            ${isClosed ? '<span style="font-size:0.7rem;color:var(--danger);font-weight:700">휴무</span>' : count > 0 ? `<span class="cal-count-btn ${colorClass}">${count}</span>` : ''}
+        <div class="calendar-cell ${isToday ? 'today' : ''} ${isClosed ? 'closed' : ''} ${heatClass}" data-date="${dateStr}">
+          <div class="cal-cell-header">
+            <span class="cal-day-num ${weekendClass}">${d}</span>
+            ${isClosed ? '<span style="font-size:0.58rem;color:var(--danger);font-weight:700">휴무</span>' : firstBarHtml}
           </div>
-          ${previewHtml}
+          ${barsHtml}
         </div>`;
     }
 
@@ -476,6 +503,46 @@ App.pages.appointments = {
       this._hideDateSummary();
       this.renderCalendar();
     });
+
+    // 오늘 돌아가기 버튼
+    document.getElementById('cal-today-btn')?.addEventListener('click', () => {
+      const now = new Date();
+      this._calYear = now.getFullYear();
+      this._calMonth = now.getMonth();
+      this._hideDateSummary();
+      this.renderCalendar();
+      // 오늘 셀 선택 + 요약 패널
+      setTimeout(() => {
+        const todayStr = App.getToday();
+        const todayCell = document.querySelector(`.calendar-cell[data-date="${todayStr}"]`);
+        if (todayCell) {
+          document.querySelectorAll('.calendar-cell').forEach(c => c.classList.remove('selected'));
+          todayCell.classList.add('selected');
+        }
+        this._updateDateSummary(todayStr);
+      }, 50);
+    });
+
+    // 스와이프 월 전환
+    const calGrid = document.getElementById('cal-grid');
+    if (calGrid) {
+      let startX = 0, startY = 0;
+      calGrid.addEventListener('touchstart', (e) => {
+        startX = e.touches[0].clientX;
+        startY = e.touches[0].clientY;
+      }, { passive: true });
+      calGrid.addEventListener('touchend', (e) => {
+        const dx = e.changedTouches[0].clientX - startX;
+        const dy = e.changedTouches[0].clientY - startY;
+        // 가로 이동이 세로보다 크고 50px 이상일 때만
+        if (Math.abs(dx) > Math.abs(dy) && Math.abs(dx) > 50) {
+          if (dx < 0) { this._calMonth++; if (this._calMonth > 11) { this._calMonth = 0; this._calYear++; } }
+          else { this._calMonth--; if (this._calMonth < 0) { this._calMonth = 11; this._calYear--; } }
+          this._hideDateSummary();
+          this.renderCalendar();
+        }
+      }, { passive: true });
+    }
 
     // 요약 패널 "예약 추가" 버튼
     document.getElementById('cal-date-add-appt')?.addEventListener('click', () => {
