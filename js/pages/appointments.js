@@ -535,7 +535,7 @@ App.pages.appointments = {
         const dx = e.changedTouches[0].clientX - startX;
         const dy = e.changedTouches[0].clientY - startY;
         // 가로 이동이 세로보다 크고 50px 이상일 때만
-        if (Math.abs(dx) > Math.abs(dy) && Math.abs(dx) > 50) {
+        if (Math.abs(dx) > Math.abs(dy) * 1.5 && Math.abs(dx) > 80) {
           if (dx < 0) { this._calMonth++; if (this._calMonth > 11) { this._calMonth = 0; this._calYear++; } }
           else { this._calMonth--; if (this._calMonth < 0) { this._calMonth = 11; this._calYear--; } }
           this._hideDateSummary();

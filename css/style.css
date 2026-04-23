@@ -1803,6 +1803,7 @@ a.stat-card { display: flex; }
   font-size: 0.72rem;
 }
 .calendar-cell.selected .cal-day-num { color: var(--primary); font-weight: 800; }
+.calendar-cell.today.selected .cal-day-num { color: #fff; }
 .cal-day-num.cal-sat { color: var(--primary); }
 .cal-day-num.cal-sun { color: var(--danger); }
 
