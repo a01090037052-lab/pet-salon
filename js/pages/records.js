@@ -954,61 +954,85 @@ App.pages.records = {
     const customerMap = {}; customers.forEach(c => customerMap[c.id] = c);
     const petMap = {}; pets.forEach(p => petMap[p.id] = p);
 
+    const dayNames = ['일', '월', '화', '수', '목', '금', '토'];
+    const reportDow = dayNames[new Date(reportDate + 'T00:00:00').getDay()];
+    const groomerMax = Object.values(groomerBreakdown).reduce((m, d) => Math.max(m, d.amount), 1);
+    const paymentColors = { cash: 'var(--success)', card: 'var(--primary)', transfer: 'var(--info)', unpaid: 'var(--danger)' };
+
     const content = `
       <div id="daily-report-content">
-        <div style="text-align:center;margin-bottom:20px">
+        <!-- 헤더 -->
+        <div style="text-align:center;margin-bottom:20px;padding-bottom:16px;border-bottom:2px solid var(--border)">
           <div style="display:flex;align-items:center;justify-content:center;gap:8px;margin-bottom:8px">
-            <input type="date" id="report-date-picker" value="${reportDate}" style="width:auto;padding:6px 12px;font-size:0.95rem;font-weight:700;color:var(--text-secondary);text-align:center">
+            <input type="date" id="report-date-picker" value="${reportDate}" style="width:auto;padding:8px 14px;font-size:1rem;font-weight:700;color:var(--text-primary);text-align:center;border-radius:8px;min-height:44px">
           </div>
-          <div style="font-size:2rem;font-weight:800;color:var(--primary);margin-top:4px">${App.formatCurrency(totalRevenue)}</div>
-          <div style="color:var(--text-muted);margin-top:4px">총 ${todayRecs.length}건</div>
+          <div style="font-size:0.88rem;color:var(--text-muted);margin-bottom:4px">${reportDow}요일</div>
+          <div style="font-size:2.2rem;font-weight:800;color:var(--primary)">${App.formatCurrency(totalRevenue)}</div>
+          <div style="display:flex;justify-content:center;gap:16px;margin-top:8px;font-size:0.88rem">
+            <span style="color:var(--text-secondary)">총 <strong>${todayRecs.length}</strong>건</span>
+            ${todayRecs.length > 0 ? `<span style="color:var(--text-secondary)">객단가 <strong>${App.formatCurrency(Math.round(totalRevenue / todayRecs.length))}</strong></span>` : ''}
+          </div>
         </div>
 
-        <div style="margin-bottom:16px">
-          <div style="font-weight:700;margin-bottom:8px;font-size:0.95rem">&#x1F4B3; 결제 수단별</div>
-          <div style="display:flex;flex-direction:column;gap:6px">
+        <!-- 결제 수단별 -->
+        <div style="margin-bottom:20px">
+          <div style="font-weight:700;margin-bottom:10px;font-size:0.95rem">&#x1F4B3; 결제 수단별</div>
+          <div style="display:flex;gap:8px;flex-wrap:wrap">
             ${paymentMethods.map(m => {
               const data = paymentBreakdown[m];
               if (!data || data.count === 0) return '';
-              return `<div style="display:flex;justify-content:space-between;padding:8px 12px;background:var(--bg);border-radius:8px${m === 'unpaid' ? ';border-left:3px solid var(--danger)' : ''}">
-                <span>${this.getPaymentLabel(m)} (${data.count}건)</span>
-                <strong${m === 'unpaid' ? ' class="text-danger"' : ''}>${App.formatCurrency(data.amount)}</strong>
+              const pct = totalRevenue > 0 ? Math.round((data.amount / totalRevenue) * 100) : 0;
+              return `<div style="flex:1;min-width:70px;background:var(--bg);border-radius:10px;padding:12px;text-align:center${m === 'unpaid' ? ';border:1.5px solid var(--danger)' : ''}">
+                <div style="font-size:0.78rem;color:var(--text-muted);margin-bottom:4px">${this.getPaymentLabel(m)}</div>
+                <div style="font-weight:800;font-size:1rem;color:${paymentColors[m] || 'var(--text-primary)'}">${App.formatCurrency(data.amount)}</div>
+                <div style="font-size:0.75rem;color:var(--text-muted);margin-top:2px">${data.count}건 · ${pct}%</div>
               </div>`;
             }).filter(Boolean).join('')}
-            ${Object.keys(paymentBreakdown).filter(m => !paymentMethods.includes(m) && paymentBreakdown[m].count > 0).map(m => {
-              const data = paymentBreakdown[m];
-              return `<div style="display:flex;justify-content:space-between;padding:8px 12px;background:var(--bg);border-radius:8px">
-                <span>기타 (${data.count}건)</span>
-                <strong>${App.formatCurrency(data.amount)}</strong>
+          </div>
+        </div>
+
+        <!-- 미용사별 -->
+        ${Object.keys(groomerBreakdown).length > 0 ? `
+        <div style="margin-bottom:20px">
+          <div style="font-weight:700;margin-bottom:10px;font-size:0.95rem">&#x2702; 미용사별</div>
+          <div style="display:flex;flex-direction:column;gap:8px">
+            ${Object.entries(groomerBreakdown).sort((a, b) => b[1].amount - a[1].amount).map(([name, data]) => {
+              const pct = Math.max(5, Math.round((data.amount / groomerMax) * 100));
+              return `<div style="background:var(--bg);border-radius:10px;padding:10px 14px">
+                <div style="display:flex;justify-content:space-between;margin-bottom:6px">
+                  <span style="font-weight:700">${App.escapeHtml(name)} <span style="font-weight:400;color:var(--text-muted);font-size:0.82rem">${data.count}건</span></span>
+                  <strong style="color:var(--primary)">${App.formatCurrency(data.amount)}</strong>
+                </div>
+                <div style="height:6px;background:var(--border-light);border-radius:3px;overflow:hidden">
+                  <div style="height:100%;width:${pct}%;background:var(--primary);border-radius:3px"></div>
+                </div>
               </div>`;
             }).join('')}
           </div>
         </div>
+        ` : ''}
 
-        <div style="margin-bottom:16px">
-          <div style="font-weight:700;margin-bottom:8px;font-size:0.95rem">&#x2702; 미용사별</div>
-          <div style="display:flex;flex-direction:column;gap:6px">
-            ${Object.entries(groomerBreakdown).sort((a, b) => b[1].amount - a[1].amount).map(([name, data]) => `
-              <div style="display:flex;justify-content:space-between;padding:8px 12px;background:var(--bg);border-radius:8px">
-                <span>${App.escapeHtml(name)} (${data.count}건)</span>
-                <strong>${App.formatCurrency(data.amount)}</strong>
-              </div>
-            `).join('')}
-          </div>
-        </div>
-
+        <!-- 상세 내역 (시간순) -->
         <div>
-          <div style="font-weight:700;margin-bottom:8px;font-size:0.95rem">&#x1F4CB; 상세 내역</div>
-          <div style="display:flex;flex-direction:column;gap:6px">
-            ${todayRecs.length === 0 ? '<p style="color:var(--text-muted);text-align:center">오늘 기록이 없습니다</p>' :
-              todayRecs.map(r => {
+          <div style="font-weight:700;margin-bottom:10px;font-size:0.95rem">&#x1F4CB; 상세 내역</div>
+          <div style="display:flex;flex-direction:column;gap:4px">
+            ${todayRecs.length === 0 ? '<p style="color:var(--text-muted);text-align:center;padding:16px">기록이 없습니다</p>' :
+              todayRecs.sort((a, b) => (a.createdAt || '').localeCompare(b.createdAt || '')).map(r => {
                 const customer = customerMap[r.customerId];
                 const pet = petMap[r.petId];
-                return `<div style="display:flex;align-items:center;gap:12px;padding:8px 12px;background:var(--bg);border-radius:8px;font-size:0.88rem${r.paymentMethod === 'unpaid' ? ';border-left:3px solid var(--danger)' : ''}">
-                  <span style="color:var(--text-muted);min-width:50px">${this.getPaymentLabel(r.paymentMethod)}</span>
-                  <span class="flex-1"><strong>${App.escapeHtml(App.getCustomerLabel(customer))}</strong> / ${App.escapeHtml(pet?.name || '-')}</span>
-                  <span style="font-weight:600">${App.escapeHtml(r.groomer || '-')}</span>
-                  <strong${r.paymentMethod === 'unpaid' ? ' class="text-danger"' : ''}>${App.formatCurrency(App.getRecordAmount(r))}</strong>
+                const time = r.createdAt ? new Date(r.createdAt).toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' }) : '';
+                const svcDisplay = r.service || r.style || '';
+                const isUnpaid = r.paymentMethod === 'unpaid';
+                return `<div style="display:flex;align-items:center;gap:10px;padding:10px 12px;background:var(--bg);border-radius:8px${isUnpaid ? ';border-left:3px solid var(--danger)' : ''}">
+                  <span style="font-weight:700;color:var(--primary);min-width:40px;font-size:0.85rem">${time}</span>
+                  <div style="flex:1;min-width:0">
+                    <div style="font-weight:700;font-size:0.9rem">${App.escapeHtml(pet?.name || '-')} <span style="font-weight:400;color:var(--text-muted);font-size:0.82rem">${App.escapeHtml(App.getCustomerLabel(customer))}</span></div>
+                    ${svcDisplay ? `<div style="font-size:0.78rem;color:var(--text-secondary);margin-top:1px">${App.escapeHtml(svcDisplay)}${r.groomer ? ' · ' + App.escapeHtml(r.groomer) : ''}</div>` : (r.groomer ? `<div style="font-size:0.78rem;color:var(--text-secondary);margin-top:1px">${App.escapeHtml(r.groomer)}</div>` : '')}
+                  </div>
+                  <div style="text-align:right;flex-shrink:0">
+                    <div style="font-weight:700;font-size:0.9rem">${App.formatCurrency(App.getRecordAmount(r))}</div>
+                    <div style="font-size:0.72rem;color:${isUnpaid ? 'var(--danger)' : 'var(--text-muted)'}">${this.getPaymentLabel(r.paymentMethod)}</div>
+                  </div>
                 </div>`;
               }).join('')}
           </div>
