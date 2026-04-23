@@ -1151,6 +1151,10 @@ App.pages.records = {
 
   // ========== 사진 카드 생성 & 공유 ==========
   CARD_TEMPLATES: {
+    classic: { name: '클래식', color: '#1A1A1A', bgColor: '#FFFFFF', emoji: '\u2702', footerBg: '#1A1A1A' },
+    film: { name: '필름', color: '#8B7355', bgColor: '#F5F0E8', emoji: '\uD83C\uDFDE', footerBg: '#5C4A32' },
+    pastel: { name: '파스텔', color: '#DB2777', bgColor: '#FFF0F5', emoji: '\uD83C\uDF37', footerBg: '#F9A8D4' },
+    dark: { name: '다크', color: '#C9A96E', bgColor: '#0F172A', emoji: '\u2728', footerBg: '#1E293B' },
     default: { name: '기본', color: '#6366F1', bgColor: '#F8FAFC', emoji: '\u2702', footerBg: '#6366F1' },
     spring: { name: '봄', color: '#EC4899', bgColor: '#FDF2F8', emoji: '\uD83C\uDF38', footerBg: '#EC4899' },
     summer: { name: '여름', color: '#06B6D4', bgColor: '#ECFEFF', emoji: '\uD83C\uDF0A', footerBg: '#06B6D4' },
@@ -1645,6 +1649,98 @@ App.pages.records = {
       ctx.fillText(footerMessage, W / 2, H - 20);
     }
 
+    // ===== 네컷 세로 (인생네컷 스타일) =====
+    else if (layout === 'photobooth') {
+      const W = 400, pad = 24, gap = 10;
+      const photoW = W - pad * 2;
+      const photoH = Math.round(photoW * 3 / 4);
+      const H = pad + (photoH + gap) * 4 - gap + 100;
+      canvas.width = W; canvas.height = H;
+      ctx = canvas.getContext('2d');
+      ctx.fillStyle = bgColor; ctx.fillRect(0, 0, W, H);
+
+      // 필름 테마: 상하 스프로킷 홀
+      if (s.template === 'film') {
+        for (let x = 20; x < W; x += 30) {
+          ctx.fillStyle = 'rgba(0,0,0,0.15)';
+          this._roundRect(ctx, x, 6, 14, 10, 3); ctx.fill();
+          this._roundRect(ctx, x, H - 16, 14, 10, 3); ctx.fill();
+        }
+      }
+
+      // 4장 사진
+      const allPhotos = [photos4[0], photos4[1], photos4[2], photos4[3]];
+      for (let i = 0; i < 4; i++) {
+        const py = pad + i * (photoH + gap);
+        // 프레임
+        if (s.template === 'classic' || s.template === 'film') {
+          ctx.strokeStyle = borderColor; ctx.lineWidth = 1;
+          ctx.strokeRect(pad - 1, py - 1, photoW + 2, photoH + 2);
+        }
+        ctx.save();
+        this._roundRect(ctx, pad, py, photoW, photoH, s.template === 'pastel' ? 12 : 4);
+        ctx.clip();
+        _drawPhoto(ctx, allPhotos[i], pad, py, photoW, photoH);
+        ctx.restore();
+      }
+
+      // 하단 정보
+      const infoY = pad + 4 * (photoH + gap) + 10;
+      ctx.textAlign = 'center';
+      ctx.fillStyle = textColor; ctx.font = 'bold 20px ' + fontFamily;
+      ctx.fillText(petName, W / 2, infoY);
+      ctx.fillStyle = textSub; ctx.font = '13px ' + fontFamily;
+      ctx.fillText(dateStr, W / 2, infoY + 22);
+      // 매장 브랜딩
+      ctx.fillStyle = mainColor; ctx.font = 'bold 13px ' + fontFamily;
+      const shopLine = (s.showShopPhone && shopPhone) ? shopName + ' · ' + shopPhone : shopName;
+      ctx.fillText(shopLine, W / 2, infoY + 44);
+    }
+
+    // ===== 인스타 스토리 (9:16) =====
+    else if (layout === 'story') {
+      const W = 1080, H = 1920;
+      canvas.width = W; canvas.height = H;
+      ctx = canvas.getContext('2d');
+      ctx.fillStyle = bgColor; ctx.fillRect(0, 0, W, H);
+
+      // 상단 매장명
+      ctx.textAlign = 'center';
+      ctx.fillStyle = mainColor; ctx.font = 'bold 40px ' + fontFamily;
+      ctx.fillText(emoji + ' ' + shopName, W / 2, 100);
+
+      // 메인 사진 (크게)
+      const photoPad = 60;
+      const photoW = W - photoPad * 2;
+      const photoH = Math.round(photoW * 4 / 3);
+      const photoY = 160;
+      ctx.save();
+      this._roundRect(ctx, photoPad, photoY, photoW, photoH, 24);
+      ctx.clip();
+      _drawPhoto(ctx, imgBefore || imgAfter, photoPad, photoY, photoW, photoH);
+      ctx.restore();
+
+      // 반려견 정보
+      const infoY = photoY + photoH + 80;
+      ctx.fillStyle = textColor; ctx.font = 'bold 48px ' + fontFamily;
+      ctx.fillText(petName, W / 2, infoY);
+      if (serviceNames) {
+        ctx.fillStyle = textSub; ctx.font = '32px ' + fontFamily;
+        ctx.fillText(serviceNames, W / 2, infoY + 50);
+      }
+      ctx.fillStyle = textSub; ctx.font = '28px ' + fontFamily;
+      ctx.fillText(dateStr, W / 2, infoY + 95);
+
+      // 하단 브랜딩
+      ctx.fillStyle = mainColor; ctx.font = 'bold 30px ' + fontFamily;
+      const footerY = H - 100;
+      ctx.fillText(shopName, W / 2, footerY);
+      if (s.showShopPhone && shopPhone) {
+        ctx.fillStyle = textSub; ctx.font = '24px ' + fontFamily;
+        ctx.fillText(shopPhone, W / 2, footerY + 40);
+      }
+    }
+
     // Fallback
     else {
       canvas.width = 400; canvas.height = 900;
@@ -1660,15 +1756,21 @@ App.pages.records = {
   // ========== Photo Card System (사진 카드) ==========
   _cardPhotos: [],
   _CARD_LAYOUTS: {
-    single: { name: '1컷', icon: '📷', photos: 1 },
-    polaroid: { name: '폴라로이드', icon: '📸', photos: 1 },
-    circle: { name: '원형', icon: '⭕', photos: 1 },
+    photobooth: { name: '네컷 세로', icon: '🎞', photos: 4 },
+    story: { name: '스토리', icon: '📱', photos: 1 },
+    grid4: { name: '4컷 그리드', icon: '⊞', photos: 4 },
     strip2: { name: '2컷', icon: '🎬', photos: 2 },
+    single: { name: '1컷', icon: '📷', photos: 1 },
+    strip4: { name: '4컷 가로', icon: '📐', photos: 4 },
+    polaroid: { name: '폴라로이드', icon: '📸', photos: 1 },
     strip3: { name: '3컷', icon: '🖼', photos: 3 },
-    strip4: { name: '4컷 가로', icon: '🎞', photos: 4 },
-    grid4: { name: '4컷 그리드', icon: '⊞', photos: 4 }
+    circle: { name: '원형', icon: '⭕', photos: 1 }
   },
   _CARD_THEMES: {
+    classic: { name: '클래식', color: '#1A1A1A', emoji: '🤍' },
+    film: { name: '필름', color: '#8B7355', emoji: '🎞' },
+    pastel: { name: '파스텔', color: '#F9A8D4', emoji: '🌷' },
+    dark: { name: '다크', color: '#0F172A', emoji: '✨' },
     default: { name: '기본', color: '#6366F1', emoji: '✂' },
     spring: { name: '봄', color: '#EC4899', emoji: '🌸' },
     summer: { name: '여름', color: '#06B6D4', emoji: '🌊' },
