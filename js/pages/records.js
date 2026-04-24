@@ -1927,19 +1927,55 @@ App.pages.records = {
         if (!blob) { App.showToast('카드 생성에 실패했습니다.', 'error'); return; }
         const url = URL.createObjectURL(blob);
         const fileName = (pet?.name || 'pet') + '_미용카드_' + record.date + '.png';
-        const file = new File([blob], fileName, { type: 'image/png' });
-        if (navigator.share && navigator.canShare && navigator.canShare({ files: [file] })) {
-          navigator.share({ files: [file], title: (pet?.name || '') + ' 미용 카드' }).catch(() => {
-            const a = document.createElement('a');
-            a.href = url; a.download = fileName; a.click();
-            URL.revokeObjectURL(url);
-          });
-        } else {
+        const customerPhone = (customer?.phone || '').replace(/\D/g, '');
+
+        // 결과 미리보기 모달 + 3버튼
+        App.showModal({
+          title: '사진 카드 완성',
+          hideFooter: true,
+          content: `
+            <div style="text-align:center">
+              <div style="max-height:50vh;overflow:auto;margin-bottom:16px;border-radius:var(--radius);border:1px solid var(--border-light)">
+                <img src="${url}" style="width:100%;display:block" alt="미용 카드">
+              </div>
+              <div style="display:flex;flex-direction:column;gap:10px;max-width:300px;margin:0 auto">
+                <button class="btn btn-primary" id="card-share" style="min-height:48px">&#x1F4E4; 공유하기</button>
+                ${customerPhone ? `<button class="btn btn-success" id="card-send-customer" style="min-height:48px">&#x1F4AC; 고객에게 보내기</button>` : ''}
+                <button class="btn btn-secondary" id="card-download" style="min-height:48px">&#x1F4E5; 다운로드</button>
+              </div>
+            </div>
+          `
+        });
+
+        // 공유
+        document.getElementById('card-share')?.addEventListener('click', () => {
+          const file = new File([blob], fileName, { type: 'image/png' });
+          if (navigator.share && navigator.canShare && navigator.canShare({ files: [file] })) {
+            navigator.share({ files: [file], title: (pet?.name || '') + ' 미용 카드' }).catch(() => {});
+          } else {
+            App.showToast('이 브라우저에서는 공유가 지원되지 않습니다. 다운로드를 이용해주세요.', 'warning');
+          }
+        });
+
+        // 고객에게 보내기 (SMS + 카드 다운로드)
+        document.getElementById('card-send-customer')?.addEventListener('click', () => {
+          // 카드 먼저 다운로드
           const a = document.createElement('a');
           a.href = url; a.download = fileName; a.click();
-          URL.revokeObjectURL(url);
-        }
-        App.showToast('사진 카드가 생성되었습니다.');
+          // SMS 발송
+          setTimeout(() => {
+            const msg = `${App.escapeHtml(pet?.name || '')} 미용이 완료되었습니다! 사진 카드를 확인해주세요 ♥`;
+            App.openSms(customerPhone, msg);
+            App.showToast('카드 저장 + 문자 발송 준비 완료');
+          }, 500);
+        });
+
+        // 다운로드
+        document.getElementById('card-download')?.addEventListener('click', () => {
+          const a = document.createElement('a');
+          a.href = url; a.download = fileName; a.click();
+          App.showToast('카드가 저장되었습니다.');
+        });
       }, 'image/png');
     } catch (err) {
       console.error('Photo card generation error:', err);
