@@ -1860,7 +1860,10 @@ App.pages.records = {
         await DB.setSetting('cardDesignSettings', settings);
 
         App.closeModal();
-        await this._doGenerateCard(recordId, layout, theme, this._cardPhotos[0] || null, this._cardPhotos[1] || null, this._cardPhotos[2] || null, this._cardPhotos[3] || null);
+        // closeModal의 history.back() popstate 소화 후 미리보기 모달 열기 (타이밍 충돌 방지)
+        setTimeout(() => {
+          this._doGenerateCard(recordId, layout, theme, this._cardPhotos[0] || null, this._cardPhotos[1] || null, this._cardPhotos[2] || null, this._cardPhotos[3] || null);
+        }, 200);
       }
     });
 
@@ -1923,11 +1926,19 @@ App.pages.records = {
 
       const canvas = await this._generateCardCanvas(record, customer, pet, shopName, shopPhone, serviceNames, designSettings);
 
+      // 대형 캔버스(스토리 등)는 JPEG로 출력 (빠르고 가벼움)
+      const isLarge = canvas.width > 800 || canvas.height > 1500;
+      const mimeType = isLarge ? 'image/jpeg' : 'image/png';
+      const ext = isLarge ? 'jpg' : 'png';
       canvas.toBlob(blob => {
         if (!blob) { App.showToast('카드 생성에 실패했습니다.', 'error'); return; }
         const url = URL.createObjectURL(blob);
-        const fileName = (pet?.name || 'pet') + '_미용카드_' + record.date + '.png';
+        const fileName = (pet?.name || 'pet') + '_미용카드_' + record.date + '.' + ext;
         const customerPhone = (customer?.phone || '').replace(/\D/g, '');
+
+        // 모달 닫힐 때 Object URL 해제
+        const _origClose = App._modalOnClose;
+        App._modalOnClose = () => { if (_origClose) _origClose(); URL.revokeObjectURL(url); App._modalOnClose = null; };
 
         // 결과 미리보기 모달 + 3버튼
         App.showModal({
@@ -1949,7 +1960,7 @@ App.pages.records = {
 
         // 공유
         document.getElementById('card-share')?.addEventListener('click', () => {
-          const file = new File([blob], fileName, { type: 'image/png' });
+          const file = new File([blob], fileName, { type: mimeType });
           if (navigator.share && navigator.canShare && navigator.canShare({ files: [file] })) {
             navigator.share({ files: [file], title: (pet?.name || '') + ' 미용 카드' }).catch(() => {});
           } else {
@@ -1976,7 +1987,7 @@ App.pages.records = {
           a.href = url; a.download = fileName; a.click();
           App.showToast('카드가 저장되었습니다.');
         });
-      }, 'image/png');
+      }, mimeType, isLarge ? 0.92 : undefined);
     } catch (err) {
       console.error('Photo card generation error:', err);
       App.showToast('카드 생성 중 오류가 발생했습니다.', 'error');

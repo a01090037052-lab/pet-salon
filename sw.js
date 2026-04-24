@@ -1,4 +1,4 @@
-const CACHE_NAME = 'petsalon-offline-v83';
+const CACHE_NAME = 'petsalon-offline-v84';
 const ASSETS = [
   './',
   './index.html',
