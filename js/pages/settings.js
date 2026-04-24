@@ -223,7 +223,7 @@ App.pages.settings = {
 
         <!-- 메시지 템플릿 (접이식) — 수정된 템플릿 있으면 자동 펼침 -->
         <div class="card" style="margin-top:20px">
-          <div class="card-header" style="cursor:pointer" onclick="this.parentElement.querySelector('.card-body').classList.toggle('hidden');this.querySelector('.toggle-icon').textContent=this.parentElement.querySelector('.card-body').classList.contains('hidden')?'&#x25B6;':'&#x25BC;'">
+          <div class="card-header" style="cursor:pointer" onclick="this.parentElement.querySelector('.card-body').classList.toggle('hidden');this.querySelector('.toggle-icon').innerHTML=this.parentElement.querySelector('.card-body').classList.contains('hidden')?'&#x25B6;':'&#x25BC;'">
             <span class="card-title">&#x1F4AC; 메시지 템플릿 <span class="toggle-icon" style="font-size:0.75rem">${hasCustomTemplate ? '&#x25BC;' : '&#x25B6;'}</span></span>
           </div>
           <div class="card-body${hasCustomTemplate ? '' : ' hidden'}">
@@ -259,10 +259,11 @@ App.pages.settings = {
               <label class="form-label">미용 완료 안내 문자</label>
               <textarea id="tpl-complete" rows="3">${App.escapeHtml(completeTpl)}</textarea>
             </div>
-            <button class="btn btn-secondary" id="btn-reset-templates">기본값 복원</button>
+            <button class="btn btn-secondary" id="btn-reset-templates" style="margin-bottom:8px">기본값 복원</button>
           </div>
         </div>
 
+        <div style="height:80px"></div>
         <button class="btn btn-primary btn-lg" id="btn-save-tab-operation" style="width:100%;margin-top:20px">운영 설정 저장</button>
       </div>
 
