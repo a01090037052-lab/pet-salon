@@ -78,6 +78,16 @@ App.pages.settings = {
                 <input type="text" id="s-shopAddress" value="${App.escapeHtml(shopAddress)}" placeholder="매장 주소">
               </div>
               <div class="form-group">
+                <label class="form-label">매장 로고 <span style="font-size:0.78rem;color:var(--text-muted);font-weight:400">(사진 카드에 표시)</span></label>
+                <div style="display:flex;align-items:center;gap:12px">
+                  <div id="s-logo-preview" style="width:48px;height:48px;border-radius:8px;border:1.5px solid var(--border);display:flex;align-items:center;justify-content:center;overflow:hidden;flex-shrink:0">${await (async () => { const logo = await DB.getSetting('shopLogo'); return logo ? `<img src="${logo}" style="width:100%;height:100%;object-fit:contain">` : '<span style="color:var(--text-muted);font-size:0.75rem">없음</span>'; })()}</div>
+                  <input type="file" id="s-logo-file" accept="image/*" style="display:none">
+                  <button type="button" class="btn btn-sm btn-secondary" id="s-logo-upload">로고 선택</button>
+                  <button type="button" class="btn btn-sm btn-danger" id="s-logo-remove" style="display:${await DB.getSetting('shopLogo') ? '' : 'none'}">제거</button>
+                </div>
+                <div class="form-hint">PNG 투명 배경 권장. 사진 카드 상단에 매장명 대신 로고가 표시됩니다.</div>
+              </div>
+              <div class="form-group">
                 <label class="form-label">재방문 알림 기준 (일)</label>
                 <input type="number" id="s-revisitDays" value="${revisitDays}" min="1" max="365" placeholder="30">
                 <div class="form-hint">마지막 미용 후 이 기간이 지나면 대시보드에 알림이 표시됩니다</div>
@@ -436,6 +446,31 @@ App.pages.settings = {
       const currentTabShop = document.getElementById('tab-shop');
       if (currentTabShop) currentTabShop._modified = false;
       App.showToast('매장 관리 설정이 저장되었습니다.');
+    });
+
+    // 로고 업로드/제거
+    document.getElementById('s-logo-upload')?.addEventListener('click', () => document.getElementById('s-logo-file')?.click());
+    document.getElementById('s-logo-file')?.addEventListener('change', (e) => {
+      const file = e.target.files[0];
+      if (!file) return;
+      const reader = new FileReader();
+      reader.onload = (ev) => {
+        App.resizeImage(ev.target.result, async (compressed) => {
+          await DB.setSetting('shopLogo', compressed);
+          const preview = document.getElementById('s-logo-preview');
+          if (preview) preview.innerHTML = `<img src="${compressed}" style="width:100%;height:100%;object-fit:contain">`;
+          document.getElementById('s-logo-remove').style.display = '';
+          App.showToast('로고가 저장되었습니다.');
+        }, 200, 0.9);
+      };
+      reader.readAsDataURL(file);
+    });
+    document.getElementById('s-logo-remove')?.addEventListener('click', async () => {
+      await DB.setSetting('shopLogo', null);
+      const preview = document.getElementById('s-logo-preview');
+      if (preview) preview.innerHTML = '<span style="color:var(--text-muted);font-size:0.75rem">없음</span>';
+      document.getElementById('s-logo-remove').style.display = 'none';
+      App.showToast('로고가 제거되었습니다.');
     });
 
     // Add groomer

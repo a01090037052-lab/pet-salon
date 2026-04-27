@@ -1273,6 +1273,9 @@ App.pages.records = {
     const imgBefore = await this._loadImg(photoBefore);
     const imgAfter = await this._loadImg(photoAfter);
 
+    // 로고 이미지 로드
+    const _logoImg = s.logo ? await this._loadImg(s.logo) : null;
+
     // 커스텀 테마 오버라이드
     if (s.customBgColor) bgColor = s.customBgColor;
     if (s.customAccentColor) mainColor = s.customAccentColor;
@@ -1702,7 +1705,10 @@ App.pages.records = {
       let _ty = infoY + 22;
       if (s.customShowPet) { ctx.fillStyle = textColor; ctx.font = 'bold 20px ' + fontFamily; ctx.fillText(petName, W / 2, _ty); _ty += 20; }
       if (s.customShowDate) { ctx.fillStyle = textSub; ctx.font = '13px ' + fontFamily; ctx.fillText(dateStr, W / 2, _ty); _ty += 18; }
-      if (s.customShowShop) { ctx.fillStyle = mainColor; ctx.font = 'bold 13px ' + fontFamily; const shopLine = (s.showShopPhone && shopPhone) ? shopName + ' · ' + shopPhone : shopName; ctx.fillText(shopLine, W / 2, _ty); }
+      if (s.customShowShop) {
+        if (_logoImg) { const lh = 28, lw = _logoImg.width * (lh / _logoImg.height); ctx.drawImage(_logoImg, (W - lw) / 2, _ty - 12, lw, lh); }
+        else { ctx.fillStyle = mainColor; ctx.font = 'bold 13px ' + fontFamily; const shopLine = (s.showShopPhone && shopPhone) ? shopName + ' · ' + shopPhone : shopName; ctx.fillText(shopLine, W / 2, _ty); }
+      }
     }
 
     // ===== 인스타 피드 (4:5, 1080×1350) =====
@@ -1713,13 +1719,13 @@ App.pages.records = {
       ctx.fillStyle = bgColor; ctx.fillRect(0, 0, W, H);
       if (_customBgImg) this._drawImageCover(ctx, _customBgImg, 0, 0, W, H);
 
-      // 상단 매장명
+      // 상단 매장명/로고
       ctx.textAlign = 'center';
       const topPad = s.customShowShop ? 70 : 40;
       if (s.customShowShop) {
         if (_useTextBox) { ctx.fillStyle = 'rgba(255,255,255,0.8)'; this._roundRect(ctx, W/2 - 220, 15, 440, 50, 10); ctx.fill(); }
-        ctx.fillStyle = mainColor; ctx.font = 'bold 32px ' + fontFamily;
-        ctx.fillText(emoji + ' ' + shopName, W / 2, 50);
+        if (_logoImg) { const lh = 40, lw = _logoImg.width * (lh / _logoImg.height); ctx.drawImage(_logoImg, (W - lw) / 2, 20, lw, lh); }
+        else { ctx.fillStyle = mainColor; ctx.font = 'bold 32px ' + fontFamily; ctx.fillText(emoji + ' ' + shopName, W / 2, 50); }
       }
 
       // 메인 사진 (크게)
@@ -1754,11 +1760,11 @@ App.pages.records = {
       ctx.fillStyle = bgColor; ctx.fillRect(0, 0, W, H);
       if (_customBgImg) this._drawImageCover(ctx, _customBgImg, 0, 0, W, H);
 
-      // 상단 매장명
+      // 상단 매장명/로고
       ctx.textAlign = 'center';
       if (s.customShowShop) {
-        ctx.fillStyle = mainColor; ctx.font = 'bold 40px ' + fontFamily;
-        ctx.fillText(emoji + ' ' + shopName, W / 2, 100);
+        if (_logoImg) { const lh = 50, lw = _logoImg.width * (lh / _logoImg.height); ctx.drawImage(_logoImg, (W - lw) / 2, 60, lw, lh); }
+        else { ctx.fillStyle = mainColor; ctx.font = 'bold 40px ' + fontFamily; ctx.fillText(emoji + ' ' + shopName, W / 2, 100); }
       }
 
       // 메인 사진 (크게)
@@ -2089,7 +2095,7 @@ App.pages.records = {
         showPetInfo: ds.showPetInfo !== false,
         showShopPhone: ds.showShopPhone !== false,
         footerMessage: ds.footerMessage || os.footerMessage || '감사합니다 ♥',
-        logo: ds.logo || null,
+        logo: ds.logo || await DB.getSetting('shopLogo') || null,
         // 커스텀 테마
         customBgColor: theme === 'custom' ? (ds.customBgColor || '#FFFFFF') : null,
         customTextColor: theme === 'custom' ? (ds.customTextColor || '#1A1A1A') : null,

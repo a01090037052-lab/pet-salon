@@ -576,6 +576,9 @@ const DB = {
           if (item.key === 'cardDesignSettings' && item.value?.customBgImage) {
             return { ...item, value: { ...item.value, customBgImage: null } };
           }
+          if (item.key === 'shopLogo' && item.value && typeof item.value === 'string' && item.value.length > 500) {
+            return { ...item, value: null };
+          }
           return item;
         });
       }
