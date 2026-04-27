@@ -1154,14 +1154,7 @@ App.pages.records = {
     classic: { name: '클래식', color: '#1A1A1A', bgColor: '#FFFFFF', emoji: '\u2702', footerBg: '#1A1A1A' },
     film: { name: '필름', color: '#8B7355', bgColor: '#F5F0E8', emoji: '\uD83C\uDFDE', footerBg: '#5C4A32' },
     pastel: { name: '파스텔', color: '#DB2777', bgColor: '#FFF0F5', emoji: '\uD83C\uDF37', footerBg: '#F9A8D4' },
-    dark: { name: '다크', color: '#C9A96E', bgColor: '#0F172A', emoji: '\u2728', footerBg: '#1E293B' },
-    default: { name: '기본', color: '#6366F1', bgColor: '#F8FAFC', emoji: '\u2702', footerBg: '#6366F1' },
-    spring: { name: '봄', color: '#EC4899', bgColor: '#FDF2F8', emoji: '\uD83C\uDF38', footerBg: '#EC4899' },
-    summer: { name: '여름', color: '#06B6D4', bgColor: '#ECFEFF', emoji: '\uD83C\uDF0A', footerBg: '#06B6D4' },
-    autumn: { name: '가을', color: '#D97706', bgColor: '#FFFBEB', emoji: '\uD83C\uDF42', footerBg: '#D97706' },
-    winter: { name: '겨울', color: '#3B82F6', bgColor: '#EFF6FF', emoji: '\u2744', footerBg: '#3B82F6' },
-    minimal: { name: '미니멀', color: '#374151', bgColor: '#FFFFFF', emoji: '\u2702', footerBg: '#374151' },
-    cute: { name: '귀여운', color: '#F472B6', bgColor: '#FFF1F2', emoji: '\uD83D\uDC3E', footerBg: '#F472B6' }
+    dark: { name: '다크', color: '#C9A96E', bgColor: '#0F172A', emoji: '\u2728', footerBg: '#1E293B' }
   },
 
   // --- Helper: load image from src (base64 or url) ---
@@ -1264,9 +1257,9 @@ App.pages.records = {
 
   // ===== Main canvas generation (used by both real cards and preview) =====
   async _generateCardCanvas(record, customer, pet, shopName, shopPhone, serviceNames, designSettings) {
-    const tplPreset = this.CARD_TEMPLATES[designSettings.template] || this.CARD_TEMPLATES.default;
-    const mainColor = designSettings.mainColor || tplPreset.color;
-    const bgColor = tplPreset.bgColor;
+    const tplPreset = this.CARD_TEMPLATES[designSettings.template] || this.CARD_TEMPLATES.classic;
+    let mainColor = designSettings.mainColor || tplPreset.color;
+    let bgColor = tplPreset.bgColor;
     const emoji = tplPreset.emoji;
     const fontFamily = '-apple-system, BlinkMacSystemFont, sans-serif';
     const footerMessage = designSettings.footerMessage || '감사합니다 \u2665';
@@ -1280,6 +1273,11 @@ App.pages.records = {
     const imgBefore = await this._loadImg(photoBefore);
     const imgAfter = await this._loadImg(photoAfter);
 
+    // 커스텀 테마 오버라이드
+    if (s.customBgColor) bgColor = s.customBgColor;
+    if (s.customAccentColor) mainColor = s.customAccentColor;
+    const _customBgImg = s.customBgImage ? await this._loadImg(s.customBgImage) : null;
+
     // Determine if dark background for text color decisions
     const _isDark = (hex) => {
       if (!hex) return false;
@@ -1289,10 +1287,18 @@ App.pages.records = {
       const b = parseInt(c.substr(4, 2), 16);
       return (r * 0.299 + g * 0.587 + b * 0.114) < 140;
     };
-    const darkBg = _isDark(bgColor);
-    const textColor = darkBg ? '#FFFFFF' : '#1a1a1a';
-    const textSub = darkBg ? 'rgba(255,255,255,0.6)' : '#64748B';
+    const darkBg = s.customTextColor ? _isDark(s.customTextColor) : _isDark(bgColor);
+    const textColor = s.customTextColor || (darkBg ? '#FFFFFF' : '#1a1a1a');
+    // rgba 변환 (구형 Android 8자리 hex 미지원 대응)
+    const _hexToRgba = (hex, alpha) => {
+      const c = hex.replace('#', '');
+      const r = parseInt(c.substr(0, 2), 16), g = parseInt(c.substr(2, 2), 16), b = parseInt(c.substr(4, 2), 16);
+      return `rgba(${r},${g},${b},${alpha})`;
+    };
+    const textSub = s.customTextColor ? _hexToRgba(textColor, 0.6) : (darkBg ? 'rgba(255,255,255,0.6)' : '#64748B');
     const borderColor = darkBg ? 'rgba(255,255,255,0.15)' : 'rgba(0,0,0,0.08)';
+    // 배경 이미지 사용 시 텍스트 배경 박스 활성화
+    const _useTextBox = !!_customBgImg;
 
     const petName = pet?.name || '';
     const dateStr = App.formatDate(record.date);
@@ -1658,6 +1664,7 @@ App.pages.records = {
       canvas.width = W; canvas.height = H;
       ctx = canvas.getContext('2d');
       ctx.fillStyle = bgColor; ctx.fillRect(0, 0, W, H);
+      if (_customBgImg) this._drawImageCover(ctx, _customBgImg, 0, 0, W, H);
 
       // 필름 테마: 상하 스프로킷 홀
       if (s.template === 'film') {
@@ -1684,17 +1691,20 @@ App.pages.records = {
         ctx.restore();
       }
 
-      // 하단 정보
-      const infoY = pad + 4 * (photoH + gap) + 10;
+      // 하단 정보 (배경 이미지 시 반투명 박스)
+      const infoY = pad + 4 * (photoH + gap);
+      if (_useTextBox) {
+        ctx.fillStyle = 'rgba(255,255,255,0.85)';
+        this._roundRect(ctx, pad, infoY, photoW, 80, 10); ctx.fill();
+      }
       ctx.textAlign = 'center';
       ctx.fillStyle = textColor; ctx.font = 'bold 20px ' + fontFamily;
-      ctx.fillText(petName, W / 2, infoY);
+      ctx.fillText(petName, W / 2, infoY + 24);
       ctx.fillStyle = textSub; ctx.font = '13px ' + fontFamily;
-      ctx.fillText(dateStr, W / 2, infoY + 22);
-      // 매장 브랜딩
+      ctx.fillText(dateStr, W / 2, infoY + 44);
       ctx.fillStyle = mainColor; ctx.font = 'bold 13px ' + fontFamily;
       const shopLine = (s.showShopPhone && shopPhone) ? shopName + ' · ' + shopPhone : shopName;
-      ctx.fillText(shopLine, W / 2, infoY + 44);
+      ctx.fillText(shopLine, W / 2, infoY + 64);
     }
 
     // ===== 인스타 스토리 (9:16) =====
@@ -1703,6 +1713,7 @@ App.pages.records = {
       canvas.width = W; canvas.height = H;
       ctx = canvas.getContext('2d');
       ctx.fillStyle = bgColor; ctx.fillRect(0, 0, W, H);
+      if (_customBgImg) this._drawImageCover(ctx, _customBgImg, 0, 0, W, H);
 
       // 상단 매장명
       ctx.textAlign = 'center';
@@ -1720,20 +1731,28 @@ App.pages.records = {
       _drawPhoto(ctx, imgBefore || imgAfter, photoPad, photoY, photoW, photoH);
       ctx.restore();
 
-      // 반려견 정보
-      const infoY = photoY + photoH + 80;
+      // 반려견 정보 (배경 이미지 시 반투명 박스)
+      const infoY = photoY + photoH + 50;
+      if (_useTextBox) {
+        ctx.fillStyle = 'rgba(255,255,255,0.85)';
+        this._roundRect(ctx, 60, infoY - 10, W - 120, 160, 16); ctx.fill();
+      }
       ctx.fillStyle = textColor; ctx.font = 'bold 48px ' + fontFamily;
-      ctx.fillText(petName, W / 2, infoY);
+      ctx.fillText(petName, W / 2, infoY + 40);
       if (serviceNames) {
         ctx.fillStyle = textSub; ctx.font = '32px ' + fontFamily;
-        ctx.fillText(serviceNames, W / 2, infoY + 50);
+        ctx.fillText(serviceNames, W / 2, infoY + 85);
       }
       ctx.fillStyle = textSub; ctx.font = '28px ' + fontFamily;
-      ctx.fillText(dateStr, W / 2, infoY + 95);
+      ctx.fillText(dateStr, W / 2, infoY + 125);
 
       // 하단 브랜딩
-      ctx.fillStyle = mainColor; ctx.font = 'bold 30px ' + fontFamily;
       const footerY = H - 100;
+      if (_useTextBox) {
+        ctx.fillStyle = 'rgba(255,255,255,0.85)';
+        this._roundRect(ctx, W / 2 - 200, footerY - 30, 400, 80, 12); ctx.fill();
+      }
+      ctx.fillStyle = mainColor; ctx.font = 'bold 30px ' + fontFamily;
       ctx.fillText(shopName, W / 2, footerY);
       if (s.showShopPhone && shopPhone) {
         ctx.fillStyle = textSub; ctx.font = '24px ' + fontFamily;
@@ -1770,14 +1789,7 @@ App.pages.records = {
     classic: { name: '클래식', color: '#1A1A1A', emoji: '🤍' },
     film: { name: '필름', color: '#8B7355', emoji: '🎞' },
     pastel: { name: '파스텔', color: '#F9A8D4', emoji: '🌷' },
-    dark: { name: '다크', color: '#0F172A', emoji: '✨' },
-    default: { name: '기본', color: '#6366F1', emoji: '✂' },
-    spring: { name: '봄', color: '#EC4899', emoji: '🌸' },
-    summer: { name: '여름', color: '#06B6D4', emoji: '🌊' },
-    autumn: { name: '가을', color: '#D97706', emoji: '🍂' },
-    winter: { name: '겨울', color: '#3B82F6', emoji: '❄' },
-    minimal: { name: '미니멀', color: '#374151', emoji: '✂' },
-    cute: { name: '귀여운', color: '#F472B6', emoji: '🐾' }
+    dark: { name: '다크', color: '#0F172A', emoji: '✨' }
   },
 
   _renderPhotoSlots(count) {
@@ -1814,7 +1826,10 @@ App.pages.records = {
 
     const saved = await DB.getSetting('cardDesignSettings') || {};
     const selectedLayout = saved.layout || 'strip2';
-    const selectedTheme = saved.template || 'default';
+    // 삭제된 테마 자동 마이그레이션
+    const validThemes = [...Object.keys(this._CARD_THEMES), 'custom'];
+    let selectedTheme = saved.template || 'classic';
+    if (!validThemes.includes(selectedTheme)) { selectedTheme = 'classic'; saved.template = 'classic'; await DB.setSetting('cardDesignSettings', saved); }
     const LAYOUTS = this._CARD_LAYOUTS;
     const THEMES = this._CARD_THEMES;
 
@@ -1846,21 +1861,57 @@ App.pages.records = {
                 <span style="font-size:0.7rem;color:${t.color}">${t.name}</span>
               </button>
             `).join('')}
+            <button type="button" class="card-pick-btn${selectedTheme === 'custom' ? ' active' : ''}" data-key="custom" style="border-color:#888">
+              <span style="font-size:1.1rem">🎨</span>
+              <span style="font-size:0.7rem;color:#888">커스텀</span>
+            </button>
+          </div>
+        </div>
+        <!-- 커스텀 테마 옵션 (커스텀 선택 시만 표시) -->
+        <div id="card-custom-panel" style="display:${selectedTheme === 'custom' ? 'block' : 'none'};padding:12px;background:var(--bg);border-radius:var(--radius);margin-bottom:12px">
+          <div class="form-row" style="gap:8px;margin-bottom:10px">
+            <div class="form-group" style="flex:1">
+              <label class="form-label" style="font-size:0.82rem">배경색</label>
+              <input type="color" id="card-custom-bg" value="${saved.customBgColor || '#FFFFFF'}" style="width:100%;height:40px;border:none;border-radius:6px;cursor:pointer">
+            </div>
+            <div class="form-group" style="flex:1">
+              <label class="form-label" style="font-size:0.82rem">글자색</label>
+              <input type="color" id="card-custom-text" value="${saved.customTextColor || '#1A1A1A'}" style="width:100%;height:40px;border:none;border-radius:6px;cursor:pointer">
+            </div>
+            <div class="form-group" style="flex:1">
+              <label class="form-label" style="font-size:0.82rem">포인트</label>
+              <input type="color" id="card-custom-accent" value="${saved.customAccentColor || '#6366F1'}" style="width:100%;height:40px;border:none;border-radius:6px;cursor:pointer">
+            </div>
+          </div>
+          <div class="form-group" style="margin-bottom:0">
+            <label class="form-label" style="font-size:0.82rem">배경 이미지 <span style="color:var(--text-muted);font-weight:400">(선택, 배경색 대신 사용)</span></label>
+            <div style="display:flex;gap:8px;align-items:center">
+              <input type="file" id="card-custom-bgimg" accept="image/*" style="display:none">
+              <button type="button" class="btn btn-sm btn-secondary" id="card-custom-bgimg-btn">이미지 선택</button>
+              <span id="card-custom-bgimg-name" style="font-size:0.78rem;color:var(--text-muted)">${saved.customBgImage ? '이미지 설정됨' : '없음'}</span>
+              ${saved.customBgImage ? '<button type="button" class="btn btn-sm btn-danger" id="card-custom-bgimg-remove">제거</button>' : ''}
+            </div>
           </div>
         </div>
       `,
       onSave: async () => {
         const layout = document.querySelector('#card-pick-layout .card-pick-btn.active')?.dataset.key || 'strip2';
-        const theme = document.querySelector('#card-pick-theme .card-pick-btn.active')?.dataset.key || 'default';
+        const theme = document.querySelector('#card-pick-theme .card-pick-btn.active')?.dataset.key || 'classic';
         if (!this._cardPhotos.some(p => p)) { App.showToast('사진을 최소 1장 선택해주세요.', 'error'); return; }
 
         const settings = await DB.getSetting('cardDesignSettings') || {};
         settings.layout = layout;
         settings.template = theme;
+        // 커스텀 테마 설정 저장
+        if (theme === 'custom') {
+          settings.customBgColor = document.getElementById('card-custom-bg')?.value || '#FFFFFF';
+          settings.customTextColor = document.getElementById('card-custom-text')?.value || '#1A1A1A';
+          settings.customAccentColor = document.getElementById('card-custom-accent')?.value || '#6366F1';
+          settings.customBgImage = this._customBgImage || settings.customBgImage || null;
+        }
         await DB.setSetting('cardDesignSettings', settings);
 
         App.closeModal();
-        // closeModal의 history.back() popstate 소화 후 미리보기 모달 열기 (타이밍 충돌 방지)
         setTimeout(() => {
           this._doGenerateCard(recordId, layout, theme, this._cardPhotos[0] || null, this._cardPhotos[1] || null, this._cardPhotos[2] || null, this._cardPhotos[3] || null);
         }, 200);
@@ -1881,12 +1932,39 @@ App.pages.records = {
       const initPhotos = LAYOUTS[selectedLayout]?.photos || 2;
       this._renderPhotoSlots(initPhotos);
 
-      // 테마 토글
+      // 테마 토글 + 커스텀 패널 표시
+      this._customBgImage = saved.customBgImage || null;
       document.querySelectorAll('#card-pick-theme .card-pick-btn').forEach(btn => {
         btn.addEventListener('click', () => {
           document.querySelectorAll('#card-pick-theme .card-pick-btn').forEach(b => b.classList.remove('active'));
           btn.classList.add('active');
+          const panel = document.getElementById('card-custom-panel');
+          if (panel) panel.style.display = btn.dataset.key === 'custom' ? 'block' : 'none';
         });
+      });
+
+      // 커스텀 배경 이미지 업로드
+      document.getElementById('card-custom-bgimg-btn')?.addEventListener('click', () => {
+        document.getElementById('card-custom-bgimg')?.click();
+      });
+      document.getElementById('card-custom-bgimg')?.addEventListener('change', (e) => {
+        const file = e.target.files[0];
+        if (!file) return;
+        const reader = new FileReader();
+        reader.onload = (ev) => {
+          App.resizeImage(ev.target.result, (compressed) => {
+            this._customBgImage = compressed;
+            const nameEl = document.getElementById('card-custom-bgimg-name');
+            if (nameEl) nameEl.textContent = '이미지 설정됨 ✓';
+          }, 800, 0.8);
+        };
+        reader.readAsDataURL(file);
+      });
+      document.getElementById('card-custom-bgimg-remove')?.addEventListener('click', () => {
+        this._customBgImage = null;
+        const nameEl = document.getElementById('card-custom-bgimg-name');
+        if (nameEl) nameEl.textContent = '없음';
+        document.getElementById('card-custom-bgimg-remove')?.remove();
       });
     }, 100);
   },
@@ -1921,7 +1999,12 @@ App.pages.records = {
         showPetInfo: ds.showPetInfo !== false,
         showShopPhone: ds.showShopPhone !== false,
         footerMessage: ds.footerMessage || os.footerMessage || '감사합니다 ♥',
-        logo: ds.logo || null
+        logo: ds.logo || null,
+        // 커스텀 테마
+        customBgColor: theme === 'custom' ? (ds.customBgColor || '#FFFFFF') : null,
+        customTextColor: theme === 'custom' ? (ds.customTextColor || '#1A1A1A') : null,
+        customAccentColor: theme === 'custom' ? (ds.customAccentColor || '#6366F1') : null,
+        customBgImage: theme === 'custom' ? (ds.customBgImage || null) : null
       };
 
       const canvas = await this._generateCardCanvas(record, customer, pet, shopName, shopPhone, serviceNames, designSettings);

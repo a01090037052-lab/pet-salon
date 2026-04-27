@@ -563,12 +563,20 @@ const DB = {
         continue;
       }
       let items = await this.getAll(storeName);
-      // 사진 제��� 모드: 인라인 base64 사진 필드 제거 (pets, records)
+      // 사진 제외 모드: 인라인 base64 사진 필드 제거 (pets, records, settings)
       if (excludePhotos && (storeName === 'pets' || storeName === 'records')) {
         items = items.map(item => {
           const cleaned = { ...item };
           photoFields.forEach(f => { if (cleaned[f] && typeof cleaned[f] === 'string' && cleaned[f].length > 500) delete cleaned[f]; });
           return cleaned;
+        });
+      }
+      if (excludePhotos && storeName === 'settings') {
+        items = items.map(item => {
+          if (item.key === 'cardDesignSettings' && item.value?.customBgImage) {
+            return { ...item, value: { ...item.value, customBgImage: null } };
+          }
+          return item;
         });
       }
       data[storeName] = items;
