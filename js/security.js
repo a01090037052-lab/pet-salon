@@ -21,11 +21,41 @@ const Security = {
   },
 
   // ----- Persistence -----
+  // 우선순위: IDB(이 디바이스의 라이브 상태) > MASTER_CONFIG(GitHub 정적 파일, 새 디바이스 fallback) > DEFAULTS
+  // 사장 디바이스: IDB 에 라이브 데이터 → 그대로 사용
+  // 새 디바이스 (직원·낯선 사람): IDB 비어있음 → MASTER_CONFIG 사용 → 잠금 화면 표시
+  // 사장이 push 안 한 상태면 MASTER_CONFIG.enabled=false → 새 디바이스에 잠금 안 보임 (push 필요)
   async _load() {
     const stored = await DB.getSetting('security');
+    if (stored && stored.enabled) {
+      return { ...this.DEFAULTS, ...stored };
+    }
+    if (typeof MASTER_CONFIG !== 'undefined' && MASTER_CONFIG.enabled) {
+      return { ...this.DEFAULTS, ...MASTER_CONFIG };
+    }
     return { ...this.DEFAULTS, ...(stored || {}) };
   },
   async _save(s) { await DB.setSetting('security', s); },
+
+  // 사장이 GitHub 에 push 할 master-config.js 스니펫 생성
+  async getMasterConfigSnippet() {
+    const stored = await DB.getSetting('security');
+    if (!stored || !stored.enabled) return null;
+    return `// ========== 매장 마스터 코드 설정 (사장 직접 편집) ==========
+// 마스터 코드 설정 시각: ${stored.pinChangedAt}
+// 이 파일을 GitHub 에 push 후 모든 디바이스에서 잠금 화면 표시됩니다.
+
+const MASTER_CONFIG = {
+  enabled: true,
+  pinHash: "${stored.pinHash}",
+  salt: "${stored.salt}",
+  recoveryHash: "${stored.recoveryHash}",
+  recoverySalt: "${stored.recoverySalt}",
+  pinLength: ${stored.pinLength || 6},
+  pinChangedAt: "${stored.pinChangedAt}"
+};
+`;
+  },
 
   // ----- Hashing (Web Crypto API, 보안 컨텍스트 필요) -----
   async _hash(text, salt) {

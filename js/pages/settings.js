@@ -406,6 +406,10 @@ App.pages.settings = {
 
             ${isLockOn ? `
             <div class="form-group" style="margin-top:12px">
+              <button class="btn btn-warning" id="btn-sec-show-config" style="width:100%;min-height:44px">&#x1F310; GitHub 배포 설정 보기</button>
+              <div class="form-hint">⚠ 다른 디바이스 잠금 작동을 위해 GitHub 에 master-config.js push 필요. 첫 설정 또는 변경 시에만 실행.</div>
+            </div>
+            <div class="form-group" style="margin-top:12px">
               <button class="btn btn-secondary" id="btn-sec-change-pin" style="width:100%;min-height:44px">마스터 코드 변경</button>
               <div class="form-hint">&#x26A0; 변경 시 다른 모든 등록 디바이스가 재등록 필요합니다</div>
             </div>
@@ -756,8 +760,73 @@ App.pages.settings = {
     this.bindSecurityHandlers();
   },
 
-  // 복구 코드 표시 모달 (한 번만 노출)
+  // GitHub master-config.js 스니펫 표시 (배포 시 적용 필수)
+  async _showMasterConfigModal(includeRecovery) {
+    if (typeof Security === 'undefined') return;
+    const snippet = await Security.getMasterConfigSnippet();
+    if (!snippet) {
+      App.showToast('마스터 코드 설정 후 사용 가능합니다', 'warning');
+      return;
+    }
+    const repoEditUrl = 'https://github.com/a01090037052-lab/pet-salon/edit/main/js/master-config.js';
+    setTimeout(() => {
+    App.showModal({
+      title: 'GitHub 배포 설정 (다른 디바이스 잠금 활성화)',
+      saveText: '닫기',
+      onSave: () => { App.closeModal(); },
+      content: `
+        <div style="font-size:0.88rem;color:var(--text-secondary);line-height:1.6;margin-bottom:14px">
+          <strong style="color:var(--danger)">⚠ 다른 디바이스에서도 잠금이 작동하려면 아래 내용을 GitHub에 push 해야 합니다.</strong><br>
+          이 작업은 <strong>매장 첫 설정 시 한 번</strong> 또는 <strong>마스터 코드 변경 시</strong>에만 필요합니다.
+        </div>
+
+        <div style="margin-bottom:14px">
+          <div style="font-weight:700;margin-bottom:6px">1단계 — 아래 내용 복사</div>
+          <textarea id="master-config-code" readonly style="width:100%;height:180px;font-family:monospace;font-size:0.78rem;padding:10px;border:1.5px solid var(--border);border-radius:6px;background:var(--bg);resize:vertical">${snippet}</textarea>
+          <button class="btn btn-secondary btn-sm" id="master-config-copy" style="margin-top:6px;width:100%">📋 전체 복사</button>
+        </div>
+
+        <div style="margin-bottom:14px">
+          <div style="font-weight:700;margin-bottom:6px">2단계 — GitHub에서 편집</div>
+          <a href="${repoEditUrl}" target="_blank" rel="noopener" class="btn btn-primary btn-sm" style="width:100%;text-decoration:none;display:block;text-align:center">🔗 GitHub 편집 페이지 열기</a>
+          <div style="font-size:0.8rem;color:var(--text-muted);margin-top:6px">
+            • 페이지 열림 → 기존 내용 전체 지우기 → 복사한 내용 붙여넣기<br>
+            • 우측 상단 [Commit changes] → 메시지 "마스터 코드 업데이트" → Commit
+          </div>
+        </div>
+
+        <div style="margin-bottom:14px">
+          <div style="font-weight:700;margin-bottom:6px">3단계 — sw.js 캐시 버전 bump (선택, 빠른 반영)</div>
+          <div style="font-size:0.8rem;color:var(--text-muted)">
+            <code>sw.js</code>의 <code>CACHE_NAME</code> 값에서 v92 → v93 같이 숫자 1 올림.<br>
+            안 해도 1~2일 안에 자동 반영되지만 즉시 반영하려면 함께 commit.
+          </div>
+        </div>
+
+        <div style="background:var(--bg);padding:10px;border-radius:6px;font-size:0.82rem;color:var(--text-secondary)">
+          <strong>적용 후</strong>: 1~2분 안에 GitHub Pages 배포 → 모든 디바이스에서 잠금 화면 표시됩니다.
+        </div>
+      `
+    });
+    setTimeout(() => {
+      document.getElementById('master-config-copy')?.addEventListener('click', () => {
+        const ta = document.getElementById('master-config-code');
+        if (!ta) return;
+        ta.select();
+        navigator.clipboard?.writeText(snippet).then(() => {
+          App.showToast('GitHub 설정 코드 복사됨');
+        }).catch(() => {
+          try { document.execCommand('copy'); App.showToast('복사됨'); }
+          catch (_) { App.showToast('복사 실패. 수동 선택 후 복사', 'warning'); }
+        });
+      });
+    }, 100);
+    }, 0); // _showMasterConfigModal popstate race 회피용 setTimeout 닫기
+  },
+
+  // 복구 코드 표시 모달 (한 번만 노출) — popstate race 회피 위해 setTimeout 으로 defer
   _showRecoveryModal(code, isReissue) {
+    setTimeout(() => {
     App.showModal({
       title: isReissue ? '새 복구 코드' : '복구 코드 (한 번만 표시됩니다!)',
       hideFooter: false,
@@ -790,6 +859,7 @@ App.pages.settings = {
         });
       });
     }, 100);
+    }, 0); // _showRecoveryModal popstate race 회피용 setTimeout 닫기
   },
 
   // PIN 입력 받는 헬퍼 (4~8자리 숫자, 2회 일치 확인 옵션)
@@ -851,12 +921,19 @@ App.pages.settings = {
         const recovery = await Security.enableWithPin(newPin, newPin.length);
         this._showRecoveryModal(recovery, false);
         App.showToast('마스터 코드 잠금 활성화됨');
-        // 모달 닫힐 때 페이지 새로고침
-        const _orig = App._modalOnClose;
-        App._modalOnClose = () => { if (_orig) _orig(); App.handleRoute(); App._modalOnClose = null; };
+        // 복구 코드 모달 닫히면 → GitHub 배포 설정 모달 → 그 모달 닫히면 페이지 새로고침
+        App._modalOnClose = () => {
+          App._modalOnClose = () => { App.handleRoute(); App._modalOnClose = null; };
+          this._showMasterConfigModal();
+        };
       } catch (e) {
         App.showToast(e.message, 'error');
       }
+    });
+
+    // GitHub 배포 설정 보기 (이미 마스터 코드 설정된 사용자용 — 언제든 다시 볼 수 있게)
+    document.getElementById('btn-sec-show-config')?.addEventListener('click', () => {
+      this._showMasterConfigModal();
     });
 
     // 마스터 코드 변경
@@ -869,8 +946,10 @@ App.pages.settings = {
       if (!newPin) return;
       try {
         await Security.changePin(currentPin, newPin, newPin.length);
-        App.showToast('마스터 코드 변경 완료. 다른 디바이스는 새 코드로 재등록 필요');
-        App.handleRoute();
+        App.showToast('마스터 코드 변경 완료. GitHub 에 배포 설정 push 필요');
+        // GitHub 배포 설정 모달 표시 → 닫히면 페이지 새로고침
+        App._modalOnClose = () => { App.handleRoute(); App._modalOnClose = null; };
+        this._showMasterConfigModal();
       } catch (e) {
         App.showToast(e.message, 'error');
       }
