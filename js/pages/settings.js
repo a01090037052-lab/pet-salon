@@ -797,6 +797,10 @@ App.pages.settings = {
     return new Promise((resolve) => {
       const requireConfirm = opts.requireConfirm !== false;
       let resolved = false;
+
+      // 직전에 다른 모달/confirm이 닫혔다면 그 popstate 이벤트가 미처리 상태일 수 있음.
+      // setTimeout(0)으로 다음 task로 넘겨 popstate를 먼저 소화한 뒤 새 모달을 연다.
+      setTimeout(() => {
       // 모달 닫힘 시 null resolve
       App._modalOnClose = () => { if (!resolved) { resolved = true; resolve(null); } };
 
@@ -832,6 +836,7 @@ App.pages.settings = {
         }
       });
       setTimeout(() => document.getElementById('prompt-pin')?.focus(), 100);
+      }, 0); // setTimeout 닫기 (popstate race condition 회피)
     });
   },
 
