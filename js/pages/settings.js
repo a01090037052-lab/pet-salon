@@ -41,6 +41,11 @@ App.pages.settings = {
       DB.count('services')
     ]);
 
+    // 보안 설정 로드
+    const sec = (typeof Security !== 'undefined') ? await Security._load() : { enabled: false, pinLength: 6, maxAttempts: 5, lockoutSeconds: 30 };
+    const isLockOn = !!sec.enabled;
+    const isThisDeviceRegistered = (typeof Security !== 'undefined') ? await Security.isTrusted() : true;
+
     container.innerHTML = `
       <div class="page-header">
         <div>
@@ -54,6 +59,7 @@ App.pages.settings = {
         <button class="settings-tab active" data-tab="shop">&#x1F3EA; 매장 관리</button>
         <button class="settings-tab" data-tab="operation">&#x2699; 운영 설정</button>
         <button class="settings-tab" data-tab="data">&#x1F4BE; 데이터</button>
+        <button class="settings-tab" data-tab="security">&#x1F512; 보안</button>
       </div>
 
       <!-- Tab 1: 매장 관리 -->
@@ -377,6 +383,81 @@ App.pages.settings = {
         </div>
       </div>
 
+      <!-- Tab 4: 보안 -->
+      <div class="settings-tab-content" id="tab-security" style="display:none">
+        <div class="card">
+          <div class="card-header">
+            <span class="card-title">&#x1F512; 마스터 코드 잠금</span>
+          </div>
+          <div class="card-body">
+            <p style="color:var(--text-secondary);font-size:0.9rem;margin-bottom:14px">
+              URL을 알아도 마스터 코드 모르면 사용 불가. 사장님이 직접 등록한 디바이스만 영구 사용할 수 있습니다.
+            </p>
+            <div style="display:flex;align-items:center;gap:12px;padding:12px;background:var(--bg);border-radius:var(--radius);margin-bottom:16px">
+              <span style="font-size:1.4rem">${isLockOn ? '&#x1F512;' : '&#x1F513;'}</span>
+              <div class="flex-1">
+                <div style="font-weight:700">${isLockOn ? '마스터 코드 잠금 사용 중' : '잠금 비활성'}</div>
+                <div style="font-size:0.82rem;color:var(--text-muted)">${isLockOn ? `${sec.pinLength}자리 코드 · 등록된 디바이스만 사용` : '누구나 접근 가능'}</div>
+              </div>
+              ${isLockOn
+                ? `<button class="btn btn-danger btn-sm" id="btn-sec-disable">잠금 해제</button>`
+                : `<button class="btn btn-primary btn-sm" id="btn-sec-enable">잠금 설정</button>`}
+            </div>
+
+            ${isLockOn ? `
+            <div class="form-group" style="margin-top:12px">
+              <button class="btn btn-secondary" id="btn-sec-change-pin" style="width:100%;min-height:44px">마스터 코드 변경</button>
+              <div class="form-hint">&#x26A0; 변경 시 다른 모든 등록 디바이스가 재등록 필요합니다</div>
+            </div>
+            <div class="form-group">
+              <button class="btn btn-secondary" id="btn-sec-regen-recovery" style="width:100%;min-height:44px">복구 코드 재발급</button>
+              <div class="form-hint">새 코드 발급 시 기존 코드는 즉시 무효화됩니다</div>
+            </div>
+            <hr style="border:none;border-top:1px solid var(--border);margin:18px 0">
+            <div class="form-group">
+              <label class="form-label">잠금 시도 한도</label>
+              <select id="sec-max-attempts" style="width:100%;min-height:44px">
+                <option value="3" ${sec.maxAttempts == 3 ? 'selected' : ''}>3회</option>
+                <option value="5" ${sec.maxAttempts == 5 ? 'selected' : ''}>5회 (추천)</option>
+                <option value="10" ${sec.maxAttempts == 10 ? 'selected' : ''}>10회</option>
+              </select>
+            </div>
+            <div class="form-group">
+              <label class="form-label">한도 초과 시 잠금 시간</label>
+              <select id="sec-lockout-seconds" style="width:100%;min-height:44px">
+                <option value="30" ${sec.lockoutSeconds == 30 ? 'selected' : ''}>30초</option>
+                <option value="60" ${sec.lockoutSeconds == 60 ? 'selected' : ''}>1분</option>
+                <option value="300" ${sec.lockoutSeconds == 300 ? 'selected' : ''}>5분</option>
+              </select>
+            </div>
+            <button class="btn btn-primary" id="btn-sec-save-options" style="width:100%;min-height:44px;margin-top:8px">옵션 저장</button>
+            <hr style="border:none;border-top:1px solid var(--border);margin:18px 0">
+            <div class="form-group">
+              <button class="btn btn-secondary" id="btn-sec-untrust-this" style="width:100%;min-height:44px">이 기기 등록 해제</button>
+              <div class="form-hint">이 디바이스를 등록 해제 후 다음 접속 시 마스터 코드 재입력 필요</div>
+            </div>
+            ` : ''}
+          </div>
+        </div>
+
+        <div class="card" style="margin-top:16px">
+          <div class="card-body">
+            <div style="font-size:0.85rem;color:var(--text-secondary);line-height:1.6">
+              <div style="font-weight:700;color:var(--text-primary);margin-bottom:6px">&#x2139; 운영 안내 — 마스터 코드 사용법</div>
+              <ul style="margin:0;padding-left:18px">
+                <li><strong>코드 비공개</strong>: 마스터 코드는 사장님만 알고 있어야 합니다</li>
+                <li><strong>새 디바이스 등록</strong>: 직원·가족 폰을 받아서 사장님이 직접 코드 입력 (5초)</li>
+                <li><strong>원격 등록</strong>: 카톡 영상통화·화면공유로 사장님이 직접 입력</li>
+                <li><strong>등록 후 영구 사용</strong>: 한 번 등록된 디바이스는 영구 사용 가능 (재인증 X)</li>
+                <li><strong>그만둔 직원 차단</strong>: 마스터 코드 변경 → 모든 디바이스 재등록</li>
+                <li><strong>코드 분실 시</strong>: 복구 코드로 재설정 또는 백업 파일로 복원</li>
+                <li><strong>본인 데이터</strong>: 이 기기 브라우저에만 저장 (다른 사람 절대 못 봄)</li>
+              </ul>
+            </div>
+          </div>
+        </div>
+      </div>
+
     `;
   },
 
@@ -668,6 +749,173 @@ App.pages.settings = {
       } catch (err) {
         console.error('Clear error:', err);
         App.showToast('초기화 중 오류가 발생했습니다.', 'error');
+      }
+    });
+
+    // ========== 보안 탭 핸들러 ==========
+    this.bindSecurityHandlers();
+  },
+
+  // 복구 코드 표시 모달 (한 번만 노출)
+  _showRecoveryModal(code, isReissue) {
+    App.showModal({
+      title: isReissue ? '새 복구 코드' : '복구 코드 (한 번만 표시됩니다!)',
+      hideFooter: false,
+      saveText: '복사 후 보관함',
+      onSave: () => { App.closeModal(); },
+      content: `
+        <div style="text-align:center">
+          <div style="background:var(--warning-light);border:2px solid var(--warning);border-radius:var(--radius);padding:20px;margin-bottom:16px">
+            <div style="font-size:0.85rem;color:var(--text-secondary);margin-bottom:8px">마스터 코드 분실 시 사용할 복구 코드</div>
+            <div id="recovery-code-display" style="font-size:1.6rem;font-weight:800;letter-spacing:2px;font-family:monospace;color:var(--danger);margin-bottom:12px">${code}</div>
+            <button class="btn btn-secondary btn-sm" id="recovery-copy">&#x1F4CB; 복사</button>
+          </div>
+          <div style="font-size:0.85rem;color:var(--text-secondary);text-align:left;background:var(--bg);padding:12px;border-radius:var(--radius)">
+            <div style="font-weight:700;margin-bottom:4px">&#x26A0; 중요</div>
+            <ul style="margin:0;padding-left:18px;line-height:1.6">
+              <li>이 코드는 다시 표시되지 않습니다</li>
+              <li>종이에 적거나 안전한 곳에 따로 보관하세요</li>
+              <li>분실 시 백업 파일로만 복원 가능합니다</li>
+            </ul>
+          </div>
+        </div>
+      `
+    });
+    setTimeout(() => {
+      document.getElementById('recovery-copy')?.addEventListener('click', () => {
+        navigator.clipboard?.writeText(code).then(() => {
+          App.showToast('복구 코드가 복사되었습니다');
+        }).catch(() => {
+          App.showToast('복사 실패. 직접 적어주세요', 'warning');
+        });
+      });
+    }, 100);
+  },
+
+  // PIN 입력 받는 헬퍼 (4~8자리 숫자, 2회 일치 확인 옵션)
+  _promptPin(title, message, opts = {}) {
+    return new Promise((resolve) => {
+      const requireConfirm = opts.requireConfirm !== false;
+      let resolved = false;
+      // 모달 닫힘 시 null resolve
+      App._modalOnClose = () => { if (!resolved) { resolved = true; resolve(null); } };
+
+      App.showModal({
+        title,
+        saveText: '확인',
+        content: `
+          <p style="color:var(--text-secondary);margin-bottom:14px">${message}</p>
+          <div class="form-group">
+            <label class="form-label">${requireConfirm ? '새 ' : ''}코드 (4~8자리 숫자)</label>
+            <input type="password" id="prompt-pin" inputmode="numeric" maxlength="8" placeholder="숫자만" style="text-align:center;letter-spacing:6px;font-size:1.2rem">
+          </div>
+          ${requireConfirm ? `
+          <div class="form-group">
+            <label class="form-label">코드 확인</label>
+            <input type="password" id="prompt-pin2" inputmode="numeric" maxlength="8" placeholder="다시 입력" style="text-align:center;letter-spacing:6px;font-size:1.2rem">
+          </div>` : ''}
+          <div id="prompt-pin-error" style="color:var(--danger);font-size:0.85rem;margin-top:6px;display:none"></div>
+        `,
+        onSave: () => {
+          const pin = document.getElementById('prompt-pin').value.trim();
+          const err = document.getElementById('prompt-pin-error');
+          const showErr = (msg) => { if (err) { err.textContent = msg; err.style.display = 'block'; } };
+          if (!/^\d{4,8}$/.test(pin)) { showErr('4~8자리 숫자만 입력 가능합니다'); return; }
+          if (requireConfirm) {
+            const pin2 = document.getElementById('prompt-pin2').value.trim();
+            if (pin !== pin2) { showErr('코드가 일치하지 않습니다'); return; }
+          }
+          resolved = true;
+          App._modalOnClose = null;
+          App.closeModal();
+          resolve(pin);
+        }
+      });
+      setTimeout(() => document.getElementById('prompt-pin')?.focus(), 100);
+    });
+  },
+
+  bindSecurityHandlers() {
+    if (typeof Security === 'undefined') return;
+
+    // 잠금 설정 (최초)
+    document.getElementById('btn-sec-enable')?.addEventListener('click', async () => {
+      const newPin = await this._promptPin('마스터 코드 설정', '4~8자리 숫자 코드를 설정하세요. 사장님만 아는 코드여야 합니다. 설정 후 복구 코드가 발급됩니다.');
+      if (!newPin) return;
+      try {
+        const recovery = await Security.enableWithPin(newPin, newPin.length);
+        this._showRecoveryModal(recovery, false);
+        App.showToast('마스터 코드 잠금 활성화됨');
+        // 모달 닫힐 때 페이지 새로고침
+        const _orig = App._modalOnClose;
+        App._modalOnClose = () => { if (_orig) _orig(); App.handleRoute(); App._modalOnClose = null; };
+      } catch (e) {
+        App.showToast(e.message, 'error');
+      }
+    });
+
+    // 마스터 코드 변경
+    document.getElementById('btn-sec-change-pin')?.addEventListener('click', async () => {
+      const warn = await App.confirm('마스터 코드를 변경하면 <strong>다른 모든 등록 디바이스</strong>가 다음 접속 시 새 코드로 재등록해야 합니다. 계속할까요?');
+      if (!warn) return;
+      const currentPin = await this._promptPin('마스터 코드 변경 — 현재 코드', '현재 마스터 코드를 입력하세요', { requireConfirm: false });
+      if (!currentPin) return;
+      const newPin = await this._promptPin('마스터 코드 변경 — 새 코드', '새 마스터 코드를 설정하세요');
+      if (!newPin) return;
+      try {
+        await Security.changePin(currentPin, newPin, newPin.length);
+        App.showToast('마스터 코드 변경 완료. 다른 디바이스는 새 코드로 재등록 필요');
+        App.handleRoute();
+      } catch (e) {
+        App.showToast(e.message, 'error');
+      }
+    });
+
+    // 복구 코드 재발급
+    document.getElementById('btn-sec-regen-recovery')?.addEventListener('click', async () => {
+      const currentPin = await this._promptPin('복구 코드 재발급', '현재 마스터 코드 확인', { requireConfirm: false });
+      if (!currentPin) return;
+      try {
+        const newRecovery = await Security.regenerateRecovery(currentPin);
+        this._showRecoveryModal(newRecovery, true);
+      } catch (e) {
+        App.showToast(e.message, 'error');
+      }
+    });
+
+    // 옵션 저장
+    document.getElementById('btn-sec-save-options')?.addEventListener('click', async () => {
+      try {
+        await Security.updateOptions({
+          maxAttempts: document.getElementById('sec-max-attempts')?.value,
+          lockoutSeconds: document.getElementById('sec-lockout-seconds')?.value
+        });
+        App.showToast('보안 옵션 저장됨');
+      } catch (e) {
+        App.showToast(e.message, 'error');
+      }
+    });
+
+    // 이 기기 등록 해제
+    document.getElementById('btn-sec-untrust-this')?.addEventListener('click', async () => {
+      const ok = await App.confirm('이 디바이스의 등록을 해제하면 다음 접속 시 마스터 코드를 다시 입력해야 합니다. 계속할까요?');
+      if (!ok) return;
+      Security.clearTrust();
+      App.showToast('이 기기 등록 해제됨. 다음 접속 시 마스터 코드 필요');
+    });
+
+    // 잠금 해제 (마스터 코드 비활성화)
+    document.getElementById('btn-sec-disable')?.addEventListener('click', async () => {
+      const warn = await App.confirm('마스터 코드 잠금을 완전히 해제하면 <strong>URL을 아는 누구나</strong> 앱을 사용할 수 있습니다. 정말 해제할까요?');
+      if (!warn) return;
+      const currentPin = await this._promptPin('잠금 해제 — 현재 마스터 코드 확인', '마스터 코드 확인 후 잠금을 해제합니다', { requireConfirm: false });
+      if (!currentPin) return;
+      try {
+        await Security.disable(currentPin);
+        App.showToast('마스터 코드 잠금 해제됨');
+        App.handleRoute();
+      } catch (e) {
+        App.showToast(e.message, 'error');
       }
     });
   },

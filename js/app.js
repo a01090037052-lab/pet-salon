@@ -6,6 +6,10 @@ const App = {
   async init() {
     try {
       await DB.init();
+      // 잠금 게이트 — PIN 설정되어 있고 신뢰 만료된 경우 잠금 화면 표시
+      if (typeof Security !== 'undefined') {
+        try { await Security.showLockScreen(); } catch (e) { console.warn('lock screen err', e); }
+      }
       this.setupNavigation();
       this.setupSidebar();
       this.setupModal();
@@ -24,6 +28,10 @@ const App = {
       await this.applyTheme();
       // 예약 알림 체커 시작
       await this.setupNotificationChecker();
+      // 저장 공간 quota 체크 (fire-and-forget, UI 차단 안 함)
+      this.setupStorageQuotaCheck();
+      // 데이터 무결성 점검 (fire-and-forget, 하루 1회)
+      this.setupIntegrityCheck();
       // Hide loading screen
       setTimeout(() => {
         document.getElementById('loading-screen')?.classList.add('hidden');
@@ -210,6 +218,65 @@ const App = {
   notifyTabSync() {
     if (this._tabChannel) {
       this._tabChannel.postMessage({ type: 'DB_CHANGED' });
+    }
+  },
+
+  // 데이터 무결성 자동 점검 (orphan 참조 보수, 모순 감지) — 하루 1회
+  async setupIntegrityCheck() {
+    if (DB.mode === 'server') return;
+    const today = new Date().toDateString();
+    const lastCheck = localStorage.getItem('lastIntegrityCheck');
+    if (lastCheck === today) return; // 하루 1회만
+    try {
+      const report = await DB.runIntegrityCheck();
+      if (!report) return;
+      localStorage.setItem('lastIntegrityCheck', today);
+      if (report.repaired > 0) {
+        console.log('[Integrity] 자동 보수 완료:', report);
+        this.showToast(
+          `데이터 자동 정리: 누락 사진 참조 ${report.orphanPhotoRefs}건, 고아 사진 ${report.orphanPhotos}건 정리됨.`,
+          'info'
+        );
+      }
+      if (report.issues.length > 0) {
+        console.warn('[Integrity] 모순 감지 (수동 확인 필요):', report.issues);
+        this.showToast(
+          `⚠️ 데이터 모순 ${report.issues.length}건 감지. 백업 후 설정에서 점검하세요. (콘솔 로그 확인)`,
+          'error'
+        );
+      }
+    } catch (e) {
+      console.warn('integrity check failed:', e);
+    }
+  },
+
+  // 저장 공간 자동 모니터링: 80%+ 안내, 95%+ 경고 (하루 1회)
+  async setupStorageQuotaCheck() {
+    if (DB.mode === 'server') return;
+    if (!navigator.storage || !navigator.storage.estimate) return;
+    try {
+      const quota = await DB.checkStorageQuota();
+      if (!quota || !quota.quota) return;
+      const usedMB = (quota.used / (1024 * 1024)).toFixed(0);
+      const quotaMB = (quota.quota / (1024 * 1024)).toFixed(0);
+      const today = new Date().toDateString();
+      const lastWarned = localStorage.getItem('lastQuotaWarning');
+      if (quota.percentage >= 95) {
+        // CRITICAL: 항상 경고 (하루 1회 제한 무시)
+        this.showToast(
+          `⚠️ 저장 공간 위험 (${quota.percentage}%, ${usedMB}/${quotaMB}MB) — 즉시 백업 후 사진을 정리해주세요.`,
+          'error'
+        );
+        localStorage.setItem('lastQuotaWarning', today + '-critical');
+      } else if (quota.percentage >= 80 && lastWarned !== today) {
+        this.showToast(
+          `저장 공간 ${quota.percentage}% 사용 중 (${usedMB}/${quotaMB}MB). 백업 후 정리를 권장합니다.`,
+          'info'
+        );
+        localStorage.setItem('lastQuotaWarning', today);
+      }
+    } catch (e) {
+      console.warn('quota check failed:', e);
     }
   },
 

@@ -2,8 +2,50 @@
 App.pages.records = {
   async render(container) {
     const isMobile = window.matchMedia('(max-width: 768px)').matches;
-    // 효율적 쿼리: 목록에서는 사진 필드 제외 (큰 base64 데이터)
-    const records = await DB.getAllLight('records', ['photoBefore', 'photoAfter']);
+    const today = App.getToday();
+
+    // ========== 활동 로그 + 더 보기 패턴 ==========
+    // 기본: 최근 90일 인덱스 쿼리. "더 보기"로 이전 90일씩 확장.
+    // 펫살롱 사용 패턴(60% 최근, 25% 엔티티 페이지에서, 10% 필터, 5% CSV)에 최적화.
+    const totalCount = await DB.count('records');
+
+    let savedFilter = {};
+    try { savedFilter = JSON.parse(sessionStorage.getItem('record-filter') || '{}'); } catch (_) {}
+
+    const loadMode = savedFilter._loadMode || 'recent'; // 'recent' | 'month-jump' | 'unpaid'
+    const daysBack = Math.max(90, savedFilter._daysBack || 90);
+    const jumpMonth = savedFilter._jumpMonth || '';
+
+    let records, modeLabel;
+    if (loadMode === 'month-jump' && jumpMonth) {
+      // 특정 월로 점프 (해당 월만 로드, applyFilters 와 일관성)
+      const loadFrom = `${jumpMonth}-01`;
+      const loadTo = `${jumpMonth}-31`;
+      records = await DB.getByDateRange('records', 'date', loadFrom, loadTo);
+      modeLabel = `${jumpMonth}`;
+    } else if (loadMode === 'unpaid') {
+      // 미결제 전체 기간 (paymentMethod 인덱스 활용)
+      records = await DB.getByIndex('records', 'paymentMethod', 'unpaid');
+      modeLabel = '미결제 전체';
+    } else {
+      // 기본 모드: 최근 daysBack일 (인덱스 쿼리)
+      const fromDate = new Date();
+      fromDate.setDate(fromDate.getDate() - daysBack);
+      const loadFrom = App.formatLocalDate(fromDate);
+      records = await DB.getByDateRange('records', 'date', loadFrom, today);
+      modeLabel = daysBack >= 365 ? `최근 ${Math.round(daysBack / 365)}년` : `최근 ${daysBack}일`;
+    }
+
+    // 사진 인라인 필드 제거 (구버전 데이터 호환, 메모리 절약)
+    records.forEach(r => { delete r.photoBefore; delete r.photoAfter; });
+
+    // 페이지 상태 저장 (init 핸들러에서 참조)
+    this._loadMode = loadMode;
+    this._daysBack = daysBack;
+    this._jumpMonth = jumpMonth;
+    this._totalCount = totalCount;
+    this._canLoadMore = (loadMode === 'recent') && (records.length < totalCount);
+
     const sorted = records.sort((a, b) => (b.date || '').localeCompare(a.date || ''));
 
     // 날짜별 그룹 라벨 및 집계 (오늘/어제/이번 주/월별)
@@ -35,18 +77,22 @@ App.pages.records = {
     const petMap = {}; pets.forEach(p => petMap[p.id] = p);
     const serviceMap = {}; services.forEach(s => serviceMap[s.id] = s.name);
 
-    const today = App.getToday();
-    const thisMonth = today.slice(0, 7);
-
     // 미수금 경고 카드용 집계 (렌더에서 실제 사용하는 값만)
     const unpaidRecs = records.filter(r => r.paymentMethod === 'unpaid');
     const unpaidTotal = unpaidRecs.reduce((sum, r) => sum + App.getRecordAmount(r), 0);
+
+    // 빈 상태 메시지 (모드별)
+    const emptyMessage = loadMode === 'unpaid'
+      ? '&#x1F389; 미결제 기록이 없습니다'
+      : (loadMode === 'month-jump'
+        ? `${jumpMonth} 에 미용 기록이 없습니다`
+        : `최근 ${daysBack}일간 미용 기록이 없습니다${totalCount > 0 ? ' (더 보기 또는 월 점프)' : ''}`);
 
     container.innerHTML = `
       <div class="page-header">
         <div>
           <h1 class="page-title">미용 기록</h1>
-          <p class="page-subtitle">총 ${records.length}건</p>
+          <p class="page-subtitle">총 ${totalCount.toLocaleString('ko-KR')}건 <span style="color:var(--text-muted);font-weight:400">· ${modeLabel} ${records.length.toLocaleString('ko-KR')}건</span></p>
         </div>
         <div class="page-actions">
           <button class="btn btn-primary" id="btn-add-record">+ 새 기록</button>
@@ -72,7 +118,7 @@ App.pages.records = {
           <input type="text" id="record-search" placeholder="고객, 반려견, 서비스, 메모 검색..." style="min-height:40px">
         </div>
         <div class="filter-bar-row">
-          <input type="month" id="filter-month" value="${thisMonth}" style="flex:1;min-height:44px">
+          <input type="month" id="filter-month" value="${jumpMonth}" placeholder="월 점프" style="flex:1;min-height:44px">
           <select id="filter-payment" style="flex:1;min-height:44px">
             <option value="">전체 결제</option>
             <option value="cash">현금</option>
@@ -107,7 +153,7 @@ App.pages.records = {
                   <tr><td colspan="8">
                     <div class="empty-state">
                       <div class="empty-state-icon">&#x2702;</div>
-                      <div class="empty-state-text">미용 기록이 없습니다</div>
+                      <div class="empty-state-text">${emptyMessage}</div>
                     </div>
                   </td></tr>
                 ` : (() => { let _lastG = null; return sorted.map(r => {
@@ -152,7 +198,7 @@ App.pages.records = {
             ${sorted.length === 0 ? `
               <div class="empty-state">
                 <div class="empty-state-icon">&#x2702;</div>
-                <div class="empty-state-text">미용 기록이 없습니다</div>
+                <div class="empty-state-text">${emptyMessage}</div>
               </div>
             ` : (() => { let _lastG = null; return sorted.map(r => {
               const customer = customerMap[r.customerId];
@@ -194,39 +240,113 @@ App.pages.records = {
         </div>
       </div>
 
+      ${this._canLoadMore ? `
+        <div style="margin-top:16px;padding:12px;text-align:center">
+          <button class="btn btn-secondary" id="btn-load-more" style="min-height:44px;min-width:200px">
+            더 오래된 기록 보기 (이전 90일)
+          </button>
+          <div style="margin-top:8px;font-size:0.78rem;color:var(--text-muted)">표시 ${records.length.toLocaleString('ko-KR')}건 / 총 ${totalCount.toLocaleString('ko-KR')}건</div>
+        </div>
+      ` : ''}
+      ${(!this._canLoadMore && loadMode === 'recent' && totalCount > 0 && records.length === totalCount) ? `
+        <div style="margin-top:16px;padding:12px;text-align:center;color:var(--text-muted);font-size:0.85rem">
+          &#x2713; 모든 기록을 불러왔습니다 (${totalCount.toLocaleString('ko-KR')}건)
+        </div>
+      ` : ''}
+      ${loadMode !== 'recent' ? `
+        <div style="margin-top:16px;padding:12px;text-align:center">
+          <button class="btn btn-secondary btn-sm" id="btn-back-to-recent" style="min-height:40px">
+            &larr; 최근 기록으로 돌아가기
+          </button>
+        </div>
+      ` : ''}
+
     `;
   },
 
   async init() {
     document.getElementById('btn-add-record')?.addEventListener('click', () => this.showForm());
 
-    // 미수금 경고 카드 클릭 -> 미결제 필터
+    // 모드 전환 헬퍼 (sessionStorage에 저장 후 재렌더)
+    const switchMode = (mode, opts = {}) => {
+      const cur = (() => { try { return JSON.parse(sessionStorage.getItem('record-filter') || '{}'); } catch (_) { return {}; } })();
+      const next = {
+        ...cur,
+        _loadMode: mode,
+        _daysBack: opts.daysBack !== undefined ? opts.daysBack : (mode === 'recent' ? 90 : cur._daysBack),
+        _jumpMonth: mode === 'month-jump' ? (opts.month || '') : '',
+        // search/payment는 보존 (DOM 필터)
+        search: document.getElementById('record-search')?.value || '',
+        payment: document.getElementById('filter-payment')?.value || ''
+      };
+      sessionStorage.setItem('record-filter', JSON.stringify(next));
+      // 스크롤 위치 보존 (load-more 시 자연스러운 UX)
+      if (mode === 'recent' && opts.daysBack > 90) {
+        sessionStorage.setItem('records-scroll', String(window.scrollY));
+      } else {
+        sessionStorage.removeItem('records-scroll');
+      }
+      App.handleRoute();
+    };
+
+    // 미수금 경고 카드 -> 미결제 모드 (전체 기간 paymentMethod 인덱스 쿼리)
     document.getElementById('unpaid-warning-card')?.addEventListener('click', () => {
-      document.getElementById('filter-month').value = '';
-      document.getElementById('filter-payment').value = 'unpaid';
-      document.getElementById('record-search').value = '';
-      this.applyFilters();
+      // 드롭다운 UI 도 unpaid 로 (사용자 인지 명확)
+      const pay = document.getElementById('filter-payment');
+      if (pay) pay.value = 'unpaid';
+      switchMode('unpaid');
     });
 
+    // 검색 / 결제 필터: DOM 필터 (현재 로드된 데이터에만 적용)
     const _debouncedRecFilter = App.debounce(() => this.applyFilters(), 300);
     document.getElementById('record-search')?.addEventListener('input', _debouncedRecFilter);
-    document.getElementById('filter-month')?.addEventListener('change', () => this.applyFilters());
     document.getElementById('filter-payment')?.addEventListener('change', () => this.applyFilters());
-    document.getElementById('btn-clear-filter')?.addEventListener('click', () => {
-      document.getElementById('record-search').value = '';
-      document.getElementById('filter-month').value = '';
-      document.getElementById('filter-payment').value = '';
-      sessionStorage.removeItem('record-filter');
-      this.applyFilters();
+
+    // 월 input: 특정 월로 점프 (해당 월 + 이전 1개월)
+    document.getElementById('filter-month')?.addEventListener('change', (e) => {
+      const newMonth = e.target.value || '';
+      if (newMonth) {
+        switchMode('month-jump', { month: newMonth });
+      } else {
+        switchMode('recent');
+      }
     });
 
-    // Restore saved filter state
+    // 초기화: recent 90일 모드로 복귀
+    document.getElementById('btn-clear-filter')?.addEventListener('click', () => {
+      const inputs = ['record-search', 'filter-month', 'filter-payment'];
+      inputs.forEach(id => { const el = document.getElementById(id); if (el) el.value = ''; });
+      sessionStorage.removeItem('record-filter');
+      sessionStorage.removeItem('records-scroll');
+      App.handleRoute();
+    });
+
+    // 더 보기: 90일씩 추가 로드
+    document.getElementById('btn-load-more')?.addEventListener('click', () => {
+      const next = (this._daysBack || 90) + 90;
+      switchMode('recent', { daysBack: next });
+    });
+
+    // 최근으로 복귀 (month-jump / unpaid 모드 종료)
+    document.getElementById('btn-back-to-recent')?.addEventListener('click', () => {
+      switchMode('recent');
+    });
+
+    // 스크롤 위치 복원 (load-more 직후)
+    const savedScroll = sessionStorage.getItem('records-scroll');
+    if (savedScroll) {
+      requestAnimationFrame(() => {
+        window.scrollTo({ top: Number(savedScroll), behavior: 'instant' });
+        sessionStorage.removeItem('records-scroll');
+      });
+    }
+
+    // Restore saved DOM filter state (search/payment) — month은 render에서 jumpMonth로 이미 세팅됨
     const savedFilter = sessionStorage.getItem('record-filter');
     if (savedFilter) {
       try {
         const f = JSON.parse(savedFilter);
         if (f.search) document.getElementById('record-search').value = f.search;
-        if (f.month) document.getElementById('filter-month').value = f.month;
         if (f.payment) document.getElementById('filter-payment').value = f.payment;
         this.applyFilters();
       } catch (e) { /* ignore parse errors */ }
@@ -2247,8 +2367,8 @@ App.pages.records = {
 
       preview.innerHTML = '<div style="color:var(--text-muted);text-align:center;font-size:0.9rem">집계 중...</div>';
 
-      const records = await DB.getAll('records');
-      const filtered = records.filter(r => r.date && r.date >= start && r.date <= end);
+      // 인덱스 쿼리로 기간 내 records만 로드 (장기 누적 시 필수)
+      const filtered = await DB.getByDateRange('records', 'date', start, end);
       const total = filtered.reduce((sum, r) => sum + App.getRecordAmount(r), 0);
 
       const breakdown = { cash: { count: 0, amount: 0 }, card: { count: 0, amount: 0 }, transfer: { count: 0, amount: 0 }, unpaid: { count: 0, amount: 0 } };
@@ -2343,8 +2463,9 @@ App.pages.records = {
 
   async downloadCSV(start, end) {
     try {
+      // records: 인덱스 쿼리로 기간만 로드 (장기 누적 대비)
       const [records, customers, pets, services] = await Promise.all([
-        DB.getAll('records'),
+        DB.getByDateRange('records', 'date', start, end),
         DB.getAll('customers'),
         DB.getAll('pets'),
         DB.getAll('services')
@@ -2358,7 +2479,6 @@ App.pages.records = {
       services.forEach(s => { serviceMap[s.id] = s.name; });
 
       const filtered = records
-        .filter(r => r.date && r.date >= start && r.date <= end)
         .sort((a, b) => (b.date || '').localeCompare(a.date || ''));
 
       const shopName = await DB.getSetting('shopName') || '펫살롱';

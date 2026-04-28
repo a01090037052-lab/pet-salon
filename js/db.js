@@ -592,6 +592,10 @@ const DB = {
 
   validateBackup(data) {
     if (!data || typeof data !== 'object') return '유효하지 않은 백업 파일입니다.';
+    // 미래 버전 백업 차단 (앱 업데이트 필요)
+    if (typeof data._version === 'number' && data._version > this.version) {
+      return `이 백업은 더 최신 버전(v${data._version})에서 생성되었습니다. 앱을 업데이트한 후 다시 시도해주세요.`;
+    }
     const validStores = Object.keys(data).filter(k => !k.startsWith('_') && this.stores[k]);
     if (validStores.length === 0) return '인식 가능한 데이터가 없습니다.';
     for (const store of validStores) {
@@ -609,6 +613,44 @@ const DB = {
     return null; // 유효
   },
 
+  // 백업 데이터 마이그레이션 (구버전 → 현재 버전)
+  // 향후 schema 변경 시 여기에 단계별 변환 함수 추가
+  async _migrateBackup(data) {
+    const sourceVer = (typeof data._version === 'number') ? data._version : 1;
+    if (sourceVer === this.version) return data;
+
+    // 마이그레이션 레지스트리: { fromVersion: async (data) => transformedData }
+    const migrations = {
+      // v1 → v2: paymentMethod 인덱스 추가 (데이터 변환 불필요, schema only)
+      // v2 → v3: photos 스토어 추가 (없으면 빈 배열로 초기화)
+      // v3 → v4: pets.photoId/photoThumb 도입 (구버전은 photo 인라인 → import 시 그대로 두고 추후 optimizeStorage로 변환)
+      // v4 → v5: paymentMethod 인덱스 (기존 데이터 호환)
+      // 향후 추가: 6 → 7, 7 → 8 등
+    };
+
+    let v = sourceVer;
+    let migrated = data;
+    while (v < this.version) {
+      const fn = migrations[v];
+      if (fn) {
+        try {
+          migrated = await fn(migrated);
+          console.log(`Backup migrated: v${v} → v${v + 1}`);
+        } catch (e) {
+          console.error(`Migration v${v}→v${v + 1} failed:`, e);
+          throw new Error(`백업 마이그레이션 실패 (v${v}→v${v + 1}): ${e.message}`);
+        }
+      }
+      v++;
+    }
+
+    // photos 스토어가 없으면 빈 배열 보장 (v3 미만 백업)
+    if (!Array.isArray(migrated.photos)) migrated.photos = [];
+    if (!Array.isArray(migrated.expenses)) migrated.expenses = [];
+    migrated._version = this.version;
+    return migrated;
+  },
+
   async importAll(data, onProgress) {
     if (this.mode === 'server') {
       await fetch('/api/import', {
@@ -623,33 +665,74 @@ const DB = {
     const validationError = this.validateBackup(data);
     if (validationError) throw new Error(validationError);
 
+    // 1b. 구버전 백업 마이그레이션
+    data = await this._migrateBackup(data);
+
     const storeNames = Object.keys(data).filter(
       k => !k.startsWith('_') && this.stores[k] && Array.isArray(data[k])
     );
 
-    // 2. 단일 트랜잭션으로 모든 스토어를 원자적으로 처리
+    const CHUNK_SIZE = 500; // 사진 5만 장 + 트랜잭션 시간 초과 방지
+    const totalItems = storeNames.reduce((sum, s) => sum + (data[s] ? data[s].length : 0), 0);
+    let processed = 0;
+
+    // 2. 모든 스토어를 단일 트랜잭션으로 clear (원자적, 빠름)
     try {
-      const tx = this.db.transaction(storeNames, 'readwrite');
-      for (const storeName of storeNames) {
-        const store = tx.objectStore(storeName);
-        store.clear();
-        for (const item of data[storeName]) {
-          try {
-            if (storeName === 'settings' && !item.key) continue;
-            store.add(item);
-          } catch (e) {
-            console.warn(`importAll: skipped bad item in ${storeName}`, e);
-          }
-        }
-      }
       await new Promise((resolve, reject) => {
+        const tx = this.db.transaction(storeNames, 'readwrite');
+        for (const storeName of storeNames) tx.objectStore(storeName).clear();
         tx.oncomplete = resolve;
         tx.onerror = () => reject(tx.error);
         tx.onabort = () => reject(tx.error);
       });
     } catch (e) {
-      console.error('importAll failed (rolled back):', e);
-      throw e;
+      console.error('importAll: clear phase failed:', e);
+      throw new Error('기존 데이터 정리 중 오류가 발생했습니다.');
+    }
+
+    // 3. 스토어별로 청크 단위 insert (트랜잭션 시간 초과 방지)
+    for (const storeName of storeNames) {
+      const items = data[storeName];
+      for (let i = 0; i < items.length; i += CHUNK_SIZE) {
+        const chunk = items.slice(i, i + CHUNK_SIZE);
+        try {
+          await new Promise((resolve, reject) => {
+            const tx = this.db.transaction(storeName, 'readwrite');
+            const store = tx.objectStore(storeName);
+            for (const item of chunk) {
+              if (storeName === 'settings' && !item.key) continue;
+              // photos: export 시 Blob을 base64로 직렬화한 데이터 → 다시 Blob으로 복원 (저장 공간 33% 절약)
+              if (storeName === 'photos' && item.data && typeof item.data === 'string' && item.data.startsWith('data:')) {
+                try {
+                  const parts = item.data.split(',');
+                  const mime = parts[0].match(/:(.*?);/)[1];
+                  const binary = atob(parts[1]);
+                  const arr = new Uint8Array(binary.length);
+                  for (let j = 0; j < binary.length; j++) arr[j] = binary.charCodeAt(j);
+                  item.data = new Blob([arr], { type: mime });
+                } catch (e) {
+                  console.warn('photo blob 복원 실패, 문자열로 저장:', item.id, e);
+                }
+              }
+              try {
+                store.add(item);
+              } catch (e) {
+                console.warn(`importAll: skipped bad item in ${storeName}`, e);
+              }
+            }
+            tx.oncomplete = resolve;
+            tx.onerror = () => reject(tx.error);
+            tx.onabort = () => reject(tx.error);
+          });
+          processed += chunk.length;
+          if (onProgress) {
+            try { onProgress({ processed, total: totalItems, store: storeName }); } catch (_) {}
+          }
+        } catch (e) {
+          console.error(`importAll: ${storeName} chunk ${i}~${i + chunk.length} 실패:`, e);
+          throw new Error(`${storeName} 저장 중 오류 (${processed}/${totalItems} 처리됨)`);
+        }
+      }
     }
   },
 
@@ -668,6 +751,93 @@ const DB = {
       tx.onerror = () => reject(tx.error);
       tx.onabort = () => reject(tx.error);
     });
+  },
+
+  // ========== Data Integrity Check ==========
+  // 앱 시작 시 자동 호출되어 orphan 참조를 감지/보수
+  // TODO: 데이터 100K+ 시 cursor 기반 배치로 전환 필요 (현재 getAll 사용)
+  async runIntegrityCheck() {
+    if (this.mode === 'server') return null; // 서버 모드는 서버가 보장
+    const report = {
+      orphanPhotoRefs: 0,    // pet/record의 photoId가 photos 스토어에 없음
+      orphanPhotos: 0,       // 어디서도 참조 안 되는 photos
+      repaired: 0,
+      issues: []             // 자동 보수 안 한 모순 (사용자 확인 필요)
+    };
+    try {
+      const [customers, pets, records, photos] = await Promise.all([
+        this.getAll('customers'),
+        this.getAll('pets'),
+        this.getAll('records'),
+        this.getAll('photos')
+      ]);
+      const customerIds = new Set(customers.map(c => c.id));
+      const petIds = new Set(pets.map(p => p.id));
+      const photoIds = new Set(photos.map(ph => ph.id));
+      const referencedPhotoIds = new Set();
+
+      // 1) pets.photoId orphan 보수
+      for (const p of pets) {
+        if (p.photoId) {
+          if (!photoIds.has(p.photoId)) {
+            report.orphanPhotoRefs++;
+            p.photoId = null;
+            await this.update('pets', p);
+            report.repaired++;
+          } else {
+            referencedPhotoIds.add(p.photoId);
+          }
+        }
+      }
+
+      // 2) records.photo*Id orphan 보수
+      const recordPhotoFields = ['photoBeforeId', 'photoAfterId', 'photo3Id', 'photo4Id'];
+      for (const r of records) {
+        let changed = false;
+        for (const field of recordPhotoFields) {
+          if (r[field]) {
+            if (!photoIds.has(r[field])) {
+              report.orphanPhotoRefs++;
+              r[field] = null;
+              changed = true;
+              report.repaired++;
+            } else {
+              referencedPhotoIds.add(r[field]);
+            }
+          }
+        }
+        if (changed) await this.update('records', r);
+      }
+
+      // 3) photos 스토어에서 어디서도 참조 안 되는 orphan 삭제
+      for (const ph of photos) {
+        if (!referencedPhotoIds.has(ph.id)) {
+          report.orphanPhotos++;
+          await this.delete('photos', ph.id);
+          report.repaired++;
+        }
+      }
+
+      // 4) 모순 감지 (자동 보수 안 함 — 사용자 의도 모를 수 있음)
+      for (const p of pets) {
+        if (p.customerId && !customerIds.has(p.customerId)) {
+          report.issues.push(`반려견 #${p.id}(${p.name || '이름없음'}): 소유 고객 ID ${p.customerId} 없음`);
+        }
+      }
+      for (const r of records) {
+        if (r.customerId && !customerIds.has(r.customerId)) {
+          report.issues.push(`기록 #${r.id}(${r.date}): 고객 ID ${r.customerId} 없음`);
+        }
+        if (r.petId && !petIds.has(r.petId)) {
+          report.issues.push(`기록 #${r.id}(${r.date}): 반려견 ID ${r.petId} 없음`);
+        }
+      }
+
+      return report;
+    } catch (e) {
+      console.error('runIntegrityCheck failed:', e);
+      return null;
+    }
   },
 
   async getSetting(key) {
