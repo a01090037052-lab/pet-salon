@@ -830,7 +830,7 @@ App.pages.settings = {
     App.showModal({
       title: isReissue ? '새 복구 코드' : '복구 코드 (한 번만 표시됩니다!)',
       hideFooter: false,
-      saveText: '복사 후 보관함',
+      saveText: '✓ 메모 완료',
       onSave: () => { App.closeModal(); },
       content: `
         <div style="text-align:center">
