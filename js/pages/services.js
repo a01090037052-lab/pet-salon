@@ -84,12 +84,15 @@ App.pages.services = {
           }
           const usage = getUsage(s);
           const usageBadge = usage > 0 ? '<span class="badge badge-secondary" style="font-size:0.7rem;padding:2px 8px;margin-left:6px;color:var(--text-secondary)">누적 ' + usage + '회</span>' : '';
+          // 가격 표시: 모든 사이즈 같으면 단일, 다르면 "소/중/대"
+          const samePrices = (s.priceSmall || 0) === (s.priceMedium || 0) && (s.priceMedium || 0) === (s.priceLarge || 0);
+          const priceDisplay = samePrices
+            ? App.formatPriceShort(s.priceSmall || 0)
+            : App.formatPriceShort(s.priceSmall) + ' / ' + App.formatPriceShort(s.priceMedium) + ' / ' + App.formatPriceShort(s.priceLarge);
           html += '<div style="display:flex;align-items:center;gap:10px;padding:10px 0;border-bottom:1px solid var(--border-light);' + (isOff ? 'opacity:0.5' : '') + '">' +
             '<div style="flex:1;min-width:0">' +
               '<div style="font-weight:700;font-size:0.9rem">' + App.escapeHtml(s.name) + usageBadge + '</div>' +
-              '<div style="font-size:0.78rem;color:var(--text-muted);margin-top:2px">' +
-                App.formatPriceShort(s.priceSmall) + ' / ' + App.formatPriceShort(s.priceMedium) + ' / ' + App.formatPriceShort(s.priceLarge) +
-              '</div>' +
+              '<div style="font-size:0.78rem;color:var(--text-muted);margin-top:2px">' + priceDisplay + '</div>' +
             '</div>' +
             '<button class="btn-icon btn-edit-service" data-id="' + s.id + '" title="수정" style="font-size:0.95rem">&#x270F;</button>' +
             '<button class="btn-icon btn-toggle-service" data-id="' + s.id + '" title="' + (!isOff ? '비활성화' : '활성화') + '" style="font-size:0.95rem">' + (!isOff ? '&#x1F7E2;' : '&#x26AA;') + '</button>' +
@@ -123,51 +126,105 @@ App.pages.services = {
   async showForm(id) {
     let service = id ? await DB.get('services', id) : { isActive: true };
 
+    // 기존 서비스의 가격이 사이즈별로 다른지 판단 (수정 모드)
+    const hasDifferentPrices = !!id && (
+      (service.priceSmall || 0) !== (service.priceMedium || 0) ||
+      (service.priceMedium || 0) !== (service.priceLarge || 0)
+    );
+
     App.showModal({
       title: id ? '서비스 수정' : '새 서비스 등록',
       content: `
-        <div class="form-row">
-          <div class="form-group" style="flex:2">
-            <label class="form-label">서비스명 <span class="required">*</span></label>
-            <input type="text" id="f-name" value="${App.escapeHtml(service.name || '')}" placeholder="예: 전체 미용, 부분 목욕" maxlength="40">
-          </div>
-          <div class="form-group" style="flex:1">
-            <label class="form-label">분류</label>
-            <select id="f-category">
-              <option value="grooming" ${(service.category || 'grooming') === 'grooming' ? 'selected' : ''}>미용 코스</option>
-              <option value="addon" ${service.category === 'addon' ? 'selected' : ''}>추가 옵션</option>
-              <option value="care" ${service.category === 'care' ? 'selected' : ''}>단독 케어</option>
-            </select>
-          </div>
+        <div class="form-group">
+          <label class="form-label">서비스명 <span class="required">*</span></label>
+          <input type="text" id="f-name" value="${App.escapeHtml(service.name || '')}" placeholder="예: 전체 미용, 부분 목욕" maxlength="40">
         </div>
         <div class="form-group">
-          <label class="form-label">설명</label>
-          <textarea id="f-description" placeholder="서비스 상세 설명">${App.escapeHtml(service.description || '')}</textarea>
+          <label class="form-label">분류</label>
+          <div id="f-category-chips" style="display:flex;gap:6px;flex-wrap:wrap">
+            <button type="button" class="payment-chip${(service.category || 'grooming') === 'grooming' ? ' active' : ''}" data-value="grooming">&#x2702; 미용 코스</button>
+            <button type="button" class="payment-chip${service.category === 'addon' ? ' active' : ''}" data-value="addon">&#x2728; 추가 옵션</button>
+            <button type="button" class="payment-chip${service.category === 'care' ? ' active' : ''}" data-value="care">&#x1F4A7; 단독 케어</button>
+          </div>
+          <input type="hidden" id="f-category" value="${service.category || 'grooming'}">
         </div>
-        <div class="form-row three">
-          <div class="form-group">
-            <label class="form-label">소형견 가격 (원)</label>
-            <input type="number" id="f-priceSmall" value="${service.priceSmall || ''}" placeholder="0" min="0" step="1000">
+
+        <!-- 가격 — 단일 / 사이즈별 토글 -->
+        <div class="form-group">
+          <label class="form-label">가격 (원) <span class="required">*</span></label>
+          <div id="f-price-unified" style="display:${hasDifferentPrices ? 'none' : 'block'}">
+            <input type="number" id="f-priceUnified" value="${hasDifferentPrices ? '' : (service.priceSmall || '')}" placeholder="0" min="0" step="1000">
+            <label style="display:flex;align-items:center;gap:6px;margin-top:8px;font-size:0.85rem;color:var(--text-secondary);cursor:pointer">
+              <input type="checkbox" id="f-price-by-size" ${hasDifferentPrices ? 'checked' : ''} style="width:18px;height:18px;cursor:pointer">
+              <span>사이즈별 다른 가격 설정</span>
+            </label>
           </div>
-          <div class="form-group">
-            <label class="form-label">중형견 가격 (원)</label>
-            <input type="number" id="f-priceMedium" value="${service.priceMedium || ''}" placeholder="0" min="0" step="1000">
-          </div>
-          <div class="form-group">
-            <label class="form-label">대형견 가격 (원)</label>
-            <input type="number" id="f-priceLarge" value="${service.priceLarge || ''}" placeholder="0" min="0" step="1000">
+          <div id="f-price-by-size-fields" style="display:${hasDifferentPrices ? 'block' : 'none'}">
+            <div class="form-row three">
+              <div class="form-group" style="margin-bottom:0">
+                <label class="form-label" style="font-size:0.82rem">소형견</label>
+                <input type="number" id="f-priceSmall" value="${service.priceSmall || ''}" placeholder="0" min="0" step="1000">
+              </div>
+              <div class="form-group" style="margin-bottom:0">
+                <label class="form-label" style="font-size:0.82rem">중형견</label>
+                <input type="number" id="f-priceMedium" value="${service.priceMedium || ''}" placeholder="0" min="0" step="1000">
+              </div>
+              <div class="form-group" style="margin-bottom:0">
+                <label class="form-label" style="font-size:0.82rem">대형견</label>
+                <input type="number" id="f-priceLarge" value="${service.priceLarge || ''}" placeholder="0" min="0" step="1000">
+              </div>
+            </div>
+            <label style="display:flex;align-items:center;gap:6px;margin-top:8px;font-size:0.85rem;color:var(--text-secondary);cursor:pointer">
+              <input type="checkbox" id="f-price-by-size-2" checked style="width:18px;height:18px;cursor:pointer">
+              <span>사이즈별 다른 가격 설정</span>
+            </label>
+            <div class="form-hint" style="margin-top:4px">소형 입력 시 중형 +1만, 대형 +2만 원 자동 제안</div>
           </div>
         </div>
-        <div class="form-hint" style="margin-top:-8px;margin-bottom:16px">사이즈별로 다른 가격을 설정할 수 있습니다</div>
+
+        <div class="form-group">
+          <label class="form-label">설명 <span style="color:var(--text-muted);font-size:0.78rem">(선택)</span></label>
+          <textarea id="f-description" placeholder="서비스 내용 메모">${App.escapeHtml(service.description || '')}</textarea>
+        </div>
       `,
       onSave: () => this.saveService(id)
     });
+
+    // 분류 chips 핸들러
+    document.querySelectorAll('#f-category-chips .payment-chip').forEach(btn => {
+      btn.addEventListener('click', () => {
+        document.querySelectorAll('#f-category-chips .payment-chip').forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+        document.getElementById('f-category').value = btn.dataset.value;
+      });
+    });
+
+    // 사이즈별 가격 토글 핸들러
+    const togglePriceMode = (bySize) => {
+      document.getElementById('f-price-unified').style.display = bySize ? 'none' : 'block';
+      document.getElementById('f-price-by-size-fields').style.display = bySize ? 'block' : 'none';
+      // 단일 → 사이즈별 전환 시 단일 가격을 소형에 복사
+      if (bySize) {
+        const u = Number(document.getElementById('f-priceUnified')?.value) || 0;
+        if (u > 0 && !document.getElementById('f-priceSmall').value) {
+          document.getElementById('f-priceSmall').value = u;
+          // 자동 채움 트리거
+          document.getElementById('f-priceSmall').dispatchEvent(new Event('input'));
+        }
+      } else {
+        // 사이즈별 → 단일 전환 시 소형 가격을 단일로
+        const s = Number(document.getElementById('f-priceSmall')?.value) || 0;
+        if (s > 0) document.getElementById('f-priceUnified').value = s;
+      }
+    };
+    document.getElementById('f-price-by-size')?.addEventListener('change', (e) => togglePriceMode(e.target.checked));
+    document.getElementById('f-price-by-size-2')?.addEventListener('change', (e) => togglePriceMode(e.target.checked));
 
     // 소형 가격 입력 시 중형/대형 자동 채움 (수동 수정 안 한 경우만)
     const smallInput = document.getElementById('f-priceSmall');
     const mediumInput = document.getElementById('f-priceMedium');
     const largeInput = document.getElementById('f-priceLarge');
-    let mediumManual = !!id, largeManual = !!id; // 수정 모드면 자동채움 비활성
+    let mediumManual = !!id && hasDifferentPrices, largeManual = !!id && hasDifferentPrices;
     mediumInput?.addEventListener('input', () => { mediumManual = true; });
     largeInput?.addEventListener('input', () => { largeManual = true; });
     smallInput?.addEventListener('input', () => {
@@ -180,9 +237,18 @@ App.pages.services = {
   async saveService(id) {
     const name = document.getElementById('f-name').value.trim();
     const description = document.getElementById('f-description').value.trim();
-    const priceSmall = Math.max(0, Number(document.getElementById('f-priceSmall').value) || 0);
-    const priceMedium = Math.max(0, Number(document.getElementById('f-priceMedium').value) || 0);
-    const priceLarge = Math.max(0, Number(document.getElementById('f-priceLarge').value) || 0);
+
+    // 단일 / 사이즈별 모드 분기
+    const bySize = document.getElementById('f-price-by-size')?.checked || document.getElementById('f-price-by-size-2')?.checked;
+    let priceSmall, priceMedium, priceLarge;
+    if (bySize) {
+      priceSmall = Math.max(0, Number(document.getElementById('f-priceSmall').value) || 0);
+      priceMedium = Math.max(0, Number(document.getElementById('f-priceMedium').value) || 0);
+      priceLarge = Math.max(0, Number(document.getElementById('f-priceLarge').value) || 0);
+    } else {
+      const unified = Math.max(0, Number(document.getElementById('f-priceUnified').value) || 0);
+      priceSmall = priceMedium = priceLarge = unified;
+    }
 
     const category = document.getElementById('f-category')?.value || 'grooming';
 
