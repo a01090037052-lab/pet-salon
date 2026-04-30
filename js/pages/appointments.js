@@ -141,7 +141,7 @@ App.pages.appointments = {
                   return `
                     <tr data-id="${a.id}" data-status="${a.status || 'pending'}" data-date="${a.date}"
                         data-search="${((customer?.name || '') + ' ' + (customer?.phone || '') + ' ' + (pet?.name || '') + ' ' + (a.memo || '') + ' ' + (a.groomer || '')).toLowerCase()}"
-                        style="${isToday ? 'background:#F0F9FF' : ''}">
+                        style="${isToday ? 'background:var(--info-bg-soft)' : ''}">
                       <td>
                         <strong>${App.formatDate(a.date)}</strong>
                         ${isToday ? '<span class="badge badge-info" style="margin-left:4px">오늘</span>' : ''}
@@ -881,7 +881,7 @@ App.pages.appointments = {
             <input type="time" id="f-time" value="${appt.time || ''}">
           </div>
         </div>
-        <div id="time-conflict-warning" style="display:none;background:var(--warning-light);border:1px solid var(--warning);border-radius:var(--radius);padding:8px 12px;font-size:0.82rem;color:#92400E;font-weight:600;margin-bottom:8px"></div>
+        <div id="time-conflict-warning" style="display:none;background:var(--warning-light);border:1px solid var(--warning);border-radius:var(--radius);padding:8px 12px;font-size:0.82rem;color:var(--warning-text-strong);font-weight:600;margin-bottom:8px"></div>
         <!-- 선택사항 -->
         <div style="margin:12px 0 8px;padding-top:10px;border-top:1px dashed var(--border);font-size:0.82rem;color:var(--text-muted)">선택사항</div>
         <div class="form-group">
