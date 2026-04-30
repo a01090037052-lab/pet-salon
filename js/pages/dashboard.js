@@ -189,7 +189,7 @@ App.pages.dashboard = {
       const groomersSet = await DB.getSetting('groomers') || [];
       const serviceCount = services.length;
       const onboardingHtml = customerCount === 0 ? `
-        <div class="card onboarding-card" style="margin-bottom:20px;border:2px solid var(--primary-lighter);background:linear-gradient(135deg,var(--primary-light),#fff)">
+        <div class="card onboarding-card" style="margin-bottom:20px;border:2px solid var(--primary-lighter);background:linear-gradient(135deg,var(--primary-light),var(--gradient-stop-light))">
           <div class="card-body" style="padding:24px">
             <div style="font-size:1.5rem;margin-bottom:4px">&#x1F44B;</div>
             <div style="font-size:1.1rem;font-weight:800;margin-bottom:4px">환영합니다! 시작해볼까요?</div>
@@ -229,7 +229,7 @@ App.pages.dashboard = {
 
         <div class="welcome-section">
           <div class="welcome-title">${greeting}! ${shopName ? App.escapeHtml(shopName) : '&#x2702; 펫살롱'}</div>
-          <div class="welcome-subtitle">${today} &middot; 오늘 예약 ${todayAppointments.length}건${monthRecords.length > 0 ? ' &middot; 이번 달 미용 ' + monthRecords.length + '건' : ''} &middot; 고객 ${customerCount}명</div>
+          <div class="welcome-subtitle">${(() => { const d = new Date(today + 'T00:00:00'); const wd = ['일','월','화','수','목','금','토'][d.getDay()]; return `${d.getMonth()+1}월 ${d.getDate()}일 (${wd})`; })()} &middot; 등록 고객 ${customerCount}명</div>
         </div>
 
         ${onboardingHtml}
@@ -330,7 +330,7 @@ App.pages.dashboard = {
                 <div style="font-size:1.4rem;font-weight:800;color:var(--warning)">${visitSummary.remind}</div>
                 <div style="font-size:0.78rem;color:var(--text-secondary);margin-top:2px">리마인드</div>
               </div>
-              <div style="text-align:center;padding:12px;border-radius:var(--radius);background:${visitSummary['at-risk'] > 0 ? '#FEE2E2' : 'var(--bg)'};cursor:pointer" onclick="sessionStorage.setItem('customer-filter',JSON.stringify({visitStatus:'at-risk'}));App.navigate('customers')">
+              <div style="text-align:center;padding:12px;border-radius:var(--radius);background:${visitSummary['at-risk'] > 0 ? 'var(--danger-bg-soft)' : 'var(--bg)'};cursor:pointer" onclick="sessionStorage.setItem('customer-filter',JSON.stringify({visitStatus:'at-risk'}));App.navigate('customers')">
                 <div style="font-size:1.4rem;font-weight:800;color:var(--danger)">${visitSummary['at-risk']}</div>
                 <div style="font-size:0.78rem;color:var(--text-secondary);margin-top:2px">이탈위험</div>
               </div>
