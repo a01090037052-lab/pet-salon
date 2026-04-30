@@ -234,37 +234,8 @@ App.pages.dashboard = {
 
         ${onboardingHtml}
 
-        <div class="stats-grid">
-          <a href="#appointments" class="stat-card gradient-blue" style="text-decoration:none;color:inherit">
-            <div class="stat-icon blue">&#x1F4C5;</div>
-            <div>
-              <div class="stat-value">${todayAppointments.length}<span style="font-size:0.9rem;font-weight:500;color:var(--text-secondary)">건</span></div>
-              <div class="stat-label">오늘 예약 &rarr;</div>
-            </div>
-          </a>
-          <div class="stat-card gradient-purple" style="cursor:pointer" onclick="App.pages.records?.showDailyReport()">
-            <div class="stat-icon purple">&#x1F4B5;</div>
-            <div>
-              <div class="stat-value" style="font-size:1.3rem">${App.formatCurrency(todayRevenue)}</div>
-              <div class="stat-label">오늘 매출 (${todayRecords.length}건) &rarr;</div>
-            </div>
-          </div>
-          <a href="#revenue" class="stat-card gradient-green" style="text-decoration:none;color:inherit">
-            <div class="stat-icon green">&#x1F4C8;</div>
-            <div>
-              <div class="stat-value" style="font-size:1.3rem">${App.formatCurrency(monthRevenue)}</div>
-              <div class="stat-label">이번 달 매출 (${monthRecords.length}건) &rarr;</div>
-              ${revenueChange !== null ? `<div style="font-size:0.78rem;margin-top:2px;opacity:0.9">전월 대비 ${revenueChange >= 0 ? '+' : ''}${revenueChange}%</div>` : ''}
-              ${monthlyGoal > 0 ? (() => {
-                const pct = Math.min(Math.round((monthRevenue / monthlyGoal) * 100), 100);
-                return '<div style="margin-top:6px"><div style="height:6px;background:rgba(255,255,255,0.3);border-radius:3px;overflow:hidden"><div style="height:100%;width:' + pct + '%;background:#fff;border-radius:3px;transition:width 0.3s"></div></div><div style="font-size:0.78rem;margin-top:2px;opacity:0.9">월 목표 ' + pct + '% (' + App.formatCurrency(monthlyGoal) + ')</div></div>';
-              })() : ''}
-            </div>
-          </a>
-        </div>
-
-        <!-- 오늘 예약 목록 -->
-        <div class="card" style="margin-bottom:20px">
+        <!-- 1. 오늘 예약 — 매일 아침 가장 먼저 봐야 할 정보 -->
+        <div class="card" style="margin-bottom:16px">
           <div class="card-header">
             <span class="card-title">&#x1F4C5; 오늘 예약 (${todayAppointments.length}건)</span>
             <a href="#appointments" class="btn btn-sm btn-ghost">전체보기 &rarr;</a>
@@ -280,8 +251,7 @@ App.pages.dashboard = {
           </div>
         </div>
 
-        <!-- 알림 섹션 (데이터가 있을 때만 렌더) -->
-
+        <!-- 2. 미수금 (즉시 액션 필요) — 알림 섹션 최상단 -->
         ${unpaidRecords.length > 0 ? `
         <div class="card dash-accordion" style="margin-bottom:20px;border:1.5px solid var(--danger)">
           <div class="card-header dash-accordion-toggle" style="background:var(--danger-light);cursor:pointer;user-select:none" data-target="dash-unpaid">
@@ -413,6 +383,29 @@ App.pages.dashboard = {
           </div>
         </div>
         ` : ''}
+
+        <!-- 매출 요약 (페이지 하단 — 마감 시 확인) -->
+        <div class="stats-grid" style="margin-top:8px">
+          <div class="stat-card gradient-purple" style="cursor:pointer" onclick="App.pages.records?.showDailyReport()">
+            <div class="stat-icon purple">&#x1F4B5;</div>
+            <div>
+              <div class="stat-value" style="font-size:1.3rem">${App.formatCurrency(todayRevenue)}</div>
+              <div class="stat-label">오늘 매출 (${todayRecords.length}건) &rarr;</div>
+            </div>
+          </div>
+          <a href="#revenue" class="stat-card gradient-green" style="text-decoration:none;color:inherit">
+            <div class="stat-icon green">&#x1F4C8;</div>
+            <div>
+              <div class="stat-value" style="font-size:1.3rem">${App.formatCurrency(monthRevenue)}</div>
+              <div class="stat-label">이번 달 매출 (${monthRecords.length}건) &rarr;</div>
+              ${revenueChange !== null ? `<div style="font-size:0.78rem;margin-top:2px;opacity:0.9">전월 대비 ${revenueChange >= 0 ? '+' : ''}${revenueChange}%</div>` : ''}
+              ${monthlyGoal > 0 ? (() => {
+                const pct = Math.min(Math.round((monthRevenue / monthlyGoal) * 100), 100);
+                return '<div style="margin-top:6px"><div style="height:6px;background:rgba(255,255,255,0.3);border-radius:3px;overflow:hidden"><div style="height:100%;width:' + pct + '%;background:var(--gradient-stop-light);border-radius:3px;transition:width 0.3s"></div></div><div style="font-size:0.78rem;margin-top:2px;opacity:0.9">월 목표 ' + pct + '% (' + App.formatCurrency(monthlyGoal) + ')</div></div>';
+              })() : ''}
+            </div>
+          </a>
+        </div>
       `;
 
       // Storage quota monitoring (async, non-blocking)
