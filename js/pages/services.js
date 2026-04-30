@@ -175,7 +175,7 @@ App.pages.services = {
               </div>
             </div>
             <label style="display:flex;align-items:center;gap:6px;margin-top:8px;font-size:0.85rem;color:var(--text-secondary);cursor:pointer">
-              <input type="checkbox" id="f-price-by-size-2" checked style="width:18px;height:18px;cursor:pointer">
+              <input type="checkbox" id="f-price-by-size-2" ${hasDifferentPrices ? 'checked' : ''} style="width:18px;height:18px;cursor:pointer">
               <span>사이즈별 다른 가격 설정</span>
             </label>
             <div class="form-hint" style="margin-top:4px">소형 입력 시 중형 +1만, 대형 +2만 원 자동 제안</div>
@@ -199,10 +199,14 @@ App.pages.services = {
       });
     });
 
-    // 사이즈별 가격 토글 핸들러
+    // 사이즈별 가격 토글 핸들러 (두 체크박스 sync)
     const togglePriceMode = (bySize) => {
       document.getElementById('f-price-unified').style.display = bySize ? 'none' : 'block';
       document.getElementById('f-price-by-size-fields').style.display = bySize ? 'block' : 'none';
+      const cb1 = document.getElementById('f-price-by-size');
+      const cb2 = document.getElementById('f-price-by-size-2');
+      if (cb1) cb1.checked = bySize;
+      if (cb2) cb2.checked = bySize;
       // 단일 → 사이즈별 전환 시 단일 가격을 소형에 복사
       if (bySize) {
         const u = Number(document.getElementById('f-priceUnified')?.value) || 0;
@@ -238,8 +242,9 @@ App.pages.services = {
     const name = document.getElementById('f-name').value.trim();
     const description = document.getElementById('f-description').value.trim();
 
-    // 단일 / 사이즈별 모드 분기
-    const bySize = document.getElementById('f-price-by-size')?.checked || document.getElementById('f-price-by-size-2')?.checked;
+    // 단일 / 사이즈별 모드 분기 — 보이는 패널 기준 (더 신뢰)
+    const bySizePanel = document.getElementById('f-price-by-size-fields');
+    const bySize = !!bySizePanel && bySizePanel.style.display !== 'none';
     let priceSmall, priceMedium, priceLarge;
     if (bySize) {
       priceSmall = Math.max(0, Number(document.getElementById('f-priceSmall').value) || 0);
