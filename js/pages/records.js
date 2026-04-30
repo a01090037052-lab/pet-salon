@@ -1886,14 +1886,18 @@ App.pages.records = {
       _drawPhoto(ctx, imgBefore || imgAfter, photoPad, photoY, photoW, photoH);
       ctx.restore();
 
-      // 하단 정보
+      // 하단 정보 (헤드라인·서브 + 기존 정보)
       const ftY = photoY + photoH + 30;
-      const hasFeedText = s.customShowPet || s.customShowDate;
+      const _hasHeadline = !!s.headline, _hasSubline = !!s.subline;
+      const _extraH = (_hasHeadline ? 50 : 0) + (_hasSubline ? 36 : 0);
+      const hasFeedText = s.customShowPet || s.customShowDate || _hasHeadline || _hasSubline;
       if (hasFeedText && _useTextBox) {
         ctx.fillStyle = 'rgba(255,255,255,0.85)';
-        this._roundRect(ctx, 40, ftY - 10, W - 80, 120, 14); ctx.fill();
+        this._roundRect(ctx, 40, ftY - 10, W - 80, 120 + _extraH, 14); ctx.fill();
       }
       let _fty = ftY + 30;
+      if (_hasHeadline) { ctx.fillStyle = textColor; ctx.font = 'bold 38px ' + fontFamily; ctx.fillText(s.headline, W / 2, _fty); _fty += 44; }
+      if (_hasSubline) { ctx.fillStyle = textSub; ctx.font = '26px ' + fontFamily; ctx.fillText(s.subline, W / 2, _fty); _fty += 32; }
       if (s.customShowPet) { ctx.fillStyle = textColor; ctx.font = 'bold 42px ' + fontFamily; ctx.fillText(petName, W / 2, _fty); _fty += 40; }
       if (serviceNames && s.customShowPet) { ctx.fillStyle = textSub; ctx.font = '28px ' + fontFamily; ctx.fillText(serviceNames, W / 2, _fty); _fty += 35; }
       if (s.customShowDate) { ctx.fillStyle = textSub; ctx.font = '24px ' + fontFamily; ctx.fillText(dateStr, W / 2, _fty); }
@@ -1928,14 +1932,18 @@ App.pages.records = {
       _drawPhoto(ctx, imgBefore || imgAfter, photoPad, photoY, photoW, photoH);
       ctx.restore();
 
-      // 반려견 정보 (토글 + 배경 이미지 시 반투명 박스)
+      // 반려견 정보 (헤드라인·서브 + 기존)
       const infoY = photoY + photoH + 50;
-      const hasStoryText = s.customShowPet || s.customShowDate;
+      const _sHasHl = !!s.headline, _sHasSub = !!s.subline;
+      const _sExtraH = (_sHasHl ? 56 : 0) + (_sHasSub ? 40 : 0);
+      const hasStoryText = s.customShowPet || s.customShowDate || _sHasHl || _sHasSub;
       if (hasStoryText && _useTextBox) {
         ctx.fillStyle = 'rgba(255,255,255,0.85)';
-        this._roundRect(ctx, 60, infoY - 10, W - 120, 160, 16); ctx.fill();
+        this._roundRect(ctx, 60, infoY - 10, W - 120, 160 + _sExtraH, 16); ctx.fill();
       }
       let _sty = infoY + 40;
+      if (_sHasHl) { ctx.fillStyle = textColor; ctx.font = 'bold 44px ' + fontFamily; ctx.fillText(s.headline, W / 2, _sty); _sty += 50; }
+      if (_sHasSub) { ctx.fillStyle = textSub; ctx.font = '30px ' + fontFamily; ctx.fillText(s.subline, W / 2, _sty); _sty += 36; }
       if (s.customShowPet) { ctx.fillStyle = textColor; ctx.font = 'bold 48px ' + fontFamily; ctx.fillText(petName, W / 2, _sty); _sty += 45; }
       if (serviceNames && s.customShowPet) { ctx.fillStyle = textSub; ctx.font = '32px ' + fontFamily; ctx.fillText(serviceNames, W / 2, _sty); _sty += 40; }
       if (s.customShowDate) { ctx.fillStyle = textSub; ctx.font = '28px ' + fontFamily; ctx.fillText(dateStr, W / 2, _sty); }
@@ -2095,6 +2103,15 @@ App.pages.records = {
           <div style="font-size:0.75rem;color:var(--text-muted);margin-top:6px">&#x1F4A1; 스토리(9:16)는 상단·하단 일부가 인스타 UI(시간/좋아요)에 가려져요. "안전 영역" 권장</div>
         </div>
 
+        <!-- 자유 텍스트 (헤드라인·서브·하단 메시지) -->
+        <div class="form-group" style="padding:12px;background:var(--bg);border-radius:var(--radius);margin-bottom:12px">
+          <label class="form-label" style="font-size:0.82rem;margin-bottom:6px">자유 텍스트 <span style="color:var(--text-muted);font-weight:400">(빈 칸은 표시 안 됨)</span></label>
+          <input type="text" id="card-headline" placeholder="헤드라인 (예: Bobby의 첫 미용 ✨)" value="${App.escapeHtml(saved.headline || '')}" maxlength="40" style="width:100%;margin-bottom:6px;min-height:40px;font-size:0.9rem">
+          <input type="text" id="card-subline" placeholder="서브타이틀 (예: 행복한 하루)" value="${App.escapeHtml(saved.subline || '')}" maxlength="50" style="width:100%;margin-bottom:6px;min-height:40px;font-size:0.9rem">
+          <input type="text" id="card-footer" placeholder="하단 메시지 (기본: 감사합니다 ♥)" value="${App.escapeHtml(saved.footerMessage || '')}" maxlength="60" style="width:100%;min-height:40px;font-size:0.9rem">
+          <div style="font-size:0.75rem;color:var(--text-muted);margin-top:6px">&#x1F4A1; 인스타 피드·스토리 레이아웃에 적용. 이모지 사용 가능</div>
+        </div>
+
         <!-- 커스텀 테마 옵션 (커스텀 선택 시만 표시) -->
         <div id="card-custom-panel" style="display:${selectedTheme === 'custom' ? 'block' : 'none'};padding:12px;background:var(--bg);border-radius:var(--radius);margin-bottom:12px">
           <div style="margin-bottom:10px">
@@ -2151,6 +2168,12 @@ App.pages.records = {
         // 로고 위치 / 크기 (모든 테마 공통)
         settings.logoPosition = document.getElementById('card-logo-position')?.value || 'top';
         settings.logoSize = document.getElementById('card-logo-size')?.value || 'medium';
+        // 자유 텍스트 (헤드라인 / 서브 / 하단)
+        settings.headline = (document.getElementById('card-headline')?.value || '').trim();
+        settings.subline = (document.getElementById('card-subline')?.value || '').trim();
+        const footerInput = (document.getElementById('card-footer')?.value || '').trim();
+        if (footerInput) settings.footerMessage = footerInput;
+        else settings.footerMessage = settings.footerMessage || '감사합니다 ♥';
         // 커스텀 테마 설정 저장
         if (theme === 'custom') {
           settings.customBgColor = document.getElementById('card-custom-bg')?.value || '#FFFFFF';
@@ -2272,6 +2295,8 @@ App.pages.records = {
         logo: ds.logo || await DB.getSetting('shopLogo') || null,
         logoPosition: ds.logoPosition || 'top',
         logoSize: ds.logoSize || 'medium',
+        headline: ds.headline || '',
+        subline: ds.subline || '',
         // 커스텀 테마
         customBgColor: theme === 'custom' ? (ds.customBgColor || '#FFFFFF') : null,
         customTextColor: theme === 'custom' ? (ds.customTextColor || '#1A1A1A') : null,
