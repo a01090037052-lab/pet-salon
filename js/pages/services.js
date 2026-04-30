@@ -89,11 +89,12 @@ App.pages.services = {
           const priceDisplay = samePrices
             ? App.formatPriceShort(s.priceSmall || 0)
             : App.formatPriceShort(s.priceSmall) + ' / ' + App.formatPriceShort(s.priceMedium) + ' / ' + App.formatPriceShort(s.priceLarge);
-          html += '<div style="display:flex;align-items:center;gap:10px;padding:10px 0;border-bottom:1px solid var(--border-light);' + (isOff ? 'opacity:0.5' : '') + '">' +
+          html += '<div class="service-row" data-id="' + s.id + '" style="display:flex;align-items:center;gap:8px;padding:10px 0;border-bottom:1px solid var(--border-light);' + (isOff ? 'opacity:0.5' : '') + '">' +
             '<div style="flex:1;min-width:0">' +
               '<div style="font-weight:700;font-size:0.9rem">' + App.escapeHtml(s.name) + usageBadge + '</div>' +
-              '<div style="font-size:0.78rem;color:var(--text-muted);margin-top:2px">' + priceDisplay + '</div>' +
+              '<div class="service-price-display" data-id="' + s.id + '" data-same="' + samePrices + '" style="font-size:0.78rem;color:var(--text-muted);margin-top:2px;cursor:pointer;display:inline-block;padding:2px 6px;border-radius:4px;border:1px dashed transparent" title="클릭하여 빠르게 수정">' + priceDisplay + ' <span style="opacity:0.5;font-size:0.7rem">&#x270F;</span></div>' +
             '</div>' +
+            '<button class="btn-icon btn-duplicate-service" data-id="' + s.id + '" title="복제" style="font-size:0.95rem;color:var(--info)">&#x1F4CB;</button>' +
             '<button class="btn-icon btn-edit-service" data-id="' + s.id + '" title="수정" style="font-size:0.95rem">&#x270F;</button>' +
             '<button class="btn-icon btn-toggle-service" data-id="' + s.id + '" title="' + (!isOff ? '비활성화' : '활성화') + '" style="font-size:0.95rem">' + (!isOff ? '&#x1F7E2;' : '&#x26AA;') + '</button>' +
             '<button class="btn-icon btn-delete-service text-danger" data-id="' + s.id + '" title="삭제" style="font-size:0.95rem">&#x1F5D1;</button>' +
@@ -119,8 +120,114 @@ App.pages.services = {
       btn.addEventListener('click', () => this.toggleService(Number(btn.dataset.id)));
     });
 
+    // 복제 버튼 (비슷한 서비스 빠른 생성)
+    document.querySelectorAll('.btn-duplicate-service').forEach(btn => {
+      btn.addEventListener('click', () => this.duplicateService(Number(btn.dataset.id)));
+    });
+
+    // 인라인 가격 빠른 편집
+    document.querySelectorAll('.service-price-display').forEach(el => {
+      el.addEventListener('click', () => this.openInlinePriceEdit(el));
+      // hover/focus 시각 피드백
+      el.addEventListener('mouseenter', () => { el.style.borderColor = 'var(--border)'; el.style.background = 'var(--bg)'; });
+      el.addEventListener('mouseleave', () => { el.style.borderColor = 'transparent'; el.style.background = ''; });
+    });
+
     document.getElementById('btn-init-services')?.addEventListener('click', () => this.initDefaultServices());
     document.getElementById('btn-init-services-empty')?.addEventListener('click', () => this.initDefaultServices());
+  },
+
+  // 서비스 복제 — 같은 데이터로 새 서비스 즉시 등록 후 수정 폼 열기
+  async duplicateService(id) {
+    const original = await DB.get('services', id);
+    if (!original) { App.showToast('원본 서비스를 찾을 수 없습니다.', 'error'); return; }
+    const newSvc = {
+      ...original,
+      name: original.name + ' (복사본)',
+      isActive: true
+    };
+    delete newSvc.id;
+    delete newSvc.createdAt;
+    delete newSvc.updatedAt;
+    delete newSvc.sortOrder;
+    try {
+      const newId = await DB.add('services', newSvc);
+      App.showToast(`"${original.name}" 복제 완료 — 이름·가격 수정하세요`);
+      // 즉시 수정 모달 열기
+      setTimeout(() => this.showForm(newId), 200);
+    } catch (e) {
+      console.error('복제 실패:', e);
+      App.showToast('복제 중 오류가 발생했습니다.', 'error');
+    }
+  },
+
+  // 인라인 가격 편집 — 모달 열지 않고 즉시 수정
+  async openInlinePriceEdit(el) {
+    const id = Number(el.dataset.id);
+    const sameStr = el.dataset.same === 'true';
+    const service = await DB.get('services', id);
+    if (!service) { App.showToast('서비스를 찾을 수 없습니다.', 'error'); return; }
+
+    // 편집 input 으로 교체 (같은 가격이면 1개, 다르면 3개)
+    const originalHtml = el.innerHTML;
+    if (sameStr) {
+      el.innerHTML = `<input type="number" class="inline-price-input" value="${service.priceSmall || 0}" step="1000" min="0" style="width:90px;padding:4px 8px;font-size:0.85rem;border:1.5px solid var(--primary);border-radius:4px"> 원 <button class="btn btn-sm btn-primary inline-price-save" style="min-height:28px;padding:2px 8px;font-size:0.78rem">저장</button> <button class="btn btn-sm btn-secondary inline-price-cancel" style="min-height:28px;padding:2px 8px;font-size:0.78rem">취소</button>`;
+    } else {
+      el.innerHTML = `
+        <span style="display:inline-flex;align-items:center;gap:4px;flex-wrap:wrap">
+          <input type="number" class="inline-price-input" data-size="small" value="${service.priceSmall || 0}" step="1000" min="0" style="width:70px;padding:4px 6px;font-size:0.82rem;border:1.5px solid var(--primary);border-radius:4px" title="소형">
+          /
+          <input type="number" class="inline-price-input" data-size="medium" value="${service.priceMedium || 0}" step="1000" min="0" style="width:70px;padding:4px 6px;font-size:0.82rem;border:1.5px solid var(--primary);border-radius:4px" title="중형">
+          /
+          <input type="number" class="inline-price-input" data-size="large" value="${service.priceLarge || 0}" step="1000" min="0" style="width:70px;padding:4px 6px;font-size:0.82rem;border:1.5px solid var(--primary);border-radius:4px" title="대형">
+          <button class="btn btn-sm btn-primary inline-price-save" style="min-height:28px;padding:2px 8px;font-size:0.78rem;margin-left:4px">저장</button>
+          <button class="btn btn-sm btn-secondary inline-price-cancel" style="min-height:28px;padding:2px 8px;font-size:0.78rem">취소</button>
+        </span>
+      `;
+    }
+    el.style.cursor = 'default';
+    el.onclick = null; // re-binding 까지 비활성
+
+    const inputs = el.querySelectorAll('.inline-price-input');
+    inputs[0]?.focus();
+    inputs[0]?.select();
+
+    const saveAndExit = async () => {
+      try {
+        if (sameStr) {
+          const v = Math.max(0, Number(inputs[0].value) || 0);
+          service.priceSmall = service.priceMedium = service.priceLarge = v;
+        } else {
+          service.priceSmall = Math.max(0, Number(el.querySelector('[data-size="small"]').value) || 0);
+          service.priceMedium = Math.max(0, Number(el.querySelector('[data-size="medium"]').value) || 0);
+          service.priceLarge = Math.max(0, Number(el.querySelector('[data-size="large"]').value) || 0);
+        }
+        await DB.update('services', service);
+        App.showToast(`"${service.name}" 가격 수정됨`);
+        App.handleRoute(); // 목록 재렌더 (가격 표시·정렬 갱신)
+      } catch (e) {
+        console.error('가격 수정 실패:', e);
+        App.showToast('수정 중 오류가 발생했습니다.', 'error');
+        el.innerHTML = originalHtml;
+        el.style.cursor = 'pointer';
+      }
+    };
+    const cancelEdit = () => {
+      el.innerHTML = originalHtml;
+      el.style.cursor = 'pointer';
+      // 다시 click 핸들러 재바인딩
+      el.addEventListener('click', () => this.openInlinePriceEdit(el), { once: true });
+    };
+
+    el.querySelector('.inline-price-save')?.addEventListener('click', (e) => { e.stopPropagation(); saveAndExit(); });
+    el.querySelector('.inline-price-cancel')?.addEventListener('click', (e) => { e.stopPropagation(); cancelEdit(); });
+    // Enter 시 저장, Esc 시 취소
+    inputs.forEach(inp => {
+      inp.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') { e.preventDefault(); saveAndExit(); }
+        if (e.key === 'Escape') { e.preventDefault(); cancelEdit(); }
+      });
+    });
   },
 
   async showForm(id) {
