@@ -141,7 +141,7 @@ App.pages.pets = {
           ${(pet.photoThumb || pet.photo)
             ? `<img src="${pet.photoThumb || pet.photo}" class="photo-viewable" data-caption="${App.escapeHtml(pet.name)}"
                 style="width:200px;height:200px;object-fit:cover;border-radius:var(--radius-lg);cursor:pointer" alt="${App.escapeHtml(pet.name)}">`
-            : `<div style="width:200px;height:200px;border-radius:var(--radius-lg);background:linear-gradient(135deg,#FEF3C7,#FDE68A);display:flex;align-items:center;justify-content:center;font-size:4rem">&#x1F436;</div>`
+            : `<div style="width:200px;height:200px;border-radius:var(--radius-lg);background:var(--warning-light);display:flex;align-items:center;justify-content:center;font-size:4rem">&#x1F436;</div>`
           }
         </div>
         <div class="detail-info">

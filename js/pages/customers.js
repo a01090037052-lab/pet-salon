@@ -88,7 +88,7 @@ App.pages.customers = {
       <div class="filter-bar">
         <div class="search-box" style="max-width:none">
           <span class="search-icon">&#x1F50D;</span>
-          <input type="text" id="customer-search" placeholder="고객 이름, 전화번호, 메모 검색..." style="width:100%;min-height:40px">
+          <input type="text" id="customer-search" placeholder="고객 이름, 전화번호, 메모 검색..." style="width:100%;min-height:44px">
         </div>
         <div class="filter-bar-row">
           <select id="customer-visit-filter" style="flex:1;min-height:44px;font-size:max(16px,0.88rem)">
@@ -755,7 +755,7 @@ App.pages.customers = {
     const tagText = (c.tags || []).map(t => tagLabelMap[t] || t).join(' ');
     const searchText = ((c.name || '') + ' ' + (c.phone || '') + ' ' + (c.phone || '').replace(/\D/g, '') + ' ' + (c.memo || '') + ' ' + tagText).toLowerCase();
     return `<tr data-id="${c.id}" data-tags="${(c.tags || []).join(',')}" data-visit-status="${vs}" data-search="${App.escapeHtml(searchText)}" class="clickable-row" style="cursor:pointer">
-      <td><div style="display:flex;align-items:center;gap:10px"><div style="width:34px;height:34px;border-radius:10px;background:linear-gradient(135deg,var(--primary-light),#E0E7FF);display:flex;align-items:center;justify-content:center;font-weight:800;color:var(--primary);font-size:0.85rem;flex-shrink:0">${initial}</div><strong>${App.escapeHtml(displayName)}</strong>${this.getTagBadges(c.tags)}${visitBadge}</div></td>
+      <td><div style="display:flex;align-items:center;gap:10px"><div style="width:34px;height:34px;border-radius:10px;background:linear-gradient(135deg,var(--primary-light),var(--primary-lighter));display:flex;align-items:center;justify-content:center;font-weight:800;color:var(--primary);font-size:0.85rem;flex-shrink:0">${initial}</div><strong>${App.escapeHtml(displayName)}</strong>${this.getTagBadges(c.tags)}${visitBadge}</div></td>
       <td><a href="tel:${App.escapeHtml((c.phone || '').replace(/\D/g, ''))}" style="color:var(--primary)" onclick="event.stopPropagation()">${App.formatPhone(c.phone)}</a></td>
       <td><span class="badge badge-info">${petCount[c.id] || 0}마리</span></td>
       <td>${lastVisit[c.id] ? App.getRelativeTime(lastVisit[c.id]) : '-'}</td>
