@@ -1304,6 +1304,7 @@ App.pages.records = {
   },
 
   // --- Helper: draw image covering area (object-fit:cover) ---
+  // 사진 메타(img._meta = { pos: 1~9, zoom: 1.0~2.0 }) 가 있으면 9-Point + Zoom 적용
   _drawImageCover(ctx, img, x, y, w, h) {
     if (!img) {
       ctx.fillStyle = '#E2E8F0';
@@ -1316,8 +1317,17 @@ App.pages.records = {
     }
     const iw = img.width, ih = img.height;
     const scale = Math.max(w / iw, h / ih);
-    const sw = w / scale, sh = h / scale;
-    const sx = (iw - sw) / 2, sy = (ih - sh) / 2;
+    let sw = w / scale, sh = h / scale;
+    // 9-Point + Zoom 적용 (img._meta 가 설정된 경우)
+    const meta = img._meta || { pos: 5, zoom: 1.0 };
+    const zoom = Math.max(1.0, Math.min(3.0, meta.zoom || 1.0));
+    sw /= zoom; sh /= zoom;
+    const colIdx = ((meta.pos - 1) % 3);
+    const rowIdx = Math.floor((meta.pos - 1) / 3);
+    const colFrac = [0, 0.5, 1.0][colIdx] ?? 0.5;
+    const rowFrac = [0, 0.5, 1.0][rowIdx] ?? 0.5;
+    const sx = (iw - sw) * colFrac;
+    const sy = (ih - sh) * rowFrac;
     ctx.drawImage(img, sx, sy, sw, sh, x, y, w, h);
   },
 
@@ -1393,6 +1403,11 @@ App.pages.records = {
     const imgBefore = await this._loadImg(photoBefore);
     const imgAfter = await this._loadImg(photoAfter);
 
+    // 9-Point + Zoom 메타 attach (record._photoMetas 사용)
+    const _photoMetas = record._photoMetas || {};
+    if (imgBefore) imgBefore._meta = _photoMetas.photoBefore || { pos: 5, zoom: 1.0 };
+    if (imgAfter) imgAfter._meta = _photoMetas.photoAfter || { pos: 5, zoom: 1.0 };
+
     // 로고 이미지 로드
     const _logoImg = s.logo ? await this._loadImg(s.logo) : null;
     // 로고 위치 / 크기 설정 (사용자 선택, feed/story 레이아웃에 적용)
@@ -1455,6 +1470,8 @@ App.pages.records = {
     const photo4Raw = record.photo4 || (record.photo4Id ? await DB.getPhoto(record.photo4Id) : null);
     const img3 = await this._loadImg(photo3Raw);
     const img4 = await this._loadImg(photo4Raw);
+    if (img3) img3._meta = _photoMetas.photo3 || { pos: 5, zoom: 1.0 };
+    if (img4) img4._meta = _photoMetas.photo4 || { pos: 5, zoom: 1.0 };
 
     // Build photo slots based on available images
     const photos2 = [imgBefore || imgAfter, imgAfter || imgBefore];
@@ -2008,12 +2025,27 @@ App.pages.records = {
     const container = document.getElementById('card-photo-slots');
     if (!container) return;
     this._cardPhotos = new Array(count).fill(null);
+    this._cardPhotoMeta = new Array(count).fill(null).map(() => ({ pos: 5, zoom: 1.0 }));
     container.innerHTML = Array.from({ length: count }, (_, i) => `
-      <div class="flex-1" style="min-width:70px">
+      <div style="flex:1 1 calc(50% - 4px);min-width:120px;max-width:180px">
         <input type="file" id="card-photo-${i}" accept="image/*" style="display:none">
-        <div id="card-preview-${i}" style="width:100%;height:90px;border:2px dashed var(--border);border-radius:var(--radius);display:flex;align-items:center;justify-content:center;cursor:pointer;overflow:hidden;font-size:1.2rem;color:var(--text-muted)" onclick="document.getElementById('card-photo-${i}').click()">📷</div>
+        <div id="card-preview-${i}" style="width:100%;height:110px;border:2px dashed var(--border);border-radius:var(--radius);display:flex;align-items:center;justify-content:center;cursor:pointer;overflow:hidden;font-size:1.4rem;color:var(--text-muted);background:var(--bg)" onclick="document.getElementById('card-photo-${i}').click()">📷</div>
+        <div id="card-photo-controls-${i}" style="display:none;margin-top:6px">
+          <div style="font-size:0.68rem;color:var(--text-muted);margin-bottom:3px;text-align:center">위치 (강아지가 사진 어디?)</div>
+          <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:3px;margin-bottom:6px">
+            ${[1,2,3,4,5,6,7,8,9].map(n => `
+              <button type="button" class="card-pos-btn${n === 5 ? ' active' : ''}" data-slot="${i}" data-pos="${n}" style="aspect-ratio:1;border:1.5px solid var(--border);border-radius:4px;cursor:pointer;padding:0;background:var(--bg-white);display:flex;align-items:center;justify-content:center;font-size:0.7rem;color:var(--text-muted);min-height:0">${n === 5 ? '●' : '·'}</button>
+            `).join('')}
+          </div>
+          <div style="display:flex;align-items:center;gap:6px">
+            <span style="font-size:0.68rem;color:var(--text-muted);flex-shrink:0">줌</span>
+            <input type="range" min="100" max="200" step="10" value="100" class="card-zoom-slider" data-slot="${i}" style="flex:1;height:24px;min-height:0">
+            <span id="card-zoom-label-${i}" style="font-size:0.68rem;color:var(--text-muted);flex-shrink:0;min-width:30px;text-align:right">100%</span>
+          </div>
+        </div>
       </div>
     `).join('');
+
     // 파일 선택 핸들러
     for (let i = 0; i < count; i++) {
       document.getElementById(`card-photo-${i}`)?.addEventListener('change', (e) => {
@@ -2023,13 +2055,59 @@ App.pages.records = {
         reader.onload = (ev) => {
           App.resizeImage(ev.target.result, (compressed) => {
             this._cardPhotos[i] = compressed;
-            const preview = document.getElementById(`card-preview-${i}`);
-            if (preview) preview.innerHTML = `<img src="${compressed}" style="width:100%;height:100%;object-fit:cover">`;
+            this._cardPhotoMeta[i] = { pos: 5, zoom: 1.0 };
+            this._refreshPhotoPreview(i);
+            const ctrls = document.getElementById(`card-photo-controls-${i}`);
+            if (ctrls) ctrls.style.display = 'block';
           });
         };
         reader.readAsDataURL(file);
       });
     }
+
+    // 9-Point 위치 버튼 핸들러 (delegated)
+    container.querySelectorAll('.card-pos-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const slot = Number(btn.dataset.slot);
+        const pos = Number(btn.dataset.pos);
+        if (!this._cardPhotoMeta[slot]) this._cardPhotoMeta[slot] = { pos: 5, zoom: 1.0 };
+        this._cardPhotoMeta[slot].pos = pos;
+        // active state 업데이트
+        container.querySelectorAll(`.card-pos-btn[data-slot="${slot}"]`).forEach(b => {
+          const isActive = Number(b.dataset.pos) === pos;
+          b.classList.toggle('active', isActive);
+          b.textContent = isActive ? '●' : '·';
+          b.style.background = isActive ? 'var(--primary-light)' : 'var(--bg-white)';
+          b.style.borderColor = isActive ? 'var(--primary)' : 'var(--border)';
+          b.style.color = isActive ? 'var(--primary)' : 'var(--text-muted)';
+        });
+        this._refreshPhotoPreview(slot);
+      });
+    });
+
+    // 줌 슬라이더 핸들러
+    container.querySelectorAll('.card-zoom-slider').forEach(slider => {
+      slider.addEventListener('input', () => {
+        const slot = Number(slider.dataset.slot);
+        const zoom = Number(slider.value) / 100;
+        if (!this._cardPhotoMeta[slot]) this._cardPhotoMeta[slot] = { pos: 5, zoom: 1.0 };
+        this._cardPhotoMeta[slot].zoom = zoom;
+        const label = document.getElementById(`card-zoom-label-${slot}`);
+        if (label) label.textContent = `${Math.round(zoom * 100)}%`;
+        this._refreshPhotoPreview(slot);
+      });
+    });
+  },
+
+  _refreshPhotoPreview(slot) {
+    const preview = document.getElementById(`card-preview-${slot}`);
+    if (!preview) return;
+    const photo = this._cardPhotos[slot];
+    if (!photo) { preview.innerHTML = '📷'; return; }
+    const meta = this._cardPhotoMeta[slot] || { pos: 5, zoom: 1.0 };
+    const colPct = [0, 50, 100][((meta.pos - 1) % 3)] + '%';
+    const rowPct = [0, 50, 100][Math.floor((meta.pos - 1) / 3)] + '%';
+    preview.innerHTML = `<img src="${photo}" style="width:100%;height:100%;object-fit:cover;object-position:${colPct} ${rowPct};transform:scale(${meta.zoom});transform-origin:${colPct} ${rowPct};transition:transform 0.15s,object-position 0.15s">`;
   },
 
   async generatePhotoCard(recordId) {
@@ -2188,7 +2266,7 @@ App.pages.records = {
 
         App.closeModal();
         setTimeout(() => {
-          this._doGenerateCard(recordId, layout, theme, this._cardPhotos[0] || null, this._cardPhotos[1] || null, this._cardPhotos[2] || null, this._cardPhotos[3] || null);
+          this._doGenerateCard(recordId, layout, theme, this._cardPhotos[0] || null, this._cardPhotos[1] || null, this._cardPhotos[2] || null, this._cardPhotos[3] || null, this._cardPhotoMeta || []);
         }, 200);
       }
     });
@@ -2262,7 +2340,7 @@ App.pages.records = {
     }, 100);
   },
 
-  async _doGenerateCard(recordId, layout, theme, photo1, photo2, photo3, photo4) {
+  async _doGenerateCard(recordId, layout, theme, photo1, photo2, photo3, photo4, photoMetas) {
     try {
       const record = await DB.get('records', recordId);
       if (!record) { App.showToast('기록을 찾을 수 없습니다.', 'error'); return; }
@@ -2271,6 +2349,13 @@ App.pages.records = {
       record.photoAfter = photo2 || null;
       record.photo3 = photo3 || null;
       record.photo4 = photo4 || null;
+      // 사진 메타 (9-Point + Zoom) — _generateCardCanvas 에서 img._meta 로 attach
+      record._photoMetas = {
+        photoBefore: (photoMetas && photoMetas[0]) || { pos: 5, zoom: 1.0 },
+        photoAfter: (photoMetas && photoMetas[1]) || { pos: 5, zoom: 1.0 },
+        photo3: (photoMetas && photoMetas[2]) || { pos: 5, zoom: 1.0 },
+        photo4: (photoMetas && photoMetas[3]) || { pos: 5, zoom: 1.0 }
+      };
       const customer = await DB.get('customers', record.customerId);
       const pet = await DB.get('pets', record.petId);
       const shopName = await DB.getSetting('shopName') || '펫살롱';
