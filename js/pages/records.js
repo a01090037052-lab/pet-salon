@@ -1395,6 +1395,30 @@ App.pages.records = {
 
     // 로고 이미지 로드
     const _logoImg = s.logo ? await this._loadImg(s.logo) : null;
+    // 로고 위치 / 크기 설정 (사용자 선택, feed/story 레이아웃에 적용)
+    const _logoSizeMul = ({ small: 0.7, medium: 1.0, large: 1.4, xl: 1.8 })[s.logoSize] || 1.0;
+    const _logoPos = s.logoPosition || 'top';
+    // 로고 그리기 헬퍼: 레이아웃별 기본 높이·기본 y 받아서 위치/크기 옵션 적용
+    const _drawLogoAt = (ctx, layoutCfg) => {
+      if (!_logoImg || _logoPos === 'none') return false;
+      const baseH = layoutCfg.baseH;
+      const lh = baseH * _logoSizeMul;
+      const lw = _logoImg.width * (lh / _logoImg.height);
+      const W = layoutCfg.W, H = layoutCfg.H;
+      let y;
+      switch (_logoPos) {
+        case 'top-safe': y = Math.round(H * 0.12); break;
+        case 'center':   y = (H - lh) / 2; break;
+        case 'bottom':   y = H - lh - layoutCfg.bottomPad; break;
+        case 'top':
+        default:         y = layoutCfg.topY; break;
+      }
+      ctx.save();
+      if (_logoPos === 'center') ctx.globalAlpha = 0.45;
+      ctx.drawImage(_logoImg, (W - lw) / 2, y, lw, lh);
+      ctx.restore();
+      return true;
+    };
 
     // 커스텀 테마 오버라이드
     if (s.customBgColor) bgColor = s.customBgColor;
@@ -1826,8 +1850,8 @@ App.pages.records = {
       if (s.customShowPet) { ctx.fillStyle = textColor; ctx.font = 'bold 20px ' + fontFamily; ctx.fillText(petName, W / 2, _ty); _ty += 20; }
       if (s.customShowDate) { ctx.fillStyle = textSub; ctx.font = '13px ' + fontFamily; ctx.fillText(dateStr, W / 2, _ty); _ty += 18; }
       if (s.customShowShop) {
-        if (_logoImg) { const lh = 28, lw = _logoImg.width * (lh / _logoImg.height); ctx.drawImage(_logoImg, (W - lw) / 2, _ty - 12, lw, lh); }
-        else { ctx.fillStyle = mainColor; ctx.font = 'bold 13px ' + fontFamily; const shopLine = (s.showShopPhone && shopPhone) ? shopName + ' · ' + shopPhone : shopName; ctx.fillText(shopLine, W / 2, _ty); }
+        if (_logoImg && _logoPos !== 'none') { const lh = 28 * _logoSizeMul, lw = _logoImg.width * (lh / _logoImg.height); ctx.drawImage(_logoImg, (W - lw) / 2, _ty - 12, lw, lh); }
+        else if (!_logoImg) { ctx.fillStyle = mainColor; ctx.font = 'bold 13px ' + fontFamily; const shopLine = (s.showShopPhone && shopPhone) ? shopName + ' · ' + shopPhone : shopName; ctx.fillText(shopLine, W / 2, _ty); }
       }
     }
 
@@ -1843,9 +1867,12 @@ App.pages.records = {
       ctx.textAlign = 'center';
       const topPad = s.customShowShop ? 70 : 40;
       if (s.customShowShop) {
-        if (_useTextBox) { ctx.fillStyle = 'rgba(255,255,255,0.8)'; this._roundRect(ctx, W/2 - 220, 15, 440, 50, 10); ctx.fill(); }
-        if (_logoImg) { const lh = 40, lw = _logoImg.width * (lh / _logoImg.height); ctx.drawImage(_logoImg, (W - lw) / 2, 20, lw, lh); }
-        else { ctx.fillStyle = mainColor; ctx.font = 'bold 32px ' + fontFamily; ctx.fillText(emoji + ' ' + shopName, W / 2, 50); }
+        if (_useTextBox && _logoPos !== 'none' && _logoPos !== 'bottom') { ctx.fillStyle = 'rgba(255,255,255,0.8)'; this._roundRect(ctx, W/2 - 220, 15, 440, 50, 10); ctx.fill(); }
+        if (_logoImg && _logoPos !== 'none') {
+          _drawLogoAt(ctx, { W: W, H: H, baseH: 40, topY: 20, bottomPad: 80 });
+        } else if (!_logoImg) {
+          ctx.fillStyle = mainColor; ctx.font = 'bold 32px ' + fontFamily; ctx.fillText(emoji + ' ' + shopName, W / 2, 50);
+        }
       }
 
       // 메인 사진 (크게)
@@ -1883,8 +1910,11 @@ App.pages.records = {
       // 상단 매장명/로고
       ctx.textAlign = 'center';
       if (s.customShowShop) {
-        if (_logoImg) { const lh = 50, lw = _logoImg.width * (lh / _logoImg.height); ctx.drawImage(_logoImg, (W - lw) / 2, 60, lw, lh); }
-        else { ctx.fillStyle = mainColor; ctx.font = 'bold 40px ' + fontFamily; ctx.fillText(emoji + ' ' + shopName, W / 2, 100); }
+        if (_logoImg && _logoPos !== 'none') {
+          _drawLogoAt(ctx, { W: W, H: H, baseH: 50, topY: 60, bottomPad: 100 });
+        } else if (!_logoImg) {
+          ctx.fillStyle = mainColor; ctx.font = 'bold 40px ' + fontFamily; ctx.fillText(emoji + ' ' + shopName, W / 2, 100);
+        }
       }
 
       // 메인 사진 (크게)
@@ -2044,6 +2074,27 @@ App.pages.records = {
             </button>
           </div>
         </div>
+        <!-- 매장 로고 위치/크기 (모든 테마 공통) -->
+        <div class="form-group" style="padding:12px;background:var(--bg);border-radius:var(--radius);margin-bottom:12px">
+          <label class="form-label" style="font-size:0.82rem;margin-bottom:6px">매장 로고 — 위치 / 크기 <span style="color:var(--text-muted);font-weight:400">(설정에서 로고 업로드 시 적용)</span></label>
+          <div style="display:flex;gap:6px;flex-wrap:wrap">
+            <select id="card-logo-position" style="flex:1;min-width:140px;min-height:40px;font-size:0.85rem">
+              <option value="top" ${(saved.logoPosition || 'top') === 'top' ? 'selected' : ''}>상단</option>
+              <option value="top-safe" ${saved.logoPosition === 'top-safe' ? 'selected' : ''}>상단 (스토리 안전 영역)</option>
+              <option value="center" ${saved.logoPosition === 'center' ? 'selected' : ''}>중앙 (워터마크)</option>
+              <option value="bottom" ${saved.logoPosition === 'bottom' ? 'selected' : ''}>하단</option>
+              <option value="none" ${saved.logoPosition === 'none' ? 'selected' : ''}>표시 안 함</option>
+            </select>
+            <select id="card-logo-size" style="flex:1;min-width:120px;min-height:40px;font-size:0.85rem">
+              <option value="small" ${saved.logoSize === 'small' ? 'selected' : ''}>작게 (70%)</option>
+              <option value="medium" ${(saved.logoSize || 'medium') === 'medium' ? 'selected' : ''}>보통 (100%)</option>
+              <option value="large" ${saved.logoSize === 'large' ? 'selected' : ''}>크게 (140%)</option>
+              <option value="xl" ${saved.logoSize === 'xl' ? 'selected' : ''}>매우 크게 (180%)</option>
+            </select>
+          </div>
+          <div style="font-size:0.75rem;color:var(--text-muted);margin-top:6px">&#x1F4A1; 스토리(9:16)는 상단·하단 일부가 인스타 UI(시간/좋아요)에 가려져요. "안전 영역" 권장</div>
+        </div>
+
         <!-- 커스텀 테마 옵션 (커스텀 선택 시만 표시) -->
         <div id="card-custom-panel" style="display:${selectedTheme === 'custom' ? 'block' : 'none'};padding:12px;background:var(--bg);border-radius:var(--radius);margin-bottom:12px">
           <div style="margin-bottom:10px">
@@ -2097,6 +2148,9 @@ App.pages.records = {
         const settings = await DB.getSetting('cardDesignSettings') || {};
         settings.layout = layout;
         settings.template = theme;
+        // 로고 위치 / 크기 (모든 테마 공통)
+        settings.logoPosition = document.getElementById('card-logo-position')?.value || 'top';
+        settings.logoSize = document.getElementById('card-logo-size')?.value || 'medium';
         // 커스텀 테마 설정 저장
         if (theme === 'custom') {
           settings.customBgColor = document.getElementById('card-custom-bg')?.value || '#FFFFFF';
@@ -2216,6 +2270,8 @@ App.pages.records = {
         showShopPhone: ds.showShopPhone !== false,
         footerMessage: ds.footerMessage || os.footerMessage || '감사합니다 ♥',
         logo: ds.logo || await DB.getSetting('shopLogo') || null,
+        logoPosition: ds.logoPosition || 'top',
+        logoSize: ds.logoSize || 'medium',
         // 커스텀 테마
         customBgColor: theme === 'custom' ? (ds.customBgColor || '#FFFFFF') : null,
         customTextColor: theme === 'custom' ? (ds.customTextColor || '#1A1A1A') : null,
