@@ -101,11 +101,11 @@ App.pages.records = {
 
       ${unpaidRecs.length > 0 ? `
       <div id="unpaid-warning-card" class="card" style="margin-bottom:16px;border:1.5px solid var(--danger);cursor:pointer">
-        <div class="card-body" style="padding:16px 20px;display:flex;align-items:center;gap:14px;background:linear-gradient(135deg,var(--danger-light),#FEE2E2)">
+        <div class="card-body" style="padding:16px 20px;display:flex;align-items:center;gap:14px;background:linear-gradient(135deg,var(--danger-light),var(--danger-bg-soft))">
           <span style="font-size:1.5rem">&#x1F4B8;</span>
           <div class="flex-1">
             <div style="font-weight:800;color:var(--danger);font-size:1rem">미수금 경고</div>
-            <div style="font-size:0.88rem;color:#991B1B;margin-top:2px">총 ${unpaidRecs.length}건 &middot; ${App.formatCurrency(unpaidTotal)}</div>
+            <div style="font-size:0.88rem;color:var(--danger-text-strong);margin-top:2px">총 ${unpaidRecs.length}건 &middot; ${App.formatCurrency(unpaidTotal)}</div>
           </div>
           <span style="color:var(--danger);font-weight:600;font-size:0.85rem">클릭하여 필터 &rarr;</span>
         </div>
@@ -563,7 +563,7 @@ App.pages.records = {
           <div id="f-condition-chips" style="display:flex;gap:6px">
             <button type="button" class="condition-chip${record.condition === 'good' ? ' active' : ''}" data-field="condition" data-value="good" style="flex:1;padding:8px;border:1.5px solid var(--border);border-radius:8px;background:${record.condition === 'good' ? 'var(--success-light)' : 'var(--bg-white)'};cursor:pointer;font-size:0.82rem;font-weight:600">좋음</button>
             <button type="button" class="condition-chip${record.condition === 'normal' ? ' active' : ''}" data-field="condition" data-value="normal" style="flex:1;padding:8px;border:1.5px solid var(--border);border-radius:8px;background:${record.condition === 'normal' ? 'var(--warning-light)' : 'var(--bg-white)'};cursor:pointer;font-size:0.82rem;font-weight:600">보통</button>
-            <button type="button" class="condition-chip${record.condition === 'caution' ? ' active' : ''}" data-field="condition" data-value="caution" style="flex:1;padding:8px;border:1.5px solid var(--border);border-radius:8px;background:${record.condition === 'caution' ? '#FEE2E2' : 'var(--bg-white)'};cursor:pointer;font-size:0.82rem;font-weight:600">주의</button>
+            <button type="button" class="condition-chip${record.condition === 'caution' ? ' active' : ''}" data-field="condition" data-value="caution" style="flex:1;padding:8px;border:1.5px solid var(--border);border-radius:8px;background:${record.condition === 'caution' ? 'var(--danger-bg-soft)' : 'var(--bg-white)'};cursor:pointer;font-size:0.82rem;font-weight:600">주의</button>
           </div>
           <input type="hidden" id="f-condition" value="${record.condition || ''}">
         </div>
@@ -754,7 +754,7 @@ App.pages.records = {
         siblings.forEach(c => { c.classList.remove('active'); c.style.background = 'var(--bg-white)'; });
         if (!wasActive) {
           chip.classList.add('active');
-          const colors = { good: 'var(--success-light)', normal: 'var(--warning-light)', caution: '#FEE2E2' };
+          const colors = { good: 'var(--success-light)', normal: 'var(--warning-light)', caution: 'var(--danger-bg-soft)' };
           chip.style.background = colors[chip.dataset.value] || 'var(--bg-white)';
           hiddenInput.value = chip.dataset.value;
         } else {
