@@ -27,14 +27,12 @@ const DB = {
         clearTimeout(timer);
         if (res.ok) {
           this.mode = 'server';
-          console.log('DB: Server mode (data shared across devices)');
           return;
         }
       } catch (e) { /* server not available */ }
     }
     // Fall back to IndexedDB
     this.mode = 'idb';
-    console.log('DB: IndexedDB mode (local only)');
     return this._initIDB();
   },
 

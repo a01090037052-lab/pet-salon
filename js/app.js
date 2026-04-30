@@ -553,6 +553,20 @@ const App = {
   },
 
   // ========== Toast ==========
+  // 인라인 로딩 표시 (페이지/카드/모달 안의 비동기 작업)
+  // 사용: const restore = App.showLoadingInline(container, '집계 중...'); ...; restore();
+  showLoadingInline(container, message = '로딩 중...') {
+    if (!container) return () => {};
+    const prev = container.innerHTML;
+    container.innerHTML = `
+      <div class="loading-inline">
+        <div class="spinner-inline"></div>
+        <div>${this.escapeHtml(message)}</div>
+      </div>
+    `;
+    return () => { container.innerHTML = prev; };
+  },
+
   showToast(message, type = 'success', opts = {}) {
     const container = document.getElementById('toast-container');
     const toast = document.createElement('div');
