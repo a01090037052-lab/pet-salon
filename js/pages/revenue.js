@@ -207,11 +207,11 @@ App.pages.revenue = {
 
         ${unpaidRecs.length > 0 ? `
         <div class="card" style="margin-bottom:16px;border:1.5px solid var(--danger)">
-          <div class="card-body" style="padding:16px 20px;display:flex;align-items:center;gap:14px;background:linear-gradient(135deg,var(--danger-light),#FEE2E2)">
+          <div class="card-body" style="padding:16px 20px;display:flex;align-items:center;gap:14px;background:linear-gradient(135deg,var(--danger-light),var(--danger-bg-soft))">
             <span style="font-size:1.5rem">&#x1F4B8;</span>
             <div class="flex-1">
               <div style="font-weight:800;color:var(--danger);font-size:1rem">미수금 경고</div>
-              <div style="font-size:0.88rem;color:#991B1B;margin-top:2px">총 ${unpaidRecs.length}건 &middot; ${App.formatCurrency(unpaidTotal)}</div>
+              <div style="font-size:0.88rem;color:var(--danger-text-strong);margin-top:2px">총 ${unpaidRecs.length}건 &middot; ${App.formatCurrency(unpaidTotal)}</div>
             </div>
             <a href="#records" style="color:var(--danger);font-weight:600;font-size:0.85rem">기록에서 확인 &rarr;</a>
           </div>
