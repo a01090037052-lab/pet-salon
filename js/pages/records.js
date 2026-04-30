@@ -513,31 +513,7 @@ App.pages.records = {
             <input type="number" id="f-servicePrice" value="${record.servicePrice || record.totalPrice || ''}" placeholder="0" min="0" step="1000">
           </div>
         </div>
-        <div class="form-group">
-          <label class="form-label">스타일 <span style="color:var(--text-muted);font-size:0.78rem">(선택)</span></label>
-          <input type="text" id="f-style" value="${App.escapeHtml(record.style || '')}" placeholder="예: 테디베어컷, 하이바+스포팅" autocomplete="off">
-          <div class="search-select-dropdown" id="style-dropdown" style="position:absolute;z-index:10;background:var(--bg-white);border:1px solid var(--border);border-radius:var(--radius);box-shadow:var(--shadow);max-height:150px;overflow-y:auto;display:none;width:100%"></div>
-        </div>
-        <div class="form-group">
-          <label class="form-label">추가 항목 <span style="color:var(--text-muted);font-size:0.78rem">(선택 — 엉킴, 약욕, 스파 등)</span></label>
-          <div id="f-addon-tags" style="display:flex;gap:4px;flex-wrap:wrap;margin-bottom:6px">${(record.addons || []).map(a => '<span class="badge badge-info addon-tag" style="cursor:pointer;padding:6px 10px" title="클릭하여 제거">' + App.escapeHtml(a) + ' ×</span>').join('')}</div>
-          <input type="text" id="f-addon-input" placeholder="추가 항목 입력 후 Enter" autocomplete="off">
-          <div class="search-select-dropdown" id="addon-dropdown" style="position:absolute;z-index:10;background:var(--bg-white);border:1px solid var(--border);border-radius:var(--radius);box-shadow:var(--shadow);max-height:150px;overflow-y:auto;display:none;width:100%"></div>
-        </div>
-        <div class="form-row">
-          <div class="form-group">
-            <label class="form-label">추가 비용</label>
-            <input type="number" id="f-addonPrice" value="${record.addonPrice || ''}" placeholder="0" min="0" step="1000">
-          </div>
-          <div class="form-group">
-            <label class="form-label">반려견 사이즈</label>
-            <select id="f-sizeType">
-              <option value="small">소형</option>
-              <option value="medium">중형</option>
-              <option value="large">대형</option>
-            </select>
-          </div>
-        </div>
+        <!-- 합계 + 결제 수단 (필수 매출 정보) -->
         <div class="form-group" id="final-price-display" style="background:var(--bg);border-radius:var(--radius);padding:12px 16px;display:flex;justify-content:space-between;align-items:center">
           <span style="font-weight:700">합계</span>
           <span id="final-price-value" style="font-size:1.2rem;font-weight:800;color:var(--primary)">${App.formatCurrency((record.servicePrice || record.totalPrice || 0) + (record.addonPrice || 0) - (record.discount || 0))}</span>
@@ -552,12 +528,8 @@ App.pages.records = {
           </div>
           <input type="hidden" id="f-paymentMethod" value="${(!record.paymentMethod && !id) ? 'card' : (record.paymentMethod || 'card')}">
         </div>
-        <div class="form-group">
-          <label class="form-label">담당 미용사</label>
-          ${await App.getGroomerFieldHTML(record.groomer)}
-        </div>
 
-        <!-- 컨디션 (기본 표시) -->
+        <!-- 컨디션 (기본 표시 — 리포트 가치) -->
         <div class="form-group" style="margin-bottom:12px">
           <label class="form-label" style="font-size:0.85rem">컨디션 <span style="font-weight:400;color:var(--text-muted);font-size:0.78rem">(선택 — 리포트에 반영)</span></label>
           <div id="f-condition-chips" style="display:flex;gap:6px">
@@ -568,7 +540,7 @@ App.pages.records = {
           <input type="hidden" id="f-condition" value="${record.condition || ''}">
         </div>
 
-        <!-- 상세 옵션 토글 -->
+        <!-- 상세 옵션 토글 (스타일·추가 항목·미용사·할인·메모 등) -->
         <div class="form-detail-divider" onclick="this.closest('.modal-body').querySelector('.form-detail-section').classList.toggle('open');this.classList.toggle('open')">
           <span class="form-detail-divider-line"></span>
           <span class="form-detail-divider-label">상세 옵션</span>
@@ -578,6 +550,35 @@ App.pages.records = {
 
         <!-- 상세 옵션 영역 -->
         <div class="form-detail-section">
+          <div class="form-group">
+            <label class="form-label">스타일 <span style="color:var(--text-muted);font-size:0.78rem">(선택)</span></label>
+            <input type="text" id="f-style" value="${App.escapeHtml(record.style || '')}" placeholder="예: 테디베어컷, 하이바+스포팅" autocomplete="off">
+            <div class="search-select-dropdown" id="style-dropdown" style="position:absolute;z-index:10;background:var(--bg-white);border:1px solid var(--border);border-radius:var(--radius);box-shadow:var(--shadow);max-height:150px;overflow-y:auto;display:none;width:100%"></div>
+          </div>
+          <div class="form-group">
+            <label class="form-label">추가 항목 <span style="color:var(--text-muted);font-size:0.78rem">(엉킴·약욕·스파 등)</span></label>
+            <div id="f-addon-tags" style="display:flex;gap:4px;flex-wrap:wrap;margin-bottom:6px">${(record.addons || []).map(a => '<span class="badge badge-info addon-tag" style="cursor:pointer;padding:6px 10px" title="클릭하여 제거">' + App.escapeHtml(a) + ' ×</span>').join('')}</div>
+            <input type="text" id="f-addon-input" placeholder="추가 항목 입력 후 Enter" autocomplete="off">
+            <div class="search-select-dropdown" id="addon-dropdown" style="position:absolute;z-index:10;background:var(--bg-white);border:1px solid var(--border);border-radius:var(--radius);box-shadow:var(--shadow);max-height:150px;overflow-y:auto;display:none;width:100%"></div>
+          </div>
+          <div class="form-row">
+            <div class="form-group">
+              <label class="form-label">추가 비용</label>
+              <input type="number" id="f-addonPrice" value="${record.addonPrice || ''}" placeholder="0" min="0" step="1000">
+            </div>
+            <div class="form-group">
+              <label class="form-label">반려견 사이즈</label>
+              <select id="f-sizeType">
+                <option value="small">소형</option>
+                <option value="medium">중형</option>
+                <option value="large">대형</option>
+              </select>
+            </div>
+          </div>
+          <div class="form-group">
+            <label class="form-label">담당 미용사</label>
+            ${await App.getGroomerFieldHTML(record.groomer)}
+          </div>
           <div class="form-row">
             <div class="form-group">
               <label class="form-label">할인 금액</label>
