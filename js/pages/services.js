@@ -6,14 +6,17 @@ App.pages.services = {
   _sortServices(services) {
     const catOrder = this._categoryOrder;
     return services.sort((a, b) => {
-      // 비활성 → 맨 뒤
+      // 1) 비활성 → 맨 뒤
       if (a.isActive === false && b.isActive !== false) return 1;
       if (a.isActive !== false && b.isActive === false) return -1;
-      // 카테고리 순서
+      // 2) 즐겨찾기 (활성 내에서) → 위로
+      const favA = !!a.favorite, favB = !!b.favorite;
+      if (favA !== favB) return favA ? -1 : 1;
+      // 3) 카테고리 순서
       const catA = catOrder.indexOf(a.category || 'grooming');
       const catB = catOrder.indexOf(b.category || 'grooming');
       if (catA !== catB) return catA - catB;
-      // sortOrder → 이름순
+      // 4) sortOrder → 이름순
       const sA = a.sortOrder || 999;
       const sB = b.sortOrder || 999;
       if (sA !== sB) return sA - sB;
@@ -90,10 +93,21 @@ App.pages.services = {
           const priceDisplay = samePrices
             ? App.formatPriceShort(s.priceSmall || 0)
             : App.formatPriceShort(s.priceSmall) + ' / ' + App.formatPriceShort(s.priceMedium) + ' / ' + App.formatPriceShort(s.priceLarge);
-          html += '<div class="service-row" data-id="' + s.id + '" style="display:flex;align-items:center;gap:8px;padding:10px 0;border-bottom:1px solid var(--border-light);' + (isOff ? 'opacity:0.5' : '') + '">' +
+          // 가격 변경 이력 (30일 이상 전 변경 시만 표시)
+          let priceAgeBadge = '';
+          if (s.priceChangedAt) {
+            const days = Math.floor((Date.now() - new Date(s.priceChangedAt).getTime()) / (1000 * 60 * 60 * 24));
+            if (days >= 30) {
+              const label = days >= 365 ? `${Math.floor(days/365)}년 전` : days >= 60 ? `${Math.floor(days/30)}개월 전` : `${Math.floor(days/30)}개월 전`;
+              priceAgeBadge = `<span style="font-size:0.68rem;color:var(--text-muted);margin-left:6px">· ${label} 변경</span>`;
+            }
+          }
+          const isFav = !!s.favorite;
+          html += '<div class="service-row" data-id="' + s.id + '" style="display:flex;align-items:center;gap:6px;padding:10px 0;border-bottom:1px solid var(--border-light);' + (isOff ? 'opacity:0.5' : '') + '">' +
+            '<button class="btn-icon btn-favorite-service" data-id="' + s.id + '" title="' + (isFav ? '즐겨찾기 해제' : '즐겨찾기') + '" style="font-size:1.05rem;color:' + (isFav ? '#F59E0B' : 'var(--border)') + ';flex-shrink:0">' + (isFav ? '&#x2605;' : '&#x2606;') + '</button>' +
             '<div style="flex:1;min-width:0">' +
               '<div style="font-weight:700;font-size:0.9rem">' + App.escapeHtml(s.name) + usageBadge + '</div>' +
-              '<div class="service-price-display" data-id="' + s.id + '" data-same="' + samePrices + '" style="font-size:0.78rem;color:var(--text-muted);margin-top:2px;cursor:pointer;display:inline-block;padding:2px 6px;border-radius:4px;border:1px dashed transparent" title="클릭하여 빠르게 수정">' + priceDisplay + ' <span style="opacity:0.5;font-size:0.7rem">&#x270F;</span></div>' +
+              '<div class="service-price-display" data-id="' + s.id + '" data-same="' + samePrices + '" style="font-size:0.78rem;color:var(--text-muted);margin-top:2px;cursor:pointer;display:inline-block;padding:2px 6px;border-radius:4px;border:1px dashed transparent" title="클릭하여 빠르게 수정">' + priceDisplay + ' <span style="opacity:0.5;font-size:0.7rem">&#x270F;</span></div>' + priceAgeBadge +
             '</div>' +
             '<button class="btn-icon btn-duplicate-service" data-id="' + s.id + '" title="복제" style="font-size:0.95rem;color:var(--info)">&#x1F4CB;</button>' +
             '<button class="btn-icon btn-edit-service" data-id="' + s.id + '" title="수정" style="font-size:0.95rem">&#x270F;</button>' +
@@ -124,6 +138,11 @@ App.pages.services = {
     // 복제 버튼 (비슷한 서비스 빠른 생성)
     document.querySelectorAll('.btn-duplicate-service').forEach(btn => {
       btn.addEventListener('click', () => this.duplicateService(Number(btn.dataset.id)));
+    });
+
+    // 즐겨찾기 토글
+    document.querySelectorAll('.btn-favorite-service').forEach(btn => {
+      btn.addEventListener('click', () => this.toggleFavoriteService(Number(btn.dataset.id)));
     });
 
     // 인라인 가격 빠른 편집
@@ -265,12 +284,14 @@ App.pages.services = {
 
     document.getElementById('bulk-confirm')?.addEventListener('click', async () => {
       try {
+        const now = new Date().toISOString();
         for (const p of previewItems) {
           const svc = await DB.get('services', p.id);
           if (!svc) continue;
           svc.priceSmall = p.newS;
           svc.priceMedium = p.newM;
           svc.priceLarge = p.newL;
+          svc.priceChangedAt = now;
           await DB.update('services', svc);
         }
         App.showToast(`${previewItems.length}개 서비스 가격 일괄 변경 완료`);
@@ -286,6 +307,16 @@ App.pages.services = {
     });
   },
 
+  // 즐겨찾기 토글
+  async toggleFavoriteService(id) {
+    const service = await DB.get('services', id);
+    if (!service) return;
+    service.favorite = !service.favorite;
+    await DB.update('services', service);
+    App.showToast(service.favorite ? `"${service.name}" 즐겨찾기 추가` : `"${service.name}" 즐겨찾기 해제`);
+    App.handleRoute();
+  },
+
   // 서비스 복제 — 같은 데이터로 새 서비스 즉시 등록 후 수정 폼 열기
   async duplicateService(id) {
     const original = await DB.get('services', id);
@@ -293,7 +324,9 @@ App.pages.services = {
     const newSvc = {
       ...original,
       name: original.name + ' (복사본)',
-      isActive: true
+      isActive: true,
+      favorite: false,
+      priceChangedAt: new Date().toISOString()
     };
     delete newSvc.id;
     delete newSvc.createdAt;
@@ -343,6 +376,7 @@ App.pages.services = {
 
     const saveAndExit = async () => {
       try {
+        const oldS = service.priceSmall || 0, oldM = service.priceMedium || 0, oldL = service.priceLarge || 0;
         if (sameStr) {
           const v = Math.max(0, Number(inputs[0].value) || 0);
           service.priceSmall = service.priceMedium = service.priceLarge = v;
@@ -350,6 +384,10 @@ App.pages.services = {
           service.priceSmall = Math.max(0, Number(el.querySelector('[data-size="small"]').value) || 0);
           service.priceMedium = Math.max(0, Number(el.querySelector('[data-size="medium"]').value) || 0);
           service.priceLarge = Math.max(0, Number(el.querySelector('[data-size="large"]').value) || 0);
+        }
+        // 가격 변경 시 priceChangedAt 갱신
+        if (service.priceSmall !== oldS || service.priceMedium !== oldM || service.priceLarge !== oldL) {
+          service.priceChangedAt = new Date().toISOString();
         }
         await DB.update('services', service);
         App.showToast(`"${service.name}" 가격 수정됨`);
@@ -520,10 +558,16 @@ App.pages.services = {
     if (id) {
       const existing = await DB.get('services', id);
       data.isActive = existing.isActive;
+      data.favorite = existing.favorite;
+      // 가격 변경 감지 → priceChangedAt 갱신
+      const priceChanged = (existing.priceSmall || 0) !== priceSmall || (existing.priceMedium || 0) !== priceMedium || (existing.priceLarge || 0) !== priceLarge;
+      if (priceChanged) data.priceChangedAt = new Date().toISOString();
+      else data.priceChangedAt = existing.priceChangedAt;
       Object.assign(existing, data);
       await DB.update('services', existing);
       App.showToast('서비스가 수정되었습니다.');
     } else {
+      data.priceChangedAt = new Date().toISOString();
       await DB.add('services', data);
       App.showToast('새 서비스가 등록되었습니다.');
     }

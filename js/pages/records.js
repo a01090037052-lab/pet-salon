@@ -513,6 +513,31 @@ App.pages.records = {
             <input type="number" id="f-servicePrice" value="${record.servicePrice || record.totalPrice || ''}" placeholder="0" min="0" step="1000">
           </div>
         </div>
+        <!-- 즉석 새 서비스 등록 (드롭다운에서 "+새 서비스 등록" 선택 시 표시) -->
+        <div id="quickadd-service-form" style="display:none;background:var(--primary-light);border:1.5px solid var(--primary);border-radius:var(--radius);padding:12px;margin-bottom:12px">
+          <div style="font-weight:700;font-size:0.88rem;color:var(--primary);margin-bottom:8px">&#x2728; 새 서비스 즉석 등록</div>
+          <div class="form-group" style="margin-bottom:8px">
+            <label class="form-label" style="font-size:0.78rem">이름</label>
+            <input type="text" id="quickadd-name" placeholder="서비스 이름" maxlength="40" style="min-height:40px">
+          </div>
+          <div class="form-group" style="margin-bottom:8px">
+            <label class="form-label" style="font-size:0.78rem">분류</label>
+            <div id="quickadd-category-chips" style="display:flex;gap:6px;flex-wrap:wrap">
+              <button type="button" class="payment-chip active" data-value="grooming">&#x2702; 미용</button>
+              <button type="button" class="payment-chip" data-value="addon">&#x2728; 추가</button>
+              <button type="button" class="payment-chip" data-value="care">&#x1F4A7; 케어</button>
+            </div>
+            <input type="hidden" id="quickadd-category" value="grooming">
+          </div>
+          <div class="form-group" style="margin-bottom:10px">
+            <label class="form-label" style="font-size:0.78rem">가격 (원) <span style="color:var(--text-muted);font-weight:400">— 모든 사이즈 동일 (수정 페이지에서 사이즈별 변경 가능)</span></label>
+            <input type="number" id="quickadd-price" placeholder="0" min="0" step="1000" style="min-height:40px">
+          </div>
+          <div style="display:flex;gap:6px">
+            <button type="button" class="btn btn-primary" id="quickadd-save" style="flex:1;min-height:40px">&#x2714; 등록 + 사용</button>
+            <button type="button" class="btn btn-secondary" id="quickadd-cancel" style="flex:1;min-height:40px">취소</button>
+          </div>
+        </div>
         <!-- 합계 + 결제 수단 (필수 매출 정보) -->
         <div class="form-group" id="final-price-display" style="background:var(--bg);border-radius:var(--radius);padding:12px 16px;display:flex;justify-content:space-between;align-items:center">
           <span style="font-weight:700">합계</span>
@@ -665,20 +690,42 @@ App.pages.records = {
     }
 
     // ===== 자동완성 드롭다운 헬퍼 =====
-    const setupAutocomplete = (inputId, dropdownId, historyKey, defaultSuggestions) => {
+    // opts.onNoMatch: 입력값과 정확히 일치하는 항목 없을 때 드롭다운 하단에 추가할 액션 (예: "+ 새 서비스 등록")
+    const setupAutocomplete = (inputId, dropdownId, historyKey, defaultSuggestions, opts = {}) => {
       const input = document.getElementById(inputId);
       const dropdown = document.getElementById(dropdownId);
       if (!input || !dropdown) return;
       const showDropdown = async (q) => {
         const history = await App.getAutoHistory(historyKey);
-        const all = [...new Set([...history, ...(defaultSuggestions || [])])];
-        const query = (q || '').trim().toLowerCase();
-        const filtered = query ? all.filter(v => v.toLowerCase().includes(query)) : all;
-        if (filtered.length === 0) { dropdown.style.display = 'none'; return; }
-        dropdown.innerHTML = filtered.slice(0, 10).map(v => `<div class="search-select-option" style="padding:8px 12px;cursor:pointer;font-size:0.9rem">${App.escapeHtml(v)}</div>`).join('');
+        const dbItems = opts.dbItems ? await opts.dbItems() : [];
+        const all = [...new Set([...dbItems, ...history, ...(defaultSuggestions || [])])];
+        const query = (q || '').trim();
+        const queryLower = query.toLowerCase();
+        const filtered = queryLower ? all.filter(v => v.toLowerCase().includes(queryLower)) : all;
+        const exactMatch = queryLower && all.some(v => v.toLowerCase() === queryLower);
+
+        let html = filtered.slice(0, 10).map(v => `<div class="search-select-option" data-action="select" style="padding:8px 12px;cursor:pointer;font-size:0.9rem">${App.escapeHtml(v)}</div>`).join('');
+
+        // 즉석 등록 옵션 (정확히 일치 안 할 때만)
+        if (opts.onNoMatch && query && !exactMatch) {
+          html += `<div class="search-select-option" data-action="add-new" data-query="${App.escapeHtml(query)}" style="padding:10px 12px;cursor:pointer;font-size:0.85rem;font-weight:700;color:var(--primary);background:var(--primary-light);border-top:1px dashed var(--border)">+ "${App.escapeHtml(query)}" 새 서비스 등록</div>`;
+        }
+
+        if (!html) { dropdown.style.display = 'none'; return; }
+        dropdown.innerHTML = html;
         dropdown.style.display = 'block';
         dropdown.querySelectorAll('.search-select-option').forEach(opt => {
-          opt.addEventListener('click', (e) => { e.stopPropagation(); input.value = opt.textContent; dropdown.style.display = 'none'; input.dispatchEvent(new Event('change')); });
+          opt.addEventListener('click', (e) => {
+            e.stopPropagation();
+            if (opt.dataset.action === 'add-new') {
+              dropdown.style.display = 'none';
+              opts.onNoMatch(opt.dataset.query || query);
+            } else {
+              input.value = opt.textContent;
+              dropdown.style.display = 'none';
+              input.dispatchEvent(new Event('change'));
+            }
+          });
         });
       };
       input.addEventListener('focus', () => showDropdown(input.value));
@@ -688,7 +735,23 @@ App.pages.records = {
     const defaultServices = ['전체미용', '목욕', '위생미용', '부분미용', '클리퍼컷', '스포팅'];
     const defaultAddons = ['엉킴 제거', '약욕', '보습팩', '염색'];
     const defaultStyles = ['테디베어컷', '배냇컷', '라이언컷', '하이바컷', '머쉬룸컷', '스포팅컷', '자연컷', '클린페이스'];
-    setupAutocomplete('f-service', 'service-dropdown', 'serviceHistory', defaultServices);
+
+    // 서비스 input 은 DB services 까지 통합 + "새 서비스 등록" 옵션
+    // 즐겨찾기 → 활성 순으로 정렬 (자주 쓰는 서비스 상위 노출)
+    setupAutocomplete('f-service', 'service-dropdown', 'serviceHistory', defaultServices, {
+      dbItems: async () => {
+        const list = await DB.getAll('services');
+        return list
+          .filter(s => s.isActive !== false)
+          .sort((a, b) => {
+            const fa = !!a.favorite, fb = !!b.favorite;
+            if (fa !== fb) return fa ? -1 : 1;
+            return (a.name || '').localeCompare(b.name || '', 'ko');
+          })
+          .map(s => s.name);
+      },
+      onNoMatch: (query) => this._showQuickAddService(query)
+    });
     setupAutocomplete('f-style', 'style-dropdown', 'styleHistory', defaultStyles);
     setupAutocomplete('f-addon-input', 'addon-dropdown', 'addonHistory', defaultAddons);
 
@@ -2022,6 +2085,72 @@ App.pages.records = {
     film: { name: '필름', color: '#8B7355', emoji: '🎞' },
     pastel: { name: '파스텔', color: '#F9A8D4', emoji: '🌷' },
     dark: { name: '다크', color: '#0F172A', emoji: '✨' }
+  },
+
+  // 미용 기록 폼에서 즉석 새 서비스 등록 (모달 충돌 회피 — inline form)
+  _showQuickAddService(suggestedName) {
+    const form = document.getElementById('quickadd-service-form');
+    if (!form) return;
+    form.style.display = 'block';
+    const nameInput = document.getElementById('quickadd-name');
+    const priceInput = document.getElementById('quickadd-price');
+    if (nameInput) {
+      nameInput.value = suggestedName || '';
+      setTimeout(() => nameInput.focus(), 50);
+    }
+    if (priceInput) priceInput.value = '';
+    // 분류 chips 초기화 (grooming 활성)
+    document.querySelectorAll('#quickadd-category-chips .payment-chip').forEach(b => b.classList.remove('active'));
+    const groomingBtn = document.querySelector('#quickadd-category-chips .payment-chip[data-value="grooming"]');
+    if (groomingBtn) groomingBtn.classList.add('active');
+    const catHidden = document.getElementById('quickadd-category');
+    if (catHidden) catHidden.value = 'grooming';
+
+    // chips 핸들러 (1회만 바인딩 위해 cloneNode 트릭 사용 안 하고 매번 등록 — 단순)
+    document.querySelectorAll('#quickadd-category-chips .payment-chip').forEach(btn => {
+      btn.onclick = () => {
+        document.querySelectorAll('#quickadd-category-chips .payment-chip').forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+        document.getElementById('quickadd-category').value = btn.dataset.value;
+      };
+    });
+
+    // 등록 버튼
+    const saveBtn = document.getElementById('quickadd-save');
+    const cancelBtn = document.getElementById('quickadd-cancel');
+    if (saveBtn) {
+      saveBtn.onclick = async () => {
+        const name = (nameInput?.value || '').trim();
+        const price = Math.max(0, Number(priceInput?.value) || 0);
+        const category = document.getElementById('quickadd-category')?.value || 'grooming';
+        if (!name) { App.showToast('서비스 이름을 입력하세요', 'error'); nameInput?.focus(); return; }
+        try {
+          await DB.add('services', {
+            name, category,
+            description: '',
+            priceSmall: price, priceMedium: price, priceLarge: price,
+            isActive: true,
+            priceChangedAt: new Date().toISOString()
+          });
+          App.showToast(`"${name}" 서비스 등록 완료`);
+          // 미용 기록 폼에 자동 채움
+          const fService = document.getElementById('f-service');
+          const fPrice = document.getElementById('f-servicePrice');
+          if (fService) fService.value = name;
+          if (fPrice && price > 0) {
+            fPrice.value = price;
+            fPrice.dispatchEvent(new Event('input')); // 합계 자동 계산
+          }
+          form.style.display = 'none';
+        } catch (e) {
+          console.error('즉석 서비스 등록 실패:', e);
+          App.showToast('서비스 등록 중 오류', 'error');
+        }
+      };
+    }
+    if (cancelBtn) {
+      cancelBtn.onclick = () => { form.style.display = 'none'; };
+    }
   },
 
   _renderPhotoSlots(count) {
