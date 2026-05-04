@@ -48,6 +48,7 @@ App.pages.services = {
         </div>
         <div class="page-actions">
           <button class="btn btn-secondary" id="btn-init-services">+ 기본 템플릿</button>
+          ${active.length > 0 ? '<button class="btn btn-warning" id="btn-bulk-price">&#x1F4B0; 일괄 가격 조정</button>' : ''}
           <button class="btn btn-primary" id="btn-add-service">+ 새 서비스</button>
         </div>
       </div>
@@ -135,6 +136,154 @@ App.pages.services = {
 
     document.getElementById('btn-init-services')?.addEventListener('click', () => this.initDefaultServices());
     document.getElementById('btn-init-services-empty')?.addEventListener('click', () => this.initDefaultServices());
+    document.getElementById('btn-bulk-price')?.addEventListener('click', () => this.showBulkPriceModal());
+  },
+
+  // 가격 일괄 조정 — 분기/시즌 가격 인상 시 한 번에 처리
+  async showBulkPriceModal() {
+    const services = await DB.getAll('services');
+    const active = services.filter(s => s.isActive !== false);
+    if (active.length === 0) { App.showToast('활성 서비스가 없습니다.', 'info'); return; }
+
+    const catLabels = this._categoryLabels;
+    const catCounts = {};
+    active.forEach(s => { const c = s.category || 'grooming'; catCounts[c] = (catCounts[c] || 0) + 1; });
+
+    App.showModal({
+      title: '가격 일괄 조정',
+      saveText: '미리보기',
+      content: `
+        <div style="font-size:0.88rem;color:var(--text-secondary);margin-bottom:14px">
+          여러 서비스의 가격을 한 번에 변경합니다. 분기·시즌 가격 인상 시 유용합니다.
+        </div>
+
+        <div class="form-group">
+          <label class="form-label">대상</label>
+          <div id="bulk-target-chips" style="display:flex;gap:6px;flex-wrap:wrap">
+            <button type="button" class="payment-chip active" data-value="all">전체 (${active.length}개)</button>
+            ${this._categoryOrder.filter(c => catCounts[c]).map(c => `<button type="button" class="payment-chip" data-value="${c}">${catLabels[c]} (${catCounts[c]}개)</button>`).join('')}
+          </div>
+          <input type="hidden" id="bulk-target" value="all">
+        </div>
+
+        <div class="form-group">
+          <label class="form-label">조정 방식</label>
+          <div id="bulk-mode-chips" style="display:flex;gap:6px;flex-wrap:wrap">
+            <button type="button" class="payment-chip active" data-value="amount">금액 (원)</button>
+            <button type="button" class="payment-chip" data-value="percent">비율 (%)</button>
+          </div>
+          <input type="hidden" id="bulk-mode" value="amount">
+        </div>
+
+        <div class="form-group">
+          <label class="form-label">조정값 <span style="color:var(--text-muted);font-size:0.78rem">(인하는 음수 입력 — 예: -5000)</span></label>
+          <input type="number" id="bulk-value" placeholder="예: 5000" step="100" autofocus>
+          <div class="form-hint" style="margin-top:4px">예) +5000 = 모든 가격 5,000원 인상 / -5 = 5% 인하</div>
+        </div>
+
+        <div id="bulk-preview" style="display:none;background:var(--bg);border-radius:var(--radius);padding:12px;margin-top:8px;max-height:240px;overflow-y:auto;font-size:0.82rem"></div>
+      `,
+      onSave: () => this._previewBulkPrice(active)
+    });
+
+    // chips 핸들러
+    document.querySelectorAll('#bulk-target-chips .payment-chip').forEach(btn => {
+      btn.addEventListener('click', () => {
+        document.querySelectorAll('#bulk-target-chips .payment-chip').forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+        document.getElementById('bulk-target').value = btn.dataset.value;
+      });
+    });
+    document.querySelectorAll('#bulk-mode-chips .payment-chip').forEach(btn => {
+      btn.addEventListener('click', () => {
+        document.querySelectorAll('#bulk-mode-chips .payment-chip').forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+        document.getElementById('bulk-mode').value = btn.dataset.value;
+      });
+    });
+  },
+
+  // 미리보기 → 실제 적용 단계
+  async _previewBulkPrice(services) {
+    const target = document.getElementById('bulk-target')?.value || 'all';
+    const mode = document.getElementById('bulk-mode')?.value || 'amount';
+    const valueInput = Number(document.getElementById('bulk-value')?.value);
+    if (!valueInput || isNaN(valueInput)) { App.showToast('조정값을 입력하세요.', 'error'); return; }
+
+    const filtered = target === 'all' ? services : services.filter(s => (s.category || 'grooming') === target);
+    if (filtered.length === 0) { App.showToast('해당하는 서비스가 없습니다.', 'info'); return; }
+
+    // 가격 계산
+    const calcPrice = (orig) => {
+      let next;
+      if (mode === 'percent') {
+        next = Math.round(orig * (1 + valueInput / 100));
+      } else {
+        next = orig + valueInput;
+      }
+      return Math.max(0, Math.round(next / 100) * 100); // 100원 단위 반올림
+    };
+
+    const previewItems = filtered.map(s => ({
+      id: s.id,
+      name: s.name,
+      oldS: s.priceSmall || 0,
+      newS: calcPrice(s.priceSmall || 0),
+      oldM: s.priceMedium || 0,
+      newM: calcPrice(s.priceMedium || 0),
+      oldL: s.priceLarge || 0,
+      newL: calcPrice(s.priceLarge || 0)
+    }));
+
+    const same = (s) => s.oldS === s.oldM && s.oldM === s.oldL;
+    const previewHtml = previewItems.map(p => {
+      if (same({ oldS: p.oldS, oldM: p.oldM, oldL: p.oldL })) {
+        return `<div style="display:flex;justify-content:space-between;padding:4px 0;border-bottom:1px solid var(--border-light)">
+          <span style="font-weight:600">${App.escapeHtml(p.name)}</span>
+          <span><span style="color:var(--text-muted)">${App.formatCurrency(p.oldS)}</span> &rarr; <span style="color:var(--success);font-weight:700">${App.formatCurrency(p.newS)}</span></span>
+        </div>`;
+      }
+      return `<div style="padding:4px 0;border-bottom:1px solid var(--border-light)">
+        <div style="font-weight:600">${App.escapeHtml(p.name)}</div>
+        <div style="font-size:0.78rem;color:var(--text-muted);margin-top:2px">
+          ${App.formatCurrency(p.oldS)} / ${App.formatCurrency(p.oldM)} / ${App.formatCurrency(p.oldL)} &rarr;
+          <span style="color:var(--success);font-weight:700">${App.formatCurrency(p.newS)} / ${App.formatCurrency(p.newM)} / ${App.formatCurrency(p.newL)}</span>
+        </div>
+      </div>`;
+    }).join('');
+
+    const preview = document.getElementById('bulk-preview');
+    preview.innerHTML = `
+      <div style="font-weight:700;margin-bottom:8px">변경 미리보기 (${previewItems.length}개)</div>
+      ${previewHtml}
+      <div style="display:flex;gap:8px;margin-top:14px">
+        <button class="btn btn-warning" id="bulk-confirm" style="flex:1">&#x2714; 적용</button>
+        <button class="btn btn-secondary" id="bulk-cancel" style="flex:1">취소</button>
+      </div>
+    `;
+    preview.style.display = 'block';
+
+    document.getElementById('bulk-confirm')?.addEventListener('click', async () => {
+      try {
+        for (const p of previewItems) {
+          const svc = await DB.get('services', p.id);
+          if (!svc) continue;
+          svc.priceSmall = p.newS;
+          svc.priceMedium = p.newM;
+          svc.priceLarge = p.newL;
+          await DB.update('services', svc);
+        }
+        App.showToast(`${previewItems.length}개 서비스 가격 일괄 변경 완료`);
+        App.closeModal();
+        App.handleRoute();
+      } catch (e) {
+        console.error('일괄 가격 조정 실패:', e);
+        App.showToast('적용 중 오류가 발생했습니다.', 'error');
+      }
+    });
+    document.getElementById('bulk-cancel')?.addEventListener('click', () => {
+      preview.style.display = 'none';
+    });
   },
 
   // 서비스 복제 — 같은 데이터로 새 서비스 즉시 등록 후 수정 폼 열기
