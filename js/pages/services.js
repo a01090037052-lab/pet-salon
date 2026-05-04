@@ -592,33 +592,32 @@ App.pages.services = {
     const service = await DB.get('services', id);
     if (!service) return;
     const records = await DB.getAll('records');
-    const refCount = records.filter(r => (r.serviceIds || []).includes(id)).length;
+    // 신형(r.service 문자열) + 구형(r.serviceIds 배열) 모두 매칭
+    const refCount = records.filter(r =>
+      (r.serviceIds || []).includes(id) || r.service === service.name
+    ).length;
 
+    let msg;
     if (refCount > 0) {
-      // 1단계: 비활성화 제안
-      const hide = await App.confirm(
-        `"${App.escapeHtml(service.name)}" 서비스가 미용 기록 <strong>${refCount}건</strong>에서 사용 중입니다.<br>비활성화하시겠습니까?<br><small style="color:var(--text-muted)">(취소 후 완전 삭제도 가능합니다)</small>`
-      );
-      if (hide) {
-        service.isActive = false;
-        await DB.update('services', service);
-        App.showToast('서비스가 비활성화되었습니다.');
-      } else {
-        // 2단계: 완전 삭제 옵션
-        const forceDelete = await App.confirm(
-          `"${App.escapeHtml(service.name)}"을(를) 완전히 삭제하시겠습니까?<br><strong style="color:var(--danger)">기존 기록의 서비스명은 유지되지만 서비스 목록에서 사라집니다.</strong>`
-        );
-        if (!forceDelete) return;
-        await DB.delete('services', id);
-        App.showToast('서비스가 삭제되었습니다.');
-      }
+      msg = `"${App.escapeHtml(service.name)}" 서비스를 <strong>완전 삭제</strong>하시겠습니까?<br><br>
+        <span style="color:var(--danger)">&#x26A0; 미용 기록 <strong>${refCount}건</strong>에서 사용 중입니다.</span><br>
+        삭제 시: 기록의 서비스명은 텍스트로 유지되지만 서비스 목록에서 사라집니다.<br><br>
+        <small style="color:var(--text-muted)">잠시 숨기려면 [&#x1F7E2;&rarr;&#x26AA;] 버튼으로 비활성화하세요.</small>`;
     } else {
-      const confirmed = await App.confirm(`"${App.escapeHtml(service.name)}" 서비스를 삭제하시겠습니까?`);
-      if (!confirmed) return;
+      msg = `"${App.escapeHtml(service.name)}" 서비스를 삭제하시겠습니까?`;
+    }
+
+    const confirmed = await App.confirm(msg);
+    if (!confirmed) return;
+
+    try {
       await DB.delete('services', id);
       App.showToast('서비스가 삭제되었습니다.');
+      App.handleRoute();
+    } catch (e) {
+      console.error('서비스 삭제 실패:', e);
+      App.showToast('삭제 중 오류가 발생했습니다.', 'error');
     }
-    App.handleRoute();
   },
 
   _defaults: [
