@@ -3162,6 +3162,154 @@ a.stat-card { display: flex; }
   .lock-keypad { gap: 10px; }
 }
 
+/* ========== 내일 예약 리마인더 카드 (대시보드) ========== */
+.reminder-time-section {
+  padding: 8px 16px 4px;
+}
+.reminder-time-section + .reminder-time-section {
+  border-top: 1px solid var(--border-light);
+  padding-top: 12px;
+}
+.reminder-time-label {
+  font-size: 0.78rem;
+  font-weight: 700;
+  color: var(--text-muted);
+  letter-spacing: 0.5px;
+  margin-bottom: 6px;
+  text-transform: none;
+}
+.reminder-item {
+  display: flex;
+  gap: 12px;
+  padding: 12px 0;
+  border-bottom: 1px solid var(--border-light);
+  align-items: flex-start;
+}
+.reminder-item:last-child { border-bottom: none; }
+.reminder-pet-photo {
+  flex-shrink: 0;
+  width: 48px;
+  height: 48px;
+  border-radius: 10px;
+  overflow: hidden;
+  background: var(--bg);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  text-decoration: none;
+}
+.reminder-pet-photo img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+.reminder-pet-placeholder {
+  font-size: 1.4rem;
+  font-weight: 800;
+  color: var(--primary);
+  background: linear-gradient(135deg, var(--primary-light), var(--primary-lighter));
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.reminder-content {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.reminder-line-1 {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+  font-size: 0.95rem;
+}
+.reminder-time-num {
+  color: var(--primary);
+  font-weight: 800;
+  font-size: 1rem;
+}
+.reminder-pet-name {
+  color: var(--text-primary);
+  font-weight: 700;
+  text-decoration: none;
+}
+.reminder-pet-name:hover { color: var(--primary); }
+.reminder-pet-meta {
+  font-size: 0.82rem;
+  color: var(--text-muted);
+  font-weight: 500;
+}
+.reminder-customer {
+  font-size: 0.82rem;
+  color: var(--text-secondary);
+  text-decoration: none;
+}
+.reminder-customer:hover { color: var(--primary); text-decoration: underline; }
+.reminder-warnings {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+  margin-top: 2px;
+}
+.reminder-warning {
+  font-size: 0.75rem;
+  padding: 2px 8px;
+  border-radius: 6px;
+  background: var(--warning-light);
+  color: var(--warning-text-strong);
+  font-weight: 600;
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+}
+.reminder-warning-soft {
+  background: var(--bg);
+  color: var(--text-secondary);
+  font-weight: 500;
+}
+.reminder-warning-danger {
+  background: var(--danger-bg-soft);
+  color: var(--danger-text-strong);
+}
+.reminder-warning-icon {
+  font-size: 0.85rem;
+}
+.reminder-actions {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+  margin-top: 6px;
+}
+.reminder-actions .btn {
+  min-height: 32px;
+  padding: 4px 10px;
+  font-size: 0.78rem;
+}
+.reminder-sent-badge {
+  font-size: 0.72rem;
+  color: var(--success);
+  margin-top: 4px;
+  font-weight: 600;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+.reminder-sent-check {
+  font-size: 0.85rem;
+}
+@media (max-width: 480px) {
+  .reminder-pet-photo { width: 40px; height: 40px; border-radius: 8px; }
+  .reminder-content { gap: 3px; }
+  .reminder-line-1 { font-size: 0.9rem; }
+  .reminder-time-num { font-size: 0.95rem; }
+}
+
 /* ========== Dark Mode 컴포넌트 미세 조정 ========== */
 @media (prefers-color-scheme: dark) {
   /* 캘린더 히트맵 — 어두운 배경 위에서 충분한 대비 확보 */

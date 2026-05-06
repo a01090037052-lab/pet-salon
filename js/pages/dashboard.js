@@ -101,6 +101,63 @@ App.pages.dashboard = {
       const todayRecords = recentRecords.filter(r => r.date === today);
       const todayRevenue = todayRecords.reduce((sum, r) => sum + App.getRecordAmount(r), 0);
 
+      // ===== 내일 예약 리마인더 =====
+      const tomorrowDate = new Date();
+      tomorrowDate.setDate(tomorrowDate.getDate() + 1);
+      const tomorrowStr = App.formatLocalDate(tomorrowDate);
+      const tomorrowApptsRaw = await DB.getByIndex('appointments', 'date', tomorrowStr);
+      const tomorrowAppts = tomorrowApptsRaw
+        .filter(a => a.status !== 'cancelled' && a.status !== 'completed')
+        .sort((a, b) => (a.time || '').localeCompare(b.time || ''));
+
+      // 노쇼 카운트 (각 customer별 과거 노쇼 횟수)
+      const noShowCountByCustomer = {};
+      if (tomorrowAppts.length > 0) {
+        // 최근 6개월 데이터로 노쇼 계산 (성능)
+        const sixMonthsAgo = new Date(); sixMonthsAgo.setMonth(sixMonthsAgo.getMonth() - 6);
+        const sixMonthsAgoStr = App.formatLocalDate(sixMonthsAgo);
+        const noShowAppts = await DB.getByDateRange('appointments', 'date', sixMonthsAgoStr, today);
+        noShowAppts.forEach(a => {
+          if (a.status === 'noshow' && a.customerId) {
+            noShowCountByCustomer[a.customerId] = (noShowCountByCustomer[a.customerId] || 0) + 1;
+          }
+        });
+      }
+
+      // 시간대별 그룹핑
+      const timeGroupOf = (timeStr) => {
+        if (!timeStr) return '미정';
+        const h = Number(timeStr.split(':')[0]) || 0;
+        if (h < 12) return '오전';
+        if (h < 17) return '오후';
+        return '저녁';
+      };
+      const tomorrowGrouped = { '오전': [], '오후': [], '저녁': [], '미정': [] };
+      tomorrowAppts.forEach(a => { tomorrowGrouped[timeGroupOf(a.time)].push(a); });
+
+      // SMS 본문 미리 빌드 + 발송 상태 계산
+      for (const a of tomorrowAppts) {
+        const customer = customerMap[a.customerId];
+        const pet = petMap[a.petId];
+        const msg = await App.buildSms('reminder', {
+          '고객명': App.getCustomerLabel(customer),
+          '반려견명': pet?.name || '',
+          '날짜': App.formatDate(a.date),
+          '시간': a.time || ''
+        });
+        a._smsBody = encodeURIComponent(msg);
+        a._smsRaw = msg;
+        // 발송 시점 표시 (있으면)
+        if (a.reminderSentAt) {
+          const sentDate = new Date(a.reminderSentAt);
+          const diffMs = Date.now() - sentDate.getTime();
+          const diffH = Math.floor(diffMs / (1000 * 60 * 60));
+          if (diffH < 1) a._sentLabel = '방금 발송됨';
+          else if (diffH < 24) a._sentLabel = `${diffH}시간 전 발송됨`;
+          else a._sentLabel = `${Math.floor(diffH / 24)}일 전 발송됨`;
+        }
+      }
+
       // Revisit alerts (pets의 lastVisitDate 사용, records 전체 로드 불필요)
       const revisitDays = await DB.getSetting('revisitDays') || 30;
       const revisitAlerts = this._computeRevisitAlerts(pets, customerMap, revisitDays);
@@ -279,6 +336,72 @@ App.pages.dashboard = {
                     <button class="btn btn-sm btn-success btn-pay-unpaid" data-id="${r.id}" onclick="event.stopPropagation()">결제</button>
                   </div>
                 </div>`;
+            }).join('')}
+          </div>
+        </div>
+        ` : ''}
+
+        <!-- 내일 예약 리마인더 -->
+        ${tomorrowAppts.length > 0 ? `
+        <div class="card dash-accordion" style="margin-bottom:20px">
+          <div class="card-header dash-accordion-toggle" style="cursor:pointer;user-select:none" data-target="dash-tomorrow-reminder">
+            <span class="card-title">내일 예약 리마인더</span>
+            <div style="display:flex;align-items:center;gap:8px">
+              <span class="badge badge-info">${tomorrowAppts.length}건</span>
+              ${(() => { const sentCount = tomorrowAppts.filter(a => a.reminderSentAt).length; return sentCount > 0 ? `<span class="badge badge-secondary" style="font-size:0.7rem">${sentCount}건 발송됨</span>` : ''; })()}
+              <span class="dash-chevron" style="transition:transform 0.2s;font-size:0.8rem">&#x25BC;</span>
+            </div>
+          </div>
+          <div class="card-body" id="dash-tomorrow-reminder" style="padding:0">
+            ${['오전', '오후', '저녁', '미정'].map(group => {
+              const items = tomorrowGrouped[group];
+              if (!items || items.length === 0) return '';
+              return `
+                <div class="reminder-time-section">
+                  <div class="reminder-time-label">${group}</div>
+                  ${items.map(a => {
+                    const customer = customerMap[a.customerId];
+                    const pet = petMap[a.petId];
+                    const phoneClean = (customer?.phone || '').replace(/\D/g, '');
+                    const noShowCount = noShowCountByCustomer[a.customerId] || 0;
+                    const allergies = pet?.allergies ? App.escapeHtml(pet.allergies) : '';
+                    const healthNotes = pet?.healthNotes ? App.escapeHtml(pet.healthNotes) : '';
+                    const temperament = pet?.temperament ? App.escapeHtml(pet.temperament) : '';
+                    const photoSrc = pet?.photoThumb || pet?.photo;
+                    const sent = !!a.reminderSentAt;
+                    const breedSize = [pet?.breed, pet?.weight ? pet.weight + 'kg' : null].filter(Boolean).join(' · ');
+                    return `
+                      <div class="reminder-item" data-id="${a.id}" style="${sent ? 'opacity:0.55' : ''}">
+                        <a href="#pets/${a.petId}" class="reminder-pet-photo" onclick="event.stopPropagation()">
+                          ${photoSrc ? `<img src="${App.escapeHtml(photoSrc)}" alt="${App.escapeHtml(pet?.name || '')}">` : `<div class="reminder-pet-placeholder">${App.escapeHtml((pet?.name || '?').charAt(0))}</div>`}
+                        </a>
+                        <div class="reminder-content">
+                          <div class="reminder-line-1">
+                            <strong class="reminder-time-num">${a.time || '--:--'}</strong>
+                            <a href="#pets/${a.petId}" class="reminder-pet-name" onclick="event.stopPropagation()">${App.escapeHtml(pet?.name || '?')}</a>
+                            ${breedSize ? `<span class="reminder-pet-meta">· ${breedSize}</span>` : ''}
+                          </div>
+                          <a href="#customers/${a.customerId}" class="reminder-customer" onclick="event.stopPropagation()">${App.escapeHtml(App.getCustomerLabel(customer))}</a>
+                          ${(allergies || healthNotes || temperament || noShowCount > 0) ? `
+                            <div class="reminder-warnings">
+                              ${allergies ? `<span class="reminder-warning"><span class="reminder-warning-icon">&#x26A0;</span> 알레르기: ${allergies}</span>` : ''}
+                              ${healthNotes ? `<span class="reminder-warning"><span class="reminder-warning-icon">&#x26A0;</span> ${healthNotes}</span>` : ''}
+                              ${temperament ? `<span class="reminder-warning reminder-warning-soft">${temperament}</span>` : ''}
+                              ${noShowCount > 0 ? `<span class="reminder-warning reminder-warning-danger"><span class="reminder-warning-icon">&#x26A0;</span> 노쇼 ${noShowCount}회</span>` : ''}
+                            </div>
+                          ` : ''}
+                          <div class="reminder-actions">
+                            <button class="btn btn-sm btn-ghost btn-copy-reminder" data-id="${a.id}" data-sms="${App.escapeHtml(a._smsRaw || '')}" onclick="event.stopPropagation()" title="메시지 복사">복사</button>
+                            ${phoneClean ? `<a href="sms:${App.escapeHtml(phoneClean)}${App.getSmsSep()}body=${a._smsBody}" class="btn btn-sm btn-success btn-send-reminder" data-id="${a.id}" onclick="event.stopPropagation()">문자</a>` : ''}
+                            ${phoneClean ? `<a href="tel:${App.escapeHtml(phoneClean)}" class="btn btn-sm btn-secondary" onclick="event.stopPropagation()">전화</a>` : ''}
+                          </div>
+                          ${sent ? `<div class="reminder-sent-badge"><span class="reminder-sent-check">&#x2713;</span> ${App.escapeHtml(a._sentLabel || '발송됨')}</div>` : ''}
+                        </div>
+                      </div>
+                    `;
+                  }).join('')}
+                </div>
+              `;
             }).join('')}
           </div>
         </div>
@@ -507,6 +630,37 @@ App.pages.dashboard = {
         }).catch(() => {
           App.showToast('복사에 실패했습니다.', 'error');
         });
+      });
+    });
+
+    // 내일 예약 리마인더 — 메시지 복사
+    document.querySelectorAll('.btn-copy-reminder').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const msg = btn.dataset.sms || '';
+        navigator.clipboard.writeText(msg).then(() => {
+          App.showToast('리마인더 메시지가 복사되었습니다');
+        }).catch(() => {
+          App.showToast('복사에 실패했습니다.', 'error');
+        });
+      });
+    });
+
+    // 내일 예약 리마인더 — 문자 발송 트래킹
+    // sms: URL 클릭 시 발송 시도로 간주 (실제 발송 여부는 사장님이 SMS 앱에서 결정)
+    document.querySelectorAll('.btn-send-reminder').forEach(btn => {
+      btn.addEventListener('click', async () => {
+        const apptId = Number(btn.dataset.id);
+        try {
+          const appt = await DB.get('appointments', apptId);
+          if (appt) {
+            appt.reminderSentAt = new Date().toISOString();
+            await DB.update('appointments', appt);
+            // 즉시 UI 반영 (페이지 재렌더는 사용자가 다시 진입할 때)
+            App._dashboardDirty = true;
+          }
+        } catch (e) {
+          console.warn('리마인더 발송 트래킹 실패:', e);
+        }
       });
     });
 
