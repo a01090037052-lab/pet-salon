@@ -71,6 +71,9 @@ App.pages.customers = {
       const visitCount = {};
       records.forEach(r => { visitCount[r.customerId] = (visitCount[r.customerId] || 0) + 1; });
       sorted = customers.sort((a, b) => (visitCount[b.id] || 0) - (visitCount[a.id] || 0));
+    } else if (sortKey === 'status') {
+      const sp = { 'at-risk': 0, 'remind': 1, 'normal': 2, 'churned': 3 };
+      sorted = customers.sort((a, b) => (sp[customerVisitStatus[a.id]] ?? 2) - (sp[customerVisitStatus[b.id]] ?? 2));
     } else {
       sorted = customers.sort((a, b) => (a.name || '').localeCompare(b.name || '', 'ko'));
     }
@@ -108,6 +111,7 @@ App.pages.customers = {
           </select>
           <select id="customer-sort" style="flex:1;min-height:44px;font-size:max(16px,0.88rem)">
             <option value="name" ${sortKey === 'name' ? 'selected' : ''}>이름순</option>
+            <option value="status" ${sortKey === 'status' ? 'selected' : ''}>상태별</option>
             <option value="lastVisit" ${sortKey === 'lastVisit' ? 'selected' : ''}>최근방문순</option>
             <option value="createdAt" ${sortKey === 'createdAt' ? 'selected' : ''}>등록일순</option>
             <option value="visitCount" ${sortKey === 'visitCount' ? 'selected' : ''}>방문횟수순</option>
@@ -142,14 +146,34 @@ App.pages.customers = {
             </table>
           </div>`}
 
-          ${!isMobile ? '' : `<div class="mobile-card-list" id="customer-card-list" style="display:block">
+          ${!isMobile ? '' : `<div class="mobile-card-list" id="customer-card-list" style="display:block;padding:8px">
             ${sorted.length === 0 ? `
               <div class="empty-state">
                 <div class="empty-state-icon">&#x1F464;</div>
                 <div class="empty-state-text">등록된 고객이 없습니다</div>
                 <button class="btn btn-primary" onclick="document.getElementById('btn-add-customer').click()">첫 고객 등록하기</button>
               </div>
-            ` : sorted.map(c => this._renderCustomerCard(c, petCount, lastVisit)).join('')}
+            ` : (sortKey === 'status' ? (() => {
+              const groups = { 'at-risk': [], 'remind': [], 'normal': [], 'churned': [] };
+              sorted.forEach(c => {
+                const s = customerVisitStatus[c.id] || 'normal';
+                (groups[s] || groups['normal']).push(c);
+              });
+              const groupMeta = {
+                'at-risk': { label: '이탈 임박', color: 'var(--danger)' },
+                'remind': { label: '리마인드 필요', color: 'var(--warning)' },
+                'normal': { label: '정상', color: 'var(--success)' },
+                'churned': { label: '이탈', color: 'var(--text-muted)' }
+              };
+              return Object.entries(groups).filter(([, gp]) => gp.length > 0).map(([gs, gp]) => {
+                const meta = groupMeta[gs];
+                return `<div style="margin:14px 2px 8px;display:flex;align-items:center;gap:8px">
+                  <span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:${meta.color};flex-shrink:0"></span>
+                  <span style="font-size:0.88rem;font-weight:800;color:var(--text-primary)">${meta.label}</span>
+                  <span style="font-size:0.78rem;color:var(--text-muted)">${gp.length}명</span>
+                </div>` + gp.map(c => this._renderCustomerCard(c, petCount, lastVisit)).join('');
+              }).join('');
+            })() : sorted.map(c => this._renderCustomerCard(c, petCount, lastVisit)).join(''))}
           </div>`}
         </div>
       </div>
@@ -766,16 +790,47 @@ App.pages.customers = {
 
   _renderCustomerCard(c, petCount, lastVisit) {
     const displayName = App.getCustomerLabel(c);
-    const initial = c.name ? App.escapeHtml(c.name.charAt(0)) : '&#x1F464;';
     const vs = this._customerVisitStatus?.[c.id] || 'normal';
-    const visitBadge = vs !== 'normal' ? `<span class="badge ${App.getVisitStatusBadge(vs)}" style="margin-left:6px;font-size:0.72rem;padding:3px 8px">${App.getVisitStatusLabel(vs)}</span>` : '';
     const tagLabelMap = { vip: 'VIP', 'new': '신규', normal: '일반', regular: '단골', caution: '주의' };
     const tagText = (c.tags || []).map(t => tagLabelMap[t] || t).join(' ');
     const searchText = ((c.name || '') + ' ' + (c.phone || '') + ' ' + (c.phone || '').replace(/\D/g, '') + ' ' + (c.memo || '') + ' ' + tagText).toLowerCase();
-    return `<div class="mobile-card clickable-row" data-id="${c.id}" data-tags="${(c.tags || []).join(',')}" data-visit-status="${vs}" data-search="${App.escapeHtml(searchText)}" style="cursor:pointer">
-      <div class="mobile-card-header"><div style="display:flex;align-items:center;gap:10px"><div class="mobile-card-avatar">${initial}</div><strong>${App.escapeHtml(displayName)}</strong>${this.getTagBadges(c.tags)}${visitBadge}</div><span class="badge badge-info">${petCount[c.id] || 0}마리</span></div>
-      <div class="mobile-card-body"><a href="tel:${App.escapeHtml((c.phone || '').replace(/\D/g, ''))}" class="mobile-card-phone" onclick="event.stopPropagation()">&#x1F4DE; ${App.formatPhone(c.phone)}</a><span class="mobile-card-meta-text">${lastVisit[c.id] ? '최근 방문: ' + App.getRelativeTime(lastVisit[c.id]) : '방문 기록 없음'}</span>
-      <div style="display:flex;gap:4px;margin-top:8px;border-top:1px solid var(--border-light);padding-top:8px"><button class="btn btn-sm btn-secondary btn-edit-customer flex-1" data-id="${c.id}" onclick="event.stopPropagation()">수정</button><button class="btn btn-sm btn-danger btn-delete-customer flex-1" data-id="${c.id}" onclick="event.stopPropagation()">삭제</button></div></div>
+
+    // 좌측 컬러바 색
+    const barColor = vs === 'at-risk' ? 'var(--danger)' : vs === 'remind' ? 'var(--warning)' : vs === 'churned' ? 'var(--text-muted)' : 'var(--success)';
+
+    // 우측 상태 칩 (정상은 숨김)
+    let rightChip = '';
+    if (vs === 'at-risk') {
+      rightChip = `<span style="font-size:0.7rem;padding:3px 9px;background:var(--danger);color:#fff;border-radius:11px;font-weight:700;flex-shrink:0;white-space:nowrap">이탈 임박</span>`;
+    } else if (vs === 'remind') {
+      rightChip = `<span style="font-size:0.7rem;padding:3px 9px;background:var(--warning);color:#fff;border-radius:11px;font-weight:700;flex-shrink:0;white-space:nowrap">리마인드</span>`;
+    } else if (vs === 'churned') {
+      rightChip = `<span style="font-size:0.7rem;padding:3px 9px;background:var(--text-muted);color:#fff;border-radius:11px;font-weight:600;flex-shrink:0;white-space:nowrap">이탈</span>`;
+    }
+
+    // 태그 뱃지 (작게)
+    const tagBadges = (c.tags || []).map(t => {
+      const tagColors = { vip: 'var(--warning)', 'new': 'var(--info)', normal: 'var(--text-muted)', regular: 'var(--success)', caution: 'var(--danger)' };
+      return `<span style="font-size:0.66rem;padding:2px 6px;background:${tagColors[t] || 'var(--text-muted)'};color:#fff;border-radius:6px;font-weight:700">${tagLabelMap[t] || t}</span>`;
+    }).join('');
+
+    const lastVisitText = lastVisit[c.id] ? App.getRelativeTime(lastVisit[c.id]) + ' 방문' : '방문 없음';
+    const phoneText = c.phone ? App.formatPhone(c.phone) : '-';
+    const petN = petCount[c.id] || 0;
+
+    return `<div class="mobile-card clickable-row" data-id="${c.id}" data-tags="${(c.tags || []).join(',')}" data-visit-status="${vs}" data-search="${App.escapeHtml(searchText)}" style="display:block;padding:12px;background:var(--bg-white);border:1px solid var(--border-light);border-left:4px solid ${barColor};border-radius:var(--radius);cursor:pointer;margin-bottom:6px;box-shadow:var(--shadow-xs)">
+      <div style="display:flex;align-items:center;gap:8px;margin-bottom:5px;min-width:0">
+        <strong style="font-size:1rem;font-weight:800;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;flex:1;min-width:0">${App.escapeHtml(displayName)}</strong>
+        ${tagBadges ? `<span style="display:inline-flex;gap:3px;flex-shrink:0">${tagBadges}</span>` : ''}
+        ${rightChip}
+      </div>
+      <div style="font-size:0.82rem;color:var(--text-secondary);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">
+        ${c.phone ? `<a href="tel:${App.escapeHtml(c.phone.replace(/\D/g, ''))}" style="color:var(--primary);font-weight:600" onclick="event.stopPropagation()">${phoneText}</a>` : '<span style="color:var(--text-muted)">전화 없음</span>'}
+        <span style="color:var(--border)">·</span>
+        <span>반려견 ${petN}마리</span>
+        <span style="color:var(--border)">·</span>
+        <span style="color:var(--text-muted)">${lastVisitText}</span>
+      </div>
     </div>`;
   },
 
