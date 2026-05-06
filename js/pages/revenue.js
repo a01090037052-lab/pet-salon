@@ -161,6 +161,17 @@ App.pages.revenue = {
       if (rev > monthMax) monthMax = rev;
     }
 
+    // 이번 달 주별 합계 (1~7일 / 8~14일 / 15~21일 / 22~28일 / 29~말일)
+    const weeklyData = [];
+    for (let w = 0; w < 5; w++) {
+      const sd = w * 7 + 1;
+      if (sd > daysInMonth) break;
+      const ed = Math.min(sd + 6, daysInMonth);
+      const rev = monthData.slice(sd - 1, ed).reduce((s, d) => s + d.rev, 0);
+      weeklyData.push({ label: `${w + 1}주`, startDay: sd, endDay: ed, rev });
+    }
+    const currentWeekIdx = Math.floor((todayDay - 1) / 7);
+
     // 월별 매출 추이 (최근 6개월)
     const monthlyTrend = [];
     let trendMax = 1;
@@ -272,15 +283,15 @@ App.pages.revenue = {
               return `<div style="position:relative;height:200px;padding:0 4px;margin-left:32px">
                 <div style="position:absolute;left:0;right:0;bottom:45%;border-bottom:1px dashed var(--border-light)"><span style="position:absolute;left:-34px;top:-8px;font-size:0.72rem;color:var(--text-muted)">${Math.round(gMax * 0.5 / 10000)}만</span></div>
                 <div style="position:absolute;left:0;right:0;bottom:90%;border-bottom:1px dashed var(--border-light)"><span style="position:absolute;left:-34px;top:-8px;font-size:0.72rem;color:var(--text-muted)">${Math.round(gMax / 10000)}만</span></div>
-                <div style="display:flex;gap:8px;height:160px;position:relative;z-index:1">
+                <div style="display:flex;gap:6px;height:160px;position:relative;z-index:1">
                   ${weekData.map(d => {
                     const barH = d.rev > 0 ? Math.max(8, Math.round((d.rev / gMax) * 130)) : 4;
                     const isToday = d.date === today;
                     const barBg = d.rev === 0 ? 'var(--border-light)' : isToday ? 'linear-gradient(to top,var(--success),#34D399)' : 'linear-gradient(to top,var(--primary),#818CF8)';
                     const label = d.rev >= 10000 ? Math.round(d.rev / 10000) + '만' : d.rev > 0 ? App.formatCurrency(d.rev) : '';
-                    return `<div style="flex:1;position:relative;text-align:center">
-                      <span style="font-size:0.75rem;color:${isToday ? 'var(--success)' : 'var(--text-secondary)'};font-weight:800;position:absolute;top:0;left:0;right:0">${label}</span>
-                      <div style="position:absolute;bottom:20px;left:10%;right:10%;height:${barH}px;background:${barBg};border-radius:6px 6px 0 0"></div>
+                    return `<div style="flex:1;position:relative;text-align:center;min-width:0">
+                      <span style="font-size:0.72rem;color:${isToday ? 'var(--success)' : 'var(--text-secondary)'};font-weight:800;position:absolute;top:0;left:0;right:0;overflow:hidden;text-overflow:clip;white-space:nowrap">${label}</span>
+                      <div style="position:absolute;bottom:20px;left:8%;right:8%;height:${barH}px;background:${barBg};border-radius:6px 6px 0 0"></div>
                       <span style="font-size:0.82rem;font-weight:${isToday ? '800' : '600'};color:${isToday ? 'var(--primary)' : 'var(--text-muted)'};position:absolute;bottom:0;left:0;right:0">${d.label}</span>
                     </div>`;
                   }).join('')}
@@ -344,6 +355,15 @@ App.pages.revenue = {
           <div class="card-header">
             <span class="card-title">&#x1F4C5; 이번 달 일별 매출 (${year}년 ${month + 1}월)</span>
           </div>
+          ${weeklyData.length > 0 ? `
+          <div style="padding:8px 14px;background:var(--bg);border-bottom:1px solid var(--border-light);font-size:0.78rem;color:var(--text-secondary);overflow-x:auto;white-space:nowrap;-webkit-overflow-scrolling:touch">
+            ${weeklyData.map((w, i) => {
+              const isCurrent = i === currentWeekIdx;
+              const labelTxt = w.rev >= 10000 ? Math.round(w.rev / 10000) + '만' : (w.rev > 0 ? App.formatCurrency(w.rev) : '0');
+              return `<span style="${isCurrent ? 'color:var(--primary);font-weight:800' : ''}">${w.label} ${labelTxt}</span>`;
+            }).join('<span style="color:var(--border);margin:0 8px"> · </span>')}
+          </div>
+          ` : ''}
           <div class="card-body chart-wrapper">
             ${(() => {
               const niceMax = (v) => { if (v <= 0) return 100000; const mag = Math.pow(10, Math.floor(Math.log10(v))); const norm = v / mag; return Math.ceil(norm * 4) / 4 * mag; };
@@ -357,10 +377,12 @@ App.pages.revenue = {
                   ${monthData.map(d => {
                     const barH = d.rev > 0 ? Math.max(4, Math.round((d.rev / mMax) * 140)) : 2;
                     const isToday = d.date === today;
+                    const isWeekStart = d.day === 8 || d.day === 15 || d.day === 22 || d.day === 29;
+                    const showLabel = isToday || d.day === 1 || isWeekStart;
                     const barBg = d.rev === 0 ? 'var(--border-light)' : isToday ? 'linear-gradient(to top,var(--success),#34D399)' : 'linear-gradient(to top,var(--primary),#818CF8)';
-                    return `<div style="flex:1;min-width:8px;position:relative" title="${d.date}: ${App.formatCurrency(d.rev)}">
-                      <div style="position:absolute;bottom:16px;left:0;right:0;height:${barH}px;background:${barBg};border-radius:3px 3px 0 0"></div>
-                      <span style="font-size:0.68rem;color:${isToday ? 'var(--primary)' : 'var(--text-muted)'};font-weight:${isToday ? '800' : '500'};position:absolute;bottom:-2px;left:50%;transform:translateX(-50%);white-space:nowrap">${isToday ? d.day : (d.day % 5 === 1 && Math.abs(d.day - new Date().getDate()) > 1 ? d.day : '')}</span>
+                    return `<div style="flex:1;min-width:10px;position:relative${isWeekStart ? ';border-left:1px dashed var(--border);margin-left:2px;padding-left:2px' : ''}" title="${d.date}: ${App.formatCurrency(d.rev)}">
+                      <div style="position:absolute;bottom:16px;left:1px;right:1px;height:${barH}px;background:${barBg};border-radius:3px 3px 0 0"></div>
+                      <span style="font-size:0.72rem;color:${isToday ? 'var(--primary)' : 'var(--text-muted)'};font-weight:${isToday ? '800' : '500'};position:absolute;bottom:-2px;left:50%;transform:translateX(-50%);white-space:nowrap">${showLabel ? d.day : ''}</span>
                     </div>`;
                   }).join('')}
                 </div>
@@ -452,9 +474,9 @@ App.pages.revenue = {
                     const isCurrent = m.month === thisMonth;
                     const barBg = m.rev === 0 ? 'var(--border-light)' : isCurrent ? 'linear-gradient(to top,var(--success),#34D399)' : 'linear-gradient(to top,var(--primary),#818CF8)';
                     const label = m.rev >= 10000 ? Math.round(m.rev / 10000) + '만' : (m.rev > 0 ? App.formatCurrency(m.rev) : '');
-                    return `<div style="flex:1;position:relative;text-align:center" title="${m.month}: ${App.formatCurrency(m.rev)} (${m.count}건)">
-                      <span style="font-size:0.78rem;color:${isCurrent ? 'var(--success)' : 'var(--text-secondary)'};font-weight:800;position:absolute;top:0;left:0;right:0">${label}</span>
-                      <div style="position:absolute;bottom:36px;left:10%;right:10%;height:${barH}px;background:${barBg};border-radius:8px 8px 0 0"></div>
+                    return `<div style="flex:1;position:relative;text-align:center;min-width:0" title="${m.month}: ${App.formatCurrency(m.rev)} (${m.count}건)">
+                      <span style="font-size:0.74rem;color:${isCurrent ? 'var(--success)' : 'var(--text-secondary)'};font-weight:800;position:absolute;top:0;left:0;right:0;overflow:hidden;text-overflow:clip;white-space:nowrap">${label}</span>
+                      <div style="position:absolute;bottom:36px;left:8%;right:8%;height:${barH}px;background:${barBg};border-radius:8px 8px 0 0"></div>
                       <div style="position:absolute;bottom:0;left:0;right:0;text-align:center">
                         <div style="font-size:0.82rem;font-weight:${isCurrent ? '800' : '600'};color:${isCurrent ? 'var(--primary)' : 'var(--text-muted)'}">${m.label}</div>
                         <div style="font-size:0.7rem;color:var(--text-muted)">${m.count}건</div>
