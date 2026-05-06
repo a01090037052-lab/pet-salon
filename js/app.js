@@ -74,9 +74,7 @@ const App = {
     document.getElementById('modal-overlay').addEventListener('click', (e) => {
       if (e.target === e.currentTarget) this.closeModal();
     });
-    document.getElementById('confirm-overlay').addEventListener('click', (e) => {
-      if (e.target === e.currentTarget) this.closeConfirm(false);
-    });
+    // confirm 모달은 외부 클릭으로 닫지 않음 (실수 방지 — 데이터 삭제 등 위험 작업)
     document.getElementById('confirm-cancel').addEventListener('click', () => this.closeConfirm(false));
 
     // 모바일 키보드가 모달을 가리는 문제 대응
@@ -525,6 +523,7 @@ const App = {
       body.innerHTML = `<p>${message}</p>`;
       const overlay = document.getElementById('confirm-overlay');
       overlay.classList.remove('hidden');
+      document.body.style.overflow = 'hidden';
       const okBtn = document.getElementById('confirm-ok');
       okBtn.disabled = false;
       okBtn.onclick = () => { okBtn.disabled = true; this.closeConfirm(true); };
@@ -541,6 +540,7 @@ const App = {
     const overlay = document.getElementById('confirm-overlay');
     if (overlay.classList.contains('hidden')) return;
     overlay.classList.add('hidden');
+    document.body.style.overflow = '';
     if (this._confirmPopHandler) {
       window.removeEventListener('popstate', this._confirmPopHandler);
       this._confirmPopHandler = null;
