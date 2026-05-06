@@ -197,6 +197,80 @@ App.pages.analytics = {
     const groomerList = Object.entries(groomerStats).sort((a, b) => b[1].revenue - a[1].revenue);
     const groomerMaxRev = groomerList.length > 0 ? groomerList[0][1].revenue || 1 : 1;
 
+    // ===== 전 기간 비교 데이터 =====
+    const periodDurationMs = new Date(periodEnd + 'T00:00:00') - new Date(periodStart + 'T00:00:00');
+    const prevPeriodEndDate = new Date(periodStart + 'T00:00:00');
+    prevPeriodEndDate.setDate(prevPeriodEndDate.getDate() - 1);
+    const prevPeriodStartDate = new Date(prevPeriodEndDate.getTime() - periodDurationMs);
+    const prevStart = App.formatLocalDate(prevPeriodStartDate);
+    const prevEnd = App.formatLocalDate(prevPeriodEndDate);
+    const prevRecords = pastRecords.filter(r => r.date && r.date >= prevStart && r.date <= prevEnd);
+    const prevTotalRev = prevRecords.reduce((s, r) => s + App.getRecordAmount(r), 0);
+    const prevCustomerCount = new Set(prevRecords.map(r => r.customerId).filter(Boolean)).size;
+    const prevVisitCount = prevRecords.length;
+    const totalRev = records.reduce((s, r) => s + App.getRecordAmount(r), 0);
+    const returnRatePct = periodCustomerIds.length > 0 ? Math.round((returnCount / periodCustomerIds.length) * 100) : 0;
+
+    // ===== 인사이트 자동 생성 =====
+    const revisitDaysSetting = Number(await DB.getSetting('revisitDays')) || 30;
+    const insights = [];
+
+    // 1. 재방문율 평가
+    if (periodCustomerIds.length >= 3) {
+      if (returnRatePct >= 70) insights.push({ type: 'good', text: `재방문율 ${returnRatePct}% — 단골 충성도 매우 높음` });
+      else if (returnRatePct >= 50) insights.push({ type: 'good', text: `재방문율 ${returnRatePct}% — 양호한 단골 충성도` });
+      else if (returnRatePct >= 30) insights.push({ type: 'info', text: `재방문율 ${returnRatePct}% — 신규 손님 비중 높음` });
+      else insights.push({ type: 'warning', text: `재방문율 ${returnRatePct}% — 단골 확보 노력 권장` });
+    }
+
+    // 2. 매출 전 기간 대비
+    if (prevTotalRev > 0) {
+      const pct = Math.round(((totalRev - prevTotalRev) / prevTotalRev) * 100);
+      const diff = Math.abs(totalRev - prevTotalRev);
+      if (pct >= 10) insights.push({ type: 'good', text: `매출 전 기간 대비 +${pct}% (${App.formatCurrency(diff)} 증가)` });
+      else if (pct <= -10) insights.push({ type: 'warning', text: `매출 전 기간 대비 ${pct}% (${App.formatCurrency(diff)} 감소)` });
+    }
+
+    // 3. 평균 방문 주기 vs 권장
+    if (avgCycle > 0) {
+      if (avgCycle <= revisitDaysSetting + 5) insights.push({ type: 'good', text: `평균 방문 주기 ${avgCycle}일 — 권장 ${revisitDaysSetting}일 내 잘 유지` });
+      else if (avgCycle <= revisitDaysSetting * 1.5) insights.push({ type: 'info', text: `평균 방문 주기 ${avgCycle}일 — 권장보다 ${avgCycle - revisitDaysSetting}일 늦음` });
+      else insights.push({ type: 'warning', text: `평균 방문 주기 ${avgCycle}일 — 손님 간격 김, 재방문 메시지 권장` });
+    }
+
+    // 4. 최대 견종 비중
+    if (breedList.length > 0 && breedList[0].name !== '미입력') {
+      const sharePct = Math.round((breedList[0].count / breedTotal) * 100);
+      if (sharePct >= 30) insights.push({ type: 'info', text: `${breedList[0].name} 견종이 매출 ${sharePct}% 차지` });
+    }
+
+    // 5. 최다 요일
+    if (dowData[0] && dowData[0].avg > 0) {
+      insights.push({ type: 'info', text: `${dowData[0].label}요일 가장 바쁨 (평균 ${App.formatCurrency(dowData[0].avg)})` });
+    }
+
+    // 6. 피크 시간
+    if (hourMax > 0) {
+      const peakHour = hours.find(h => h.count === hourMax);
+      if (peakHour) insights.push({ type: 'info', text: `${peakHour.hour}시 가장 인기 시간대 (${peakHour.count}건)` });
+    }
+
+    if (insights.length === 0) {
+      insights.push({ type: 'info', text: '데이터가 더 쌓이면 인사이트가 표시됩니다' });
+    }
+
+    // 비교 badge 생성 헬퍼
+    const cmpBadge = (current, prev) => {
+      if (!prev || prev === 0) return '';
+      const diff = current - prev;
+      if (diff === 0) return '';
+      const pct = Math.round((diff / prev) * 100);
+      const sign = diff > 0 ? '+' : '';
+      const color = diff > 0 ? 'var(--success)' : 'var(--danger)';
+      const arrow = diff > 0 ? '&#x2191;' : '&#x2193;';
+      return `<span style="font-size:0.7rem;color:${color};font-weight:700;margin-left:4px">${sign}${pct}% ${arrow}</span>`;
+    };
+
     // ===== 렌더링 =====
     container.innerHTML = `
       <div class="page-header">
@@ -222,7 +296,44 @@ App.pages.analytics = {
         <button class="btn btn-sm btn-primary" id="analytics-custom-apply">적용</button>
       </div>` : ''}
 
-      <div style="font-size:0.82rem;color:var(--text-muted);margin-bottom:16px;text-align:center">${periodLabels[period]} (${periodStart} ~ ${periodEnd}) &middot; 총 ${records.length}건</div>
+      <div style="font-size:0.82rem;color:var(--text-muted);margin-bottom:16px;text-align:center">${periodLabels[period]} (${periodStart} ~ ${periodEnd}) &middot; 총 ${records.length}건${cmpBadge(records.length, prevVisitCount)}</div>
+
+      <!-- 핵심 인사이트 (자동 생성) -->
+      <div class="card analytics-insights" style="margin-bottom:16px">
+        <div class="card-body" style="padding:14px 16px">
+          <div class="analytics-insights-title">핵심 인사이트</div>
+          <div class="analytics-insights-list">
+            ${insights.map(i => {
+              const icon = i.type === 'good' ? '&#x2713;' : i.type === 'warning' ? '&#x26A0;' : '&#x1F4A1;';
+              const cls = i.type === 'good' ? 'analytics-insight-good' : i.type === 'warning' ? 'analytics-insight-warning' : 'analytics-insight-info';
+              return `<div class="analytics-insight-item ${cls}">
+                <span class="analytics-insight-icon">${icon}</span>
+                <span>${App.escapeHtml(i.text)}</span>
+              </div>`;
+            }).join('')}
+          </div>
+        </div>
+      </div>
+
+      <!-- 매출 / 방문 / 고객 요약 (전 기간 대비 비교) -->
+      <div class="card" style="margin-bottom:16px">
+        <div class="card-body">
+          <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px">
+            <div style="text-align:center;padding:12px;background:var(--bg);border-radius:var(--radius)">
+              <div style="font-size:1.2rem;font-weight:800;color:var(--primary);line-height:1.2">${App.formatCurrency(totalRev)}</div>
+              <div style="font-size:0.78rem;color:var(--text-secondary);margin-top:3px">총 매출 ${cmpBadge(totalRev, prevTotalRev)}</div>
+            </div>
+            <div style="text-align:center;padding:12px;background:var(--bg);border-radius:var(--radius)">
+              <div style="font-size:1.2rem;font-weight:800;color:var(--info);line-height:1.2">${records.length}건</div>
+              <div style="font-size:0.78rem;color:var(--text-secondary);margin-top:3px">방문 ${cmpBadge(records.length, prevVisitCount)}</div>
+            </div>
+            <div style="text-align:center;padding:12px;background:var(--bg);border-radius:var(--radius)">
+              <div style="font-size:1.2rem;font-weight:800;color:var(--success);line-height:1.2">${periodCustomerIds.length}명</div>
+              <div style="font-size:0.78rem;color:var(--text-secondary);margin-top:3px">고객 ${cmpBadge(periodCustomerIds.length, prevCustomerCount)}</div>
+            </div>
+          </div>
+        </div>
+      </div>
 
       <!-- 고객 분석 -->
       <h3 style="font-size:1rem;font-weight:800;margin-bottom:12px;color:var(--text-primary)">&#x1F464; 고객 분석</h3>

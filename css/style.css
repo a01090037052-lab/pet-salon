@@ -3162,6 +3162,42 @@ a.stat-card { display: flex; }
   .lock-keypad { gap: 10px; }
 }
 
+/* ========== 분석 인사이트 카드 ========== */
+.analytics-insights {
+  background: linear-gradient(135deg, var(--primary-light), var(--bg-white));
+  border: 1.5px solid var(--primary-lighter);
+}
+.analytics-insights-title {
+  font-weight: 800;
+  font-size: 0.95rem;
+  color: var(--primary);
+  margin-bottom: 10px;
+  letter-spacing: -0.2px;
+}
+.analytics-insights-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.analytics-insight-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  font-size: 0.88rem;
+  line-height: 1.5;
+}
+.analytics-insight-icon {
+  flex-shrink: 0;
+  font-weight: 700;
+  font-size: 0.95rem;
+  width: 20px;
+  text-align: center;
+}
+.analytics-insight-good { color: var(--success); }
+.analytics-insight-warning { color: var(--warning-text-strong); }
+.analytics-insight-info { color: var(--text-primary); }
+.analytics-insight-info .analytics-insight-icon { color: var(--info); }
+
 /* ========== 내일 예약 리마인더 카드 (대시보드) ========== */
 .reminder-time-section {
   padding: 8px 16px 4px;
