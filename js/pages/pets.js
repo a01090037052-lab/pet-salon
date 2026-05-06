@@ -79,47 +79,94 @@ App.pages.pets = {
           <div class="empty-state-text">등록된 반려견이 없습니다</div>
           <button class="btn btn-primary" onclick="App.pages.pets.showForm()" style="margin-top:12px">+ 반려견 등록</button>
         </div>
-      ` : sorted.map(p => {
-        const owner = customerMap[p.customerId];
-        const lastVisit = petLastVisit[p.id];
-        const vs = visitStatusMap[p.id];
-        const isInactive = (p.petStatus || 'active') !== 'active';
-        const inactiveLabel = p.petStatus === 'deceased' ? '사망' : p.petStatus === 'transferred' ? '양도' : '';
-        const visitBadge = isInactive
-          ? '<span class="badge badge-secondary" style="font-size:0.7rem;margin-left:4px;padding:3px 8px">' + inactiveLabel + '</span>'
-          : (vs !== 'normal' ? '<span class="badge ' + App.getVisitStatusBadge(vs) + '" style="font-size:0.7rem;margin-left:4px;padding:3px 8px">' + App.getVisitStatusLabel(vs) + '</span>' : '');
-        let nextHtml = '';
-        // 사망/양도 반려견은 "다음 미용일" 계산 생략 (오해 방지)
-        if (!isInactive && p.groomingCycle && (p.lastVisitDate || lastVisit)) {
-          const last = new Date((p.lastVisitDate || lastVisit) + 'T00:00:00');
-          const next = new Date(last); next.setDate(next.getDate() + p.groomingCycle);
-          const days = Math.floor((next - new Date()) / (1000*60*60*24));
-          nextHtml = days < 0
-            ? '<span style="color:var(--danger);font-weight:700;font-size:0.75rem">' + Math.abs(days) + '일 초과</span>'
-            : '<span style="color:var(--primary);font-size:0.75rem">' + days + '일 후</span>';
+      ` : (() => {
+        const statusColor = (vs, inactive) => {
+          if (inactive) return 'var(--border)';
+          if (vs === 'at-risk') return 'var(--danger)';
+          if (vs === 'remind') return 'var(--warning)';
+          if (vs === 'churned') return 'var(--text-muted)';
+          return 'var(--success)';
+        };
+        const renderCard = (p) => {
+          const owner = customerMap[p.customerId];
+          const lastVisit = petLastVisit[p.id];
+          const vs = visitStatusMap[p.id];
+          const isInactive = (p.petStatus || 'active') !== 'active';
+          const inactiveLabel = p.petStatus === 'deceased' ? '사망' : p.petStatus === 'transferred' ? '양도' : '';
+          const barColor = statusColor(vs, isInactive);
+
+          // 우측 칩
+          let rightChip = '';
+          if (isInactive) {
+            rightChip = `<span style="font-size:0.72rem;padding:4px 10px;background:var(--border-light);color:var(--text-muted);border-radius:12px;font-weight:600;flex-shrink:0;white-space:nowrap">${inactiveLabel}</span>`;
+          } else if (vs === 'at-risk') {
+            rightChip = `<span style="font-size:0.72rem;padding:4px 10px;background:var(--danger);color:#fff;border-radius:12px;font-weight:700;flex-shrink:0;white-space:nowrap">이탈 임박</span>`;
+          } else if (vs === 'remind') {
+            rightChip = `<span style="font-size:0.72rem;padding:4px 10px;background:var(--warning);color:#fff;border-radius:12px;font-weight:700;flex-shrink:0;white-space:nowrap">리마인드</span>`;
+          } else if (vs === 'churned') {
+            rightChip = `<span style="font-size:0.72rem;padding:4px 10px;background:var(--text-muted);color:#fff;border-radius:12px;font-weight:600;flex-shrink:0;white-space:nowrap">이탈</span>`;
+          } else if (p.groomingCycle && (p.lastVisitDate || lastVisit)) {
+            const last = new Date((p.lastVisitDate || lastVisit) + 'T00:00:00');
+            const next = new Date(last); next.setDate(next.getDate() + p.groomingCycle);
+            const days = Math.floor((next - new Date()) / (1000*60*60*24));
+            const label = days < 0 ? Math.abs(days) + '일 초과' : days === 0 ? '오늘' : 'D-' + days;
+            const cColor = days < 0 ? 'var(--danger)' : 'var(--success)';
+            rightChip = `<span style="font-size:0.72rem;padding:4px 10px;background:var(--bg);color:${cColor};border-radius:12px;font-weight:700;flex-shrink:0;white-space:nowrap;border:1px solid ${cColor}33">${label}</span>`;
+          }
+
+          // 알러지/건강 주의 아이콘
+          const hasWarn = (p.allergies && p.allergies.trim() && !['없음','-'].includes(p.allergies.trim())) ||
+                          (p.healthNotes && p.healthNotes.trim() && !['없음','-'].includes(p.healthNotes.trim()));
+          const warnIcon = hasWarn ? `<span style="color:var(--danger);font-size:0.85rem;font-weight:700;line-height:1" title="알러지/건강 주의">&#x26A0;</span>` : '';
+
+          // 사진
+          const photo = (p.photoThumb || p.photo)
+            ? `<img src="${p.photoThumb || p.photo}" style="width:60px;height:60px;border-radius:14px;object-fit:cover" alt="">`
+            : `<div style="width:60px;height:60px;border-radius:14px;background:linear-gradient(135deg,var(--primary-light),var(--info-light));display:flex;align-items:center;justify-content:center;font-size:1.6rem">&#x1F436;</div>`;
+
+          const opacityStyle = isInactive ? 'opacity:0.55;' : '';
+          const breedWeight = (p.breed || '견종 미입력') + (p.weight ? ' · ' + p.weight + 'kg' : '');
+
+          return `<div class="pet-list-item" data-id="${p.id}" data-search="${App.escapeHtml((p.name||'')+' '+(p.breed||'')+' '+(owner?.name||'')+' '+(owner?.phone||'')+' '+(p.memo||'')+' '+(p.healthNotes||'')+' '+(p.allergies||''))}" style="display:flex;align-items:center;gap:12px;padding:14px 14px 14px 12px;background:var(--bg-white);border:1px solid var(--border-light);border-left:4px solid ${barColor};border-radius:var(--radius);cursor:pointer;margin-bottom:8px;box-shadow:var(--shadow-xs);${opacityStyle}">
+            <div style="flex-shrink:0">${photo}</div>
+            <div style="flex:1;min-width:0">
+              <div style="display:flex;align-items:center;gap:6px;margin-bottom:3px;min-width:0">
+                <strong style="font-size:1.05rem;font-weight:800;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${App.escapeHtml(p.name)}</strong>
+                ${warnIcon}
+              </div>
+              <div style="font-size:0.82rem;color:var(--text-secondary);margin-bottom:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${App.escapeHtml(breedWeight)} · ${App.escapeHtml(App.getCustomerLabel(owner))}</div>
+              <div style="font-size:0.78rem;color:var(--text-muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${lastVisit ? App.getRelativeTime(lastVisit) + ' 방문' : '방문 없음'}</div>
+            </div>
+            ${rightChip}
+          </div>`;
+        };
+
+        // 그룹 헤더 (정렬 = 상태별일 때만)
+        if (sortKey === 'status') {
+          const groups = { 'at-risk': [], 'remind': [], 'normal': [], 'churned': [], 'inactive': [] };
+          sorted.forEach(p => {
+            const isInactive = (p.petStatus || 'active') !== 'active';
+            if (isInactive) groups['inactive'].push(p);
+            else (groups[visitStatusMap[p.id]] || groups['normal']).push(p);
+          });
+          const groupMeta = {
+            'at-risk': { label: '이탈 임박', color: 'var(--danger)' },
+            'remind': { label: '리마인드 필요', color: 'var(--warning)' },
+            'normal': { label: '정상', color: 'var(--success)' },
+            'churned': { label: '이탈', color: 'var(--text-muted)' },
+            'inactive': { label: '비활성 (사망/양도)', color: 'var(--border)' }
+          };
+          return Object.entries(groups).filter(([, gp]) => gp.length > 0).map(([gs, gp]) => {
+            const meta = groupMeta[gs];
+            return `<div style="margin:14px 0 8px;display:flex;align-items:center;gap:8px;padding:0 2px">
+              <span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:${meta.color};flex-shrink:0"></span>
+              <span style="font-size:0.88rem;font-weight:800;color:var(--text-primary)">${meta.label}</span>
+              <span style="font-size:0.78rem;color:var(--text-muted)">${gp.length}마리</span>
+            </div>` + gp.map(renderCard).join('');
+          }).join('');
         }
-        const rowOpacity = isInactive ? 'opacity:0.55;' : '';
-        return '<div class="pet-list-item" data-id="' + p.id + '" data-search="' + App.escapeHtml((p.name || '') + ' ' + (p.breed || '') + ' ' + (owner?.name || '') + ' ' + (owner?.phone || '') + ' ' + (p.memo || '') + ' ' + (p.healthNotes || '') + ' ' + (p.allergies || '')) + '" style="display:flex;align-items:center;gap:10px;padding:12px 0;border-bottom:1px solid var(--border-light);cursor:pointer;' + rowOpacity + '">' +
-          '<div style="flex-shrink:0">' +
-            ((p.photoThumb || p.photo)
-              ? '<img src="' + (p.photoThumb || p.photo) + '" style="width:36px;height:36px;border-radius:10px;object-fit:cover" alt="">'
-              : '<div style="width:36px;height:36px;border-radius:10px;background:var(--primary-light);display:flex;align-items:center;justify-content:center;font-size:1.1rem">&#x1F436;</div>') +
-          '</div>' +
-          '<div style="flex:1;min-width:0">' +
-            '<div style="display:flex;align-items:center;gap:4px;flex-wrap:wrap">' +
-              '<strong style="font-size:0.92rem">' + App.escapeHtml(p.name) + '</strong>' +
-              '<span style="color:var(--text-muted);font-size:0.78rem">' + App.escapeHtml(p.breed || '') + (p.weight ? ' ' + p.weight + 'kg' : '') + '</span>' +
-              visitBadge +
-            '</div>' +
-            '<div style="font-size:0.75rem;color:var(--text-secondary);margin-top:2px">' +
-              App.escapeHtml(App.getCustomerLabel(owner)) + ' &middot; ' +
-              (lastVisit ? App.getRelativeTime(lastVisit) : '방문 없음') +
-              (nextHtml ? ' &middot; 다음 ' + nextHtml : '') +
-            '</div>' +
-          '</div>' +
-          '<span style="color:var(--text-muted);font-size:0.8rem;flex-shrink:0">&rsaquo;</span>' +
-        '</div>';
-      }).join('')}
+        return sorted.map(renderCard).join('');
+      })()}
     `;
   },
 
