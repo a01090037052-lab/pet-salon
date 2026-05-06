@@ -2092,9 +2092,8 @@ a.stat-card { display: flex; }
   box-shadow: none;
 }
 .mobile-card-unpaid {
-  border-left: 5px solid var(--danger);
-  background: linear-gradient(90deg, #FEE2E2 0%, var(--warning-light) 40%);
-  box-shadow: inset 0 0 0 1px rgba(220,38,38,0.08);
+  border-left: 4px solid var(--danger);
+  background: var(--danger-bg-soft);
 }
 
 /* 기록 그룹 헤더 (날짜 섹션) */
@@ -2132,7 +2131,8 @@ a.stat-card { display: flex; }
   display: flex;
   align-items: center;
   gap: 6px;
-  font-size: 0.9rem;
+  font-size: 1rem;
+  font-weight: 700;
 }
 .mobile-card-amount {
   font-size: 1.05rem;

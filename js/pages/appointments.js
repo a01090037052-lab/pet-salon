@@ -192,7 +192,7 @@ App.pages.appointments = {
               return `
               <div class="mobile-card" data-id="${a.id}" data-status="${a.status || 'pending'}" data-date="${a.date}"
                    data-search="${((customer?.name || '') + ' ' + (customer?.phone || '') + ' ' + (pet?.name || '') + ' ' + (a.memo || '') + ' ' + (a.groomer || '')).toLowerCase()}"
-                   style="${isToday ? 'border-left:3px solid var(--primary)' : ''}${isPast && a.status !== 'completed' && a.status !== 'cancelled' ? 'border-left:3px solid var(--danger)' : ''}">
+                   style="${isToday ? 'border-left:4px solid var(--primary);' : ''}${isPast && a.status !== 'completed' && a.status !== 'cancelled' ? 'border-left:4px solid var(--danger);' : ''}${a.status === 'noshow' ? 'border-left:4px solid var(--danger);' : ''}">
                 <div class="mobile-card-header">
                   <div class="mobile-card-date">
                     <strong>${App.formatDate(a.date)}</strong> ${a.time || ''}${a.duration && a.duration !== 60 ? ` <span style="font-size:0.75rem;color:var(--text-muted)">(${a.duration}분)</span>` : ''}

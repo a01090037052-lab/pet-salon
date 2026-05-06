@@ -103,11 +103,15 @@ App.pages.services = {
             }
           }
           const isFav = !!s.favorite;
-          html += '<div class="service-row" data-id="' + s.id + '" style="display:flex;align-items:center;gap:6px;padding:10px 0;border-bottom:1px solid var(--border-light);' + (isOff ? 'opacity:0.5' : '') + '">' +
+          // 좌측 컬러바: 즐겨찾기=노랑, 비활성=회색, 일반=투명
+          const barStyle = isOff ? 'border-left:4px solid var(--border);'
+                                 : isFav ? 'border-left:4px solid #F59E0B;'
+                                 : '';
+          html += '<div class="service-row" data-id="' + s.id + '" style="display:flex;align-items:center;gap:6px;padding:12px;background:var(--bg-white);border:1px solid var(--border-light);' + barStyle + 'border-radius:var(--radius);box-shadow:var(--shadow-xs);margin-bottom:6px;' + (isOff ? 'opacity:0.55;' : '') + '">' +
             '<button class="btn-icon btn-favorite-service" data-id="' + s.id + '" title="' + (isFav ? '즐겨찾기 해제' : '즐겨찾기') + '" style="font-size:1.05rem;color:' + (isFav ? '#F59E0B' : 'var(--border)') + ';flex-shrink:0">' + (isFav ? '&#x2605;' : '&#x2606;') + '</button>' +
             '<div style="flex:1;min-width:0">' +
-              '<div style="font-weight:700;font-size:0.9rem">' + App.escapeHtml(s.name) + usageBadge + '</div>' +
-              '<div class="service-price-display" data-id="' + s.id + '" data-same="' + samePrices + '" style="font-size:0.78rem;color:var(--text-muted);margin-top:2px;cursor:pointer;display:inline-block;padding:2px 6px;border-radius:4px;border:1px dashed transparent" title="클릭하여 빠르게 수정">' + priceDisplay + ' <span style="opacity:0.5;font-size:0.7rem">&#x270F;</span></div>' + priceAgeBadge +
+              '<div style="font-weight:800;font-size:1rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">' + App.escapeHtml(s.name) + usageBadge + '</div>' +
+              '<div class="service-price-display" data-id="' + s.id + '" data-same="' + samePrices + '" style="font-size:0.82rem;color:var(--text-secondary);margin-top:3px;cursor:pointer;display:inline-block;padding:2px 6px;border-radius:4px;border:1px dashed transparent;font-weight:600" title="클릭하여 빠르게 수정">' + priceDisplay + ' <span style="opacity:0.5;font-size:0.7rem">&#x270F;</span></div>' + priceAgeBadge +
             '</div>' +
             '<button class="btn-icon btn-duplicate-service" data-id="' + s.id + '" title="복제" style="font-size:0.95rem;color:var(--info)">&#x1F4CB;</button>' +
             '<button class="btn-icon btn-edit-service" data-id="' + s.id + '" title="수정" style="font-size:0.95rem">&#x270F;</button>' +
