@@ -443,6 +443,7 @@ const App = {
     const overlay = document.getElementById('modal-overlay');
     overlay.classList.remove('hidden');
     overlay.classList.add('animate-in');
+    document.body.style.overflow = 'hidden';
 
     // Android 뒤로가기 처리
     history.pushState({ modalOpen: true }, '');
@@ -492,6 +493,7 @@ const App = {
     if (overlay.classList.contains('hidden')) return;
     overlay.classList.add('hidden');
     overlay.classList.remove('animate-in');
+    document.body.style.overflow = '';
     const modalBody = document.getElementById('modal-body');
     modalBody.onkeydown = null;
     modalBody.innerHTML = '';

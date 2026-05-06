@@ -1691,7 +1691,7 @@ a.stat-card { display: flex; }
   .appointment-item { padding: 12px; gap: 10px; }
   .appointment-time { min-width: 48px; font-size: 0.85rem; }
   /* Modal body mobile */
-  .modal-body { padding: 16px; overflow-y: auto; -webkit-overflow-scrolling: touch; flex: 1; min-height: 0; }
+  .modal-body { padding: 16px; overflow-y: auto; -webkit-overflow-scrolling: touch; flex: 1; min-height: 0; overscroll-behavior: contain; }
   /* Improve FAB on mobile - hide it, bottom nav is enough */
   .fab-container { display: none; }
   /* Search box full width */
