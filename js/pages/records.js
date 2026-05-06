@@ -565,6 +565,17 @@ App.pages.records = {
           <input type="hidden" id="f-condition" value="${record.condition || ''}">
         </div>
 
+        <!-- 미용 협조도 (다음 미용 시간 견적 참고) -->
+        <div class="form-group" style="margin-bottom:12px">
+          <label class="form-label" style="font-size:0.85rem">미용 협조도 <span style="font-weight:400;color:var(--text-muted);font-size:0.78rem">(선택 — 다음 미용 시간 참고)</span></label>
+          <div id="f-cooperativeness-chips" style="display:flex;gap:6px">
+            <button type="button" class="condition-chip${record.cooperativeness === 'easy' ? ' active' : ''}" data-field="cooperativeness" data-value="easy" style="flex:1;padding:8px;border:1.5px solid var(--border);border-radius:8px;background:${record.cooperativeness === 'easy' ? 'var(--success-light)' : 'var(--bg-white)'};cursor:pointer;font-size:0.82rem;font-weight:600">잘함</button>
+            <button type="button" class="condition-chip${record.cooperativeness === 'normal' ? ' active' : ''}" data-field="cooperativeness" data-value="normal" style="flex:1;padding:8px;border:1.5px solid var(--border);border-radius:8px;background:${record.cooperativeness === 'normal' ? 'var(--warning-light)' : 'var(--bg-white)'};cursor:pointer;font-size:0.82rem;font-weight:600">보통</button>
+            <button type="button" class="condition-chip${record.cooperativeness === 'difficult' ? ' active' : ''}" data-field="cooperativeness" data-value="difficult" style="flex:1;padding:8px;border:1.5px solid var(--border);border-radius:8px;background:${record.cooperativeness === 'difficult' ? 'var(--danger-bg-soft)' : 'var(--bg-white)'};cursor:pointer;font-size:0.82rem;font-weight:600">까다로움</button>
+          </div>
+          <input type="hidden" id="f-cooperativeness" value="${record.cooperativeness || ''}">
+        </div>
+
         <!-- 상세 옵션 토글 (스타일·추가 항목·미용사·할인·메모 등) -->
         <div class="form-detail-divider" onclick="this.closest('.modal-body').querySelector('.form-detail-section').classList.toggle('open');this.classList.toggle('open')">
           <span class="form-detail-divider-line"></span>
@@ -818,7 +829,7 @@ App.pages.records = {
         siblings.forEach(c => { c.classList.remove('active'); c.style.background = 'var(--bg-white)'; });
         if (!wasActive) {
           chip.classList.add('active');
-          const colors = { good: 'var(--success-light)', normal: 'var(--warning-light)', caution: 'var(--danger-bg-soft)' };
+          const colors = { good: 'var(--success-light)', normal: 'var(--warning-light)', caution: 'var(--danger-bg-soft)', easy: 'var(--success-light)', difficult: 'var(--danger-bg-soft)' };
           chip.style.background = colors[chip.dataset.value] || 'var(--bg-white)';
           hiddenInput.value = chip.dataset.value;
         } else {
@@ -869,6 +880,7 @@ App.pages.records = {
 
       // 컨디션 체크 필드
       const condition = document.getElementById('f-condition')?.value || '';
+      const cooperativeness = document.getElementById('f-cooperativeness')?.value || '';
       const skinStatus = []; document.querySelectorAll('input[name="skinStatus"]:checked').forEach(cb => skinStatus.push(cb.value));
       const earStatus = document.getElementById('f-earStatus')?.value || '';
       const mattingLevel = document.getElementById('f-mattingLevel')?.value || '';
@@ -897,7 +909,7 @@ App.pages.records = {
       const appointmentId = document.getElementById('f-appointmentId')?.value || null;
       const status = 'completed';
 
-      const data = { customerId, petId, date, groomer, nextVisitDate, service, servicePrice, addons, addonPrice, style, serviceNames, totalPrice, discount, extraCharge, finalPrice, memo, paymentMethod, appointmentId, status, condition, skinStatus, earStatus, mattingLevel };
+      const data = { customerId, petId, date, groomer, nextVisitDate, service, servicePrice, addons, addonPrice, style, serviceNames, totalPrice, discount, extraCharge, finalPrice, memo, paymentMethod, appointmentId, status, condition, cooperativeness, skinStatus, earStatus, mattingLevel };
 
       // 자동완성 이력 업데이트
       if (service) App.addAutoHistory('serviceHistory', service);

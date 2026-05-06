@@ -160,20 +160,83 @@ App.pages.pets = {
         </div>
       </div>
 
+      ${(() => {
+        const hasAllergy = pet.allergies && pet.allergies.trim() && !['없음', '-'].includes(pet.allergies.trim());
+        const hasHealth = pet.healthNotes && pet.healthNotes.trim() && !['없음', '-'].includes(pet.healthNotes.trim());
+        if (!hasAllergy && !hasHealth) return '';
+        return `
+      <div style="background:var(--danger-bg-soft);border:1.5px solid var(--danger);border-radius:var(--radius);padding:12px 14px;margin-bottom:16px;display:flex;gap:10px;align-items:flex-start">
+        <span style="font-size:1.1rem;color:var(--danger);font-weight:800;flex-shrink:0;line-height:1.3">&#x26A0;</span>
+        <div style="flex:1;min-width:0">
+          <div style="font-weight:800;color:var(--danger);font-size:0.9rem;margin-bottom:4px">미용 전 확인</div>
+          ${hasAllergy ? `<div style="font-size:0.85rem;color:var(--danger-text-strong)"><strong>알러지:</strong> ${App.escapeHtml(pet.allergies)}</div>` : ''}
+          ${hasHealth ? `<div style="font-size:0.85rem;color:var(--danger-text-strong);margin-top:2px"><strong>건강:</strong> ${App.escapeHtml(pet.healthNotes)}</div>` : ''}
+        </div>
+      </div>`;
+      })()}
+
       ${records.length > 0 ? (() => {
         const totalSpend = records.reduce((sum, r) => sum + App.getRecordAmount(r), 0);
         const avgSpend = Math.round(totalSpend / records.length);
         const lastVisitDate = records[0].date;
-        let avgCycle = '-';
+        let avgCycleNum = null, avgCycle = '-';
         if (records.length >= 2) {
           const dates = records.map(r => new Date(r.date)).sort((a, b) => a - b);
           let totalDays = 0;
           for (let i = 1; i < dates.length; i++) totalDays += Math.round((dates[i] - dates[i - 1]) / (1000*60*60*24));
-          avgCycle = Math.round(totalDays / (dates.length - 1)) + '일';
+          avgCycleNum = Math.round(totalDays / (dates.length - 1));
+          avgCycle = avgCycleNum + '일';
         }
         const lastCondition = records.find(r => r.condition);
+        const lastCoop = records.find(r => r.cooperativeness);
         const condLabels = { good: '좋음', normal: '보통', caution: '주의' };
+        const coopLabels = { easy: '잘함', normal: '보통', difficult: '까다로움' };
+        const dotColor = (v) => v === 'good' || v === 'easy' ? 'var(--success)' : v === 'caution' || v === 'difficult' ? 'var(--danger)' : v === 'normal' ? 'var(--warning)' : 'var(--border)';
+
+        // 다음 미용일 (groomingCycle 우선, 없으면 평균 주기)
+        const cycleSource = pet.groomingCycle || avgCycleNum;
+        const cycleSourceLabel = pet.groomingCycle ? '권장' : (avgCycleNum ? '평균' : null);
+        let nextDays = null, nextStr = null, isOverdue = false;
+        if (cycleSource && lastVisitDate) {
+          const next = new Date(lastVisitDate);
+          next.setDate(next.getDate() + cycleSource);
+          nextDays = Math.floor((next - new Date()) / 86400000);
+          isOverdue = nextDays < 0;
+          nextStr = App.formatLocalDate(next);
+        }
+        const lastDays = lastVisitDate ? Math.floor((new Date() - new Date(lastVisitDate + 'T00:00:00')) / 86400000) : null;
+
+        // 협조도 추이 (최근 5회)
+        const last5Coop = records.slice(0, 5).map(r => r.cooperativeness).filter(Boolean);
+        const coopTrendDots = last5Coop.length > 0 ? last5Coop.map(c =>
+          `<span style="display:inline-block;width:7px;height:7px;border-radius:50%;background:${dotColor(c)};margin-right:2px" title="${coopLabels[c]}"></span>`
+        ).join('') : '';
+
         return `
+      <!-- 응대 카드 (단골 응대 핵심 정보) -->
+      <div style="display:grid;grid-template-columns:repeat(2,1fr);gap:8px;margin-bottom:16px">
+        <div style="padding:14px 12px;background:var(--bg-white);border:1px solid var(--border);border-radius:var(--radius);min-width:0">
+          <div style="font-size:0.72rem;color:var(--text-muted);margin-bottom:4px">다음 미용 권장</div>
+          <div style="font-size:1rem;font-weight:800;color:${isOverdue ? 'var(--danger)' : 'var(--primary)'};white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${nextDays != null ? (isOverdue ? Math.abs(nextDays) + '일 초과' : nextDays === 0 ? '오늘' : 'D-' + nextDays) : '데이터 부족'}</div>
+          <div style="font-size:0.7rem;color:var(--text-secondary);margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${nextStr ? App.formatDate(nextStr) + (cycleSourceLabel === '평균' ? ' · 평균 ' + avgCycleNum + '일' : '') : (records.length < 2 ? '기록 부족' : '주기 미설정')}</div>
+        </div>
+        <div style="padding:14px 12px;background:var(--bg-white);border:1px solid var(--border);border-radius:var(--radius);min-width:0">
+          <div style="font-size:0.72rem;color:var(--text-muted);margin-bottom:4px">최근 방문</div>
+          <div style="font-size:1rem;font-weight:800;color:var(--info);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${lastDays != null ? (lastDays === 0 ? '오늘' : lastDays + '일 전') : '없음'}</div>
+          <div style="font-size:0.7rem;color:var(--text-secondary);margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${lastVisitDate ? App.formatDate(lastVisitDate) : '-'}</div>
+        </div>
+        <div style="padding:14px 12px;background:var(--bg-white);border:1px solid var(--border);border-radius:var(--radius);min-width:0">
+          <div style="font-size:0.72rem;color:var(--text-muted);margin-bottom:4px">최근 컨디션</div>
+          <div style="font-size:1rem;font-weight:800;color:${lastCondition ? dotColor(lastCondition.condition) : 'var(--text-muted)'};white-space:nowrap">${lastCondition ? condLabels[lastCondition.condition] : '기록 없음'}</div>
+          <div style="font-size:0.7rem;color:var(--text-secondary);margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${lastCondition ? App.formatDate(lastCondition.date) : '-'}</div>
+        </div>
+        <div style="padding:14px 12px;background:var(--bg-white);border:1px solid var(--border);border-radius:var(--radius);min-width:0">
+          <div style="font-size:0.72rem;color:var(--text-muted);margin-bottom:4px">미용 협조도</div>
+          <div style="font-size:1rem;font-weight:800;color:${lastCoop ? dotColor(lastCoop.cooperativeness) : 'var(--text-muted)'};white-space:nowrap">${lastCoop ? coopLabels[lastCoop.cooperativeness] : '기록 없음'}</div>
+          <div style="margin-top:3px;line-height:1">${coopTrendDots || `<span style="font-size:0.7rem;color:var(--text-secondary)">-</span>`}</div>
+        </div>
+      </div>
+
       <div class="detail-section">
         <h3 class="detail-section-title">방문 통계</h3>
         <div class="info-grid" style="grid-template-columns:repeat(auto-fit,minmax(120px,1fr))">
@@ -181,8 +244,6 @@ App.pages.pets = {
           <div class="info-item"><label>총 지출</label><span style="font-weight:700;font-size:1.1rem">${App.formatCurrency(totalSpend)}</span></div>
           <div class="info-item"><label>평균 단가</label><span style="font-weight:700;font-size:1.1rem">${App.formatCurrency(avgSpend)}</span></div>
           <div class="info-item"><label>평균 방문 주기</label><span style="font-weight:700;font-size:1.1rem">${avgCycle}</span></div>
-          <div class="info-item"><label>최근 방문</label><span>${App.formatDate(lastVisitDate)}</span></div>
-          ${lastCondition ? `<div class="info-item"><label>최근 컨디션</label><span style="font-weight:700;color:${lastCondition.condition === 'good' ? 'var(--success)' : lastCondition.condition === 'caution' ? 'var(--danger)' : 'var(--warning)'}">${condLabels[lastCondition.condition] || '-'}</span></div>` : ''}
         </div>
       </div>`;
       })() : ''}
@@ -207,18 +268,6 @@ App.pages.pets = {
           <div class="info-item"><label>알러지</label><span>${App.escapeHtml(pet.allergies || '기록 없음')}</span></div>
           <div class="info-item"><label>선호 미용 스타일</label><span>${App.escapeHtml(pet.preferredStyle || '기록 없음')}</span></div>
           <div class="info-item"><label>권장 미용 주기</label><span>${pet.groomingCycle ? pet.groomingCycle + '일' : '미설정'}</span></div>
-          ${(() => {
-            if (pet.groomingCycle && records.length > 0) {
-              const lastDate = new Date(records[0].date);
-              const nextDate = new Date(lastDate);
-              nextDate.setDate(nextDate.getDate() + pet.groomingCycle);
-              const nextStr = App.formatLocalDate(nextDate);
-              const daysUntil = Math.floor((nextDate - new Date()) / (1000*60*60*24));
-              const overdue = daysUntil < 0;
-              return '<div class="info-item"><label>다음 권장 미용일</label><span style="font-weight:700;color:' + (overdue ? 'var(--danger)' : 'var(--primary)') + '">' + App.formatDate(nextStr) + (overdue ? ' (' + Math.abs(daysUntil) + '일 초과)' : ' (' + daysUntil + '일 후)') + '</span></div>';
-            }
-            return '';
-          })()}
           <div class="info-item"><label>메모</label><span>${App.escapeHtml(pet.memo || '기록 없음')}</span></div>
         </div>
       </div>
@@ -229,16 +278,22 @@ App.pages.pets = {
           if (records.length === 0) return '<p style="color:var(--text-muted)">미용 기록이 없습니다.</p>';
           const allServices = await DB.getAll('services');
           const serviceMap = {}; allServices.forEach(s => serviceMap[s.id] = s.name);
+          const condLabels = { good: '좋음', normal: '보통', caution: '주의' };
+          const coopLabels = { easy: '잘함', normal: '보통', difficult: '까다로움' };
+          const dotColor = (v) => v === 'good' || v === 'easy' ? 'var(--success)' : v === 'caution' || v === 'difficult' ? 'var(--danger)' : v === 'normal' ? 'var(--warning)' : 'var(--border)';
           const _isMobile = window.matchMedia('(max-width: 768px)').matches;
           if (_isMobile) {
             return records.map(r => {
               const serviceNames = App.getRecordServiceDisplay(r, serviceMap);
+              const condDot = r.condition ? `<span style="display:inline-flex;align-items:center;gap:4px"><span style="display:inline-block;width:7px;height:7px;border-radius:50%;background:${dotColor(r.condition)}"></span>컨디션 ${condLabels[r.condition]}</span>` : '';
+              const coopDot = r.cooperativeness ? `<span style="display:inline-flex;align-items:center;gap:4px"><span style="display:inline-block;width:7px;height:7px;border-radius:50%;background:${dotColor(r.cooperativeness)}"></span>협조 ${coopLabels[r.cooperativeness]}</span>` : '';
               return `<div style="padding:12px 0;border-bottom:1px solid var(--border-light)${r.paymentMethod === 'unpaid' ? ';border-left:4px solid var(--danger);padding-left:12px' : ''}">
                 <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px">
                   <strong style="font-size:0.9rem">${App.formatDate(r.date)}</strong>
                   <strong style="color:var(--primary)">${App.formatCurrency(App.getRecordAmount(r))}</strong>
                 </div>
                 <div style="font-size:0.85rem;color:var(--text-secondary)">${App.escapeHtml(serviceNames)} · ${App.escapeHtml(r.groomer || '-')} · ${App.pages.records.getPaymentLabel(r.paymentMethod)}</div>
+                ${(condDot || coopDot) ? `<div style="display:flex;gap:12px;flex-wrap:wrap;margin-top:5px;font-size:0.74rem;color:var(--text-muted)">${condDot}${coopDot}</div>` : ''}
                 ${r.memo ? `<div style="font-size:0.82rem;color:var(--text-muted);margin-top:4px">${App.escapeHtml(r.memo.length > 60 ? r.memo.slice(0, 60) + '...' : r.memo)}</div>` : ''}
               </div>`;
             }).join('');
