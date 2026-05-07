@@ -441,7 +441,7 @@ const App = {
     const overlay = document.getElementById('modal-overlay');
     overlay.classList.remove('hidden');
     overlay.classList.add('animate-in');
-    document.body.style.overflow = 'hidden';
+    this._lockBody();
 
     // Android 뒤로가기 처리
     history.pushState({ modalOpen: true }, '');
@@ -491,7 +491,7 @@ const App = {
     if (overlay.classList.contains('hidden')) return;
     overlay.classList.add('hidden');
     overlay.classList.remove('animate-in');
-    document.body.style.overflow = '';
+    this._unlockBody();
     const modalBody = document.getElementById('modal-body');
     modalBody.onkeydown = null;
     modalBody.innerHTML = '';
@@ -523,7 +523,7 @@ const App = {
       body.innerHTML = `<p>${message}</p>`;
       const overlay = document.getElementById('confirm-overlay');
       overlay.classList.remove('hidden');
-      document.body.style.overflow = 'hidden';
+      this._lockBody();
       const okBtn = document.getElementById('confirm-ok');
       okBtn.disabled = false;
       okBtn.onclick = () => { okBtn.disabled = true; this.closeConfirm(true); };
@@ -540,7 +540,7 @@ const App = {
     const overlay = document.getElementById('confirm-overlay');
     if (overlay.classList.contains('hidden')) return;
     overlay.classList.add('hidden');
-    document.body.style.overflow = '';
+    this._unlockBody();
     if (this._confirmPopHandler) {
       window.removeEventListener('popstate', this._confirmPopHandler);
       this._confirmPopHandler = null;
@@ -1897,13 +1897,42 @@ const App = {
     });
   },
 
+  // 강력한 body 스크롤 잠금 (iOS Safari 호환 — position:fixed 트릭, 중첩 카운팅 안전)
+  _bodyLockCount: 0,
+  _bodyScrollY: 0,
+  _lockBody() {
+    if (this._bodyLockCount > 0) { this._bodyLockCount++; return; }
+    this._bodyScrollY = window.scrollY || window.pageYOffset || 0;
+    document.body.style.position = 'fixed';
+    document.body.style.top = `-${this._bodyScrollY}px`;
+    document.body.style.left = '0';
+    document.body.style.right = '0';
+    document.body.style.width = '100%';
+    document.body.style.overflow = 'hidden';
+    this._bodyLockCount = 1;
+  },
+  _unlockBody() {
+    if (this._bodyLockCount > 1) { this._bodyLockCount--; return; }
+    if (this._bodyLockCount === 0) return;
+    const y = this._bodyScrollY;
+    document.body.style.position = '';
+    document.body.style.top = '';
+    document.body.style.left = '';
+    document.body.style.right = '';
+    document.body.style.width = '';
+    document.body.style.overflow = '';
+    this._bodyLockCount = 0;
+    this._bodyScrollY = 0;
+    if (y) window.scrollTo(0, y);
+  },
+
   openLightbox() {
     const lb = document.getElementById('photo-lightbox');
     const item = this._lightboxImages[this._lightboxIndex];
     document.getElementById('lightbox-img').src = item.src;
     document.getElementById('lightbox-caption').textContent = item.caption;
     lb.classList.remove('hidden');
-    document.body.style.overflow = 'hidden';
+    this._lockBody();
 
     const hasMultiple = this._lightboxImages.length > 1;
     document.getElementById('lightbox-prev').style.display = hasMultiple ? 'block' : 'none';
@@ -1912,7 +1941,7 @@ const App = {
 
   closeLightbox() {
     document.getElementById('photo-lightbox').classList.add('hidden');
-    document.body.style.overflow = '';
+    this._unlockBody();
   },
 
   lightboxNav(dir) {
