@@ -1035,10 +1035,13 @@ App.pages.records = {
   },
 
   async deleteRecord(id) {
-    const confirmed = await App.confirm('이 미용 기록을 삭제하시겠습니까?');
+    const record = await DB.get('records', id);
+    if (!record) { App.showToast('기록을 찾을 수 없습니다.', 'error'); return; }
+    const pet = record.petId ? await DB.get('pets', record.petId) : null;
+    const detail = `<small style="color:var(--text-muted)">${App.formatDate(record.date)}${pet ? ' · ' + App.escapeHtml(pet.name) : ''} · ${App.formatCurrency(App.getRecordAmount(record))}</small>`;
+    const confirmed = await App.confirm(`이 미용 기록을 삭제하시겠습니까?<br>${detail}<br><strong>이 작업은 되돌릴 수 없습니다.</strong>`, { okLabel: '삭제' });
     if (!confirmed) return;
     try {
-      const record = await DB.get('records', id);
       // 연관 예약 상태 원복
       if (record && record.appointmentId) {
         const appt = await DB.get('appointments', Number(record.appointmentId));

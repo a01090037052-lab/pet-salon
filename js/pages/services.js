@@ -357,17 +357,17 @@ App.pages.services = {
     // 편집 input 으로 교체 (같은 가격이면 1개, 다르면 3개)
     const originalHtml = el.innerHTML;
     if (sameStr) {
-      el.innerHTML = `<input type="number" class="inline-price-input" value="${service.priceSmall || 0}" step="1000" min="0" style="width:90px;padding:4px 8px;font-size:0.85rem;border:1.5px solid var(--primary);border-radius:4px"> 원 <button class="btn btn-sm btn-primary inline-price-save" style="min-height:28px;padding:2px 8px;font-size:0.78rem">저장</button> <button class="btn btn-sm btn-secondary inline-price-cancel" style="min-height:28px;padding:2px 8px;font-size:0.78rem">취소</button>`;
+      el.innerHTML = `<input type="number" class="inline-price-input" value="${service.priceSmall || 0}" step="1000" min="0" style="width:90px;padding:8px 10px;font-size:0.9rem;border:1.5px solid var(--primary);border-radius:6px;min-height:40px"> 원 <button class="btn btn-sm btn-primary inline-price-save" style="padding:6px 14px;font-size:0.82rem">저장</button> <button class="btn btn-sm btn-secondary inline-price-cancel" style="padding:6px 14px;font-size:0.82rem">취소</button>`;
     } else {
       el.innerHTML = `
-        <span style="display:inline-flex;align-items:center;gap:4px;flex-wrap:wrap">
-          <input type="number" class="inline-price-input" data-size="small" value="${service.priceSmall || 0}" step="1000" min="0" style="width:70px;padding:4px 6px;font-size:0.82rem;border:1.5px solid var(--primary);border-radius:4px" title="소형">
+        <span style="display:inline-flex;align-items:center;gap:6px;flex-wrap:wrap">
+          <input type="number" class="inline-price-input" data-size="small" value="${service.priceSmall || 0}" step="1000" min="0" style="width:80px;padding:8px;font-size:0.88rem;border:1.5px solid var(--primary);border-radius:6px;min-height:40px" title="소형">
           /
-          <input type="number" class="inline-price-input" data-size="medium" value="${service.priceMedium || 0}" step="1000" min="0" style="width:70px;padding:4px 6px;font-size:0.82rem;border:1.5px solid var(--primary);border-radius:4px" title="중형">
+          <input type="number" class="inline-price-input" data-size="medium" value="${service.priceMedium || 0}" step="1000" min="0" style="width:80px;padding:8px;font-size:0.88rem;border:1.5px solid var(--primary);border-radius:6px;min-height:40px" title="중형">
           /
-          <input type="number" class="inline-price-input" data-size="large" value="${service.priceLarge || 0}" step="1000" min="0" style="width:70px;padding:4px 6px;font-size:0.82rem;border:1.5px solid var(--primary);border-radius:4px" title="대형">
-          <button class="btn btn-sm btn-primary inline-price-save" style="min-height:28px;padding:2px 8px;font-size:0.78rem;margin-left:4px">저장</button>
-          <button class="btn btn-sm btn-secondary inline-price-cancel" style="min-height:28px;padding:2px 8px;font-size:0.78rem">취소</button>
+          <input type="number" class="inline-price-input" data-size="large" value="${service.priceLarge || 0}" step="1000" min="0" style="width:80px;padding:8px;font-size:0.88rem;border:1.5px solid var(--primary);border-radius:6px;min-height:40px" title="대형">
+          <button class="btn btn-sm btn-primary inline-price-save" style="padding:6px 14px;font-size:0.82rem;margin-left:4px">저장</button>
+          <button class="btn btn-sm btn-secondary inline-price-cancel" style="padding:6px 14px;font-size:0.82rem">취소</button>
         </span>
       `;
     }
@@ -611,7 +611,7 @@ App.pages.services = {
       msg = `"${App.escapeHtml(service.name)}" 서비스를 삭제하시겠습니까?`;
     }
 
-    const confirmed = await App.confirm(msg);
+    const confirmed = await App.confirm(msg, { okLabel: '삭제' });
     if (!confirmed) return;
 
     try {

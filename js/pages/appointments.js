@@ -331,7 +331,7 @@ App.pages.appointments = {
         <div class="calendar-cell ${isToday ? 'today' : ''} ${isClosed ? 'closed' : ''} ${heatClass}" data-date="${dateStr}">
           <div class="cal-cell-header">
             <span class="cal-day-num ${weekendClass}">${d}</span>
-            ${isClosed ? '<span style="font-size:0.58rem;color:var(--danger);font-weight:700">휴무</span>' : ''}
+            ${isClosed ? '<span style="font-size:0.65rem;color:var(--danger);font-weight:700">휴무</span>' : ''}
           </div>
           ${barsHtml}
         </div>`;
@@ -1230,7 +1230,11 @@ App.pages.appointments = {
   },
 
   async deleteAppointment(id) {
-    const confirmed = await App.confirm('이 예약을 삭제하시겠습니까?');
+    const appt = await DB.get('appointments', id);
+    if (!appt) { App.showToast('예약을 찾을 수 없습니다.', 'error'); return; }
+    const pet = appt.petId ? await DB.get('pets', appt.petId) : null;
+    const detail = `<small style="color:var(--text-muted)">${App.formatDate(appt.date)}${appt.time ? ' ' + appt.time : ''}${pet ? ' · ' + App.escapeHtml(pet.name) : ''}</small>`;
+    const confirmed = await App.confirm(`이 예약을 삭제하시겠습니까?<br>${detail}`, { okLabel: '삭제' });
     if (!confirmed) return;
 
     try {

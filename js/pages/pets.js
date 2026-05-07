@@ -705,7 +705,7 @@ App.pages.pets = {
       const pet = await DB.get('pets', id);
       if (!pet) return;
 
-      const confirmed = await App.confirm(`"${App.escapeHtml(pet.name)}"을(를) 삭제하시겠습니까?<br>관련 예약과 미용 기록도 함께 삭제됩니다.<br><strong>이 작업은 되돌릴 수 없습니다.</strong>`);
+      const confirmed = await App.confirm(`"${App.escapeHtml(pet.name)}"을(를) 삭제하시겠습니까?<br>관련 예약과 미용 기록도 함께 삭제됩니다.<br><strong>이 작업은 되돌릴 수 없습니다.</strong>`, { okLabel: '삭제' });
       if (!confirmed) return;
 
       const [appointments, records] = await Promise.all([

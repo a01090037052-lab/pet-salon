@@ -17,6 +17,7 @@ const App = {
       this.setupBottomNav();
       this.setupGlobalSearch();
       this.setupLightbox();
+      this.setupVersionDisplay();
       this.registerSW();
       this.setupOfflineIndicator();
       this.setupTabSync();
@@ -179,6 +180,15 @@ const App = {
         });
       });
     }
+  },
+
+  setupVersionDisplay() {
+    // sw.js의 CACHE_NAME에서 버전 추출 → sidebar 표시 (배포 시 자동 동기화)
+    fetch('./sw.js?v=' + Date.now()).then(r => r.text()).then(t => {
+      const m = t.match(/petsalon-offline-v(\d+)/);
+      const el = document.getElementById('app-version');
+      if (m && el) el.textContent = 'v' + m[1];
+    }).catch(() => {});
   },
 
   registerSW() {
@@ -516,7 +526,8 @@ const App = {
   // ========== Confirm Dialog ==========
   _confirmResolve: null,
 
-  confirm(message) {
+  confirm(message, options = {}) {
+    // options: { okLabel, danger, cancelLabel }
     return new Promise((resolve) => {
       this._confirmResolve = resolve;
       const body = document.getElementById('confirm-body');
@@ -525,6 +536,12 @@ const App = {
       overlay.classList.remove('hidden');
       this._lockBody();
       const okBtn = document.getElementById('confirm-ok');
+      const cancelBtn = document.getElementById('confirm-cancel');
+      okBtn.textContent = options.okLabel || '확인';
+      if (cancelBtn) cancelBtn.textContent = options.cancelLabel || '취소';
+      // danger 옵션이면 빨강 강조 (default도 btn-danger지만 명시적 처리)
+      okBtn.classList.toggle('btn-danger', options.danger !== false);
+      okBtn.classList.toggle('btn-primary', options.danger === false);
       okBtn.disabled = false;
       okBtn.onclick = () => { okBtn.disabled = true; this.closeConfirm(true); };
       // Android 뒤로가기 처리

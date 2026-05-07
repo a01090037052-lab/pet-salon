@@ -278,7 +278,7 @@ App.pages.analytics = {
       const sign = diff > 0 ? '+' : '';
       const color = diff > 0 ? 'var(--success)' : 'var(--danger)';
       const arrow = diff > 0 ? '&#x2191;' : '&#x2193;';
-      return `<span style="position:absolute;top:6px;right:8px;font-size:0.66rem;color:${color};font-weight:700;line-height:1">${sign}${pct}%${arrow}</span>`;
+      return `<span style="position:absolute;top:6px;right:8px;font-size:0.72rem;color:${color};font-weight:700;line-height:1">${sign}${pct}%${arrow}</span>`;
     };
 
     // ===== 렌더링 =====

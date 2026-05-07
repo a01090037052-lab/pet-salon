@@ -737,7 +737,7 @@ App.pages.customers = {
     const customer = await DB.get('customers', id);
     if (!customer) return;
 
-    const confirmed = await App.confirm(`"${App.escapeHtml(App.getCustomerLabel(customer))}" 고객을 삭제하시겠습니까?<br>관련 반려견, 예약, 미용 기록도 함께 삭제됩니다.<br><strong>이 작업은 되돌릴 수 없습니다.</strong>`);
+    const confirmed = await App.confirm(`"${App.escapeHtml(App.getCustomerLabel(customer))}" 고객을 삭제하시겠습니까?<br>관련 반려견, 예약, 미용 기록도 함께 삭제됩니다.<br><strong>이 작업은 되돌릴 수 없습니다.</strong>`, { okLabel: '삭제' });
     if (!confirmed) return;
 
     try {
@@ -811,7 +811,7 @@ App.pages.customers = {
     // 태그 뱃지 (작게)
     const tagBadges = (c.tags || []).map(t => {
       const tagColors = { vip: 'var(--warning)', 'new': 'var(--info)', normal: 'var(--text-muted)', regular: 'var(--success)', caution: 'var(--danger)' };
-      return `<span style="font-size:0.66rem;padding:2px 6px;background:${tagColors[t] || 'var(--text-muted)'};color:#fff;border-radius:6px;font-weight:700">${tagLabelMap[t] || t}</span>`;
+      return `<span style="font-size:0.72rem;padding:2px 7px;background:${tagColors[t] || 'var(--text-muted)'};color:#fff;border-radius:6px;font-weight:700">${tagLabelMap[t] || t}</span>`;
     }).join('');
 
     const lastVisitText = lastVisit[c.id] ? App.getRelativeTime(lastVisit[c.id]) + ' 방문' : '방문 없음';

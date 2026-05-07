@@ -740,10 +740,10 @@ App.pages.settings = {
 
     // Clear all
     document.getElementById('btn-clear-all')?.addEventListener('click', async () => {
-      const confirmed = await App.confirm('정말로 모든 데이터를 삭제하시겠습니까?<br><strong>이 작업은 되돌릴 수 없습니다!</strong>');
+      const confirmed = await App.confirm('정말로 모든 데이터를 삭제하시겠습니까?<br><strong>이 작업은 되돌릴 수 없습니다!</strong>', { okLabel: '계속' });
       if (!confirmed) return;
 
-      const doubleConfirm = await App.confirm('마지막 확인입니다.<br>모든 고객, 반려견, 예약, 미용 기록, 서비스 메뉴가 삭제됩니다.');
+      const doubleConfirm = await App.confirm('마지막 확인입니다.<br>모든 고객, 반려견, 예약, 미용 기록, 서비스 메뉴가 삭제됩니다.', { okLabel: '모두 삭제' });
       if (!doubleConfirm) return;
 
       try {
