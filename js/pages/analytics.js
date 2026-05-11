@@ -26,12 +26,15 @@ App.pages.analytics = {
     const periodLabels = { '1month': '최근 1개월', '3months': '최근 3개월', '6months': '최근 6개월', '1year': '최근 1년', 'custom': '직접 설정' };
 
     // 데이터 로드
-    const [records, customers, pets, services] = await Promise.all([
+    const [records, customers, pets, services, unpaidRecs, appts] = await Promise.all([
       DB.getByDateRange('records', 'date', periodStart, periodEnd + 'z'),
       DB.getAllLight('customers', ['memo', 'address']),
       DB.getAllLight('pets', ['photo', 'temperament', 'healthNotes', 'preferredStyle']),
-      DB.getAll('services')
+      DB.getAll('services'),
+      DB.getByIndex('records', 'paymentMethod', 'unpaid'),
+      DB.getByDateRange('appointments', 'date', periodStart, periodEnd + 'z')
     ]);
+    const unpaidTotal = unpaidRecs.reduce((s, r) => s + App.getRecordAmount(r), 0);
     const customerMap = {}; customers.forEach(c => { customerMap[c.id] = c; });
     const petMap = {}; pets.forEach(p => { petMap[p.id] = p; });
     const serviceNameMap = {}; services.forEach(s => { serviceNameMap[s.id] = s.name; });
@@ -255,9 +258,150 @@ App.pages.analytics = {
       if (peakHour) insights.push({ type: 'info', text: `${peakHour.hour}시 가장 인기 시간대 (${peakHour.count}건)` });
     }
 
+    // 7. 미수금 경고 (Action) — 클릭 시 명단 펼침
+    if (unpaidRecs.length > 0) {
+      const unpaidSorted = [...unpaidRecs].sort((a, b) => (b.date || '').localeCompare(a.date || ''));
+      const unpaidList = unpaidSorted.slice(0, 5).map(r => {
+        const p = petMap[r.petId];
+        return {
+          page: 'records',
+          id: r.id,
+          label: `${App.formatDate(r.date)}${p ? ' · ' + p.name : ''} · ${App.formatCurrency(App.getRecordAmount(r))}`
+        };
+      });
+      insights.push({
+        type: unpaidRecs.length >= 5 ? 'warning' : 'info',
+        text: `미수금 ${unpaidRecs.length}건 (${App.formatCurrency(unpaidTotal)}) — 회수 검토`,
+        link: { page: 'records', list: unpaidList, totalCount: unpaidRecs.length }
+      });
+    }
+
+    // 8. 이탈 임박/리마인드 손님 (Action) — 클릭 시 명단 펼침
+    const atRiskPets = [], remindPets = [];
+    pets.forEach(p => {
+      if ((p.petStatus || 'active') !== 'active') return;
+      const s = App.classifyVisitStatus(p.lastVisitDate, p.groomingCycle);
+      if (s === 'at-risk') atRiskPets.push(p);
+      else if (s === 'remind') remindPets.push(p);
+    });
+    const buildPetList = (arr) => arr
+      .sort((a, b) => (a.lastVisitDate || '').localeCompare(b.lastVisitDate || ''))
+      .slice(0, 5)
+      .map(p => {
+        const days = p.lastVisitDate ? Math.floor((Date.now() - new Date(p.lastVisitDate + 'T00:00:00').getTime()) / 86400000) : null;
+        return {
+          page: 'pets',
+          id: p.id,
+          label: `${p.name}${p.breed ? ' · ' + p.breed : ''}${days != null ? ' · ' + days + '일 전' : ' · 방문 없음'}`
+        };
+      });
+    if (atRiskPets.length > 0) {
+      insights.push({
+        type: 'warning',
+        text: `이탈 임박 ${atRiskPets.length}마리 — 재방문 메시지 권장`,
+        link: { page: 'pets', petSort: 'status', list: buildPetList(atRiskPets), totalCount: atRiskPets.length }
+      });
+    }
+    if (remindPets.length >= 3) {
+      insights.push({
+        type: 'info',
+        text: `리마인드 필요 ${remindPets.length}마리 — 재방문 시점 도래`,
+        link: { page: 'pets', petSort: 'status', list: buildPetList(remindPets), totalCount: remindPets.length }
+      });
+    }
+
+    // 9. VIP 미방문 (Action) — 클릭 시 고객 페이지 VIP 필터
+    const customerLastVisitMap = {};
+    [...records, ...pastRecords].forEach(r => {
+      if (!r.customerId || !r.date) return;
+      if (!customerLastVisitMap[r.customerId] || r.date > customerLastVisitMap[r.customerId]) {
+        customerLastVisitMap[r.customerId] = r.date;
+      }
+    });
+    const todayMs = Date.now();
+    const vipUnvisitedArr = customers.filter(c => {
+      if (!(c.tags || []).includes('vip')) return false;
+      const lv = customerLastVisitMap[c.id];
+      if (!lv) return true;
+      const days = Math.floor((todayMs - new Date(lv + 'T00:00:00').getTime()) / 86400000);
+      return days > 30;
+    });
+    if (vipUnvisitedArr.length > 0) {
+      const vipList = vipUnvisitedArr
+        .sort((a, b) => (customerLastVisitMap[a.id] || '').localeCompare(customerLastVisitMap[b.id] || ''))
+        .slice(0, 5)
+        .map(c => {
+          const lv = customerLastVisitMap[c.id];
+          const days = lv ? Math.floor((todayMs - new Date(lv + 'T00:00:00').getTime()) / 86400000) : null;
+          return {
+            page: 'customers',
+            id: c.id,
+            label: `${App.getCustomerLabel(c)}${days != null ? ' · ' + days + '일 전' : ' · 방문 없음'}`
+          };
+        });
+      insights.push({
+        type: 'warning',
+        text: `VIP 손님 ${vipUnvisitedArr.length}명 30일 이상 미방문`,
+        link: { page: 'customers', custTag: 'vip', custSort: 'lastVisit', list: vipList, totalCount: vipUnvisitedArr.length }
+      });
+    }
+
+    // 10. 객단가 변화
+    const avgPrice = records.length > 0 ? Math.round(totalRev / records.length) : 0;
+    const prevAvgPrice = prevVisitCount > 0 ? Math.round(prevTotalRev / prevVisitCount) : 0;
+    if (prevAvgPrice > 0 && records.length >= 5) {
+      const pricePct = Math.round(((avgPrice - prevAvgPrice) / prevAvgPrice) * 100);
+      if (pricePct >= 10) insights.push({ type: 'good', text: `객단가 ${App.formatCurrency(avgPrice)} (전 기간 +${pricePct}%)` });
+      else if (pricePct <= -10) insights.push({ type: 'warning', text: `객단가 ${App.formatCurrency(avgPrice)} (전 기간 ${pricePct}%)` });
+    }
+
+    // 11. 신규 고객 추세 (이번 기간 vs 전 기간, customer.createdAt 기반)
+    const newThis = customers.filter(c => {
+      if (!c.createdAt) return false;
+      const cd = c.createdAt.slice(0, 10);
+      return cd >= periodStart && cd <= periodEnd;
+    }).length;
+    const newPrev = customers.filter(c => {
+      if (!c.createdAt) return false;
+      const cd = c.createdAt.slice(0, 10);
+      return cd >= prevStart && cd <= prevEnd;
+    }).length;
+    if (newThis > 0 || newPrev > 0) {
+      if (newPrev === 0 && newThis > 0) {
+        insights.push({ type: 'good', text: `신규 고객 ${newThis}명 (전 기간 0명)` });
+      } else if (newPrev > 0) {
+        const pct = Math.round(((newThis - newPrev) / newPrev) * 100);
+        if (pct >= 20) insights.push({ type: 'good', text: `신규 고객 ${newThis}명 (전 기간 ${newPrev}명, +${pct}%)` });
+        else if (pct <= -30) insights.push({ type: 'warning', text: `신규 고객 ${newThis}명 (전 기간 ${newPrev}명, ${pct}%)` });
+        else insights.push({ type: 'info', text: `신규 고객 ${newThis}명 (전 기간 ${newPrev}명)` });
+      }
+    }
+
+    // 12. 노쇼율
+    if (appts.length >= 5) {
+      const noshowCount = appts.filter(a => a.status === 'noshow').length;
+      const noshowRate = Math.round((noshowCount / appts.length) * 100);
+      if (noshowRate <= 3) insights.push({ type: 'good', text: `노쇼율 ${noshowRate}% — 우수 (예약 ${appts.length}건 중 ${noshowCount}건)` });
+      else if (noshowRate <= 8) insights.push({ type: 'info', text: `노쇼율 ${noshowRate}% — 보통` });
+      else insights.push({ type: 'warning', text: `노쇼율 ${noshowRate}% — 예약금/재확인 강화 검토` });
+    }
+
+    // 12. 협조도 까다로움 비율 (이번 세션 추가 필드)
+    const coopCounts = { easy: 0, normal: 0, difficult: 0 };
+    records.forEach(r => { if (r.cooperativeness && coopCounts[r.cooperativeness] !== undefined) coopCounts[r.cooperativeness]++; });
+    const totalCoop = coopCounts.easy + coopCounts.normal + coopCounts.difficult;
+    if (totalCoop >= 5) {
+      const difficultPct = Math.round((coopCounts.difficult / totalCoop) * 100);
+      if (difficultPct >= 30) {
+        insights.push({ type: 'info', text: `미용 협조도 까다로움 ${difficultPct}% — 시간 견적 여유 권장` });
+      }
+    }
+
     if (insights.length === 0) {
       insights.push({ type: 'info', text: '데이터가 더 쌓이면 인사이트가 표시됩니다' });
     }
+    // 클릭 핸들러용 — init에서 idx로 link 접근
+    this._insights = insights;
 
     // 비교 badge 생성 헬퍼
     const cmpBadge = (current, prev) => {
@@ -313,13 +457,28 @@ App.pages.analytics = {
         <div class="card-body" style="padding:14px 16px">
           <div class="analytics-insights-title">핵심 인사이트</div>
           <div class="analytics-insights-list">
-            ${insights.map(i => {
+            ${insights.map((i, idx) => {
               const icon = i.type === 'good' ? '&#x2713;' : i.type === 'warning' ? '&#x26A0;' : '&#x1F4A1;';
               const cls = i.type === 'good' ? 'analytics-insight-good' : i.type === 'warning' ? 'analytics-insight-warning' : 'analytics-insight-info';
-              return `<div class="analytics-insight-item ${cls}">
+              const expandable = !!(i.link && i.link.list);
+              const linkAttr = expandable ? `data-insight-idx="${idx}"` : '';
+              const cursor = expandable ? 'cursor:pointer;' : '';
+              const arrow = expandable ? `<span class="insight-toggle" data-insight-idx="${idx}" style="margin-left:auto;color:var(--text-muted);font-size:0.95rem;flex-shrink:0;transition:transform 0.2s;display:inline-block">&rsaquo;</span>` : '';
+              const detail = expandable ? `
+                <div class="insight-detail" data-insight-detail-idx="${idx}" style="display:none;padding:6px 14px 10px;background:var(--bg);border-radius:8px;margin:-2px 0 6px;font-size:0.85rem">
+                  ${i.link.list.map(item => `
+                    <div class="insight-detail-item" data-page="${item.page}"${item.id != null ? ` data-id="${item.id}"` : ''} style="padding:8px 0;border-bottom:1px solid var(--border-light);cursor:pointer;color:var(--text-primary)">${App.escapeHtml(item.label)}</div>
+                  `).join('')}
+                  ${i.link.totalCount > i.link.list.length ? `
+                    <div class="insight-detail-all" data-insight-all-idx="${idx}" style="padding:10px 0 4px;text-align:center;color:var(--primary);font-weight:700;cursor:pointer;font-size:0.85rem">전체 ${i.link.totalCount}건 보기 &rarr;</div>
+                  ` : `<div class="insight-detail-all" data-insight-all-idx="${idx}" style="padding:10px 0 4px;text-align:center;color:var(--primary);font-weight:700;cursor:pointer;font-size:0.85rem">${i.link.page === 'pets' ? '반려견 페이지' : i.link.page === 'customers' ? '고객 페이지' : '기록 페이지'}로 이동 &rarr;</div>`}
+                </div>
+              ` : '';
+              return `<div class="analytics-insight-item ${cls}" ${linkAttr} style="${cursor}">
                 <span class="analytics-insight-icon">${icon}</span>
-                <span>${App.escapeHtml(i.text)}</span>
-              </div>`;
+                <span style="flex:1;min-width:0">${App.escapeHtml(i.text)}</span>
+                ${arrow}
+              </div>${detail}`;
             }).join('')}
           </div>
         </div>
@@ -629,6 +788,58 @@ App.pages.analytics = {
       this._customEnd = end;
       this._period = 'custom';
       App.handleRoute();
+    });
+
+    // 인사이트 카드 클릭 → 명단 인라인 펼침/접힘 (한 번에 한 카드만 열림)
+    document.querySelectorAll('.analytics-insight-item[data-insight-idx]').forEach(el => {
+      el.addEventListener('click', () => {
+        const idx = el.dataset.insightIdx;
+        const detail = document.querySelector(`.insight-detail[data-insight-detail-idx="${idx}"]`);
+        if (!detail) return;
+        const isOpen = detail.style.display !== 'none';
+        // 다른 모든 펼침 닫기
+        document.querySelectorAll('.insight-detail').forEach(d => { d.style.display = 'none'; });
+        document.querySelectorAll('.insight-toggle').forEach(t => { t.style.transform = ''; });
+        if (!isOpen) {
+          detail.style.display = 'block';
+          const toggle = document.querySelector(`.insight-toggle[data-insight-idx="${idx}"]`);
+          if (toggle) toggle.style.transform = 'rotate(90deg)';
+        }
+      });
+    });
+
+    // 명단 항목 클릭 → 해당 상세 페이지 또는 수정 모달
+    document.querySelectorAll('.insight-detail-item').forEach(el => {
+      el.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const page = el.dataset.page;
+        const id = el.dataset.id;
+        if (page === 'records' && id) {
+          // 미수금 record 즉시 수정 모달 (결제수단 변경 등)
+          App.pages.records.showForm(Number(id));
+          return;
+        }
+        if (page && id) App.navigate(page + '/' + id);
+        else if (page) App.navigate(page);
+      });
+    });
+
+    // 전체 보기 → 페이지 이동 (필터/정렬 자동 적용)
+    document.querySelectorAll('.insight-detail-all').forEach(el => {
+      el.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const idx = Number(el.dataset.insightAllIdx);
+        const link = (this._insights || [])[idx]?.link;
+        if (!link) return;
+        if (link.page === 'customers') {
+          sessionStorage.setItem('customer-filter', JSON.stringify({
+            search: '', tag: link.custTag || '', visitStatus: link.custVisit || '', sort: link.custSort || 'lastVisit'
+          }));
+        } else if (link.page === 'pets' && link.petSort) {
+          App.pages.pets._sortKey = link.petSort;
+        }
+        App.navigate(link.page);
+      });
     });
   }
 };
