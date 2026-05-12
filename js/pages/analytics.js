@@ -263,10 +263,13 @@ App.pages.analytics = {
       const unpaidSorted = [...unpaidRecs].sort((a, b) => (b.date || '').localeCompare(a.date || ''));
       const unpaidList = unpaidSorted.slice(0, 5).map(r => {
         const p = petMap[r.petId];
+        const c = customerMap[r.customerId];
         return {
           page: 'records',
           id: r.id,
-          label: `${App.formatDate(r.date)}${p ? ' · ' + p.name : ''} · ${App.formatCurrency(App.getRecordAmount(r))}`
+          label: `${App.formatDate(r.date)}${p ? ' · ' + p.name : ''} · ${App.formatCurrency(App.getRecordAmount(r))}`,
+          sublabel: c ? App.getCustomerLabel(c) : '',
+          phone: c?.phone || ''
         };
       });
       insights.push({
@@ -289,10 +292,13 @@ App.pages.analytics = {
       .slice(0, 5)
       .map(p => {
         const days = p.lastVisitDate ? Math.floor((Date.now() - new Date(p.lastVisitDate + 'T00:00:00').getTime()) / 86400000) : null;
+        const c = customerMap[p.customerId];
         return {
           page: 'pets',
           id: p.id,
-          label: `${p.name}${p.breed ? ' · ' + p.breed : ''}${days != null ? ' · ' + days + '일 전' : ' · 방문 없음'}`
+          label: `${p.name}${p.breed ? ' · ' + p.breed : ''}${days != null ? ' · ' + days + '일 전' : ' · 방문 없음'}`,
+          sublabel: c ? App.getCustomerLabel(c) : '',
+          phone: c?.phone || ''
         };
       });
     if (atRiskPets.length > 0) {
@@ -336,7 +342,9 @@ App.pages.analytics = {
           return {
             page: 'customers',
             id: c.id,
-            label: `${App.getCustomerLabel(c)}${days != null ? ' · ' + days + '일 전' : ' · 방문 없음'}`
+            label: `${App.getCustomerLabel(c)}${days != null ? ' · ' + days + '일 전' : ' · 방문 없음'}`,
+            sublabel: '',
+            phone: c.phone || ''
           };
         });
       insights.push({
@@ -397,11 +405,19 @@ App.pages.analytics = {
       }
     }
 
-    if (insights.length === 0) {
-      insights.push({ type: 'info', text: '데이터가 더 쌓이면 인사이트가 표시됩니다' });
+    // 분류: realtime(액션 가능, 매일 변동) vs period(기간 의존)
+    // 우선순위 정렬: warning > info > good
+    const typeOrder = { warning: 0, info: 1, good: 2 };
+    const sortByPriority = (a, b) => (typeOrder[a.type] ?? 1) - (typeOrder[b.type] ?? 1);
+    const realtimeInsights = insights.filter(i => i.link && i.link.list).sort(sortByPriority);
+    const periodInsights = insights.filter(i => !i.link || !i.link.list).sort(sortByPriority);
+    const orderedInsights = [...realtimeInsights, ...periodInsights];
+    if (orderedInsights.length === 0) {
+      orderedInsights.push({ type: 'info', text: '데이터가 더 쌓이면 인사이트가 표시됩니다' });
+      periodInsights.push(orderedInsights[0]);
     }
     // 클릭 핸들러용 — init에서 idx로 link 접근
-    this._insights = insights;
+    this._insights = orderedInsights;
 
     // 비교 badge 생성 헬퍼
     const cmpBadge = (current, prev) => {
@@ -452,37 +468,67 @@ App.pages.analytics = {
 
       <div style="font-size:0.82rem;color:var(--text-muted);margin-bottom:16px;text-align:center">${periodLabels[period]} (${periodStart} ~ ${periodEnd}) &middot; 총 ${records.length}건${cmpBadge(records.length, prevVisitCount)}</div>
 
-      <!-- 핵심 인사이트 (자동 생성) -->
-      <div class="card analytics-insights" style="margin-bottom:16px">
-        <div class="card-body" style="padding:14px 16px">
-          <div class="analytics-insights-title">핵심 인사이트</div>
-          <div class="analytics-insights-list">
-            ${insights.map((i, idx) => {
-              const icon = i.type === 'good' ? '&#x2713;' : i.type === 'warning' ? '&#x26A0;' : '&#x1F4A1;';
-              const cls = i.type === 'good' ? 'analytics-insight-good' : i.type === 'warning' ? 'analytics-insight-warning' : 'analytics-insight-info';
-              const expandable = !!(i.link && i.link.list);
-              const linkAttr = expandable ? `data-insight-idx="${idx}"` : '';
-              const cursor = expandable ? 'cursor:pointer;' : '';
-              const arrow = expandable ? `<span class="insight-toggle" data-insight-idx="${idx}" style="margin-left:auto;color:var(--text-muted);font-size:0.95rem;flex-shrink:0;transition:transform 0.2s;display:inline-block">&rsaquo;</span>` : '';
-              const detail = expandable ? `
-                <div class="insight-detail" data-insight-detail-idx="${idx}" style="display:none;padding:6px 14px 10px;background:var(--bg);border-radius:8px;margin:-2px 0 6px;font-size:0.85rem">
-                  ${i.link.list.map(item => `
-                    <div class="insight-detail-item" data-page="${item.page}"${item.id != null ? ` data-id="${item.id}"` : ''} style="padding:8px 0;border-bottom:1px solid var(--border-light);cursor:pointer;color:var(--text-primary)">${App.escapeHtml(item.label)}</div>
-                  `).join('')}
-                  ${i.link.totalCount > i.link.list.length ? `
-                    <div class="insight-detail-all" data-insight-all-idx="${idx}" style="padding:10px 0 4px;text-align:center;color:var(--primary);font-weight:700;cursor:pointer;font-size:0.85rem">전체 ${i.link.totalCount}건 보기 &rarr;</div>
-                  ` : `<div class="insight-detail-all" data-insight-all-idx="${idx}" style="padding:10px 0 4px;text-align:center;color:var(--primary);font-weight:700;cursor:pointer;font-size:0.85rem">${i.link.page === 'pets' ? '반려견 페이지' : i.link.page === 'customers' ? '고객 페이지' : '기록 페이지'}로 이동 &rarr;</div>`}
+      <!-- 핵심 인사이트 (자동 생성, 두 섹션 분리) -->
+      ${(() => {
+        const renderItem = (i, idx) => {
+          const icon = i.type === 'good' ? '&#x2713;' : i.type === 'warning' ? '&#x26A0;' : '&#x1F4A1;';
+          const cls = i.type === 'good' ? 'analytics-insight-good' : i.type === 'warning' ? 'analytics-insight-warning' : 'analytics-insight-info';
+          const expandable = !!(i.link && i.link.list);
+          const linkAttr = expandable ? `data-insight-idx="${idx}"` : '';
+          const cursor = expandable ? 'cursor:pointer;' : '';
+          const arrow = expandable ? `<span class="insight-toggle" data-insight-idx="${idx}" style="margin-left:auto;color:var(--text-muted);font-size:0.95rem;flex-shrink:0;transition:transform 0.2s;display:inline-block">&rsaquo;</span>` : '';
+          const detail = expandable ? `
+            <div class="insight-detail" data-insight-detail-idx="${idx}" style="display:none;padding:6px 14px 10px;background:var(--bg);border-radius:8px;margin:-2px 0 6px;font-size:0.85rem;max-height:220px;overflow-y:auto;-webkit-overflow-scrolling:touch;overscroll-behavior:contain">
+              ${i.link.list.map(item => {
+                const phoneClean = item.phone ? item.phone.replace(/\D/g, '') : '';
+                const phoneLink = item.phone ? `<a href="tel:${phoneClean}" onclick="event.stopPropagation()" style="color:var(--primary);font-weight:700;text-decoration:none;font-size:0.78rem;flex-shrink:0">${App.formatPhone(item.phone)}</a>` : '';
+                const subRow = (item.sublabel || phoneLink) ? `<div style="font-size:0.78rem;color:var(--text-muted);margin-top:3px;display:flex;align-items:center;gap:8px;flex-wrap:wrap"><span>${App.escapeHtml(item.sublabel || '')}</span>${phoneLink}</div>` : '';
+                return `<div class="insight-detail-item" data-page="${item.page}"${item.id != null ? ` data-id="${item.id}"` : ''} style="padding:10px 0;border-bottom:1px solid var(--border-light);cursor:pointer;color:var(--text-primary);min-height:40px">
+                  <div>${App.escapeHtml(item.label)}</div>
+                  ${subRow}
+                </div>`;
+              }).join('')}
+              ${i.link.totalCount > i.link.list.length ? `
+                <div class="insight-detail-all" data-insight-all-idx="${idx}" style="padding:10px 0 4px;text-align:center;color:var(--primary);font-weight:700;cursor:pointer;font-size:0.85rem">전체 ${i.link.totalCount}건 보기 &rarr;</div>
+              ` : `<div class="insight-detail-all" data-insight-all-idx="${idx}" style="padding:10px 0 4px;text-align:center;color:var(--primary);font-weight:700;cursor:pointer;font-size:0.85rem">${i.link.page === 'pets' ? '반려견 페이지' : i.link.page === 'customers' ? '고객 페이지' : '기록 페이지'}로 이동 &rarr;</div>`}
+            </div>
+          ` : '';
+          return `<div class="analytics-insight-item ${cls}" ${linkAttr} style="${cursor}">
+            <span class="analytics-insight-icon">${icon}</span>
+            <span style="flex:1;min-width:0">${App.escapeHtml(i.text)}</span>
+            ${arrow}
+          </div>${detail}`;
+        };
+        const rtOffset = 0;
+        const pdOffset = realtimeInsights.length;
+        return `
+        <div class="card analytics-insights" style="margin-bottom:16px">
+          <div class="card-body" style="padding:14px 16px">
+            <!-- 오늘 점검할 것 (실시간, 매일 변동) -->
+            <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;font-weight:800;font-size:0.92rem;color:var(--text-primary)">
+              <span style="display:inline-block;width:7px;height:7px;border-radius:50%;background:${realtimeInsights.length > 0 ? 'var(--danger)' : 'var(--success)'}"></span>
+              오늘 점검할 것
+            </div>
+            <div class="analytics-insights-list" style="margin-bottom:14px">
+              ${realtimeInsights.length === 0 ? `
+                <div style="display:flex;align-items:center;justify-content:center;gap:6px;padding:10px 0;color:var(--success);font-size:0.88rem;font-weight:600">
+                  <span>&#x2713;</span> 점검할 사항 없음 &mdash; 양호
                 </div>
-              ` : '';
-              return `<div class="analytics-insight-item ${cls}" ${linkAttr} style="${cursor}">
-                <span class="analytics-insight-icon">${icon}</span>
-                <span style="flex:1;min-width:0">${App.escapeHtml(i.text)}</span>
-                ${arrow}
-              </div>${detail}`;
-            }).join('')}
+              ` : realtimeInsights.map((i, localIdx) => renderItem(i, rtOffset + localIdx)).join('')}
+            </div>
+            ${periodInsights.length > 0 ? `
+            <!-- 이번 기간 분석 (기간 의존, 트렌드) -->
+            <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;font-weight:800;font-size:0.92rem;color:var(--text-primary);border-top:1px solid var(--border-light);padding-top:14px">
+              <span style="display:inline-block;width:7px;height:7px;border-radius:50%;background:var(--primary)"></span>
+              이번 기간 분석
+            </div>
+            <div class="analytics-insights-list">
+              ${periodInsights.map((i, localIdx) => renderItem(i, pdOffset + localIdx)).join('')}
+            </div>
+            ` : ''}
           </div>
-        </div>
-      </div>
+        </div>`;
+      })()}
 
       <!-- 매출 / 방문 / 고객 요약 (전 기간 대비 비교) -->
       <div class="card" style="margin-bottom:16px">
@@ -804,6 +850,8 @@ App.pages.analytics = {
           detail.style.display = 'block';
           const toggle = document.querySelector(`.insight-toggle[data-insight-idx="${idx}"]`);
           if (toggle) toggle.style.transform = 'rotate(90deg)';
+          // 펼침 후 화면 안으로 자동 스크롤 (가려진 카드일 때 자연스럽게 보이게)
+          setTimeout(() => detail.scrollIntoView({ behavior: 'smooth', block: 'nearest' }), 100);
         }
       });
     });
