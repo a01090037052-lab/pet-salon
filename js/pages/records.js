@@ -497,6 +497,12 @@ App.pages.records = {
             </select>
           </div>
         </div>
+        <!-- 이전 미용과 같음 (단골 손님 자동 채움) -->
+        <div id="f-copy-last-area" style="display:none;margin-bottom:12px">
+          <button type="button" id="btn-copy-last-record" style="width:100%;padding:10px 14px;background:var(--primary-light);color:var(--primary);border:1.5px dashed var(--primary);border-radius:var(--radius);font-weight:700;cursor:pointer;font-size:0.88rem;display:flex;align-items:center;justify-content:center;gap:8px;min-height:44px">
+            &#x1F4CB; 이전 미용과 같음 <span id="copy-last-hint" style="font-weight:500;font-size:0.78rem;opacity:0.8"></span>
+          </button>
+        </div>
         <div class="form-group">
           <label class="form-label">날짜 <span class="required">*</span></label>
           <input type="date" id="f-date" value="${record.date || App.getToday()}">
@@ -665,10 +671,11 @@ App.pages.records = {
       onSave: () => this.saveRecord(id)
     });
 
-    // Pet change -> auto-set size and show pet notes
+    // Pet change -> auto-set size and show pet notes + 마지막 기록 가져오기 버튼 표시
     document.getElementById('f-petId')?.addEventListener('change', async (e) => {
       const pid = Number(e.target.value);
-      if (!pid) return;
+      const copyArea = document.getElementById('f-copy-last-area');
+      if (!pid) { if (copyArea) copyArea.style.display = 'none'; return; }
       const pet = await DB.get('pets', pid);
       if (pet) {
         // Auto-set size
@@ -684,7 +691,14 @@ App.pages.records = {
         }
         // Show pet info box
         this.showPetInfoBox(pet);
+        // 마지막 미용 기록 조회 → 버튼 표시
+        await this._refreshLastRecordButton(pid, id);
       }
+    });
+
+    // 이전 미용과 같음 버튼 클릭
+    document.getElementById('btn-copy-last-record')?.addEventListener('click', () => {
+      this._applyLastRecord();
     });
 
     // Show pet info if already selected
@@ -697,6 +711,8 @@ App.pages.records = {
         }
         if (size) document.getElementById('f-sizeType').value = size;
         this.showPetInfoBox(pet);
+        // 펫 미리 선택된 경우에도 마지막 기록 버튼 표시
+        await this._refreshLastRecordButton(record.petId, id);
       }
     }
 
@@ -1341,6 +1357,53 @@ App.pages.records = {
       content: receiptContent,
       hideFooter: true
     });
+  },
+
+  // 같은 펫의 가장 최근 미용 기록 조회 (excludeId는 수정 모드에서 자기 자신 제외)
+  async _findLastRecordForPet(petId, excludeId) {
+    if (!petId) return null;
+    const records = await DB.getByIndex('records', 'petId', petId);
+    return records
+      .filter(r => r.id !== excludeId)
+      .sort((a, b) => (b.date || '').localeCompare(a.date || ''))[0] || null;
+  },
+
+  // 펫 결정 후 "이전 미용과 같음" 버튼 표시/숨김 + 캐시
+  async _refreshLastRecordButton(petId, excludeId) {
+    const copyArea = document.getElementById('f-copy-last-area');
+    if (!copyArea) return;
+    const last = await this._findLastRecordForPet(petId, excludeId);
+    this._lastRecordForPet = last;
+    if (last) {
+      copyArea.style.display = 'block';
+      const hint = document.getElementById('copy-last-hint');
+      if (hint) hint.textContent = `(${App.formatDate(last.date)})`;
+    } else {
+      copyArea.style.display = 'none';
+    }
+  },
+
+  // 마지막 기록 데이터로 폼 필드 자동 채움 (단골 손님 빠른 입력)
+  // 컨디션/협조도/결제수단/메모는 매번 다르므로 채우지 않음
+  _applyLastRecord() {
+    const last = this._lastRecordForPet;
+    if (!last) return;
+    const setVal = (id, val) => { const el = document.getElementById(id); if (el && val != null) el.value = val; };
+    setVal('f-service', last.service || '');
+    setVal('f-servicePrice', last.servicePrice || last.totalPrice || 0);
+    setVal('f-style', last.style || '');
+    setVal('f-groomer', last.groomer || '');
+    setVal('f-addonPrice', last.addonPrice || 0);
+    // 추가 항목 태그 복원
+    if (Array.isArray(last.addons) && last.addons.length > 0) {
+      const tagsDiv = document.getElementById('f-addon-tags');
+      if (tagsDiv) {
+        tagsDiv.innerHTML = last.addons.map(a => '<span class="badge badge-info addon-tag" style="cursor:pointer;padding:6px 10px" title="클릭하여 제거">' + App.escapeHtml(a) + ' ×</span>').join('');
+      }
+    }
+    // 합계 자동 재계산
+    document.getElementById('f-servicePrice')?.dispatchEvent(new Event('input'));
+    App.showToast('이전 미용 기록을 가져왔습니다.');
   },
 
   getPaymentLabel(method) {

@@ -89,9 +89,10 @@ App.pages.customers = {
         </div>
       </div>
       <div class="filter-bar">
-        <div class="search-box" style="max-width:none">
+        <div class="search-box" style="max-width:none;position:relative">
           <span class="search-icon">&#x1F50D;</span>
-          <input type="text" id="customer-search" placeholder="고객 이름, 전화번호, 메모 검색..." style="width:100%;min-height:44px">
+          <input type="text" id="customer-search" placeholder="고객 이름, 전화번호, 메모 검색..." style="width:100%;min-height:44px;padding-right:60px">
+          <span id="customer-search-count" style="display:none;position:absolute;right:14px;top:50%;transform:translateY(-50%);font-size:0.78rem;color:var(--text-muted);font-weight:700;pointer-events:none"></span>
         </div>
         <div class="filter-bar-row">
           <select id="customer-visit-filter" style="flex:1;min-height:44px;font-size:max(16px,0.88rem)">
@@ -865,13 +866,28 @@ App.pages.customers = {
       return textMatch && tagMatch && visitMatch;
     };
 
+    let visibleCount = 0;
     document.querySelectorAll('#customer-table tbody tr').forEach(row => {
-      row.style.display = matchesFilter(row) ? '' : 'none';
+      const show = matchesFilter(row);
+      row.style.display = show ? '' : 'none';
+      if (show) visibleCount++;
     });
 
+    let visibleCards = 0;
     document.querySelectorAll('#customer-card-list .mobile-card').forEach(card => {
-      card.style.display = matchesFilter(card) ? '' : 'none';
+      const show = matchesFilter(card);
+      card.style.display = show ? '' : 'none';
+      if (show) visibleCards++;
     });
+
+    // 검색·필터 적용 시 결과 카운트 표시 (없을 땐 숨김)
+    const countEl = document.getElementById('customer-search-count');
+    if (countEl) {
+      const total = visibleCount || visibleCards;
+      const isFiltering = !!(q || tag || visit);
+      countEl.style.display = isFiltering ? '' : 'none';
+      countEl.textContent = isFiltering ? `${total}명` : '';
+    }
   },
 
 };

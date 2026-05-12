@@ -1322,6 +1322,8 @@ const App = {
   // 자유 입력 가능 (1인 살롱·미등록 상태 모두 자연스럽게 동작)
   async getGroomerFieldHTML(selected = '') {
     const registered = (await DB.getSetting('groomers')) || [];
+    // 1인 매장 자동 채움: 등록 미용사 1명 + 선택 안 됨 → 자동
+    if (!selected && registered.length === 1) selected = registered[0];
     let pastGroomers = [];
     try {
       const recs = await DB.getAllLight('records', ['photoBefore', 'photoAfter', 'memo', 'serviceIds', 'serviceNames', 'nextVisitDate', 'appointmentId']);
