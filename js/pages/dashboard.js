@@ -165,6 +165,30 @@ App.pages.dashboard = {
       // 고객 방문 상태 요약
       const visitSummary = this._computeVisitStatusSummary(pets, customerMap, revisitDays);
 
+      // VIP 미방문 알림 (30일 이상)
+      const customerLastVisitMap = {};
+      pets.forEach(p => {
+        if (!p.lastVisitDate) return;
+        if (!customerLastVisitMap[p.customerId] || p.lastVisitDate > customerLastVisitMap[p.customerId]) {
+          customerLastVisitMap[p.customerId] = p.lastVisitDate;
+        }
+      });
+      recentRecords.forEach(r => {
+        if (!r.customerId || !r.date) return;
+        if (!customerLastVisitMap[r.customerId] || r.date > customerLastVisitMap[r.customerId]) {
+          customerLastVisitMap[r.customerId] = r.date;
+        }
+      });
+      const vipUnvisitedAlerts = customers
+        .filter(c => (c.tags || []).includes('vip'))
+        .map(c => {
+          const lv = customerLastVisitMap[c.id];
+          const days = lv ? Math.floor((Date.now() - new Date(lv + 'T00:00:00').getTime()) / 86400000) : null;
+          return { customer: c, lastVisit: lv, days };
+        })
+        .filter(x => x.lastVisit && x.days > 30)
+        .sort((a, b) => b.days - a.days);
+
       // 생일 알림 (7일 이내)
       const upcomingBirthdays = [];
       const nowForBirthday = new Date();
@@ -308,7 +332,30 @@ App.pages.dashboard = {
           </div>
         </div>
 
-        <!-- 2. 미수금 (즉시 액션 필요) — 알림 섹션 최상단 -->
+        <!-- 2. 매출 요약 (매일 자주 확인하는 정보 — 상단으로 이동) -->
+        <div class="stats-grid" style="margin-bottom:20px">
+          <div class="stat-card gradient-purple" style="cursor:pointer" onclick="App.pages.records?.showDailyReport()">
+            <div class="stat-icon purple">&#x1F4B5;</div>
+            <div>
+              <div class="stat-value" style="font-size:1.3rem">${App.formatCurrency(todayRevenue)}</div>
+              <div class="stat-label">오늘 매출 (${todayRecords.length}건) &rarr;</div>
+            </div>
+          </div>
+          <a href="#revenue" class="stat-card gradient-green" style="text-decoration:none;color:inherit">
+            <div class="stat-icon green">&#x1F4C8;</div>
+            <div>
+              <div class="stat-value" style="font-size:1.3rem">${App.formatCurrency(monthRevenue)}</div>
+              <div class="stat-label">이번 달 매출 (${monthRecords.length}건) &rarr;</div>
+              ${revenueChange !== null ? `<div style="font-size:0.78rem;margin-top:2px;opacity:0.9">전월 대비 ${revenueChange >= 0 ? '+' : ''}${revenueChange}%</div>` : ''}
+              ${monthlyGoal > 0 ? (() => {
+                const pct = Math.min(Math.round((monthRevenue / monthlyGoal) * 100), 100);
+                return '<div style="margin-top:6px"><div style="height:6px;background:rgba(255,255,255,0.3);border-radius:3px;overflow:hidden"><div style="height:100%;width:' + pct + '%;background:var(--gradient-stop-light);border-radius:3px;transition:width 0.3s"></div></div><div style="font-size:0.78rem;margin-top:2px;opacity:0.9">월 목표 ' + pct + '% (' + App.formatCurrency(monthlyGoal) + ')</div></div>';
+              })() : ''}
+            </div>
+          </a>
+        </div>
+
+        <!-- 3. 미수금 (즉시 액션 필요) -->
         ${unpaidRecords.length > 0 ? `
         <div class="card dash-accordion" style="margin-bottom:20px;border:1.5px solid var(--danger)">
           <div class="card-header dash-accordion-toggle" style="background:var(--danger-light);cursor:pointer;user-select:none" data-target="dash-unpaid">
@@ -474,6 +521,30 @@ App.pages.dashboard = {
         </div>
         ` : ''}
 
+        ${vipUnvisitedAlerts.length > 0 ? `
+        <div class="card dash-accordion" style="margin-bottom:20px;border:1.5px solid var(--warning)">
+          <div class="card-header dash-accordion-toggle" style="background:var(--warning-light);cursor:pointer;user-select:none" data-target="dash-vip-unvisited">
+            <span class="card-title">&#x1F451; VIP 미방문 (30일+)</span>
+            <div style="display:flex;align-items:center;gap:8px">
+              <span class="badge badge-warning">${vipUnvisitedAlerts.length}명</span>
+              <span class="dash-chevron" style="transition:transform 0.2s;font-size:0.8rem">&#x25BC;</span>
+            </div>
+          </div>
+          <div class="card-body" id="dash-vip-unvisited" style="display:block">
+            ${vipUnvisitedAlerts.slice(0, 5).map(x => `
+              <div style="display:flex;align-items:center;gap:10px;padding:10px 0;border-bottom:1px solid var(--border-light)">
+                <a href="#customers/${x.customer.id}" style="flex:1;min-width:0;text-decoration:none;color:inherit">
+                  <div style="font-weight:700;font-size:0.95rem">${App.escapeHtml(App.getCustomerLabel(x.customer))}</div>
+                  <div style="font-size:0.78rem;color:var(--text-muted);margin-top:2px">${x.days}일 전 방문${x.customer.phone ? ' · ' + App.formatPhone(x.customer.phone) : ''}</div>
+                </a>
+                ${x.customer.phone ? `<a href="tel:${App.escapeHtml((x.customer.phone || '').replace(/\D/g, ''))}" class="btn btn-sm btn-secondary" onclick="event.stopPropagation()" title="전화 걸기" style="flex-shrink:0">전화</a>` : ''}
+              </div>
+            `).join('')}
+            ${vipUnvisitedAlerts.length > 5 ? `<div style="text-align:center;padding:10px 0 0;font-size:0.85rem;color:var(--text-muted)">총 ${vipUnvisitedAlerts.length}명 중 5명 표시</div>` : ''}
+          </div>
+        </div>
+        ` : ''}
+
         ${upcomingBirthdays.length > 0 ? `
         <div class="card dash-accordion" style="margin-bottom:20px">
           <div class="card-header dash-accordion-toggle" style="cursor:pointer;user-select:none" data-target="dash-birthday">
@@ -507,28 +578,6 @@ App.pages.dashboard = {
         </div>
         ` : ''}
 
-        <!-- 매출 요약 (페이지 하단 — 마감 시 확인) -->
-        <div class="stats-grid" style="margin-top:8px">
-          <div class="stat-card gradient-purple" style="cursor:pointer" onclick="App.pages.records?.showDailyReport()">
-            <div class="stat-icon purple">&#x1F4B5;</div>
-            <div>
-              <div class="stat-value" style="font-size:1.3rem">${App.formatCurrency(todayRevenue)}</div>
-              <div class="stat-label">오늘 매출 (${todayRecords.length}건) &rarr;</div>
-            </div>
-          </div>
-          <a href="#revenue" class="stat-card gradient-green" style="text-decoration:none;color:inherit">
-            <div class="stat-icon green">&#x1F4C8;</div>
-            <div>
-              <div class="stat-value" style="font-size:1.3rem">${App.formatCurrency(monthRevenue)}</div>
-              <div class="stat-label">이번 달 매출 (${monthRecords.length}건) &rarr;</div>
-              ${revenueChange !== null ? `<div style="font-size:0.78rem;margin-top:2px;opacity:0.9">전월 대비 ${revenueChange >= 0 ? '+' : ''}${revenueChange}%</div>` : ''}
-              ${monthlyGoal > 0 ? (() => {
-                const pct = Math.min(Math.round((monthRevenue / monthlyGoal) * 100), 100);
-                return '<div style="margin-top:6px"><div style="height:6px;background:rgba(255,255,255,0.3);border-radius:3px;overflow:hidden"><div style="height:100%;width:' + pct + '%;background:var(--gradient-stop-light);border-radius:3px;transition:width 0.3s"></div></div><div style="font-size:0.78rem;margin-top:2px;opacity:0.9">월 목표 ' + pct + '% (' + App.formatCurrency(monthlyGoal) + ')</div></div>';
-              })() : ''}
-            </div>
-          </a>
-        </div>
       `;
 
       // Storage quota monitoring (async, non-blocking)
