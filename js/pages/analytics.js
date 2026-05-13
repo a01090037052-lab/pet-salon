@@ -536,17 +536,17 @@ App.pages.analytics = {
           <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px">
             <div style="text-align:center;padding:14px 8px 10px;background:var(--bg);border-radius:var(--radius);position:relative;min-width:0">
               ${cmpCorner(totalRev, prevTotalRev)}
-              <div style="font-size:1.1rem;font-weight:800;color:var(--primary);line-height:1.2;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${App.formatCurrency(totalRev)}</div>
+              <div style="font-size:1.1rem;font-weight:800;color:var(--primary);line-height:1.2;overflow-wrap:anywhere">${App.formatCurrency(totalRev)}</div>
               <div style="font-size:0.78rem;color:var(--text-secondary);margin-top:4px;white-space:nowrap">매출</div>
             </div>
             <div style="text-align:center;padding:14px 8px 10px;background:var(--bg);border-radius:var(--radius);position:relative;min-width:0">
               ${cmpCorner(records.length, prevVisitCount)}
-              <div style="font-size:1.1rem;font-weight:800;color:var(--info);line-height:1.2;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${records.length}건</div>
+              <div style="font-size:1.1rem;font-weight:800;color:var(--info);line-height:1.2;overflow-wrap:anywhere">${records.length}건</div>
               <div style="font-size:0.78rem;color:var(--text-secondary);margin-top:4px;white-space:nowrap">방문</div>
             </div>
             <div style="text-align:center;padding:14px 8px 10px;background:var(--bg);border-radius:var(--radius);position:relative;min-width:0">
               ${cmpCorner(periodCustomerIds.length, prevCustomerCount)}
-              <div style="font-size:1.1rem;font-weight:800;color:var(--success);line-height:1.2;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${periodCustomerIds.length}명</div>
+              <div style="font-size:1.1rem;font-weight:800;color:var(--success);line-height:1.2;overflow-wrap:anywhere">${periodCustomerIds.length}명</div>
               <div style="font-size:0.78rem;color:var(--text-secondary);margin-top:4px;white-space:nowrap">고객</div>
             </div>
           </div>

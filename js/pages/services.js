@@ -55,6 +55,13 @@ App.pages.services = {
           <button class="btn btn-primary" id="btn-add-service">+ 새 서비스</button>
         </div>
       </div>
+      ${services.length > 0 ? `
+      <div class="search-box" style="margin-bottom:12px;max-width:none;position:relative">
+        <span class="search-icon">&#x1F50D;</span>
+        <input type="text" id="service-search" placeholder="서비스 이름 검색..." style="width:100%;min-height:44px;padding-right:60px">
+        <span id="service-search-count" style="display:none;position:absolute;right:14px;top:50%;transform:translateY(-50%);font-size:0.78rem;color:var(--text-muted);font-weight:700;pointer-events:none"></span>
+      </div>
+      ` : ''}
 
       ${services.length === 0 ? `
         <div class="empty-state" style="padding:60px 20px">
@@ -67,57 +74,68 @@ App.pages.services = {
           </div>
         </div>
       ` : ((list) => {
+        // 카테고리별 카운트 사전 계산
+        const catCounts = {};
+        list.forEach(s => {
+          if (s.isActive === false) return;
+          const c = s.category || 'grooming';
+          catCounts[c] = (catCounts[c] || 0) + 1;
+        });
+
         let lastCat = '';
         let inInactive = false;
         let html = '';
         list.forEach(s => {
           const isOff = s.isActive === false;
-          // 활성 → 비활성 구간 진입 시 섹션 구분 헤더
+          // 활성 → 비활성 구간 진입 시 섹션 구분 헤더 (fold 가능)
           if (isOff && !inInactive) {
             inInactive = true;
             lastCat = '__inactive__';
-            html += '<div style="font-weight:700;font-size:0.82rem;color:var(--text-muted);padding:18px 0 6px;border-bottom:2px solid var(--border-light);margin-bottom:6px">&#x26AA; 비활성 (' + inactive.length + '개)</div>';
+            html += '<div class="service-category-header" data-category="__inactive__" style="cursor:pointer;font-weight:700;font-size:0.85rem;color:var(--text-muted);padding:18px 8px 8px;border-bottom:2px solid var(--border-light);margin-bottom:8px;display:flex;align-items:center;justify-content:space-between">'
+                  + '<span>&#x26AA; 비활성 <span style="font-size:0.78rem;font-weight:500;margin-left:4px">' + inactive.length + '개</span></span>'
+                  + '<span class="cat-fold-icon" style="transition:transform 0.2s;font-size:0.7rem">&#x25BC;</span>'
+                  + '</div>';
           }
-          // 활성 서비스만 카테고리 헤더 노출
+          // 활성 서비스만 카테고리 헤더 노출 (fold 가능)
+          let cat = '__inactive__';
           if (!isOff) {
-            const cat = s.category || 'grooming';
+            cat = s.category || 'grooming';
             if (cat !== lastCat) {
               lastCat = cat;
-              html += '<div style="font-weight:700;font-size:0.82rem;color:var(--primary);padding:14px 0 6px;border-bottom:2px solid var(--primary-lighter);margin-bottom:6px">' + (this._categoryLabels[cat] || cat) + '</div>';
+              html += '<div class="service-category-header" data-category="' + cat + '" style="cursor:pointer;font-weight:700;font-size:0.85rem;color:var(--primary);padding:14px 8px 8px;border-bottom:2px solid var(--primary-lighter);margin-bottom:8px;display:flex;align-items:center;justify-content:space-between">'
+                    + '<span>' + (this._categoryLabels[cat] || cat) + ' <span style="color:var(--text-muted);font-size:0.78rem;font-weight:500;margin-left:4px">' + catCounts[cat] + '개</span></span>'
+                    + '<span class="cat-fold-icon" style="transition:transform 0.2s;font-size:0.7rem;color:var(--text-muted)">&#x25BC;</span>'
+                    + '</div>';
             }
           }
           const usage = getUsage(s);
-          const usageBadge = usage > 0 ? '<span class="badge badge-secondary" style="font-size:0.7rem;padding:2px 8px;margin-left:6px;color:var(--text-secondary)">누적 ' + usage + '회</span>' : '';
+          const usageTxt = usage > 0 ? '누적 ' + usage + '회' : '신규';
           // 가격 표시: 모든 사이즈 같으면 단일, 다르면 "소/중/대"
           const samePrices = (s.priceSmall || 0) === (s.priceMedium || 0) && (s.priceMedium || 0) === (s.priceLarge || 0);
           const priceDisplay = samePrices
             ? App.formatPriceShort(s.priceSmall || 0)
             : App.formatPriceShort(s.priceSmall) + ' / ' + App.formatPriceShort(s.priceMedium) + ' / ' + App.formatPriceShort(s.priceLarge);
-          // 가격 변경 이력 (30일 이상 전 변경 시만 표시)
-          let priceAgeBadge = '';
+          // 가격 변경 이력 (30일 이상 전 변경 시만)
+          let priceAgeTxt = '';
           if (s.priceChangedAt) {
             const days = Math.floor((Date.now() - new Date(s.priceChangedAt).getTime()) / (1000 * 60 * 60 * 24));
             if (days >= 30) {
-              const label = days >= 365 ? `${Math.floor(days/365)}년 전` : days >= 60 ? `${Math.floor(days/30)}개월 전` : `${Math.floor(days/30)}개월 전`;
-              priceAgeBadge = `<span style="font-size:0.68rem;color:var(--text-muted);margin-left:6px">· ${label} 변경</span>`;
+              priceAgeTxt = days >= 365 ? Math.floor(days/365) + '년 전 변경' : Math.floor(days/30) + '개월 전 변경';
             }
           }
           const isFav = !!s.favorite;
-          // 좌측 컬러바: 즐겨찾기=노랑, 비활성=회색, 일반=투명
           const barStyle = isOff ? 'border-left:4px solid var(--border);'
                                  : isFav ? 'border-left:4px solid #F59E0B;'
                                  : '';
-          html += '<div class="service-row" data-id="' + s.id + '" style="display:flex;align-items:center;gap:6px;padding:12px;background:var(--bg-white);border:1px solid var(--border-light);' + barStyle + 'border-radius:var(--radius);box-shadow:var(--shadow-xs);margin-bottom:6px;' + (isOff ? 'opacity:0.55;' : '') + '">' +
-            '<button class="btn-icon btn-favorite-service" data-id="' + s.id + '" title="' + (isFav ? '즐겨찾기 해제' : '즐겨찾기') + '" style="font-size:1.05rem;color:' + (isFav ? '#F59E0B' : 'var(--border)') + ';flex-shrink:0">' + (isFav ? '&#x2605;' : '&#x2606;') + '</button>' +
-            '<div style="flex:1;min-width:0">' +
-              '<div style="font-weight:800;font-size:1rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">' + App.escapeHtml(s.name) + usageBadge + '</div>' +
-              '<div class="service-price-display" data-id="' + s.id + '" data-same="' + samePrices + '" style="font-size:0.82rem;color:var(--text-secondary);margin-top:3px;cursor:pointer;display:inline-block;padding:2px 6px;border-radius:4px;border:1px dashed transparent;font-weight:600" title="클릭하여 빠르게 수정">' + priceDisplay + ' <span style="opacity:0.5;font-size:0.7rem">&#x270F;</span></div>' + priceAgeBadge +
-            '</div>' +
-            '<button class="btn-icon btn-duplicate-service" data-id="' + s.id + '" title="복제" style="font-size:0.95rem;color:var(--info)">&#x1F4CB;</button>' +
-            '<button class="btn-icon btn-edit-service" data-id="' + s.id + '" title="수정" style="font-size:0.95rem">&#x270F;</button>' +
-            '<button class="btn-icon btn-toggle-service" data-id="' + s.id + '" title="' + (!isOff ? '비활성화' : '활성화') + '" style="font-size:0.95rem">' + (!isOff ? '&#x1F7E2;' : '&#x26AA;') + '</button>' +
-            '<button class="btn-icon btn-delete-service text-danger" data-id="' + s.id + '" title="삭제" style="font-size:0.95rem">&#x1F5D1;</button>' +
-          '</div>';
+          html += '<div class="service-row" data-id="' + s.id + '" data-category="' + cat + '" data-search="' + App.escapeHtml((s.name || '').toLowerCase()) + '" style="display:flex;align-items:center;gap:8px;padding:14px 12px;background:var(--bg-white);border:1px solid var(--border-light);' + barStyle + 'border-radius:var(--radius);box-shadow:var(--shadow-xs);margin-bottom:6px;cursor:pointer;' + (isOff ? 'opacity:0.55;' : '') + '">'
+                + '<button class="btn-favorite-service" data-id="' + s.id + '" title="' + (isFav ? '즐겨찾기 해제' : '즐겨찾기') + '" onclick="event.stopPropagation()" style="background:none;border:none;cursor:pointer;font-size:1.3rem;color:' + (isFav ? '#F59E0B' : 'var(--border)') + ';flex-shrink:0;width:36px;height:36px;padding:0;display:flex;align-items:center;justify-content:center">' + (isFav ? '&#x2605;' : '&#x2606;') + '</button>'
+                + '<div style="flex:1;min-width:0">'
+                +   '<div style="font-size:1.05rem;font-weight:800;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">' + App.escapeHtml(s.name) + '</div>'
+                +   '<div style="font-size:0.78rem;color:var(--text-muted);margin-top:3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">' + usageTxt + (priceAgeTxt ? ' · ' + priceAgeTxt : '') + '</div>'
+                + '</div>'
+                + '<div class="service-price-display" data-id="' + s.id + '" data-same="' + samePrices + '" onclick="event.stopPropagation()" style="text-align:right;flex-shrink:0;font-size:1rem;font-weight:800;color:var(--primary);white-space:nowrap;cursor:pointer;padding:6px 8px;border-radius:6px" title="클릭하여 빠르게 수정">' + priceDisplay + '</div>'
+                + '<button class="btn-service-menu" data-id="' + s.id + '" title="더보기" onclick="event.stopPropagation()" style="background:none;border:none;cursor:pointer;font-size:1.4rem;color:var(--text-muted);padding:4px;flex-shrink:0;width:36px;height:36px;display:flex;align-items:center;justify-content:center;line-height:1">&#x22EF;</button>'
+                + '</div>';
         });
         return html;
       })(sorted)}
@@ -127,21 +145,14 @@ App.pages.services = {
   async init() {
     document.getElementById('btn-add-service')?.addEventListener('click', () => this.showForm());
 
-    document.querySelectorAll('.btn-edit-service').forEach(btn => {
-      btn.addEventListener('click', () => this.showForm(Number(btn.dataset.id)));
+    // 카드 전체 클릭 → 수정 모달 (자식 버튼은 stopPropagation 처리됨)
+    document.querySelectorAll('.service-row').forEach(row => {
+      row.addEventListener('click', () => this.showForm(Number(row.dataset.id)));
     });
 
-    document.querySelectorAll('.btn-delete-service').forEach(btn => {
-      btn.addEventListener('click', () => this.deleteService(Number(btn.dataset.id)));
-    });
-
-    document.querySelectorAll('.btn-toggle-service').forEach(btn => {
-      btn.addEventListener('click', () => this.toggleService(Number(btn.dataset.id)));
-    });
-
-    // 복제 버튼 (비슷한 서비스 빠른 생성)
-    document.querySelectorAll('.btn-duplicate-service').forEach(btn => {
-      btn.addEventListener('click', () => this.duplicateService(Number(btn.dataset.id)));
+    // ⋯ 더보기 메뉴 (수정/복제/활성토글/삭제)
+    document.querySelectorAll('.btn-service-menu').forEach(btn => {
+      btn.addEventListener('click', () => this.showServiceMenu(Number(btn.dataset.id)));
     });
 
     // 즐겨찾기 토글
@@ -149,17 +160,79 @@ App.pages.services = {
       btn.addEventListener('click', () => this.toggleFavoriteService(Number(btn.dataset.id)));
     });
 
-    // 인라인 가격 빠른 편집
+    // 가격 빠른 편집 (가격 텍스트 클릭)
     document.querySelectorAll('.service-price-display').forEach(el => {
       el.addEventListener('click', () => this.openInlinePriceEdit(el));
-      // hover/focus 시각 피드백
-      el.addEventListener('mouseenter', () => { el.style.borderColor = 'var(--border)'; el.style.background = 'var(--bg)'; });
-      el.addEventListener('mouseleave', () => { el.style.borderColor = 'transparent'; el.style.background = ''; });
+      el.addEventListener('mouseenter', () => { el.style.background = 'var(--bg)'; });
+      el.addEventListener('mouseleave', () => { el.style.background = ''; });
     });
+
+    // 카테고리 fold/expand
+    document.querySelectorAll('.service-category-header').forEach(h => {
+      h.addEventListener('click', () => {
+        const cat = h.dataset.category;
+        const collapsed = h.classList.toggle('collapsed');
+        const icon = h.querySelector('.cat-fold-icon');
+        if (icon) icon.style.transform = collapsed ? 'rotate(-90deg)' : '';
+        document.querySelectorAll('.service-row[data-category="' + cat + '"]').forEach(c => {
+          c.style.display = collapsed ? 'none' : '';
+        });
+      });
+    });
+
+    // 서비스 이름 검색 (debounced)
+    const _debouncedSearch = App.debounce((val) => {
+      const q = (val || '').trim().toLowerCase();
+      let visible = 0;
+      document.querySelectorAll('.service-row').forEach(row => {
+        const match = !q || (row.dataset.search || '').includes(q);
+        row.style.display = match ? '' : 'none';
+        if (match) visible++;
+      });
+      // 검색 중에는 카테고리 헤더 숨김 (결과 한 곳에 모이게)
+      document.querySelectorAll('.service-category-header').forEach(h => {
+        h.style.display = q ? 'none' : '';
+      });
+      const countEl = document.getElementById('service-search-count');
+      if (countEl) {
+        countEl.style.display = q ? '' : 'none';
+        countEl.textContent = q ? visible + '개' : '';
+      }
+    }, 200);
+    document.getElementById('service-search')?.addEventListener('input', (e) => _debouncedSearch(e.target.value));
 
     document.getElementById('btn-init-services')?.addEventListener('click', () => this.initDefaultServices());
     document.getElementById('btn-init-services-empty')?.addEventListener('click', () => this.initDefaultServices());
     document.getElementById('btn-bulk-price')?.addEventListener('click', () => this.showBulkPriceModal());
+  },
+
+  // ⋯ 메뉴 모달 (수정 / 복제 / 활성토글 / 삭제)
+  async showServiceMenu(serviceId) {
+    const service = await DB.get('services', serviceId);
+    if (!service) return;
+    const isOff = service.isActive === false;
+    App.showModal({
+      title: App.escapeHtml(service.name),
+      hideFooter: true,
+      content: `
+        <div style="display:flex;flex-direction:column;gap:8px">
+          <button class="btn btn-secondary svc-menu-btn" data-action="edit" style="width:100%;text-align:left;min-height:48px;justify-content:flex-start">&#x270F; 수정</button>
+          <button class="btn btn-secondary svc-menu-btn" data-action="duplicate" style="width:100%;text-align:left;min-height:48px;justify-content:flex-start">&#x1F4CB; 복제</button>
+          <button class="btn btn-secondary svc-menu-btn" data-action="toggle" style="width:100%;text-align:left;min-height:48px;justify-content:flex-start">${isOff ? '&#x1F7E2; 활성화' : '&#x26AA; 비활성화'}</button>
+          <button class="btn btn-danger svc-menu-btn" data-action="delete" style="width:100%;text-align:left;min-height:48px;margin-top:6px;justify-content:flex-start">&#x1F5D1; 삭제</button>
+        </div>
+      `
+    });
+    document.querySelectorAll('.svc-menu-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const action = btn.dataset.action;
+        App.closeModal();
+        if (action === 'edit') this.showForm(serviceId);
+        else if (action === 'duplicate') this.duplicateService(serviceId);
+        else if (action === 'toggle') this.toggleService(serviceId);
+        else if (action === 'delete') this.deleteService(serviceId);
+      });
+    });
   },
 
   // 가격 일괄 조정 — 분기/시즌 가격 인상 시 한 번에 처리
