@@ -1285,9 +1285,10 @@ App.pages.records = {
     const shopAddress = await DB.getSetting('shopAddress') || '';
 
     const serviceItems = (record.serviceIds || []).map(id => serviceMap[id]).filter(Boolean);
-    // 새 형식 처리
+    // 새 형식 처리 — record.service(string)을 service 객체로 매칭 시도 (포함 항목 자동 노출)
     if (record.service && serviceItems.length === 0) {
-      serviceItems.push(record.service);
+      const matched = services.find(s => s.name === record.service);
+      serviceItems.push(matched || record.service);
       if (record.addons) record.addons.forEach(a => serviceItems.push(a));
     }
     const totalPrice = Number(record.totalPrice) || 0;
@@ -1334,7 +1335,9 @@ App.pages.records = {
             const sizeType = pet?.size || (pet?.weight ? (pet.weight < 7 ? 'small' : pet.weight < 15 ? 'medium' : 'large') : 'small');
             const priceKey = 'price' + sizeType.charAt(0).toUpperCase() + sizeType.slice(1);
             const price = Number(s[priceKey]) || 0;
-            return `<div class="receipt-row"><span>${App.escapeHtml(s.name)}</span><span>${App.formatCurrency(price)}</span></div>`;
+            const included = Array.isArray(s.includedItems) ? s.includedItems : [];
+            const includedRow = included.length > 0 ? `<div style="padding-left:8px;font-size:11px;color:var(--text-secondary)">└ ${included.map(i => App.escapeHtml(i)).join(' · ')}</div>` : '';
+            return `<div class="receipt-row"><span>${App.escapeHtml(s.name)}</span><span>${App.formatCurrency(price)}</span></div>${includedRow}`;
           }).join('') : '<div style="color:var(--text-muted)">서비스 미지정</div>'}
           <hr class="receipt-divider">
           <div class="receipt-row"><span>소계</span><span>${App.formatCurrency(totalPrice)}</span></div>

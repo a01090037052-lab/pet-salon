@@ -553,9 +553,25 @@ App.pages.services = {
           </div>
         </div>
 
+        <!-- 포함 항목 — 이 서비스에 기본 포함되는 작업 -->
         <div class="form-group">
-          <label class="form-label">설명 <span style="color:var(--text-muted);font-size:0.78rem">(선택)</span></label>
-          <textarea id="f-description" placeholder="서비스 내용 메모">${App.escapeHtml(service.description || '')}</textarea>
+          <label class="form-label">포함 항목 <span style="color:var(--text-muted);font-size:0.78rem">(영수증·사진 카드에 자동 표시)</span></label>
+          <div id="f-included-chips" style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:8px">
+            ${['발톱 정리','귀청소','항문샘','발바닥','위생 미용','향수'].map(item => {
+              const active = (service.includedItems || []).includes(item);
+              return `<button type="button" class="payment-chip${active ? ' active' : ''}" data-included="${item}">${item}</button>`;
+            }).join('')}
+          </div>
+          <input type="text" id="f-included-custom" placeholder="기타 항목 입력 후 Enter (예: 마사지, 스파)" style="margin-bottom:6px;font-size:0.88rem">
+          <div id="f-included-custom-list" style="display:flex;gap:4px;flex-wrap:wrap">
+            ${(service.includedItems || []).filter(i => !['발톱 정리','귀청소','항문샘','발바닥','위생 미용','향수'].includes(i)).map(i => `<span class="badge badge-info custom-included-tag" data-item="${App.escapeHtml(i)}" style="cursor:pointer;padding:6px 10px" title="클릭하여 제거">${App.escapeHtml(i)} ×</span>`).join('')}
+          </div>
+          <input type="hidden" id="f-includedItems" value="${App.escapeHtml((service.includedItems || []).join('|'))}">
+        </div>
+
+        <div class="form-group">
+          <label class="form-label">설명 <span style="color:var(--text-muted);font-size:0.78rem">(선택, 내부 메모)</span></label>
+          <textarea id="f-description" placeholder="서비스 내부 메모">${App.escapeHtml(service.description || '')}</textarea>
         </div>
       `,
       onSave: () => this.saveService(id)
@@ -568,6 +584,36 @@ App.pages.services = {
         btn.classList.add('active');
         document.getElementById('f-category').value = btn.dataset.value;
       });
+    });
+
+    // 포함 항목 chips 핸들러 + 자유 입력
+    const STANDARD_INCLUDED = ['발톱 정리','귀청소','항문샘','발바닥','위생 미용','향수'];
+    const updateIncludedHidden = () => {
+      const checked = Array.from(document.querySelectorAll('#f-included-chips .payment-chip.active')).map(b => b.dataset.included);
+      const custom = Array.from(document.querySelectorAll('#f-included-custom-list .custom-included-tag')).map(b => b.dataset.item);
+      document.getElementById('f-includedItems').value = [...checked, ...custom].join('|');
+    };
+    document.querySelectorAll('#f-included-chips .payment-chip').forEach(btn => {
+      btn.addEventListener('click', () => { btn.classList.toggle('active'); updateIncludedHidden(); });
+    });
+    document.getElementById('f-included-custom')?.addEventListener('keydown', (e) => {
+      if (e.key !== 'Enter') return;
+      e.preventDefault();
+      const val = e.target.value.trim();
+      if (!val || STANDARD_INCLUDED.includes(val)) { e.target.value = ''; return; }
+      // 중복 방지
+      const existing = Array.from(document.querySelectorAll('#f-included-custom-list .custom-included-tag')).map(b => b.dataset.item);
+      if (existing.includes(val)) { e.target.value = ''; return; }
+      const list = document.getElementById('f-included-custom-list');
+      list.insertAdjacentHTML('beforeend', `<span class="badge badge-info custom-included-tag" data-item="${App.escapeHtml(val)}" style="cursor:pointer;padding:6px 10px" title="클릭하여 제거">${App.escapeHtml(val)} ×</span>`);
+      e.target.value = '';
+      // 새로 추가된 tag 클릭 핸들러
+      list.lastElementChild.addEventListener('click', (ev) => { ev.target.remove(); updateIncludedHidden(); });
+      updateIncludedHidden();
+    });
+    // 기존 자유 입력 태그 제거 핸들러
+    document.querySelectorAll('#f-included-custom-list .custom-included-tag').forEach(tag => {
+      tag.addEventListener('click', () => { tag.remove(); updateIncludedHidden(); });
     });
 
     // 사이즈별 가격 토글 핸들러 (두 체크박스 sync)
@@ -627,10 +673,12 @@ App.pages.services = {
     }
 
     const category = document.getElementById('f-category')?.value || 'grooming';
+    const includedItemsStr = document.getElementById('f-includedItems')?.value || '';
+    const includedItems = includedItemsStr.split('|').map(s => s.trim()).filter(Boolean);
 
     if (!name) { App.highlightField('f-name'); App.showToast('서비스명을 입력해주세요.', 'error'); return; }
 
-    const data = { name, description, priceSmall, priceMedium, priceLarge, category, isActive: true };
+    const data = { name, description, priceSmall, priceMedium, priceLarge, category, isActive: true, includedItems };
 
     if (id) {
       const existing = await DB.get('services', id);
