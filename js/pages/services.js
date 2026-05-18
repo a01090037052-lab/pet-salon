@@ -133,7 +133,7 @@ App.pages.services = {
                 +   '<div style="font-size:1.05rem;font-weight:800;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">' + App.escapeHtml(s.name) + '</div>'
                 +   '<div style="font-size:0.78rem;color:var(--text-muted);margin-top:3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">' + usageTxt + (priceAgeTxt ? ' · ' + priceAgeTxt : '') + '</div>'
                 + '</div>'
-                + '<div class="service-price-display" data-id="' + s.id + '" data-same="' + samePrices + '" onclick="event.stopPropagation()" style="text-align:right;flex-shrink:0;font-size:1rem;font-weight:800;color:var(--primary);white-space:nowrap;cursor:pointer;padding:6px 8px;border-radius:6px" title="클릭하여 빠르게 수정">' + priceDisplay + '</div>'
+                + '<div class="service-price-display" data-id="' + s.id + '" data-same="' + samePrices + '" style="text-align:right;flex-shrink:0;font-size:1rem;font-weight:800;color:var(--primary);white-space:nowrap;padding:6px 8px">' + priceDisplay + '</div>'
                 + '<button class="btn-service-menu" data-id="' + s.id + '" title="더보기" onclick="event.stopPropagation()" style="background:none;border:none;cursor:pointer;font-size:1.4rem;color:var(--text-muted);padding:4px;flex-shrink:0;width:36px;height:36px;display:flex;align-items:center;justify-content:center;line-height:1">&#x22EF;</button>'
                 + '</div>';
         });
@@ -160,12 +160,7 @@ App.pages.services = {
       btn.addEventListener('click', () => this.toggleFavoriteService(Number(btn.dataset.id)));
     });
 
-    // 가격 빠른 편집 (가격 텍스트 클릭)
-    document.querySelectorAll('.service-price-display').forEach(el => {
-      el.addEventListener('click', () => this.openInlinePriceEdit(el));
-      el.addEventListener('mouseenter', () => { el.style.background = 'var(--bg)'; });
-      el.addEventListener('mouseleave', () => { el.style.background = ''; });
-    });
+    // 가격 영역은 카드 일관성을 위해 클릭 시 수정 모달 (인라인 편집 제거 — 카드 폭 변형 방지)
 
     // 카테고리 fold/expand
     document.querySelectorAll('.service-category-header').forEach(h => {
