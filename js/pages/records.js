@@ -1781,27 +1781,43 @@ App.pages.records = {
 
     // ===== Layout D: single (1컷 증명사진) =====
     else if (layout === 'single') {
-      const W = 450, H = 650;
+      // ===== 폴라로이드 모던 미니멀 (1080×1080, 정사각, 옅은 크림 default + 사진 큼) =====
+      const W = 1080, H = 1080;
       canvas.width = W; canvas.height = H;
       ctx = canvas.getContext('2d');
-      ctx.fillStyle = bgColor; ctx.fillRect(0, 0, W, H);
 
-      const pad = 25;
-      const photoW = W - pad * 2; // 400
-      const photoH = 500;
+      // 배경 — 사용자 커스텀 색이 있으면 그 색, 아니면 옅은 크림 (모던 폴라로이드 기본)
+      const polarBg = (s.template === 'custom' && s.customBgColor) ? s.customBgColor : '#FAFAF7';
+      ctx.fillStyle = polarBg; ctx.fillRect(0, 0, W, H);
+      if (_customBgImg) this._drawImageCover(ctx, _customBgImg, 0, 0, W, H);
+
+      // 사진 크기: 모던(default 920×920, pad 80) / 미니멀(940×940, pad 70)
+      const isPolaroidMinimal = s.polaroidSize === 'minimal';
+      const pad = isPolaroidMinimal ? 70 : 80;
+      const photoS = W - pad * 2;
       const mainImg = imgAfter || imgBefore;
 
-      _drawPhoto(ctx, mainImg, pad, pad, photoW, photoH, 8);
+      // 사진 아래 살짝 그림자
+      ctx.save();
+      ctx.shadowColor = 'rgba(0,0,0,0.12)';
+      ctx.shadowBlur = 28;
+      ctx.shadowOffsetY = 8;
+      ctx.fillStyle = '#000';
+      ctx.fillRect(pad, pad, photoS, photoS);
+      ctx.restore();
 
-      // Pet name + date at bottom
-      const bottomY = pad + photoH + 28;
-      ctx.fillStyle = textColor; ctx.font = 'bold 18px ' + fontFamily; ctx.textAlign = 'center';
-      const labelParts = [petName];
-      if (s.showDate) labelParts.push(dateStr);
-      ctx.fillText(labelParts.join(' | '), W / 2, bottomY);
+      // 사진
+      _drawPhoto(ctx, mainImg, pad, pad, photoS, photoS, 0);
 
-      ctx.fillStyle = textSub; ctx.font = '13px ' + fontFamily;
-      ctx.fillText(shopName, W / 2, bottomY + 24);
+      // 하단 텍스트 (한 줄, 자유 텍스트 우선 — 헤드라인 비어있으면 반려견 이름)
+      const remainingY = pad + photoS;
+      const textCenterY = remainingY + (H - remainingY) / 2 + 10;
+      const polarText = _hasHeadline ? headline : petName;
+      const polarTextColor = (s.template === 'custom' && s.customTextColor) ? s.customTextColor : '#1A1A1A';
+      ctx.fillStyle = polarTextColor;
+      ctx.font = 'bold 36px ' + fontFamily;
+      ctx.textAlign = 'center';
+      ctx.fillText(polarText, W / 2, textCenterY);
     }
 
     // ===== Layout E: polaroid (폴라로이드) =====
@@ -2159,7 +2175,7 @@ App.pages.records = {
     feed: { name: '피드 4:5', icon: '📷', photos: 1 },
     story: { name: '스토리', icon: '📱', photos: 1 },
     strip2: { name: '2컷', icon: '🎬', photos: 2 },
-    single: { name: '1컷', icon: '🖼', photos: 1 }
+    single: { name: '폴라로이드', icon: '◻️', photos: 1 }
   },
   _CARD_THEMES: {
     classic: { name: '클래식', color: '#1A1A1A', emoji: '🤍' },
@@ -2247,17 +2263,17 @@ App.pages.records = {
         <div id="card-photo-controls-${i}" style="display:none;margin-top:6px;font-size:0.7rem">
           <div class="photo-slider-row" style="display:flex;align-items:center;gap:6px;margin-bottom:3px">
             <span style="color:var(--text-muted);flex-shrink:0;min-width:30px">좌↔우</span>
-            <input type="range" min="-50" max="50" step="2" value="0" class="card-x-slider" data-slot="${i}" style="flex:1;height:24px;min-height:0">
+            <input type="range" min="-50" max="50" step="2" value="0" class="card-x-slider" data-slot="${i}" style="flex:1;height:36px;min-height:0;cursor:pointer">
             <span id="card-x-label-${i}" style="color:var(--text-muted);flex-shrink:0;min-width:36px;text-align:right">0%</span>
           </div>
           <div class="photo-slider-row" style="display:flex;align-items:center;gap:6px;margin-bottom:3px">
             <span style="color:var(--text-muted);flex-shrink:0;min-width:30px">위↕아</span>
-            <input type="range" min="-50" max="50" step="2" value="0" class="card-y-slider" data-slot="${i}" style="flex:1;height:24px;min-height:0">
+            <input type="range" min="-50" max="50" step="2" value="0" class="card-y-slider" data-slot="${i}" style="flex:1;height:36px;min-height:0;cursor:pointer">
             <span id="card-y-label-${i}" style="color:var(--text-muted);flex-shrink:0;min-width:36px;text-align:right">0%</span>
           </div>
           <div class="photo-slider-row" style="display:flex;align-items:center;gap:6px;margin-bottom:3px">
             <span style="color:var(--text-muted);flex-shrink:0;min-width:30px">줌</span>
-            <input type="range" min="100" max="200" step="5" value="100" class="card-zoom-slider" data-slot="${i}" style="flex:1;height:24px;min-height:0">
+            <input type="range" min="100" max="200" step="5" value="100" class="card-zoom-slider" data-slot="${i}" style="flex:1;height:36px;min-height:0;cursor:pointer">
             <span id="card-zoom-label-${i}" style="color:var(--text-muted);flex-shrink:0;min-width:36px;text-align:right">100%</span>
           </div>
           <button type="button" class="card-reset-btn" data-slot="${i}" style="width:100%;margin-top:4px;padding:4px;font-size:0.7rem;border:1px solid var(--border);border-radius:4px;background:var(--bg-white);color:var(--text-muted);cursor:pointer">초기화</button>
@@ -2442,6 +2458,26 @@ App.pages.records = {
           <div style="font-size:0.75rem;color:var(--text-muted);margin-top:6px">&#x1F4A1; 인스타 피드·스토리 레이아웃에 적용. 이모지 사용 가능</div>
         </div>
 
+        <!-- 표시 항목 (클래식·필름·파스텔·다크 공통) -->
+        <div class="form-group" style="padding:12px;background:var(--bg);border-radius:var(--radius);margin-bottom:12px">
+          <label class="form-label" style="font-size:0.82rem;margin-bottom:6px">표시 항목 <span style="color:var(--text-muted);font-weight:400">(카드에 자동 표시할 정보)</span></label>
+          <div style="display:flex;gap:12px;flex-wrap:wrap">
+            <label class="checkbox-label" style="font-size:0.82rem;min-height:auto;padding:4px 0"><input type="checkbox" id="card-show-service" ${saved.showService ? 'checked' : ''}> 서비스명</label>
+            <label class="checkbox-label" style="font-size:0.82rem;min-height:auto;padding:4px 0"><input type="checkbox" id="card-show-nextvisit" ${saved.showNextVisit ? 'checked' : ''}> 다음 방문일</label>
+          </div>
+          <div style="font-size:0.75rem;color:var(--text-muted);margin-top:6px">&#x1F4A1; 다음 방문일은 손님의 재예약을 자연스럽게 유도</div>
+        </div>
+
+        <!-- 폴라로이드 사진 크기 (폴라로이드 레이아웃 선택 시만 표시) -->
+        <div id="polaroid-options" class="form-group" style="display:${selectedLayout === 'single' ? 'block' : 'none'};padding:12px;background:var(--bg);border-radius:var(--radius);margin-bottom:12px">
+          <label class="form-label" style="font-size:0.82rem;margin-bottom:6px">사진 크기 <span style="color:var(--text-muted);font-weight:400">(폴라로이드)</span></label>
+          <div style="display:flex;gap:8px">
+            <label class="checkbox-label" style="flex:1;font-size:0.85rem;min-height:auto;padding:8px;cursor:pointer;border:1.5px solid ${(saved.polaroidSize || 'modern') === 'modern' ? 'var(--primary)' : 'var(--border)'};border-radius:8px"><input type="radio" name="polaroidSize" value="modern" ${(saved.polaroidSize || 'modern') === 'modern' ? 'checked' : ''} style="margin-right:6px"> 모던 (사진 920px)</label>
+            <label class="checkbox-label" style="flex:1;font-size:0.85rem;min-height:auto;padding:8px;cursor:pointer;border:1.5px solid ${saved.polaroidSize === 'minimal' ? 'var(--primary)' : 'var(--border)'};border-radius:8px"><input type="radio" name="polaroidSize" value="minimal" ${saved.polaroidSize === 'minimal' ? 'checked' : ''} style="margin-right:6px"> 미니멀 (사진 940px)</label>
+          </div>
+          <div style="font-size:0.75rem;color:var(--text-muted);margin-top:6px">&#x1F4A1; 미니멀은 사진을 더 크게 — 사진 강조</div>
+        </div>
+
         <!-- 커스텀 테마 옵션 (커스텀 선택 시만 표시) -->
         <div id="card-custom-panel" style="display:${selectedTheme === 'custom' ? 'block' : 'none'};padding:12px;background:var(--bg);border-radius:var(--radius);margin-bottom:12px">
           <div style="margin-bottom:10px">
@@ -2504,6 +2540,11 @@ App.pages.records = {
         const footerInput = (document.getElementById('card-footer')?.value || '').trim();
         if (footerInput) settings.footerMessage = footerInput;
         else settings.footerMessage = settings.footerMessage || '감사합니다 ♥';
+        // 표시 항목 (서비스명·다음 방문일)
+        settings.showService = document.getElementById('card-show-service')?.checked || false;
+        settings.showNextVisit = document.getElementById('card-show-nextvisit')?.checked || false;
+        // 폴라로이드 사진 크기 (모던/미니멀)
+        settings.polaroidSize = document.querySelector('input[name="polaroidSize"]:checked')?.value || 'modern';
         // 커스텀 테마 설정 저장
         if (theme === 'custom') {
           settings.customBgColor = document.getElementById('card-custom-bg')?.value || '#FFFFFF';
@@ -2525,12 +2566,23 @@ App.pages.records = {
 
     // Wire up
     setTimeout(() => {
-      // 레이아웃 선택 → 사진 슬롯 동적 변경
+      // 레이아웃 선택 → 사진 슬롯 동적 변경 + 폴라로이드 옵션 토글
       document.querySelectorAll('#card-pick-layout .card-pick-btn').forEach(btn => {
         btn.addEventListener('click', () => {
           document.querySelectorAll('#card-pick-layout .card-pick-btn').forEach(b => b.classList.remove('active'));
           btn.classList.add('active');
           this._renderPhotoSlots(Number(btn.dataset.photos));
+          // 폴라로이드(single)일 때만 사진 크기 옵션 표시
+          const polarOpts = document.getElementById('polaroid-options');
+          if (polarOpts) polarOpts.style.display = btn.dataset.key === 'single' ? 'block' : 'none';
+        });
+      });
+      // 폴라로이드 라디오 선택 시 시각 피드백
+      document.querySelectorAll('input[name="polaroidSize"]').forEach(radio => {
+        radio.addEventListener('change', () => {
+          document.querySelectorAll('input[name="polaroidSize"]').forEach(r => {
+            r.closest('label').style.borderColor = r.checked ? 'var(--primary)' : 'var(--border)';
+          });
         });
       });
       // 초기 사진 슬롯 렌더
@@ -2666,7 +2718,7 @@ App.pages.records = {
           hideFooter: true,
           content: `
             <div style="text-align:center">
-              <div style="max-height:50vh;overflow:auto;margin-bottom:16px;border-radius:var(--radius);border:1px solid var(--border-light)">
+              <div style="max-height:70vh;overflow:auto;margin-bottom:16px;border-radius:var(--radius);border:1px solid var(--border-light)">
                 <img src="${url}" style="width:100%;display:block" alt="미용 카드">
               </div>
               <div style="display:flex;flex-direction:column;gap:10px;max-width:300px;margin:0 auto">

@@ -867,7 +867,7 @@
         <h3>카드 만들기</h3>
         <ol>
           <li>미용 기록 목록에서 📸 버튼을 클릭합니다.</li>
-          <li><strong>레이아웃</strong>을 선택합니다: 네컷 세로 · 피드(4:5) · 스토리(9:16) · 2컷 · 1컷</li>
+          <li><strong>레이아웃</strong>을 선택합니다: 네컷 세로 · 피드(4:5) · 스토리(9:16) · 2컷 · 폴라로이드(1:1)</li>
           <li>사진을 선택합니다 (레이아웃에 따라 1~4장).</li>
           <li><strong>테마</strong>를 선택합니다: 클래식 · 필름 · 파스텔 · 다크 · 🎨커스텀</li>
           <li>"카드 생성" → 미리보기 확인 → 공유/고객전송/다운로드</li>
@@ -885,12 +885,83 @@
         <h3>매장 로고</h3>
         <p>설정 > 매장 관리에서 로고를 등록하면 카드 상단에 자동 삽입됩니다. PNG 투명 배경 권장.</p>
 
-        <h3>배경 이미지 만들기</h3>
+        <h3>프레임 제작 가이드 (피그마·캔바 등)</h3>
+        <p>커스텀 배경 이미지를 만들 때는 각 레이아웃에 맞는 정확한 픽셀 크기로 작업하세요.</p>
+
+        <h4>레이아웃별 정확한 픽셀 크기</h4>
+        <table style="width:100%;border-collapse:collapse;margin:8px 0">
+          <thead>
+            <tr style="background:#f3f4f6">
+              <th style="padding:8px;text-align:left;border:1px solid #e5e7eb">레이아웃</th>
+              <th style="padding:8px;text-align:left;border:1px solid #e5e7eb">비율</th>
+              <th style="padding:8px;text-align:left;border:1px solid #e5e7eb">권장 크기</th>
+              <th style="padding:8px;text-align:left;border:1px solid #e5e7eb">용도</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr><td style="padding:8px;border:1px solid #e5e7eb">인스타 피드</td><td style="padding:8px;border:1px solid #e5e7eb">4:5</td><td style="padding:8px;border:1px solid #e5e7eb"><strong>1080 × 1350</strong></td><td style="padding:8px;border:1px solid #e5e7eb">인스타 게시물</td></tr>
+            <tr><td style="padding:8px;border:1px solid #e5e7eb">인스타 스토리</td><td style="padding:8px;border:1px solid #e5e7eb">9:16</td><td style="padding:8px;border:1px solid #e5e7eb"><strong>1080 × 1920</strong></td><td style="padding:8px;border:1px solid #e5e7eb">인스타·카톡 스토리</td></tr>
+            <tr><td style="padding:8px;border:1px solid #e5e7eb">폴라로이드 (모던)</td><td style="padding:8px;border:1px solid #e5e7eb">1:1</td><td style="padding:8px;border:1px solid #e5e7eb"><strong>1080 × 1080</strong></td><td style="padding:8px;border:1px solid #e5e7eb">사진 920×920 · 균등 80px 여백</td></tr>
+            <tr><td style="padding:8px;border:1px solid #e5e7eb">폴라로이드 (미니멀)</td><td style="padding:8px;border:1px solid #e5e7eb">1:1</td><td style="padding:8px;border:1px solid #e5e7eb"><strong>1080 × 1080</strong></td><td style="padding:8px;border:1px solid #e5e7eb">사진 940×940 · 70px 여백 (사진 최대)</td></tr>
+            <tr><td style="padding:8px;border:1px solid #e5e7eb">2컷</td><td style="padding:8px;border:1px solid #e5e7eb">1:2.25</td><td style="padding:8px;border:1px solid #e5e7eb"><strong>1080 × 2430</strong></td><td style="padding:8px;border:1px solid #e5e7eb">카톡 Before/After</td></tr>
+            <tr><td style="padding:8px;border:1px solid #e5e7eb">네컷 세로</td><td style="padding:8px;border:1px solid #e5e7eb">1:3</td><td style="padding:8px;border:1px solid #e5e7eb"><strong>1080 × 3240</strong></td><td style="padding:8px;border:1px solid #e5e7eb">카톡·인쇄 감성</td></tr>
+          </tbody>
+        </table>
+        <p><strong>모든 너비 = 1080px (인스타 표준 해상도)</strong></p>
+
+        <h4>안전 영역 (피그마에서 비워둘 영역)</h4>
         <ul>
-          <li><strong>권장 크기:</strong> 1080×1080 (범용) 또는 1080×1920 (스토리 전용)</li>
-          <li><strong>만들기:</strong> Canva, 미리캔버스에서 배경색/그라데이션 + 테두리 장식</li>
-          <li><strong>주의:</strong> 중앙은 사진 영역, 하단 20%는 텍스트 영역 → 장식은 가장자리에</li>
-          <li><strong>다운로드:</strong> PNG 또는 JPG로 저장 후 앱에서 업로드</li>
+          <li><strong>상단 약 10%:</strong> 매장 로고/매장명이 자동 들어감 → 비워두기</li>
+          <li><strong>중앙 60~70%:</strong> 사진이 자동 들어감 → 배경 패턴 옅게만</li>
+          <li><strong>하단 15~20%:</strong> 헤드라인·서브·푸터·다음방문일 자동 → 비워두기</li>
+          <li><strong>가장자리 50px:</strong> 안전 여백 (잘림 방지)</li>
+        </ul>
+        <p><strong>배경 이미지에는 텍스트 ❌</strong> — 텍스트는 앱 안에서 자유 입력 (자동 위치)</p>
+
+        <h4>파일 설정</h4>
+        <ul>
+          <li><strong>색상 모드:</strong> sRGB (웹 표준)</li>
+          <li><strong>해상도:</strong> 72dpi (웹용)</li>
+          <li><strong>파일 형식:</strong> JPG 권장 (가벼움) — 투명 배경 필요 시 PNG</li>
+          <li><strong>파일 크기:</strong> 1MB 이하 권장 (앱 로딩 빠름)</li>
+          <li><strong>JPG 압축률:</strong> 85%</li>
+        </ul>
+
+        <h4>피그마 작업 순서</h4>
+        <ol>
+          <li><strong>Frame 생성:</strong> File → Design → Frame → 위 표 크기 입력</li>
+          <li><strong>안전 영역 가이드 라인:</strong> 빨강 외곽선 사각형 + 잠금 (참고용)</li>
+          <li><strong>배경 디자인:</strong> 단색·그라데이션·옅은 패턴 (중앙은 옅게)</li>
+          <li><strong>Export:</strong> Selection → Export → JPG 1x, Quality 85</li>
+          <li><strong>앱 업로드:</strong> 미용 기록 → 사진 카드 → 테마 커스텀 → 배경 이미지 선택</li>
+        </ol>
+
+        <h4>매장 브랜딩 4단계 권장</h4>
+        <ol>
+          <li><strong>시그니처 컬러:</strong> 매장 간판·로고에서 1~2색 선정 → 포인트 색으로 사용</li>
+          <li><strong>배경 톤:</strong> 사진이 잘 보이는 밝은 톤 (사진 컬러를 죽이지 않음)</li>
+          <li><strong>로고 위치:</strong> 상단=브랜딩 강조 / 하단=사진 강조 / 중앙 워터마크=재공유 방지</li>
+          <li><strong>5종 동일 컨셉 세트:</strong> 같은 배경색·패턴, 비율만 다르게 → 인스타 통일감</li>
+        </ol>
+
+        <h4>흔한 실수 5가지</h4>
+        <ul>
+          <li>❌ 배경에 큰 텍스트 → ✅ 텍스트는 앱 자유 텍스트로 입력</li>
+          <li>❌ 사진 영역에 진한 무늬 → ✅ 중앙은 옅게</li>
+          <li>❌ 가장자리에 중요 정보 → ✅ 50px 안전 여백 확보</li>
+          <li>❌ PNG 큰 파일 (10MB+) → ✅ JPG 1MB 이하</li>
+          <li>❌ 다른 비율 사용 (예: 1920×1080) → ✅ 정확한 비율 (1080×1350 등)</li>
+        </ul>
+
+        <h4>제작 체크리스트</h4>
+        <ul>
+          <li>☑ 비율 정확 (4:5 / 9:16 / 1:1 등)</li>
+          <li>☑ 1080px 너비 이상</li>
+          <li>☑ JPG 1MB 이하</li>
+          <li>☑ 중앙 사진 영역 옅음</li>
+          <li>☑ 가장자리 50px 안전 여백</li>
+          <li>☑ 상단/하단 텍스트 영역 비어있음</li>
+          <li>☑ 매장 컬러 톤 반영</li>
         </ul>
 
         <h3>인스타그램 최적화</h3>
