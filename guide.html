@@ -1293,5 +1293,28 @@
       </p>
     </footer>
   </div>
+
+  <!-- 상단으로 가기 floating 버튼 -->
+  <button id="scroll-top-btn" aria-label="맨 위로" onclick="window.scrollTo({top:0,behavior:'smooth'})" style="
+    position:fixed;bottom:24px;right:24px;width:48px;height:48px;border-radius:50%;
+    background:#6366F1;color:#fff;border:none;font-size:1.4rem;cursor:pointer;
+    box-shadow:0 4px 12px rgba(0,0,0,0.2);
+    display:none;align-items:center;justify-content:center;line-height:1;
+    z-index:1000;transition:opacity 0.2s,transform 0.2s
+  ">↑</button>
+  <script>
+    (function(){
+      var btn = document.getElementById('scroll-top-btn');
+      if (!btn) return;
+      var visible = false;
+      window.addEventListener('scroll', function(){
+        var shouldShow = window.scrollY > 300;
+        if (shouldShow !== visible) {
+          visible = shouldShow;
+          btn.style.display = visible ? 'flex' : 'none';
+        }
+      }, { passive: true });
+    })();
+  </script>
 </body>
 </html>
