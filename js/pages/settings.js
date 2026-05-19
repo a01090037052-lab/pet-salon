@@ -52,6 +52,9 @@ App.pages.settings = {
           <h1 class="page-title">설정</h1>
           <p class="page-subtitle">매장 정보 및 데이터 관리</p>
         </div>
+        <div class="page-actions">
+          <a href="./guide.html" target="_blank" class="btn btn-secondary">&#x1F4D6; 사용 가이드</a>
+        </div>
       </div>
 
       <!-- Tab Navigation -->
