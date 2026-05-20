@@ -2481,9 +2481,21 @@ App.pages.records = {
         <!-- 폴라로이드 사진 크기 (폴라로이드 레이아웃 선택 시만 표시) -->
         <div id="polaroid-options" class="form-group" style="display:${selectedLayout === 'single' ? 'block' : 'none'};padding:12px;background:var(--bg);border-radius:var(--radius);margin-bottom:12px">
           <label class="form-label" style="font-size:0.82rem;margin-bottom:6px">사진 크기 <span style="color:var(--text-muted);font-weight:400">(폴라로이드)</span></label>
-          <div style="display:flex;flex-direction:column;gap:6px">
-            <label class="checkbox-label" style="font-size:0.85rem;min-height:auto;padding:10px 12px;cursor:pointer;border:1.5px solid ${(saved.polaroidSize || 'modern') === 'modern' ? 'var(--primary)' : 'var(--border)'};border-radius:8px;display:flex;align-items:center;gap:8px"><input type="radio" name="polaroidSize" value="modern" ${(saved.polaroidSize || 'modern') === 'modern' ? 'checked' : ''}><span>모던 (사진 920px)</span></label>
-            <label class="checkbox-label" style="font-size:0.85rem;min-height:auto;padding:10px 12px;cursor:pointer;border:1.5px solid ${saved.polaroidSize === 'minimal' ? 'var(--primary)' : 'var(--border)'};border-radius:8px;display:flex;align-items:center;gap:8px"><input type="radio" name="polaroidSize" value="minimal" ${saved.polaroidSize === 'minimal' ? 'checked' : ''}><span>미니멀 (사진 940px)</span></label>
+          <div style="display:flex;flex-direction:column;gap:6px;width:100%">
+            <label class="checkbox-label" style="font-size:0.88rem;min-height:auto;padding:12px;cursor:pointer;border:1.5px solid ${(saved.polaroidSize || 'modern') === 'modern' ? 'var(--primary)' : 'var(--border)'};border-radius:8px;display:flex;align-items:center;gap:10px;width:100%;box-sizing:border-box;background:${(saved.polaroidSize || 'modern') === 'modern' ? 'var(--primary-light)' : 'var(--bg-white)'}">
+              <input type="radio" name="polaroidSize" value="modern" ${(saved.polaroidSize || 'modern') === 'modern' ? 'checked' : ''} style="flex-shrink:0">
+              <div style="flex:1;min-width:0">
+                <div style="font-weight:700;color:var(--text-primary)">모던</div>
+                <div style="font-size:0.76rem;color:var(--text-muted);margin-top:2px">사진 920×920 · 균등 여백</div>
+              </div>
+            </label>
+            <label class="checkbox-label" style="font-size:0.88rem;min-height:auto;padding:12px;cursor:pointer;border:1.5px solid ${saved.polaroidSize === 'minimal' ? 'var(--primary)' : 'var(--border)'};border-radius:8px;display:flex;align-items:center;gap:10px;width:100%;box-sizing:border-box;background:${saved.polaroidSize === 'minimal' ? 'var(--primary-light)' : 'var(--bg-white)'}">
+              <input type="radio" name="polaroidSize" value="minimal" ${saved.polaroidSize === 'minimal' ? 'checked' : ''} style="flex-shrink:0">
+              <div style="flex:1;min-width:0">
+                <div style="font-weight:700;color:var(--text-primary)">미니멀</div>
+                <div style="font-size:0.76rem;color:var(--text-muted);margin-top:2px">사진 940×940 · 사진 최대 강조</div>
+              </div>
+            </label>
           </div>
           <div style="font-size:0.75rem;color:var(--text-muted);margin-top:6px">&#x1F4A1; 미니멀은 사진을 더 크게 — 사진 강조</div>
         </div>

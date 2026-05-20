@@ -790,30 +790,59 @@ App.pages.settings = {
     if (countEl) countEl.textContent = `${frames.length}/5`;
     if (addBtn) addBtn.disabled = frames.length >= 5;
     if (frames.length === 0) {
-      listEl.innerHTML = '<div style="text-align:center;color:var(--text-muted);font-size:0.85rem;padding:14px 0">등록된 프레임이 없습니다. 시즌·이벤트별 프레임을 만들어보세요.</div>';
+      listEl.innerHTML = `
+        <div style="text-align:center;padding:28px 16px;background:var(--bg);border-radius:var(--radius);border:2px dashed var(--border)">
+          <div style="font-size:2rem;margin-bottom:8px">🖼</div>
+          <div style="font-weight:700;font-size:0.95rem;margin-bottom:4px">등록된 프레임이 없습니다</div>
+          <div style="font-size:0.82rem;color:var(--text-muted);line-height:1.5">시즌·이벤트별 프레임을 만들면<br>사진 카드 생성 시 1탭으로 선택 가능합니다</div>
+        </div>
+      `;
       return;
     }
     listEl.innerHTML = frames.map(f => `
-      <div class="frame-lib-row" data-id="${App.escapeHtml(f.id)}" style="display:flex;align-items:center;gap:10px;padding:12px;border:1px solid var(--border-light);border-radius:var(--radius);background:var(--bg-white);cursor:pointer${f.enabled === false ? ';opacity:0.55' : ''}">
-        <div style="width:48px;height:48px;border-radius:8px;background:${f.accentColor || 'var(--border)'};flex-shrink:0;overflow:hidden;display:flex;align-items:center;justify-content:center">${f.image ? `<img src="${f.image}" style="width:100%;height:100%;object-fit:cover">` : '🖼'}</div>
-        <div style="flex:1;min-width:0">
-          <div style="font-weight:700;font-size:0.95rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${App.escapeHtml(f.name)}</div>
-          <div style="font-size:0.75rem;color:var(--text-muted);margin-top:2px">${f.enabled === false ? '⚪ 비활성' : '🟢 활성'} · 탭하여 편집</div>
+      <div class="frame-lib-row" data-id="${App.escapeHtml(f.id)}" style="display:flex;align-items:center;gap:12px;padding:12px;border:1px solid var(--border-light);border-left:4px solid ${f.enabled === false ? 'var(--border)' : (f.accentColor || 'var(--primary)')};border-radius:var(--radius);background:var(--bg-white);box-shadow:var(--shadow-xs);cursor:pointer;position:relative;overflow:hidden${f.enabled === false ? ';opacity:0.6' : ''}">
+        <div style="width:72px;height:72px;border-radius:10px;background:${f.image ? '#fff' : (f.accentColor || 'var(--border)')};flex-shrink:0;overflow:hidden;display:flex;align-items:center;justify-content:center;border:1px solid var(--border-light)">
+          ${f.image ? `<img src="${f.image}" style="width:100%;height:100%;object-fit:cover" alt="${App.escapeHtml(f.name)}">` : '<span style="font-size:1.8rem;opacity:0.5">🖼</span>'}
         </div>
-        <button type="button" class="btn-icon frame-delete-btn" data-id="${App.escapeHtml(f.id)}" title="삭제" style="flex-shrink:0;background:none;border:none;cursor:pointer;font-size:1.1rem;color:var(--danger);padding:6px;width:36px;height:36px">🗑</button>
+        <div style="flex:1;min-width:0">
+          <div style="font-weight:800;font-size:1rem;color:var(--text-primary);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-bottom:4px">${App.escapeHtml(f.name)}</div>
+          <div style="display:flex;align-items:center;gap:6px;margin-bottom:4px">
+            <span style="display:inline-block;width:14px;height:14px;border-radius:50%;background:${f.accentColor || 'var(--border)'};border:1px solid var(--border-light);flex-shrink:0"></span>
+            <span style="font-size:0.75rem;color:var(--text-muted)">${f.accentColor || '-'}</span>
+          </div>
+          <label class="frame-toggle-label" data-id="${App.escapeHtml(f.id)}" style="display:inline-flex;align-items:center;gap:5px;font-size:0.75rem;color:${f.enabled === false ? 'var(--text-muted)' : 'var(--success)'};font-weight:700;cursor:pointer">
+            <input type="checkbox" class="frame-toggle-cb" data-id="${App.escapeHtml(f.id)}" ${f.enabled !== false ? 'checked' : ''} onclick="event.stopPropagation()" style="cursor:pointer">
+            ${f.enabled === false ? '비활성' : '활성'}
+          </label>
+        </div>
+        <button type="button" class="frame-delete-btn" data-id="${App.escapeHtml(f.id)}" title="삭제" style="flex-shrink:0;background:none;border:none;cursor:pointer;font-size:1.2rem;color:var(--danger);padding:8px;width:40px;height:40px;border-radius:8px">🗑</button>
       </div>
     `).join('');
-    // 행 전체 클릭 = 편집, 우측 🗑 = 삭제
+    // 행 전체 클릭 = 편집 (자식 버튼은 stopPropagation)
     listEl.querySelectorAll('.frame-lib-row').forEach(row => {
       row.addEventListener('click', (e) => {
-        if (e.target.closest('.frame-delete-btn')) return;
+        if (e.target.closest('.frame-delete-btn') || e.target.closest('.frame-toggle-label') || e.target.closest('.frame-toggle-cb')) return;
         this._showFrameEditor(row.dataset.id);
       });
     });
+    // 삭제 버튼
     listEl.querySelectorAll('.frame-delete-btn').forEach(btn => {
       btn.addEventListener('click', (e) => {
         e.stopPropagation();
         this._deleteFrame(btn.dataset.id);
+      });
+    });
+    // 활성/비활성 토글 (편집 모달 없이 즉시 변경)
+    listEl.querySelectorAll('.frame-toggle-cb').forEach(cb => {
+      cb.addEventListener('change', async (e) => {
+        e.stopPropagation();
+        const all = (await DB.getSetting('customFrames')) || [];
+        const f = all.find(x => x.id === cb.dataset.id);
+        if (f) {
+          f.enabled = cb.checked;
+          await DB.setSetting('customFrames', all);
+          await this._renderFrameLibrary();
+        }
       });
     });
   },
