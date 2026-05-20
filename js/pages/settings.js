@@ -801,8 +801,8 @@ App.pages.settings = {
     }
     listEl.innerHTML = frames.map(f => `
       <div class="frame-lib-row" data-id="${App.escapeHtml(f.id)}" style="display:flex;align-items:center;gap:12px;padding:12px;border:1px solid var(--border-light);border-left:4px solid ${f.enabled === false ? 'var(--border)' : (f.accentColor || 'var(--primary)')};border-radius:var(--radius);background:var(--bg-white);box-shadow:var(--shadow-xs);cursor:pointer;position:relative;overflow:hidden${f.enabled === false ? ';opacity:0.6' : ''}">
-        <div style="width:72px;height:72px;border-radius:10px;background:${f.image ? '#fff' : (f.accentColor || 'var(--border)')};flex-shrink:0;overflow:hidden;display:flex;align-items:center;justify-content:center;border:1px solid var(--border-light)">
-          ${f.image ? `<img src="${f.image}" style="width:100%;height:100%;object-fit:cover" alt="${App.escapeHtml(f.name)}">` : '<span style="font-size:1.8rem;opacity:0.5">🖼</span>'}
+        <div style="width:100px;height:100px;border-radius:10px;background:${f.image ? '#fff' : (f.accentColor || 'var(--border)')};flex-shrink:0;overflow:hidden;display:flex;align-items:center;justify-content:center;border:1px solid var(--border-light);box-shadow:inset 0 0 0 1px rgba(0,0,0,0.04)">
+          ${f.image ? `<img src="${f.image}" style="max-width:100%;max-height:100%;width:auto;height:auto;object-fit:contain" alt="${App.escapeHtml(f.name)}">` : '<span style="font-size:2rem;opacity:0.5">🖼</span>'}
         </div>
         <div style="flex:1;min-width:0">
           <div style="font-weight:800;font-size:1rem;color:var(--text-primary);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-bottom:4px">${App.escapeHtml(f.name)}</div>
