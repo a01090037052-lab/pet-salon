@@ -615,10 +615,13 @@
         <div class="card">
           <div class="card-title">주요 기능</div>
           <ul>
-            <li><strong>오늘 예약:</strong> 본일 예약 목록 (상태: 대기, 확정, 미용중, 완료, 취소, 노쇼)</li>
-            <li><strong>오늘 매출:</strong> 금일 총 매출 및 건수 (일일 목표 진행률 표시)</li>
+            <li><strong>오늘 예약 (상단):</strong> 본일 예약 목록 (상태: 대기, 확정, 미용중, 완료, 취소, 노쇼)</li>
+            <li><strong>오늘 매출 / 이번 달 매출 (상단):</strong> 매일 자주 확인 → 상단 배치 (전월 대비 % + 목표 진행률)</li>
             <li><strong>미수금 현황:</strong> 미지급 건 조회 및 결제 처리</li>
-            <li><strong>재방문 알림:</strong> 마지막 미용 후 설정 기간이 지난 반려견 목록</li>
+            <li><strong>내일 예약 리마인더:</strong> 사진+품종/체중, 발송 추적, 노쇼 경고</li>
+            <li><strong>고객 관리 현황:</strong> 이탈 위험·이탈 카운트 (분석 페이지로 빠른 이동)</li>
+            <li><strong>재방문 알림:</strong> 마지막 미용 후 설정 기간이 지난 반려견 (문자/전화 즉시 발송)</li>
+            <li><strong>VIP 미방문 알림:</strong> VIP 손님 30일+ 미방문 (전화 즉시 발신)</li>
             <li><strong>생일 알림:</strong> 7일 내 생일인 고객 및 반려견</li>
             <li><strong>백업 알림:</strong> 데이터 안전을 위한 백업 권고</li>
           </ul>
@@ -648,12 +651,16 @@
           <div class="card-title">주요 기능</div>
           <ul>
             <li><strong>기록 작성:</strong> 서비스, 스타일, 추가항목, 금액, 담당 미용사, 컨디션 기입</li>
+            <li><strong>미용 협조도:</strong> 잘함/보통/까다로움 — 다음 미용 시간 견적 참고</li>
+            <li><strong>이전 미용과 같음:</strong> 단골 손님은 1탭으로 자동 채움 (서비스·추가항목·가격·스타일·미용사). 컨디션·협조도·결제수단은 매번 다르므로 채움 안 함</li>
+            <li><strong>미용사 자동 채움:</strong> 1인 매장(등록 미용사 1명)이면 자동 입력</li>
             <li><strong>날짜 그룹핑:</strong> 오늘/어제/이번 주/월별 자동 섹션 구분</li>
             <li><strong>필터 합계 바:</strong> 검색/필터 결과의 건수·합계·미결제 소계 실시간 표시</li>
-            <li><strong>사진 카드:</strong> 인생네컷·인스타 피드·스토리 등 5종 레이아웃. 4종 테마 + 커스텀(컬러/배경이미지/로고). 미리보기 후 공유/고객전송/다운로드.</li>
-            <li><strong>영수증 생성:</strong> 고객에게 제공할 영수증 자동 생성</li>
+            <li><strong>사진 카드:</strong> 폴라로이드(모던/미니멀)·피드·스토리·2컷·네컷 세로 5종. 4종 테마 + 커스텀(컬러/배경이미지/로고). 미리보기 후 공유/고객전송/다운로드.</li>
+            <li><strong>영수증 생성:</strong> 서비스 포함 항목까지 자동 노출 (└ 발톱·귀청소·항문샘 등)</li>
             <li><strong>결제 상태:</strong> 카드, 현금, 이체, 미결제 (칩 선택)</li>
             <li><strong>다음 예약일:</strong> 미용 주기 자동 계산 + 저장 후 바로 예약</li>
+            <li><strong>삭제 안전성:</strong> 삭제 확인 시 날짜·반려견·금액 표시 (실수 방지)</li>
             <li><strong>일일 정산표:</strong> 결제 수단별·미용사별 집계 + 시간순 상세 내역</li>
           </ul>
         </div>
@@ -684,7 +691,12 @@
             <li><strong>사진:</strong> 반려견 프로필 사진 업로드</li>
             <li><strong>미용 주기:</strong> 개별 반려견별 권장 미용 주기 설정</li>
             <li><strong>상태 관리:</strong> 활동중, 사망, 양도 등 상태 기록</li>
-            <li><strong>미용 이력:</strong> 해당 반려견의 모든 미용 기록 조회</li>
+            <li><strong>응대 카드 (상세):</strong> 단골 응대 시 한눈에 — 다음 미용일(D-N), 최근 방문, 최근 컨디션, 미용 협조도 + 5회 추이</li>
+            <li><strong>알러지/건강 경고:</strong> 알러지나 건강 특이사항 있으면 상단 빨강 배너</li>
+            <li><strong>다음 미용일 자동 예측:</strong> 권장 주기 미설정 시 실제 평균 방문 주기로 자동 계산</li>
+            <li><strong>목록 카드 디자인:</strong> 좌측 4px 컬러바(이탈/리마인드/정상/이탈) + 사진 60px + 우측 상태 칩</li>
+            <li><strong>그룹 헤더:</strong> 정렬 '상태별' 선택 시 자동 분리 (이탈 임박 N마리 / 리마인드 N마리 / ...)</li>
+            <li><strong>미용 이력:</strong> 해당 반려견의 모든 미용 기록 조회 + 컨디션·협조도 색상 점</li>
           </ul>
         </div>
 
@@ -692,15 +704,40 @@
         <p>수익성을 분석하고 전략을 수립합니다.</p>
 
         <div class="card">
-          <div class="card-title">주요 기능</div>
+          <div class="card-title">매출 페이지</div>
           <ul>
             <li><strong>오늘 매출:</strong> 본일 매출 목표 진행률</li>
             <li><strong>이번 주/달 매출:</strong> 기간별 수익 요약</li>
-            <li><strong>일별/월별 차트:</strong> 시각적 매출 추이 분석</li>
+            <li><strong>일별/월별 차트:</strong> 시각적 매출 추이 분석 (모바일 가독성 강화 + 주별 합계 라인)</li>
             <li><strong>결제 수단별 통계:</strong> 현금, 카드, 이체 분석</li>
             <li><strong>미용사별 매출:</strong> 담당자별 성과 파악</li>
             <li><strong>손익 계산:</strong> 고정비, 변동비 입력 후 순이익 계산</li>
             <li><strong>CSV 내보내기:</strong> 세무사 제출용 자료 추출</li>
+          </ul>
+        </div>
+
+        <div class="card">
+          <div class="card-title">분석 페이지 — 핵심 인사이트 14종</div>
+          <p style="margin-bottom:8px"><strong>인사이트는 두 섹션으로 분리됩니다:</strong></p>
+          <ul>
+            <li><strong>● 오늘 점검할 것</strong> (매일 변동, 즉시 액션):
+              <ul>
+                <li>미수금 N건 — 회수 검토 (클릭 → 명단 펼침 → 결제수단 즉시 변경)</li>
+                <li>이탈 임박 N마리 — 재방문 메시지 권장 (클릭 → 명단 → 반려견 상세)</li>
+                <li>리마인드 필요 N마리 — 재방문 시점 도래</li>
+                <li>VIP 손님 30일+ 미방문 — 고객 명단 + 전화 즉시 발신</li>
+              </ul>
+            </li>
+            <li><strong>● 이번 기간 분석</strong> (트렌드):
+              <ul>
+                <li>재방문율 / 매출 전 기간 대비 / 평균 방문 주기</li>
+                <li>견종 매출 비중 / 가장 바쁜 요일 / 인기 시간대</li>
+                <li>객단가 변화 / 신규 고객 추세 / 노쇼율 / 협조도 까다로움 비율</li>
+              </ul>
+            </li>
+            <li><strong>인라인 펼침:</strong> 액션 인사이트 클릭 → 카드 아래 5건 명단 + "전체 N건 보기 →"</li>
+            <li><strong>각 항목 클릭:</strong> 반려견·고객 상세 페이지로 즉시 이동 / 미수금은 record 수정 모달 직접 열림 (결제수단 변경)</li>
+            <li><strong>전화번호 표시:</strong> 명단의 보호자·전화번호 즉시 탭으로 전화 (tel:)</li>
           </ul>
         </div>
 
@@ -710,10 +747,17 @@
         <div class="card">
           <div class="card-title">주요 기능</div>
           <ul>
-            <li><strong>서비스 등록:</strong> 미용 항목 추가 (목욕, 드라이, 트리밍 등)</li>
-            <li><strong>사이즈별 가격:</strong> 소형, 중형, 대형 동물별로 다른 가격 설정</li>
-            <li><strong>활성화/비활성화:</strong> 서비스 사용 여부 관리</li>
-            <li><strong>예약에 자동 반영:</strong> 설정한 서비스가 예약/기록에서 선택 가능</li>
+            <li><strong>서비스 등록:</strong> 미용 항목 추가 (이름·분류·가격)</li>
+            <li><strong>포함 항목 시스템:</strong> 각 서비스에 기본 포함되는 작업 체크 (발톱·귀청소·항문샘·발바닥·위생 미용·향수 표준 + 자유 입력) → 영수증·사진 카드에 자동 노출</li>
+            <li><strong>분류:</strong> 미용 코스 / 추가 옵션 / 단독 케어 (chip 선택)</li>
+            <li><strong>사이즈별 가격:</strong> 소형·중형·대형 또는 단일 가격 토글</li>
+            <li><strong>가격 변경 이력:</strong> 30일 이상 미변경 자동 표시 ("3개월 전 변경")</li>
+            <li><strong>일괄 가격 조정:</strong> 분기·시즌 가격 인상 한 번에 (전체/분류별 + 금액/비율)</li>
+            <li><strong>즐겨찾기 ⭐:</strong> 자주 쓰는 서비스 위로 자동 정렬</li>
+            <li><strong>카드 디자인 + 카테고리 fold:</strong> 카드 형식 + 카테고리 헤더 클릭으로 접기/펼치기</li>
+            <li><strong>검색바:</strong> 서비스 이름 빠른 검색 + 결과 N개 카운트</li>
+            <li><strong>카드 탭 = 수정 모달:</strong> 가격 영역 포함 어디든 탭하면 수정. ⋯ 메뉴에서 복제·활성·삭제</li>
+            <li><strong>활성화/비활성화:</strong> 비활성 섹션 별도 fold (좌측 회색 컬러바)</li>
           </ul>
         </div>
 

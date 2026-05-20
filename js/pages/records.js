@@ -2393,6 +2393,9 @@ App.pages.records = {
     if (saved.layout !== selectedLayout || saved.template !== selectedTheme) await DB.setSetting('cardDesignSettings', saved);
     const LAYOUTS = this._CARD_LAYOUTS;
     const THEMES = this._CARD_THEMES;
+    // 사용자 프레임 라이브러리 (활성 + 이미지 있는 것만)
+    const userFrames = ((await DB.getSetting('customFrames')) || []).filter(f => f.enabled !== false && f.image);
+    const selectedFrameId = saved.lastUsedFrameId || null;
 
     App.showModal({
       title: '사진 카드 만들기',
@@ -2414,12 +2417,19 @@ App.pages.records = {
           <div id="card-photo-slots" style="display:flex;gap:8px;flex-wrap:wrap"></div>
         </div>
         <div class="form-group">
-          <label class="form-label">테마</label>
+          <label class="form-label">테마 ${userFrames.length > 0 ? `<span style="font-size:0.78rem;color:var(--text-muted);font-weight:400">· 내 프레임 ${userFrames.length}개</span>` : ''}</label>
           <div id="card-pick-theme" style="display:flex;gap:8px;flex-wrap:wrap">
             ${Object.entries(THEMES).map(([key, t]) => `
-              <button type="button" class="card-pick-btn${key === selectedTheme ? ' active' : ''}" data-key="${key}" style="border-color:${t.color}">
+              <button type="button" class="card-pick-btn${key === selectedTheme && !selectedFrameId ? ' active' : ''}" data-key="${key}" style="border-color:${t.color}">
                 <span style="font-size:1.1rem">${t.emoji}</span>
                 <span style="font-size:0.7rem;color:${t.color}">${t.name}</span>
+              </button>
+            `).join('')}
+            ${userFrames.map(f => `
+              <button type="button" class="card-pick-btn${selectedFrameId === f.id ? ' active' : ''}" data-key="frame:${f.id}" data-frame-id="${App.escapeHtml(f.id)}" style="border-color:${f.accentColor};position:relative;overflow:hidden">
+                ${f.image ? `<span style="position:absolute;inset:0;background-image:url('${f.image}');background-size:cover;background-position:center;opacity:0.25"></span>` : ''}
+                <span style="font-size:1.1rem;position:relative">🖼</span>
+                <span style="font-size:0.7rem;color:${f.accentColor};position:relative;font-weight:700">${App.escapeHtml(f.name)}</span>
               </button>
             `).join('')}
             <button type="button" class="card-pick-btn${selectedTheme === 'custom' ? ' active' : ''}" data-key="custom" style="border-color:#888">
@@ -2525,7 +2535,19 @@ App.pages.records = {
       `,
       onSave: async () => {
         const layout = document.querySelector('#card-pick-layout .card-pick-btn.active')?.dataset.key || 'strip2';
-        const theme = document.querySelector('#card-pick-theme .card-pick-btn.active')?.dataset.key || 'classic';
+        let theme = document.querySelector('#card-pick-theme .card-pick-btn.active')?.dataset.key || 'classic';
+        // 사용자 프레임 선택 시 (frame:ID) → custom 테마로 자동 적용
+        let appliedFrameId = null;
+        if (theme.startsWith('frame:')) {
+          appliedFrameId = theme.split(':')[1];
+          const frames = (await DB.getSetting('customFrames')) || [];
+          const fr = frames.find(x => x.id === appliedFrameId);
+          if (fr) {
+            theme = 'custom';
+            // 프레임 데이터를 settings에 즉시 반영 (렌더링은 기존 custom 코드 그대로 사용)
+            this._appliedFrame = fr;
+          }
+        }
         if (!this._cardPhotos.some(p => p)) { App.showToast('사진을 최소 1장 선택해주세요.', 'error'); return; }
 
         const settings = await DB.getSetting('cardDesignSettings') || {};
@@ -2545,6 +2567,16 @@ App.pages.records = {
         settings.showNextVisit = document.getElementById('card-show-nextvisit')?.checked || false;
         // 폴라로이드 사진 크기 (모던/미니멀)
         settings.polaroidSize = document.querySelector('input[name="polaroidSize"]:checked')?.value || 'modern';
+        // 사용자 프레임 선택 시 settings에 프레임 데이터 반영
+        if (appliedFrameId && this._appliedFrame) {
+          settings.customBgImage = this._appliedFrame.image;
+          settings.customAccentColor = this._appliedFrame.accentColor || '#6366F1';
+          settings.customTextColor = this._appliedFrame.textColor || '#1A1A1A';
+          settings.customBgColor = '#FFFFFF';
+          settings.lastUsedFrameId = appliedFrameId;
+        } else {
+          settings.lastUsedFrameId = null;
+        }
         // 커스텀 테마 설정 저장
         if (theme === 'custom') {
           settings.customBgColor = document.getElementById('card-custom-bg')?.value || '#FFFFFF';

@@ -179,6 +179,19 @@ App.pages.settings = {
           </div>
         </div>
 
+        <!-- 내 프레임 라이브러리 (사진 카드 시즌·이벤트별 프레임 관리) -->
+        <div class="card" style="margin-top:16px">
+          <div class="card-header">
+            <span class="card-title">&#x1F5BC; 내 프레임 라이브러리</span>
+            <span style="font-size:0.78rem;color:var(--text-muted)" id="frame-lib-count"></span>
+          </div>
+          <div class="card-body">
+            <div id="frame-library-list" style="display:flex;flex-direction:column;gap:8px;margin-bottom:12px"></div>
+            <button type="button" id="btn-add-frame" class="btn btn-secondary" style="width:100%;min-height:44px">&#x002B; 새 프레임 추가</button>
+            <div class="form-hint" style="margin-top:8px">시즌·이벤트별 프레임을 만들어 사진 카드 생성 시 선택할 수 있어요. 최대 5개.</div>
+          </div>
+        </div>
+
         <button class="btn btn-primary btn-lg" id="btn-save-tab-shop" style="width:100%;margin-top:20px">매장 관리 설정 저장</button>
       </div>
 
@@ -761,6 +774,125 @@ App.pages.settings = {
 
     // ========== 보안 탭 핸들러 ==========
     this.bindSecurityHandlers();
+
+    // ========== 프레임 라이브러리 ==========
+    await this._renderFrameLibrary();
+    document.getElementById('btn-add-frame')?.addEventListener('click', () => this._showFrameEditor());
+  },
+
+  // 프레임 라이브러리 렌더링
+  async _renderFrameLibrary() {
+    const frames = (await DB.getSetting('customFrames')) || [];
+    const listEl = document.getElementById('frame-library-list');
+    const countEl = document.getElementById('frame-lib-count');
+    const addBtn = document.getElementById('btn-add-frame');
+    if (!listEl) return;
+    if (countEl) countEl.textContent = `${frames.length}/5`;
+    if (addBtn) addBtn.disabled = frames.length >= 5;
+    if (frames.length === 0) {
+      listEl.innerHTML = '<div style="text-align:center;color:var(--text-muted);font-size:0.85rem;padding:14px 0">등록된 프레임이 없습니다. 시즌·이벤트별 프레임을 만들어보세요.</div>';
+      return;
+    }
+    listEl.innerHTML = frames.map(f => `
+      <div style="display:flex;align-items:center;gap:10px;padding:10px;border:1px solid var(--border-light);border-radius:var(--radius);background:var(--bg-white)${f.enabled === false ? ';opacity:0.55' : ''}">
+        <div style="width:48px;height:48px;border-radius:8px;background:${f.accentColor || 'var(--border)'};flex-shrink:0;overflow:hidden;display:flex;align-items:center;justify-content:center">${f.image ? `<img src="${f.image}" style="width:100%;height:100%;object-fit:cover">` : '🖼'}</div>
+        <div style="flex:1;min-width:0">
+          <div style="font-weight:700;font-size:0.92rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${App.escapeHtml(f.name)}</div>
+          <div style="font-size:0.72rem;color:var(--text-muted)">${f.enabled === false ? '비활성' : '활성'}</div>
+        </div>
+        <button type="button" class="btn btn-sm btn-secondary frame-edit-btn" data-id="${App.escapeHtml(f.id)}" style="flex-shrink:0">편집</button>
+        <button type="button" class="btn btn-sm btn-danger frame-delete-btn" data-id="${App.escapeHtml(f.id)}" style="flex-shrink:0">삭제</button>
+      </div>
+    `).join('');
+    // 핸들러
+    listEl.querySelectorAll('.frame-edit-btn').forEach(btn => {
+      btn.addEventListener('click', () => this._showFrameEditor(btn.dataset.id));
+    });
+    listEl.querySelectorAll('.frame-delete-btn').forEach(btn => {
+      btn.addEventListener('click', () => this._deleteFrame(btn.dataset.id));
+    });
+  },
+
+  // 프레임 추가/편집 모달
+  async _showFrameEditor(frameId) {
+    const frames = (await DB.getSetting('customFrames')) || [];
+    const frame = frameId ? frames.find(f => f.id === frameId) : { id: 'f' + Date.now(), name: '', image: '', accentColor: '#6366F1', textColor: '#1A1A1A', enabled: true };
+    if (!frame) return;
+    App.showModal({
+      title: frameId ? '프레임 편집' : '새 프레임 추가',
+      saveText: '저장',
+      content: `
+        <div class="form-group">
+          <label class="form-label">프레임 이름 <span class="required">*</span></label>
+          <input type="text" id="f-frame-name" value="${App.escapeHtml(frame.name)}" placeholder="예: 봄 시즌 2026, 크리스마스" maxlength="30">
+        </div>
+        <div class="form-group">
+          <label class="form-label">배경 이미지 <span style="color:var(--text-muted);font-weight:400">(피그마·캔바로 만든 PNG/JPG)</span></label>
+          <div id="f-frame-preview" style="margin-bottom:8px">${frame.image ? `<img src="${frame.image}" style="max-width:200px;border-radius:8px;border:1px solid var(--border)">` : '<div style="color:var(--text-muted);font-size:0.85rem">이미지 미선택</div>'}</div>
+          <input type="file" id="f-frame-image" accept="image/*">
+          <div class="form-hint">권장 1080×1080 (정사각) 또는 1080×1350 (4:5). 1MB 이하 JPG 권장.</div>
+        </div>
+        <div class="form-row">
+          <div class="form-group">
+            <label class="form-label">포인트 색</label>
+            <input type="color" id="f-frame-accent" value="${frame.accentColor || '#6366F1'}" style="width:100%;height:40px;border-radius:6px">
+          </div>
+          <div class="form-group">
+            <label class="form-label">글자 색</label>
+            <input type="color" id="f-frame-text" value="${frame.textColor || '#1A1A1A'}" style="width:100%;height:40px;border-radius:6px">
+          </div>
+        </div>
+        <div class="form-group">
+          <label class="checkbox-label"><input type="checkbox" id="f-frame-enabled" ${frame.enabled !== false ? 'checked' : ''}> 활성 (사진 카드 생성 시 노출)</label>
+        </div>
+      `,
+      onSave: async () => {
+        const name = document.getElementById('f-frame-name').value.trim();
+        if (!name) { App.showToast('프레임 이름을 입력해주세요.', 'error'); return; }
+        let image = frame.image || '';
+        const fileInput = document.getElementById('f-frame-image');
+        if (fileInput.files[0]) {
+          image = await new Promise((resolve, reject) => {
+            const reader = new FileReader();
+            reader.onload = e => resolve(e.target.result);
+            reader.onerror = reject;
+            reader.readAsDataURL(fileInput.files[0]);
+          });
+        }
+        const updated = {
+          id: frame.id,
+          name,
+          image,
+          accentColor: document.getElementById('f-frame-accent').value,
+          textColor: document.getElementById('f-frame-text').value,
+          enabled: document.getElementById('f-frame-enabled').checked,
+          createdAt: frame.createdAt || new Date().toISOString()
+        };
+        const all = (await DB.getSetting('customFrames')) || [];
+        const idx = all.findIndex(f => f.id === updated.id);
+        if (idx >= 0) all[idx] = updated;
+        else {
+          if (all.length >= 5) { App.showToast('프레임은 최대 5개까지 등록 가능합니다.', 'error'); return; }
+          all.push(updated);
+        }
+        await DB.setSetting('customFrames', all);
+        App.closeModal();
+        App.showToast(frameId ? '프레임이 수정되었습니다.' : '새 프레임이 추가되었습니다.');
+        await this._renderFrameLibrary();
+      }
+    });
+  },
+
+  // 프레임 삭제
+  async _deleteFrame(frameId) {
+    const frames = (await DB.getSetting('customFrames')) || [];
+    const frame = frames.find(f => f.id === frameId);
+    if (!frame) return;
+    const ok = await App.confirm(`"${App.escapeHtml(frame.name)}" 프레임을 삭제하시겠습니까?`, { okLabel: '삭제' });
+    if (!ok) return;
+    await DB.setSetting('customFrames', frames.filter(f => f.id !== frameId));
+    App.showToast('프레임이 삭제되었습니다.');
+    await this._renderFrameLibrary();
   },
 
   // GitHub master-config.js 스니펫 표시 (배포 시 적용 필수)
