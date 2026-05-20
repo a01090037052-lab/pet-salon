@@ -794,22 +794,27 @@ App.pages.settings = {
       return;
     }
     listEl.innerHTML = frames.map(f => `
-      <div style="display:flex;align-items:center;gap:10px;padding:10px;border:1px solid var(--border-light);border-radius:var(--radius);background:var(--bg-white)${f.enabled === false ? ';opacity:0.55' : ''}">
+      <div class="frame-lib-row" data-id="${App.escapeHtml(f.id)}" style="display:flex;align-items:center;gap:10px;padding:12px;border:1px solid var(--border-light);border-radius:var(--radius);background:var(--bg-white);cursor:pointer${f.enabled === false ? ';opacity:0.55' : ''}">
         <div style="width:48px;height:48px;border-radius:8px;background:${f.accentColor || 'var(--border)'};flex-shrink:0;overflow:hidden;display:flex;align-items:center;justify-content:center">${f.image ? `<img src="${f.image}" style="width:100%;height:100%;object-fit:cover">` : '🖼'}</div>
         <div style="flex:1;min-width:0">
-          <div style="font-weight:700;font-size:0.92rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${App.escapeHtml(f.name)}</div>
-          <div style="font-size:0.72rem;color:var(--text-muted)">${f.enabled === false ? '비활성' : '활성'}</div>
+          <div style="font-weight:700;font-size:0.95rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${App.escapeHtml(f.name)}</div>
+          <div style="font-size:0.75rem;color:var(--text-muted);margin-top:2px">${f.enabled === false ? '⚪ 비활성' : '🟢 활성'} · 탭하여 편집</div>
         </div>
-        <button type="button" class="btn btn-sm btn-secondary frame-edit-btn" data-id="${App.escapeHtml(f.id)}" style="flex-shrink:0">편집</button>
-        <button type="button" class="btn btn-sm btn-danger frame-delete-btn" data-id="${App.escapeHtml(f.id)}" style="flex-shrink:0">삭제</button>
+        <button type="button" class="btn-icon frame-delete-btn" data-id="${App.escapeHtml(f.id)}" title="삭제" style="flex-shrink:0;background:none;border:none;cursor:pointer;font-size:1.1rem;color:var(--danger);padding:6px;width:36px;height:36px">🗑</button>
       </div>
     `).join('');
-    // 핸들러
-    listEl.querySelectorAll('.frame-edit-btn').forEach(btn => {
-      btn.addEventListener('click', () => this._showFrameEditor(btn.dataset.id));
+    // 행 전체 클릭 = 편집, 우측 🗑 = 삭제
+    listEl.querySelectorAll('.frame-lib-row').forEach(row => {
+      row.addEventListener('click', (e) => {
+        if (e.target.closest('.frame-delete-btn')) return;
+        this._showFrameEditor(row.dataset.id);
+      });
     });
     listEl.querySelectorAll('.frame-delete-btn').forEach(btn => {
-      btn.addEventListener('click', () => this._deleteFrame(btn.dataset.id));
+      btn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        this._deleteFrame(btn.dataset.id);
+      });
     });
   },
 

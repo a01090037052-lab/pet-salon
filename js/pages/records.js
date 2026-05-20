@@ -2481,9 +2481,9 @@ App.pages.records = {
         <!-- 폴라로이드 사진 크기 (폴라로이드 레이아웃 선택 시만 표시) -->
         <div id="polaroid-options" class="form-group" style="display:${selectedLayout === 'single' ? 'block' : 'none'};padding:12px;background:var(--bg);border-radius:var(--radius);margin-bottom:12px">
           <label class="form-label" style="font-size:0.82rem;margin-bottom:6px">사진 크기 <span style="color:var(--text-muted);font-weight:400">(폴라로이드)</span></label>
-          <div style="display:flex;gap:8px">
-            <label class="checkbox-label" style="flex:1;font-size:0.85rem;min-height:auto;padding:8px;cursor:pointer;border:1.5px solid ${(saved.polaroidSize || 'modern') === 'modern' ? 'var(--primary)' : 'var(--border)'};border-radius:8px"><input type="radio" name="polaroidSize" value="modern" ${(saved.polaroidSize || 'modern') === 'modern' ? 'checked' : ''} style="margin-right:6px"> 모던 (사진 920px)</label>
-            <label class="checkbox-label" style="flex:1;font-size:0.85rem;min-height:auto;padding:8px;cursor:pointer;border:1.5px solid ${saved.polaroidSize === 'minimal' ? 'var(--primary)' : 'var(--border)'};border-radius:8px"><input type="radio" name="polaroidSize" value="minimal" ${saved.polaroidSize === 'minimal' ? 'checked' : ''} style="margin-right:6px"> 미니멀 (사진 940px)</label>
+          <div style="display:flex;flex-direction:column;gap:6px">
+            <label class="checkbox-label" style="font-size:0.85rem;min-height:auto;padding:10px 12px;cursor:pointer;border:1.5px solid ${(saved.polaroidSize || 'modern') === 'modern' ? 'var(--primary)' : 'var(--border)'};border-radius:8px;display:flex;align-items:center;gap:8px"><input type="radio" name="polaroidSize" value="modern" ${(saved.polaroidSize || 'modern') === 'modern' ? 'checked' : ''}><span>모던 (사진 920px)</span></label>
+            <label class="checkbox-label" style="font-size:0.85rem;min-height:auto;padding:10px 12px;cursor:pointer;border:1.5px solid ${saved.polaroidSize === 'minimal' ? 'var(--primary)' : 'var(--border)'};border-radius:8px;display:flex;align-items:center;gap:8px"><input type="radio" name="polaroidSize" value="minimal" ${saved.polaroidSize === 'minimal' ? 'checked' : ''}><span>미니멀 (사진 940px)</span></label>
           </div>
           <div style="font-size:0.75rem;color:var(--text-muted);margin-top:6px">&#x1F4A1; 미니멀은 사진을 더 크게 — 사진 강조</div>
         </div>
