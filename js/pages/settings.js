@@ -1191,8 +1191,25 @@ App.pages.settings = {
 
   async directBackup(includePhotos = false) {
     try {
+      // 사진 포함 백업 — 큰 데이터 안전망 (100장 이상 시 경고)
+      if (includePhotos) {
+        const photosLight = await DB.getAllLight('photos', ['data']);
+        const photoCount = photosLight.length;
+        if (photoCount >= 100) {
+          const estimatedMB = Math.round(photoCount * 0.4); // 평균 사진 ~300KB raw + base64 33% 증가
+          const ok = await App.confirm(
+            `사진 ${photoCount}장을 포함한 백업은 약 ${estimatedMB}MB 이상이 됩니다.<br>` +
+            `폰 메모리 부담으로 실패할 수 있어요.<br><br>` +
+            `<strong>권장:</strong> 사진 제외 백업을 정기적으로, 사진 포함은 가끔만.`,
+            { okLabel: '계속 진행' }
+          );
+          if (!ok) return;
+        }
+      }
+      // 진행 toast (백업이 길어질 때 사장님 안심)
+      if (includePhotos) App.showToast('백업 생성 중... (사진 포함이라 1~2분 소요)', 'info');
       const data = await DB.exportAll({ excludePhotos: !includePhotos });
-      const json = JSON.stringify(data, null, 2);
+      const json = JSON.stringify(data); // pretty-print 제거 — 메모리 30% 절감
       const blob = new Blob([json], { type: 'application/json' });
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
