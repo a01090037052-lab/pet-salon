@@ -1207,7 +1207,7 @@ App.pages.settings = {
       document.body.removeChild(a);
       URL.revokeObjectURL(url);
       await DB.setSetting('lastBackupDate', date);
-      App.showToast('백업 완료! 이전 백업 파일은 삭제해도 됩니다.', 'info');
+      App.showToast('백업 완료! 다운로드 폴더의 파일을 카톡(자기 자신) 또는 iCloud/Drive에 보관하세요.', 'info');
     } catch (err) {
       console.error('Backup error:', err);
       App.showToast('백업 중 오류가 발생했습니다.', 'error');

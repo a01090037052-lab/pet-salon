@@ -674,6 +674,27 @@ const DB = {
     const totalItems = storeNames.reduce((sum, s) => sum + (data[s] ? data[s].length : 0), 0);
     let processed = 0;
 
+    // 1c. ⚠ 인-플라이트 안전망 — 사진 외 데이터 snapshot (메모리 + localStorage)
+    //     clear-insert 사이 crash 시 자동 rollback. settings는 IDB에 저장되므로 이 snapshot은 별도 보관.
+    const snapshotStores = storeNames.filter(sn => sn !== 'photos');
+    const snapshot = {};
+    try {
+      for (const sn of snapshotStores) {
+        snapshot[sn] = await new Promise((resolve, reject) => {
+          const req = this.db.transaction(sn, 'readonly').objectStore(sn).getAll();
+          req.onsuccess = () => resolve(req.result || []);
+          req.onerror = () => reject(req.error);
+        });
+      }
+      try {
+        localStorage.setItem('__petsalon_import_snapshot__', JSON.stringify({ ts: Date.now(), data: snapshot }));
+      } catch (lse) {
+        console.warn('snapshot localStorage 저장 실패 (메모리만 보관):', lse);
+      }
+    } catch (snapErr) {
+      console.warn('snapshot 생성 실패 — import 계속:', snapErr);
+    }
+
     // 2. 모든 스토어를 단일 트랜잭션으로 clear (원자적, 빠름)
     try {
       await new Promise((resolve, reject) => {
@@ -685,21 +706,22 @@ const DB = {
       });
     } catch (e) {
       console.error('importAll: clear phase failed:', e);
+      try { localStorage.removeItem('__petsalon_import_snapshot__'); } catch (_) {}
       throw new Error('기존 데이터 정리 중 오류가 발생했습니다.');
     }
 
-    // 3. 스토어별로 청크 단위 insert (트랜잭션 시간 초과 방지)
-    for (const storeName of storeNames) {
-      const items = data[storeName];
-      for (let i = 0; i < items.length; i += CHUNK_SIZE) {
-        const chunk = items.slice(i, i + CHUNK_SIZE);
-        try {
+    // 3. 스토어별로 청크 단위 insert — 실패 시 snapshot으로 자동 rollback
+    try {
+      for (const storeName of storeNames) {
+        const items = data[storeName];
+        for (let i = 0; i < items.length; i += CHUNK_SIZE) {
+          const chunk = items.slice(i, i + CHUNK_SIZE);
           await new Promise((resolve, reject) => {
             const tx = this.db.transaction(storeName, 'readwrite');
             const store = tx.objectStore(storeName);
             for (const item of chunk) {
               if (storeName === 'settings' && !item.key) continue;
-              // photos: export 시 Blob을 base64로 직렬화한 데이터 → 다시 Blob으로 복원 (저장 공간 33% 절약)
+              // photos: export 시 Blob을 base64로 직렬화한 데이터 → 다시 Blob으로 복원
               if (storeName === 'photos' && item.data && typeof item.data === 'string' && item.data.startsWith('data:')) {
                 try {
                   const parts = item.data.split(',');
@@ -708,15 +730,9 @@ const DB = {
                   const arr = new Uint8Array(binary.length);
                   for (let j = 0; j < binary.length; j++) arr[j] = binary.charCodeAt(j);
                   item.data = new Blob([arr], { type: mime });
-                } catch (e) {
-                  console.warn('photo blob 복원 실패, 문자열로 저장:', item.id, e);
-                }
+                } catch (e) { console.warn('photo blob 복원 실패:', item.id, e); }
               }
-              try {
-                store.add(item);
-              } catch (e) {
-                console.warn(`importAll: skipped bad item in ${storeName}`, e);
-              }
+              try { store.add(item); } catch (e) { console.warn(`importAll: skipped bad item in ${storeName}`, e); }
             }
             tx.oncomplete = resolve;
             tx.onerror = () => reject(tx.error);
@@ -726,11 +742,48 @@ const DB = {
           if (onProgress) {
             try { onProgress({ processed, total: totalItems, store: storeName }); } catch (_) {}
           }
-        } catch (e) {
-          console.error(`importAll: ${storeName} chunk ${i}~${i + chunk.length} 실패:`, e);
-          throw new Error(`${storeName} 저장 중 오류 (${processed}/${totalItems} 처리됨)`);
         }
       }
+    } catch (insertError) {
+      console.error(`importAll insert 실패 — snapshot으로 rollback 시도:`, insertError);
+      try {
+        await this._rollbackFromSnapshot(snapshot);
+        try { localStorage.removeItem('__petsalon_import_snapshot__'); } catch (_) {}
+        throw new Error('복원 중 오류 — 이전 데이터로 자동 복구되었습니다. 백업 파일을 확인 후 다시 시도해주세요.');
+      } catch (rbErr) {
+        if (rbErr.message && rbErr.message.includes('자동 복구')) throw rbErr;
+        console.error('rollback도 실패 — snapshot이 localStorage에 보관됨:', rbErr);
+        throw new Error('심각한 오류 — 앱을 닫지 마시고 즉시 개발자에게 문의하세요. (snapshot 보관 중)');
+      }
+    }
+
+    // 4. 성공 — snapshot 정리
+    try { localStorage.removeItem('__petsalon_import_snapshot__'); } catch (_) {}
+  },
+
+  // 인-플라이트 snapshot으로부터 rollback (importAll catch에서 호출)
+  async _rollbackFromSnapshot(snapshot) {
+    const stores = Object.keys(snapshot);
+    if (stores.length === 0) throw new Error('snapshot 비어있음');
+    // 1) clear (photos 제외)
+    await new Promise((resolve, reject) => {
+      const tx = this.db.transaction(stores, 'readwrite');
+      stores.forEach(sn => tx.objectStore(sn).clear());
+      tx.oncomplete = resolve;
+      tx.onerror = () => reject(tx.error);
+    });
+    // 2) re-insert
+    for (const sn of stores) {
+      await new Promise((resolve, reject) => {
+        const tx = this.db.transaction(sn, 'readwrite');
+        const store = tx.objectStore(sn);
+        for (const item of snapshot[sn]) {
+          if (sn === 'settings' && !item.key) continue;
+          try { store.add(item); } catch (_) {}
+        }
+        tx.oncomplete = resolve;
+        tx.onerror = () => reject(tx.error);
+      });
     }
   },
 

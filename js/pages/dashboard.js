@@ -255,13 +255,19 @@ App.pages.dashboard = {
       const needsBackup = await App.checkBackup();
       const lastBackupDate = await DB.getSetting('lastBackupDate');
       const backupDays = lastBackupDate ? App.getDaysAgo(lastBackupDate) : null;
+      const _isIOS = /iPhone|iPad|iPod/.test(navigator.userAgent);
+      const _urgent = backupDays !== null && backupDays >= (_isIOS ? 7 : 14);
       const backupWarning = needsBackup ? `
-        <div style="background:var(--warning-light);border:1px solid var(--warning);border-radius:var(--radius);padding:12px 16px;margin-bottom:16px;display:flex;align-items:center;gap:12px">
+        <div style="background:${_urgent ? 'var(--danger-bg-soft)' : 'var(--warning-light)'};border:1.5px solid ${_urgent ? 'var(--danger)' : 'var(--warning)'};border-radius:var(--radius);padding:14px 16px;margin-bottom:16px;display:flex;align-items:center;gap:12px;flex-wrap:wrap">
           <span style="font-size:1.3rem">&#x26A0;</span>
-          <div class="flex-1">
-            <strong>백업 알림</strong>: ${backupDays !== null ? `마지막 백업 후 ${backupDays}일 경과.` : '아직 백업하지 않았습니다.'} 데이터 안전을 위해 백업해주세요.
+          <div class="flex-1" style="min-width:200px">
+            <strong style="color:${_urgent ? 'var(--danger)' : 'var(--warning-text-strong)'}">${_urgent ? '백업 필요 (긴급)' : '백업 알림'}</strong>
+            <div style="font-size:0.85rem;margin-top:3px;color:var(--text-secondary)">
+              ${backupDays !== null ? `마지막 백업 ${backupDays}일 전.` : '아직 백업하지 않았습니다.'}
+              ${_isIOS ? ' iOS는 7일 이상 미사용 시 데이터 자동 삭제 위험.' : ' 폰 분실·고장 대비 데이터 보호 권장.'}
+            </div>
           </div>
-          <button class="btn btn-sm btn-warning" onclick="App.pages.settings?.directBackup()">백업하기</button>
+          <button class="btn btn-sm ${_urgent ? 'btn-danger' : 'btn-warning'}" onclick="App.pages.settings?.directBackup()">지금 백업</button>
         </div>
       ` : '';
 
