@@ -25,9 +25,11 @@ App.pages.services = {
   },
 
   async render(container) {
+    // 최근 12개월 records만 로드 — 3년+ 누적 시 메모리 부담 회피 (서비스 통계는 1년 기준 충분)
+    const oneYearAgo = (() => { const d = new Date(); d.setFullYear(d.getFullYear() - 1); return App.formatLocalDate(d); })();
     const [services, records] = await Promise.all([
       DB.getAll('services'),
-      DB.getAllLight('records', ['photoBefore', 'photoAfter', 'memo', 'groomer', 'nextVisitDate', 'appointmentId'])
+      DB.getByDateRange('records', 'date', oneYearAgo, '9999-12-31')
     ]);
     const active = services.filter(s => s.isActive !== false);
     const inactive = services.filter(s => s.isActive === false);
@@ -109,7 +111,7 @@ App.pages.services = {
             }
           }
           const usage = getUsage(s);
-          const usageTxt = usage > 0 ? '누적 ' + usage + '회' : '신규';
+          const usageTxt = usage > 0 ? '1년간 ' + usage + '회' : '신규';
           // 가격 표시: 모든 사이즈 같으면 단일, 다르면 "소/중/대"
           const samePrices = (s.priceSmall || 0) === (s.priceMedium || 0) && (s.priceMedium || 0) === (s.priceLarge || 0);
           const priceDisplay = samePrices
