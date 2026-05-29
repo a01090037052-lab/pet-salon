@@ -2849,7 +2849,7 @@ App.pages.records = {
     `;
 
     App.showModal({
-      title: '&#x1F4C4; 세무 자료 내보내기',
+      title: '세무 자료 내보내기',
       content: modalContent,
       hideFooter: true
     });
