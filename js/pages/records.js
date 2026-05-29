@@ -3014,29 +3014,45 @@ App.pages.records = {
       lines.push(`생성일: ${genDate}`);
       lines.push('');
 
-      // 상세 내역
-      lines.push(['날짜', '고객명', '반려견', '견종', '서비스', '스타일', '추가항목', '기본가', '추가비', '할인', '합계', '결제수단', '담당', '메모'].map(csvEsc).join(','));
+      // 카테고리 → 엑셀 매출 구분 매핑
+      const mapCategoryToTax = (cat) => {
+        const map = { grooming: '미용(그루밍)', addon: '미용(그루밍)', care: '케어' };
+        return map[cat] || '미용(그루밍)';
+      };
+      const getRecordCategory = (r) => {
+        if (r.serviceIds && r.serviceIds.length > 0) {
+          const svc = services.find(s => s.id === r.serviceIds[0]);
+          if (svc) return mapCategoryToTax(svc.category);
+        }
+        if (r.service) {
+          const svc = services.find(s => s.name === r.service);
+          if (svc) return mapCategoryToTax(svc.category);
+        }
+        return '미용(그루밍)';
+      };
+
+      // 매출 시트 양식 (엑셀 '매출' 시트에 그대로 복사·붙여넣기 가능)
+      lines.push('[매출 시트 — 엑셀 매출 시트에 그대로 복사·붙여넣기. 부가세·합계·월은 엑셀이 자동 계산]');
+      lines.push(['날짜', '구분', '거래처', '결제수단', '공급가액(원)', '부가세(원)', '합계(원)', '월', '메모'].map(csvEsc).join(','));
 
       filtered.forEach(r => {
         const customer = customerMap[r.customerId];
         const pet = petMap[r.petId];
-        const svcName = r.service || (r.serviceNames || []).join(', ') || '-';
-        const payLabel = { cash: '현금', card: '카드', transfer: '이체', unpaid: '미결제' }[r.paymentMethod] || '';
+        const customerName = App.getCustomerLabel(customer);
+        const dealer = pet?.name && customerName ? `${pet.name} (${customerName})` : (pet?.name || customerName || '-');
+        const payLabel = { cash: '현금', card: '카드', transfer: '계좌이체', unpaid: '미수금' }[r.paymentMethod] || '';
+        const category = getRecordCategory(r);
+        const memoFull = [r.service || '', r.style ? ' / ' + r.style : '', (r.addons || []).length > 0 ? ' / 추가: ' + r.addons.join(', ') : '', r.memo ? ' / ' + r.memo : ''].join('').trim();
         lines.push([
           r.date || '',
-          App.getCustomerLabel(customer),
-          pet?.name || '',
-          pet?.breed || '',
-          svcName,
-          r.style || '',
-          (r.addons || []).join(', '),
-          r.servicePrice || r.totalPrice || 0,
-          r.addonPrice || 0,
-          Number(r.discount) || 0,
-          App.getRecordAmount(r),
+          category,
+          dealer,
           payLabel,
-          r.groomer || '',
-          r.memo || ''
+          App.getRecordAmount(r),
+          '', // 부가세 — 엑셀 함수 자동
+          '', // 합계 — 엑셀 함수 자동
+          '', // 월 — 엑셀 함수 자동
+          memoFull
         ].map(csvEsc).join(','));
       });
 
@@ -3106,7 +3122,7 @@ App.pages.records = {
       document.body.removeChild(a);
       URL.revokeObjectURL(url);
 
-      App.showToast('CSV 파일이 다운로드되었습니다.');
+      App.showToast('CSV 다운로드 완료! 엑셀 매출 시트에 그대로 복사·붙여넣기 가능합니다.', 'info');
       App.closeModal();
     } catch (err) {
       console.error('CSV export error:', err);
