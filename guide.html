@@ -1008,6 +1008,225 @@
           <li>☑ 매장 컬러 톤 반영</li>
         </ul>
 
+        <h3>레이아웃별 정밀 좌표 가이드 (px 단위)</h3>
+        <p>각 레이아웃마다 사진·텍스트·로고 자동 들어가는 정확한 영역. 배경 이미지 디자인 시 이 영역과 겹치지 않도록 작업하세요.</p>
+
+        <h4>🖼 폴라로이드 모던 (1080 × 1080)</h4>
+        <pre style="background:#f3f4f6;padding:12px;border-radius:8px;font-family:monospace;font-size:0.82rem;overflow-x:auto">
+┌──────────────── 1080 ────────────────┐
+│  ◻ 위 80px 여백                       │
+│   ┌──────────────────────────┐        │
+│   │                          │        │
+│   │   사진 영역 920 × 920      │        │  ← 사진 자동
+│   │   (x: 80, y: 80)         │        │
+│   │                          │        │
+│   └──────────────────────────┘        │
+│  ◻ 좌 80px / 우 80px                  │
+│                                       │
+│        하단 80px (헤드라인 자동)        │  ← 텍스트 자동
+└───────────────────────────────────────┘
+        </pre>
+        <ul>
+          <li><strong>전체 크기:</strong> 1080 × 1080 (정사각, 인스타 1:1 표준)</li>
+          <li><strong>사진 영역:</strong> x 80, y 80, 너비 920, 높이 920</li>
+          <li><strong>텍스트 영역 (헤드라인):</strong> y 1000 ~ 1080 (중앙 정렬)</li>
+          <li><strong>여백:</strong> 위·좌·우·아래 모두 80px 균등</li>
+        </ul>
+
+        <h4>🖼 폴라로이드 미니멀 (1080 × 1080)</h4>
+        <ul>
+          <li><strong>전체 크기:</strong> 1080 × 1080</li>
+          <li><strong>사진 영역:</strong> x 70, y 70, 너비 940, 높이 940 (사진 최대 강조)</li>
+          <li><strong>텍스트 영역:</strong> y 1010 ~ 1080</li>
+          <li><strong>여백:</strong> 위·좌·우·아래 모두 70px</li>
+        </ul>
+
+        <h4>📷 인스타 피드 (1080 × 1350)</h4>
+        <pre style="background:#f3f4f6;padding:12px;border-radius:8px;font-family:monospace;font-size:0.82rem;overflow-x:auto">
+┌──────────────── 1080 ────────────────┐
+│ 상단 약 100~150px: 로고/매장명 자동      │  ← 로고 자동
+├───────────────────────────────────────┤
+│                                       │
+│                                       │
+│                                       │
+│       사진 영역 (중앙 약 65%)            │  ← 사진 자동
+│                                       │
+│                                       │
+│                                       │
+├───────────────────────────────────────┤
+│ 하단 약 200~300px: 헤드라인·서브·푸터    │  ← 텍스트 자동
+└───────────────────────────────────────┘
+        </pre>
+        <ul>
+          <li><strong>전체 크기:</strong> 1080 × 1350 (4:5, 인스타 피드 표준)</li>
+          <li><strong>상단 로고 영역:</strong> y 0 ~ 150 (매장명·로고 자동)</li>
+          <li><strong>사진 영역:</strong> 중앙 약 65% (자동 계산)</li>
+          <li><strong>하단 텍스트 영역:</strong> y 1050 ~ 1350</li>
+          <li><strong>배경 이미지 주의:</strong> 상단·하단 약 25%씩 자동 텍스트 들어감 → 비워두기</li>
+        </ul>
+
+        <h4>📱 인스타 스토리 (1080 × 1920)</h4>
+        <ul>
+          <li><strong>전체 크기:</strong> 1080 × 1920 (9:16, 인스타 스토리 표준)</li>
+          <li><strong>안전 영역 (인스타 UI 가림 방지):</strong>
+            <ul>
+              <li>상단 250px: 인스타 시간·이름 가려짐 → 중요 정보 X</li>
+              <li>하단 250px: "더보기·좋아요·답글" 가려짐 → 중요 정보 X</li>
+              <li>실제 가시 영역: y 250 ~ 1670 (높이 1420)</li>
+            </ul>
+          </li>
+          <li><strong>설정:</strong> 카드 생성 시 로고 위치를 "안전 영역" 선택 권장</li>
+        </ul>
+
+        <h4>🎬 2컷 Before/After (1080 × 2430)</h4>
+        <pre style="background:#f3f4f6;padding:12px;border-radius:8px;font-family:monospace;font-size:0.82rem;overflow-x:auto">
+┌──── 1080 ────┐
+│ 매장명 (상단)  │  y: 81
+├──────────────┤
+│              │
+│  BEFORE 사진   │  사진 1: y 135 ~ 1053 (918×918)
+│              │
+├──────────────┤
+│              │
+│  AFTER 사진    │  사진 2: y 1085 ~ 2003 (918×918)
+│              │
+├──────────────┤
+│  반려견 이름   │  y: 2079
+│  날짜         │
+│  부가 정보     │
+│  푸터         │  y: 2376
+└──────────────┘
+        </pre>
+        <ul>
+          <li><strong>전체 크기:</strong> 1080 × 2430 (1:2.25)</li>
+          <li><strong>매장명:</strong> 상단 중앙 y 81</li>
+          <li><strong>사진 1 (BEFORE):</strong> x 81, y 135, 너비 918, 높이 918</li>
+          <li><strong>사진 2 (AFTER):</strong> x 81, y 1085, 너비 918, 높이 918</li>
+          <li><strong>하단 텍스트:</strong> y 2079 ~ 2400</li>
+          <li><strong>좌우 여백:</strong> 81px</li>
+        </ul>
+
+        <h4>🎞 네컷 세로 (1080 × 3240)</h4>
+        <ul>
+          <li><strong>전체 크기:</strong> 1080 × 3240 (1:3)</li>
+          <li><strong>사진 4장:</strong> 가로 × 세로 4:3 비율, 위에서 아래로 순서</li>
+          <li><strong>각 사진 영역:</strong> 너비 약 950, 높이 약 712 (자동 계산)</li>
+          <li><strong>사진 간격:</strong> 약 27px</li>
+          <li><strong>하단 텍스트 영역:</strong> 마지막 사진 아래 약 270px</li>
+          <li><strong>좌우 여백:</strong> 65px</li>
+        </ul>
+
+        <h3>💡 배경 이미지 디자인 권장 패턴</h3>
+
+        <h4>1. "프레임만 디자인" 패턴 (가장 단순)</h4>
+        <ul>
+          <li>전체를 배경색·패턴으로 채움 (단색·옅은 그라데이션·미세 무늬)</li>
+          <li>중앙·텍스트 영역은 자연스럽게 옅게</li>
+          <li>가장자리에만 장식 (선·코너 일러스트)</li>
+          <li>예: 베이지 배경 + 가장자리 미세한 꽃 일러스트</li>
+        </ul>
+
+        <h4>2. "윈도우 프레임" 패턴 (사진 영역 강조)</h4>
+        <ul>
+          <li>사진 영역 주변에 흰색 테두리 (폴라로이드 시그니처)</li>
+          <li>그 외 배경은 매장 시그니처 컬러</li>
+          <li>예: 네이비 배경 + 흰색 사진 프레임 + 골드 포인트</li>
+        </ul>
+
+        <h4>3. "일러스트 코너" 패턴 (감성 강조)</h4>
+        <ul>
+          <li>네 모서리에만 일러스트 (꽃·별·하트 등)</li>
+          <li>중앙·텍스트 영역은 완전 비움</li>
+          <li>시즌별 일러스트만 교체 → 매장 정체성 유지</li>
+          <li>예: 매장 시그니처 컬러 + 봄=벚꽃, 여름=조개, 가을=낙엽, 겨울=눈</li>
+        </ul>
+
+        <h4>4. "투명 배경" 패턴 (배경 X)</h4>
+        <ul>
+          <li>커스텀 테마의 배경색만 활용</li>
+          <li>배경 이미지 X (가장 가벼움)</li>
+          <li>매장 시그니처 컬러 + 글자색만으로 깔끔</li>
+          <li>저장 공간 0MB</li>
+        </ul>
+
+        <h3>내 프레임 라이브러리 사용법</h3>
+        <p>시즌·이벤트별 프레임을 미리 만들어 두면 사진 카드 생성 시 1탭으로 선택할 수 있습니다. 최대 5개 슬롯.</p>
+
+        <h4>진입 경로</h4>
+        <ol>
+          <li>설정 → 매장 관리 탭</li>
+          <li>"🖼 내 프레임 라이브러리" 카드</li>
+          <li>"+ 새 프레임 추가" 버튼</li>
+        </ol>
+
+        <h4>새 프레임 추가 단계</h4>
+        <ol>
+          <li><strong>이름 입력:</strong> "봄 시즌 2026", "크리스마스", "여름 시즌" 등 알아보기 쉬운 이름</li>
+          <li><strong>배경 이미지:</strong> 피그마·캔바로 만든 PNG/JPG 업로드 (1MB 이하 JPG 권장)</li>
+          <li><strong>포인트 색:</strong> 헤드라인·강조 텍스트 색 (매장 시그니처 또는 시즌 컬러)</li>
+          <li><strong>글자 색:</strong> 본문 텍스트 색 (배경과 대비 강하게)</li>
+          <li><strong>활성/비활성:</strong> 사진 카드 생성 시 노출 여부</li>
+          <li><strong>저장</strong></li>
+        </ol>
+
+        <h4>사진 카드에서 사용하기</h4>
+        <ol>
+          <li>미용 기록 → 카드 아이콘 (📷) 클릭</li>
+          <li>"테마" 영역에서 등록한 프레임 클릭 (썸네일과 이름 표시)</li>
+          <li>나머지 옵션 (사진·자유 텍스트 등) 설정</li>
+          <li>"카드 생성" → 미리보기 확인 → 공유/저장</li>
+        </ol>
+        <p>한 번 선택한 프레임은 다음 카드 만들 때 자동으로 선택되어 있어요 (마지막 사용 기억).</p>
+
+        <h4>프레임 관리</h4>
+        <ul>
+          <li><strong>편집:</strong> 라이브러리에서 프레임 카드 어디든 탭 → 편집 모달</li>
+          <li><strong>삭제:</strong> 우측 🗑 버튼</li>
+          <li><strong>활성/비활성:</strong> 카드 안 토글 (편집 모달 안 거치고 즉시)
+            <ul>
+              <li>🟢 활성 — 사진 카드 생성 시 노출</li>
+              <li>⚪ 비활성 — 숨김 (삭제는 안 함, 다음 시즌 재사용 가능)</li>
+            </ul>
+          </li>
+        </ul>
+
+        <h4>시즌·이벤트별 활용 워크플로우</h4>
+        <p>한 번 만들어두면 매년 재사용 가능합니다. 5개 슬롯 권장 활용:</p>
+        <table style="width:100%;border-collapse:collapse;margin:8px 0">
+          <thead>
+            <tr style="background:#f3f4f6">
+              <th style="padding:8px;text-align:left;border:1px solid #e5e7eb">슬롯</th>
+              <th style="padding:8px;text-align:left;border:1px solid #e5e7eb">컨셉</th>
+              <th style="padding:8px;text-align:left;border:1px solid #e5e7eb">활성 시기</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr><td style="padding:8px;border:1px solid #e5e7eb">1</td><td style="padding:8px;border:1px solid #e5e7eb">매장 기본 (시그니처 컬러)</td><td style="padding:8px;border:1px solid #e5e7eb">항상</td></tr>
+            <tr><td style="padding:8px;border:1px solid #e5e7eb">2</td><td style="padding:8px;border:1px solid #e5e7eb">봄 시즌 (벚꽃·핑크 톤)</td><td style="padding:8px;border:1px solid #e5e7eb">3~5월</td></tr>
+            <tr><td style="padding:8px;border:1px solid #e5e7eb">3</td><td style="padding:8px;border:1px solid #e5e7eb">여름 시즌 (민트·바다 톤)</td><td style="padding:8px;border:1px solid #e5e7eb">6~8월</td></tr>
+            <tr><td style="padding:8px;border:1px solid #e5e7eb">4</td><td style="padding:8px;border:1px solid #e5e7eb">가을·겨울 (베이지·네이비)</td><td style="padding:8px;border:1px solid #e5e7eb">9~12월</td></tr>
+            <tr><td style="padding:8px;border:1px solid #e5e7eb">5</td><td style="padding:8px;border:1px solid #e5e7eb">크리스마스·새해 한정</td><td style="padding:8px;border:1px solid #e5e7eb">12월 ~ 1월</td></tr>
+          </tbody>
+        </table>
+
+        <h4>매장 브랜딩 일관성 팁</h4>
+        <p>시즌마다 컨셉을 완전히 바꾸지 마시고, <strong>매장 시그니처 컬러는 고정</strong>한 채 시즌 보조 색만 변경하세요.</p>
+        <ul>
+          <li>매장 시그니처 컬러: 베이지 + 검정 (고정)</li>
+          <li>봄: 베이지 + 검정 + 핑크 포인트</li>
+          <li>여름: 베이지 + 검정 + 민트 포인트</li>
+          <li>겨울: 베이지 + 검정 + 골드 포인트</li>
+        </ul>
+        <p>→ 손님이 매장 시그니처를 즉시 인지하면서도 시즌감 전달.</p>
+
+        <h4>저장 공간·성능 주의</h4>
+        <ul>
+          <li>프레임 1개당 배경 이미지 약 0.5~1MB 권장</li>
+          <li>5개 슬롯 합산 약 5MB 이하 유지</li>
+          <li>10MB 이상 시 앱 로딩·백업 부담</li>
+          <li>피그마 Export 시 JPG 85% 압축으로 저장 권장</li>
+        </ul>
+
         <h3>인스타그램 최적화</h3>
         <ul>
           <li>모든 레이아웃은 <strong>1080px 이상</strong>으로 자동 업스케일 (흐림 방지)</li>
