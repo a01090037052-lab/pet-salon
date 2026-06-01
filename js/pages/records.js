@@ -560,6 +560,17 @@ App.pages.records = {
           <input type="hidden" id="f-paymentMethod" value="${(!record.paymentMethod && !id) ? 'card' : (record.paymentMethod || 'card')}">
         </div>
 
+        <!-- 현금영수증 (현금 결제 시에만 표시) -->
+        <div class="form-group" id="cashreceipt-group" style="display:${record.paymentMethod === 'cash' ? 'block' : 'none'};margin-top:-4px;background:var(--bg);border-radius:var(--radius);padding:10px 12px">
+          <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:0.88rem;font-weight:600">
+            <input type="checkbox" id="f-cashReceipt" ${record.cashReceiptYn ? 'checked' : ''} style="width:18px;height:18px;cursor:pointer">
+            <span>현금영수증 발행</span>
+          </label>
+          <input type="text" id="f-cashReceiptNo" placeholder="승인번호 (선택)" value="${record.cashReceiptNo || ''}"
+            inputmode="numeric" maxlength="20"
+            style="margin-top:8px;display:${record.cashReceiptYn ? 'block' : 'none'};min-height:38px;width:100%;padding:8px 10px;border:1px solid var(--border);border-radius:6px;font-size:0.9rem">
+        </div>
+
         <!-- 컨디션 (기본 표시 — 리포트 가치) -->
         <div class="form-group" style="margin-bottom:12px">
           <label class="form-label" style="font-size:0.85rem">컨디션 <span style="font-weight:400;color:var(--text-muted);font-size:0.78rem">(선택 — 리포트에 반영)</span></label>
@@ -832,7 +843,16 @@ App.pages.records = {
         document.querySelectorAll('.payment-chip').forEach(c => c.classList.remove('active'));
         chip.classList.add('active');
         document.getElementById('f-paymentMethod').value = chip.dataset.value;
+        // 현금 선택 시에만 현금영수증 그룹 표시
+        const cashGroup = document.getElementById('cashreceipt-group');
+        if (cashGroup) cashGroup.style.display = chip.dataset.value === 'cash' ? 'block' : 'none';
       });
+    });
+
+    // 현금영수증 checkbox → 승인번호 입력란 토글
+    document.getElementById('f-cashReceipt')?.addEventListener('change', (e) => {
+      const noInput = document.getElementById('f-cashReceiptNo');
+      if (noInput) noInput.style.display = e.target.checked ? 'block' : 'none';
     });
 
     // Condition chip buttons
@@ -925,7 +945,21 @@ App.pages.records = {
       const appointmentId = document.getElementById('f-appointmentId')?.value || null;
       const status = 'completed';
 
-      const data = { customerId, petId, date, groomer, nextVisitDate, service, servicePrice, addons, addonPrice, style, serviceNames, totalPrice, discount, extraCharge, finalPrice, memo, paymentMethod, appointmentId, status, condition, cooperativeness, skinStatus, earStatus, mattingLevel };
+      // 서비스 카테고리 스냅샷 — services 마스터 변경(이름/카테고리/삭제) 영향 차단
+      let serviceCategory = '';
+      if (service) {
+        try {
+          const allServices = await DB.getAll('services');
+          const svc = allServices.find(s => s.name === service);
+          if (svc && svc.category) serviceCategory = svc.category;
+        } catch (e) { /* services 조회 실패 시 빈 값 — export에서 폴백 */ }
+      }
+
+      // 현금영수증 (현금 결제일 때만 의미)
+      const cashReceiptYn = document.getElementById('f-cashReceipt')?.checked || false;
+      const cashReceiptNo = document.getElementById('f-cashReceiptNo')?.value?.trim() || '';
+
+      const data = { customerId, petId, date, groomer, nextVisitDate, service, servicePrice, serviceCategory, addons, addonPrice, style, serviceNames, totalPrice, discount, extraCharge, finalPrice, memo, paymentMethod, cashReceiptYn, cashReceiptNo, appointmentId, status, condition, cooperativeness, skinStatus, earStatus, mattingLevel };
 
       // 자동완성 이력 업데이트
       if (service) App.addAutoHistory('serviceHistory', service);
@@ -2840,10 +2874,15 @@ App.pages.records = {
         </div>
 
         <div style="text-align:center">
-          <div id="export-filename" style="font-size:0.8rem;color:var(--text-muted);margin-bottom:10px"></div>
-          <button class="btn btn-success" id="btn-do-csv-download" style="width:100%;padding:14px;font-size:1rem;font-weight:700" disabled>
-            &#x1F4E5; CSV 다운로드
-          </button>
+          <div id="export-filename" style="font-size:0.78rem;color:var(--text-muted);margin-bottom:10px;line-height:1.5"></div>
+          <div style="display:flex;flex-direction:column;gap:8px">
+            <button class="btn btn-success" id="btn-do-csv-download" style="width:100%;padding:14px;font-size:1rem;font-weight:700" disabled>
+              &#x1F4E5; CSV 다운로드 <span style="font-size:0.78rem;font-weight:500;opacity:0.85">(엑셀·세무용)</span>
+            </button>
+            <button class="btn btn-primary" id="btn-do-json-download" style="width:100%;padding:14px;font-size:1rem;font-weight:700" disabled>
+              &#x1F4E5; JSON 다운로드 <span style="font-size:0.78rem;font-weight:500;opacity:0.85">(Python 스크립트용)</span>
+            </button>
+          </div>
         </div>
       </div>
     `;
@@ -2870,12 +2909,17 @@ App.pages.records = {
       currentEnd = end;
       const preview = document.getElementById('export-preview');
       const filenameEl = document.getElementById('export-filename');
-      const dlBtn = document.getElementById('btn-do-csv-download');
+      const dlBtnCsv = document.getElementById('btn-do-csv-download');
+      const dlBtnJson = document.getElementById('btn-do-json-download');
+      const setBtnsDisabled = (disabled) => {
+        if (dlBtnCsv) dlBtnCsv.disabled = disabled;
+        if (dlBtnJson) dlBtnJson.disabled = disabled;
+      };
       if (!preview) return;
 
       if (!start || !end || start > end) {
         preview.innerHTML = '<div style="color:var(--danger);text-align:center;font-size:0.9rem">올바른 기간을 선택해주세요</div>';
-        if (dlBtn) dlBtn.disabled = true;
+        setBtnsDisabled(true);
         return;
       }
 
@@ -2883,6 +2927,19 @@ App.pages.records = {
 
       // 인덱스 쿼리로 기간 내 records만 로드 (장기 누적 시 필수)
       const filtered = await DB.getByDateRange('records', 'date', start, end);
+      // 데이터 없으면 명확한 안내
+      if (filtered.length === 0) {
+        preview.innerHTML = `
+          <div style="padding:20px;text-align:center;background:var(--bg);border-radius:var(--radius);border:1px dashed var(--border)">
+            <div style="font-size:1.6rem;margin-bottom:6px">&#x1F4C4;</div>
+            <div style="font-weight:700;font-size:0.95rem;margin-bottom:4px">해당 기간 기록이 없습니다</div>
+            <div style="font-size:0.82rem;color:var(--text-muted);line-height:1.5">기간을 변경하거나, 미용 기록이 쌓이면<br>다운로드 가능합니다</div>
+          </div>
+        `;
+        if (filenameEl) filenameEl.textContent = '';
+        setBtnsDisabled(true);
+        return;
+      }
       const total = filtered.reduce((sum, r) => sum + App.getRecordAmount(r), 0);
 
       const breakdown = { cash: { count: 0, amount: 0 }, card: { count: 0, amount: 0 }, transfer: { count: 0, amount: 0 }, unpaid: { count: 0, amount: 0 } };
@@ -2925,9 +2982,9 @@ App.pages.records = {
       `;
 
       const shopName = await DB.getSetting('shopName') || '펫살롱';
-      const fname = `${shopName}_매출내역_${start}_${end}.csv`;
-      if (filenameEl) filenameEl.textContent = `파일명: ${fname}`;
-      if (dlBtn) dlBtn.disabled = filtered.length === 0;
+      const fnameBase = `${shopName}_매출내역_${start}_${end}`;
+      if (filenameEl) filenameEl.innerHTML = `<div>CSV: ${fnameBase}.csv</div><div>JSON: ${fnameBase}.json</div>`;
+      setBtnsDisabled(filtered.length === 0);
     };
 
     // 기간 버튼 클릭
@@ -2967,6 +3024,10 @@ App.pages.records = {
     endInput.addEventListener('change', () => updatePreview(startInput.value, endInput.value));
 
     // 다운로드 버튼
+    document.getElementById('btn-do-json-download')?.addEventListener('click', async () => {
+      await this.downloadJSON(currentStart, currentEnd);
+    });
+
     document.getElementById('btn-do-csv-download')?.addEventListener('click', async () => {
       await this.downloadCSV(currentStart, currentEnd);
     });
@@ -2975,28 +3036,89 @@ App.pages.records = {
     await updatePreview(thisMonthStart, today);
   },
 
+  // ========== Export 공통 데이터 빌더 ==========
+  async _buildExportData(start, end) {
+    const [records, customers, pets, services] = await Promise.all([
+      DB.getByDateRange('records', 'date', start, end),
+      DB.getAll('customers'),
+      DB.getAll('pets'),
+      DB.getAll('services')
+    ]);
+
+    const customerMap = {}; customers.forEach(c => { customerMap[c.id] = c; });
+    const petMap = {}; pets.forEach(p => { petMap[p.id] = p; });
+
+    const mapCategoryToTax = (cat) => {
+      const map = { grooming: '미용(그루밍)', addon: '미용(그루밍)', care: '케어' };
+      return map[cat] || '미용(그루밍)';
+    };
+
+    const resolveCategory = (r) => {
+      if (r.serviceCategory) return r.serviceCategory;
+      if (r.service) {
+        const svc = services.find(s => s.name === r.service);
+        if (svc && svc.category) return svc.category;
+      }
+      return 'grooming';
+    };
+
+    const sorted = [...records].sort((a, b) => (a.date || '').localeCompare(b.date || ''));
+    const shopName = await DB.getSetting('shopName') || '펫살롱';
+
+    const enriched = sorted.map(r => {
+      const customer = customerMap[r.customerId];
+      const pet = petMap[r.petId];
+      const category = resolveCategory(r);
+      const dateNoDash = (r.date || '').replace(/-/g, '');
+      const txId = dateNoDash ? `${dateNoDash}-${r.id}` : String(r.id);
+      const paymentLabel = { cash: '현금', card: '카드', transfer: '계좌이체', unpaid: '미수금' }[r.paymentMethod] || '';
+      const memoParts = [
+        r.style ? '스타일: ' + r.style : '',
+        (r.addons || []).length > 0 ? '추가: ' + r.addons.join(', ') : '',
+        r.memo || ''
+      ].filter(Boolean);
+
+      return {
+        txId,
+        id: r.id,
+        date: r.date || '',
+        category,
+        categoryLabel: mapCategoryToTax(category),
+        customerName: App.getCustomerLabel(customer) || '',
+        petName: pet?.name || '',
+        serviceName: r.service || '',
+        addons: r.addons || [],
+        style: r.style || '',
+        groomer: r.groomer || '',
+        paymentMethod: r.paymentMethod || '',
+        paymentLabel,
+        amount: App.getRecordAmount(r),
+        cashReceiptYn: r.cashReceiptYn ? 'Y' : 'N',
+        cashReceiptNo: r.cashReceiptNo || '',
+        memo: memoParts.join(' / '),
+        memoRaw: r.memo || '',
+        createdAt: r.createdAt || '',
+        updatedAt: r.updatedAt || ''
+      };
+    });
+
+    const totalAmount = enriched.reduce((sum, r) => sum + r.amount, 0);
+
+    return {
+      meta: { shopName, period: { start, end }, exportedAt: new Date().toISOString(), totalRecords: enriched.length, totalAmount },
+      records: enriched
+    };
+  },
+
+  // ========== CSV 내보내기 (Python 친화 — 헤더 1줄 + 데이터 행만) ==========
   async downloadCSV(start, end) {
     try {
-      // records: 인덱스 쿼리로 기간만 로드 (장기 누적 대비)
-      const [records, customers, pets, services] = await Promise.all([
-        DB.getByDateRange('records', 'date', start, end),
-        DB.getAll('customers'),
-        DB.getAll('pets'),
-        DB.getAll('services')
-      ]);
-
-      const customerMap = {};
-      customers.forEach(c => { customerMap[c.id] = c; });
-      const petMap = {};
-      pets.forEach(p => { petMap[p.id] = p; });
-      const serviceMap = {};
-      services.forEach(s => { serviceMap[s.id] = s.name; });
-
-      const filtered = records
-        .sort((a, b) => (b.date || '').localeCompare(a.date || ''));
-
-      const shopName = await DB.getSetting('shopName') || '펫살롱';
-      const genDate = App.getToday();
+      const data = await this._buildExportData(start, end);
+      if (!data.records.length) {
+        App.showToast('해당 기간 기록이 없습니다.', 'warning');
+        return;
+      }
+      const shopName = data.meta.shopName;
 
       const csvEsc = (val) => {
         const s = String(val == null ? '' : val);
@@ -3007,108 +3129,20 @@ App.pages.records = {
       };
 
       const lines = [];
+      // 헤더 1줄 — pandas.read_csv 바로 호환
+      lines.push([
+        '거래번호', '날짜', '구분', '고객명', '펫이름', '결제수단', '공급가액',
+        '현금영수증', '현금영수증번호', '서비스명', '미용사', '메모'
+      ].join(','));
 
-      // 헤더
-      lines.push(csvEsc(shopName + ' 매출 내역'));
-      lines.push(`기간: ${start} ~ ${end}`);
-      lines.push(`생성일: ${genDate}`);
-      lines.push('');
-
-      // 카테고리 → 엑셀 매출 구분 매핑
-      const mapCategoryToTax = (cat) => {
-        const map = { grooming: '미용(그루밍)', addon: '미용(그루밍)', care: '케어' };
-        return map[cat] || '미용(그루밍)';
-      };
-      const getRecordCategory = (r) => {
-        if (r.serviceIds && r.serviceIds.length > 0) {
-          const svc = services.find(s => s.id === r.serviceIds[0]);
-          if (svc) return mapCategoryToTax(svc.category);
-        }
-        if (r.service) {
-          const svc = services.find(s => s.name === r.service);
-          if (svc) return mapCategoryToTax(svc.category);
-        }
-        return '미용(그루밍)';
-      };
-
-      // 매출 시트 양식 (엑셀 '매출' 시트에 그대로 복사·붙여넣기 가능)
-      lines.push('[매출 시트 — 엑셀 매출 시트에 그대로 복사·붙여넣기. 부가세·합계·월은 엑셀이 자동 계산]');
-      lines.push(['날짜', '구분', '거래처', '결제수단', '공급가액(원)', '부가세(원)', '합계(원)', '월', '메모'].map(csvEsc).join(','));
-
-      filtered.forEach(r => {
-        const customer = customerMap[r.customerId];
-        const pet = petMap[r.petId];
-        const customerName = App.getCustomerLabel(customer);
-        const dealer = pet?.name && customerName ? `${pet.name} (${customerName})` : (pet?.name || customerName || '-');
-        const payLabel = { cash: '현금', card: '카드', transfer: '계좌이체', unpaid: '미수금' }[r.paymentMethod] || '';
-        const category = getRecordCategory(r);
-        const memoFull = [r.service || '', r.style ? ' / ' + r.style : '', (r.addons || []).length > 0 ? ' / 추가: ' + r.addons.join(', ') : '', r.memo ? ' / ' + r.memo : ''].join('').trim();
+      data.records.forEach(r => {
         lines.push([
-          r.date || '',
-          category,
-          dealer,
-          payLabel,
-          App.getRecordAmount(r),
-          '', // 부가세 — 엑셀 함수 자동
-          '', // 합계 — 엑셀 함수 자동
-          '', // 월 — 엑셀 함수 자동
-          memoFull
+          r.txId, r.date, r.categoryLabel, r.customerName, r.petName,
+          r.paymentLabel, r.amount,
+          r.cashReceiptYn, r.cashReceiptNo,
+          r.serviceName, r.groomer, r.memo
         ].map(csvEsc).join(','));
       });
-
-      // 요약
-      lines.push('');
-      lines.push('[요약]');
-      const total = filtered.reduce((sum, r) => sum + App.getRecordAmount(r), 0);
-      lines.push(`총 건수,${filtered.length}`);
-      lines.push(`총 매출,${csvEsc(total.toLocaleString('ko-KR'))}`);
-
-      const breakdown = { cash: { count: 0, amount: 0 }, card: { count: 0, amount: 0 }, transfer: { count: 0, amount: 0 }, unpaid: { count: 0, amount: 0 } };
-      filtered.forEach(r => {
-        const m = r.paymentMethod || '';
-        if (breakdown[m]) {
-          breakdown[m].count++;
-          breakdown[m].amount += App.getRecordAmount(r);
-        }
-      });
-      lines.push(`현금,${csvEsc(breakdown.cash.amount.toLocaleString('ko-KR'))},${breakdown.cash.count}건`);
-      lines.push(`카드,${csvEsc(breakdown.card.amount.toLocaleString('ko-KR'))},${breakdown.card.count}건`);
-      lines.push(`이체,${csvEsc(breakdown.transfer.amount.toLocaleString('ko-KR'))},${breakdown.transfer.count}건`);
-      lines.push(`미결제,${csvEsc(breakdown.unpaid.amount.toLocaleString('ko-KR'))},${breakdown.unpaid.count}건`);
-
-      // 미용사별 매출
-      const groomerMap = {};
-      filtered.forEach(r => {
-        const name = r.groomer || '미지정';
-        if (!groomerMap[name]) groomerMap[name] = { count: 0, amount: 0 };
-        groomerMap[name].count++;
-        groomerMap[name].amount += App.getRecordAmount(r);
-      });
-      const groomerEntries = Object.entries(groomerMap).sort((a, b) => b[1].amount - a[1].amount);
-      if (groomerEntries.length > 0) {
-        lines.push('');
-        lines.push('[미용사별 매출]');
-        groomerEntries.forEach(([name, data]) => {
-          lines.push(`${csvEsc(name)},${csvEsc(data.amount.toLocaleString('ko-KR'))},${data.count}건`);
-        });
-      }
-
-      // 일별 매출
-      const dailyMap = {};
-      filtered.forEach(r => {
-        if (!r.date) return;
-        if (!dailyMap[r.date]) dailyMap[r.date] = { count: 0, amount: 0 };
-        dailyMap[r.date].count++;
-        dailyMap[r.date].amount += App.getRecordAmount(r);
-      });
-      const dailyEntries = Object.entries(dailyMap).sort((a, b) => a[0].localeCompare(b[0]));
-      if (dailyEntries.length > 0) {
-        lines.push('');
-        lines.push('[일별 매출]');
-        dailyEntries.forEach(([date, data]) => {
-          lines.push(`${date},${csvEsc(data.amount.toLocaleString('ko-KR'))},${data.count}건`);
-        });
-      }
 
       // UTF-8 BOM + 다운로드
       const csvContent = '\uFEFF' + lines.join('\n');
@@ -3122,11 +3156,63 @@ App.pages.records = {
       document.body.removeChild(a);
       URL.revokeObjectURL(url);
 
-      App.showToast('CSV 다운로드 완료! 엑셀 매출 시트에 그대로 복사·붙여넣기 가능합니다.', 'info');
-      App.closeModal();
+      App.showToast(`CSV 다운로드 완료 (${data.records.length}건)`, 'info');
     } catch (err) {
       console.error('CSV export error:', err);
-      App.showToast('내보내기 중 오류가 발생했습니다.', 'error');
+      App.showToast('CSV 내보내기 중 오류가 발생했습니다.', 'error');
+    }
+  },
+
+  // ========== JSON 내보내기 (Python 스크립트용 — 풍부한 필드) ==========
+  async downloadJSON(start, end) {
+    try {
+      const data = await this._buildExportData(start, end);
+      if (!data.records.length) {
+        App.showToast('해당 기간 기록이 없습니다.', 'warning');
+        return;
+      }
+
+      const out = {
+        meta: data.meta,
+        records: data.records.map(r => ({
+          txId: r.txId,
+          recordId: r.id,
+          date: r.date,
+          category: r.category,
+          categoryLabel: r.categoryLabel,
+          customerName: r.customerName,
+          petName: r.petName,
+          serviceName: r.serviceName,
+          addons: r.addons,
+          style: r.style,
+          groomer: r.groomer,
+          paymentMethod: r.paymentMethod,
+          paymentLabel: r.paymentLabel,
+          amount: r.amount,
+          cashReceiptYn: r.cashReceiptYn === 'Y',
+          cashReceiptNo: r.cashReceiptNo,
+          memo: r.memoRaw,
+          memoCombined: r.memo,
+          createdAt: r.createdAt,
+          updatedAt: r.updatedAt
+        }))
+      };
+
+      const jsonContent = JSON.stringify(out, null, 2);
+      const blob = new Blob([jsonContent], { type: 'application/json;charset=utf-8;' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `${data.meta.shopName}_매출내역_${start}_${end}.json`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+
+      App.showToast(`JSON 다운로드 완료 (${data.records.length}건)`, 'info');
+    } catch (err) {
+      console.error('JSON export error:', err);
+      App.showToast('JSON 내보내기 중 오류가 발생했습니다.', 'error');
     }
   },
 };
