@@ -3154,7 +3154,10 @@ App.pages.records = {
       document.body.appendChild(a);
       a.click();
       document.body.removeChild(a);
-      URL.revokeObjectURL(url);
+      // iOS Safari 등은 click() 이후 다운로드가 비동기로 시작된다.
+      // 즉시 revoke 하면 URL 이 먼저 무효화되어 파일이 조용히 안 받아지는데,
+      // 완료 토스트는 그대로 떠서 받아진 줄 알게 된다. (세무 자료 경로라 치명적)
+      setTimeout(() => URL.revokeObjectURL(url), 60000);
 
       App.showToast(`CSV 다운로드 완료 (${data.records.length}건)`, 'info');
     } catch (err) {
@@ -3207,7 +3210,8 @@ App.pages.records = {
       document.body.appendChild(a);
       a.click();
       document.body.removeChild(a);
-      URL.revokeObjectURL(url);
+      // CSV 내보내기와 동일 — iOS 비동기 다운로드 대응 (즉시 revoke 시 조용히 실패)
+      setTimeout(() => URL.revokeObjectURL(url), 60000);
 
       App.showToast(`JSON 다운로드 완료 (${data.records.length}건)`, 'info');
     } catch (err) {
