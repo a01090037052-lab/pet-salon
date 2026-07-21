@@ -1,8 +1,12 @@
 // ========== Dashboard Page ==========
 App.pages.dashboard = {
 
-  _computeRevisitAlerts(pets, customerMap, revisitDays) {
+  // 연락 후 알림을 내려두는 기간 (일)
+  _SNOOZE_DAYS: 14,
+
+  _computeRevisitAlerts(pets, customerMap, revisitDays, snoozeDays) {
     // pets의 lastVisitDate를 직접 사용 (records 전체 로드 불필요)
+    const snooze = snoozeDays || this._SNOOZE_DAYS;
     const alerts = [];
     pets.forEach(pet => {
       if (!pet.lastVisitDate) return;
@@ -12,13 +16,113 @@ App.pages.dashboard = {
       const cycleDays = pet.groomingCycle || revisitDays;
       if (days >= cycleDays) {
         const customer = customerMap[pet.customerId];
-        if (customer) {
-          const visitStatus = App.classifyVisitStatus(pet.lastVisitDate, cycleDays);
-          alerts.push({ pet, customer, days, lastDate: pet.lastVisitDate, cycleDays, visitStatus });
-        }
+        if (!customer) return;
+        // 연락 기록은 고객 단위로 본다 — 문자는 고객 번호로 한 번 나가므로
+        // 반려견이 여러 마리여도 한 번 연락하면 전부 처리된 것으로 취급한다.
+        const contactedAgo = customer.lastContactedAt ? App.getDaysAgo(customer.lastContactedAt) : null;
+        if (contactedAgo !== null && contactedAgo < snooze) return; // 연락 후 유예 중
+        const visitStatus = App.classifyVisitStatus(pet.lastVisitDate, cycleDays);
+        alerts.push({ pet, customer, days, lastDate: pet.lastVisitDate, cycleDays, visitStatus, contactedAgo });
       }
     });
-    return alerts.sort((a, b) => b.days - a.days);
+    // 승산 있는 고객을 위로: remind(주기 갓 지남) → at-risk → churned.
+    // 같은 단계 안에서는 오래 지난 순. (이전에는 전체를 오래된 순으로만 정렬해서
+    // 상위 8건이 전부 가장 가망 없는 고객으로 채워졌다.)
+    // normal = 주기는 지났지만 classifyVisitStatus의 3일 유예 안 — 이제 막 도래한
+    // 가장 승산 높은 구간이므로 맨 앞에 둔다.
+    const bandOrder = { normal: 0, remind: 1, 'at-risk': 2, churned: 3 };
+    return alerts.sort((a, b) => {
+      const ba = bandOrder[a.visitStatus] ?? 9;
+      const bb = bandOrder[b.visitStatus] ?? 9;
+      if (ba !== bb) return ba - bb;
+      return b.days - a.days;
+    });
+  },
+
+  // ----- 연락 기록 (재방문 알림 유예) -----
+  async _markContacted(customerId) {
+    try {
+      const customer = await DB.get('customers', customerId);
+      if (!customer) return;
+      this._contactUndo = { customerId, prev: customer.lastContactedAt || null };
+      customer.lastContactedAt = new Date().toISOString();
+      await DB.update('customers', customer);
+      // 행을 즉시 흐리게 처리 (전체 재렌더는 하지 않는다 — 되돌리기가 어려워지고
+      // 사장님이 방금 누른 버튼이 화면에서 사라져 혼란스럽다)
+      this._setAlertRowMuted(customerId, true);
+      // 다음 대시보드 렌더에서 이 고객이 실제로 빠지도록 5초 캐시를 무효화한다.
+      App._dashboardDirty = true;
+      App.showToast(
+        `${App.escapeHtml(App.getCustomerLabel(customer))}님 연락함 · ${this._SNOOZE_DAYS}일간 알림에서 제외 ` +
+        `<button class="btn btn-sm btn-ghost" style="margin-left:6px" onclick="App.pages.dashboard._undoContact()">취소</button>`,
+        'info', { html: true }
+      );
+    } catch (e) {
+      console.error('_markContacted error:', e);
+      App.showToast('연락 기록에 실패했습니다.', 'error');
+    }
+  },
+
+  async _undoContact() {
+    const u = this._contactUndo;
+    if (!u) return;
+    this._contactUndo = null;
+    try {
+      const customer = await DB.get('customers', u.customerId);
+      if (!customer) return;
+      if (u.prev) customer.lastContactedAt = u.prev;
+      else delete customer.lastContactedAt;
+      await DB.update('customers', customer);
+      this._setAlertRowMuted(u.customerId, false);
+      App._dashboardDirty = true;
+      App.showToast('연락 기록을 취소했습니다.', 'info');
+    } catch (e) {
+      console.error('_undoContact error:', e);
+    }
+  },
+
+  _setAlertRowMuted(customerId, muted) {
+    document.querySelectorAll(`[data-alert-customer="${customerId}"]`).forEach(row => {
+      row.style.opacity = muted ? '0.45' : '';
+      const tag = row.querySelector('.alert-contacted-tag');
+      if (tag) tag.style.display = muted ? 'inline-block' : 'none';
+    });
+  },
+
+  // ----- 관리 제외 (재방문 알림 + 통계에서 제외) -----
+  _excludePet(petId, petName) {
+    App.showModal({
+      title: `${petName} 관리 제외`,
+      hideFooter: true,
+      content: `
+        <p style="margin-bottom:14px;color:var(--text-secondary);font-size:0.9rem;line-height:1.5">
+          재방문 알림과 통계에서 제외됩니다.<br>
+          기존 미용 기록과 매출은 그대로 보존됩니다.
+        </p>
+        <div style="display:flex;flex-direction:column;gap:8px">
+          <button class="btn btn-secondary" id="excl-transferred" style="min-height:48px">양도 · 이전 (다른 곳으로 감)</button>
+          <button class="btn btn-secondary" id="excl-deceased" style="min-height:48px">사망</button>
+        </div>`
+    });
+    const apply = async (status) => {
+      try {
+        const pet = await DB.get('pets', petId);
+        if (!pet) { App.showToast('반려견을 찾을 수 없습니다.', 'error'); return; }
+        pet.petStatus = status;
+        await DB.update('pets', pet);
+        App.closeModal();
+        App._dashboardDirty = true;
+        App.showToast(`${App.escapeHtml(petName)} 관리 제외 처리했습니다.`);
+        App.handleRoute();
+      } catch (e) {
+        console.error('_excludePet error:', e);
+        App.showToast('처리 중 오류가 발생했습니다.', 'error');
+      }
+    };
+    setTimeout(() => {
+      document.getElementById('excl-transferred')?.addEventListener('click', () => apply('transferred'));
+      document.getElementById('excl-deceased')?.addEventListener('click', () => apply('deceased'));
+    }, 50);
   },
 
   // 전체 고객의 방문 상태 요약 (대시보드 카드용)
@@ -163,7 +267,10 @@ App.pages.dashboard = {
 
       // Revisit alerts (pets의 lastVisitDate 사용, records 전체 로드 불필요)
       const revisitDays = await DB.getSetting('revisitDays') || 30;
-      const revisitAlerts = this._computeRevisitAlerts(pets, customerMap, revisitDays);
+      const allRevisitAlerts = this._computeRevisitAlerts(pets, customerMap, revisitDays);
+      // 이탈(주기 2배 초과)은 매일 보는 카드에서 분리 — 지우는 게 아니라 접어둔다.
+      const revisitAlerts = allRevisitAlerts.filter(a => a.visitStatus !== 'churned');
+      const longGoneAlerts = allRevisitAlerts.filter(a => a.visitStatus === 'churned');
 
       // 고객 방문 상태 요약
       const visitSummary = this._computeVisitStatusSummary(pets, customerMap, revisitDays);
@@ -231,7 +338,7 @@ App.pages.dashboard = {
       const shopName = await DB.getSetting('shopName');
 
       // Pre-build SMS bodies for revisit alerts (상태별 템플릿 사용)
-      for (const a of revisitAlerts) {
+      for (const a of allRevisitAlerts) {
         const smsType = a.visitStatus === 'churned' ? 'churned' : a.visitStatus === 'at-risk' ? 'atRisk' : 'revisit';
         const msg = await App.buildSms(smsType, {
           '고객명': App.getCustomerLabel(a.customer),
@@ -504,29 +611,72 @@ App.pages.dashboard = {
           </div>
           <div class="card-body" id="dash-revisit" style="display:${revisitAlerts.length > 0 ? 'block' : 'none'}">
             ${revisitAlerts.slice(0, 8).map(a => {
-              const statusLabel = App.getVisitStatusLabel(a.visitStatus);
+              // 알림 목록 안에서 '정상' 배지는 모순되어 보인다 — 이 구간은
+              // 주기가 막 도래한 상태이므로 문맥에 맞는 라벨로 바꾼다.
+              const statusLabel = a.visitStatus === 'normal' ? '주기 도래' : App.getVisitStatusLabel(a.visitStatus);
               const statusBadge = App.getVisitStatusBadge(a.visitStatus);
               const smsType = a.visitStatus === 'churned' ? 'churned' : a.visitStatus === 'at-risk' ? 'atRisk' : 'revisit';
               return `
-              <div class="alert-item">
+              <div class="alert-item" data-alert-customer="${a.customer.id}">
                 <span class="days">${a.days}일</span>
                 <div class="flex-1">
                   <strong>${App.escapeHtml(a.pet.name)}</strong>
                   <span style="color:var(--text-muted);font-size:0.8rem">${App.escapeHtml(App.getCustomerLabel(a.customer))}</span>
                   <span class="badge ${statusBadge}" style="font-size:0.72rem;margin-left:4px;padding:3px 8px">${statusLabel}</span>
+                  <span class="badge badge-secondary alert-contacted-tag" style="font-size:0.72rem;margin-left:4px;padding:3px 8px;display:none">연락함</span>
                   <div style="font-size:0.78rem;color:var(--text-secondary);margin-top:2px">
                     마지막 미용: ${App.formatDate(a.lastDate)}
                     ${a.pet.groomingCycle ? ' | 미용 주기 ' + a.cycleDays + '일 초과' : ''}
+                    ${a.contactedAgo !== null ? ` | <span style="color:var(--text-muted)">${a.contactedAgo}일 전 연락함</span>` : ''}
                   </div>
                 </div>
                 <div class="alert-item-actions" style="display:flex;gap:4px;flex-shrink:0">
-                  <button class="btn btn-sm btn-ghost btn-copy-sms" data-sms="${App.escapeHtml(decodeURIComponent(a._smsBody))}" onclick="event.stopPropagation()" title="메시지 복사 (카톡용)">복사</button>
-                  <a href="sms:${App.escapeHtml((a.customer.phone || '').replace(/\D/g, ''))}${smsSep}body=${a._smsBody}" class="btn btn-sm btn-success" onclick="event.stopPropagation()" title="문자 보내기">문자</a>
-                  <a href="tel:${App.escapeHtml((a.customer.phone || '').replace(/\D/g, ''))}" class="btn btn-sm btn-secondary" onclick="event.stopPropagation()" title="전화 걸기">전화</a>
+                  <button class="btn btn-sm btn-ghost btn-copy-sms btn-mark-contacted" data-customer-id="${a.customer.id}" data-sms="${App.escapeHtml(decodeURIComponent(a._smsBody))}" onclick="event.stopPropagation()" title="메시지 복사 (카톡용)">복사</button>
+                  <a href="sms:${App.escapeHtml((a.customer.phone || '').replace(/\D/g, ''))}${smsSep}body=${a._smsBody}" class="btn btn-sm btn-success btn-mark-contacted" data-customer-id="${a.customer.id}" onclick="event.stopPropagation()" title="문자 보내기">문자</a>
+                  <a href="tel:${App.escapeHtml((a.customer.phone || '').replace(/\D/g, ''))}" class="btn btn-sm btn-secondary btn-mark-contacted" data-customer-id="${a.customer.id}" onclick="event.stopPropagation()" title="전화 걸기">전화</a>
                   <button class="btn btn-sm btn-primary" onclick="App.pages.appointments.showForm(null, ${a.customer.id}, {petId:${a.pet.id}})" style="flex-shrink:0">예약</button>
+                  <button class="btn btn-sm btn-ghost btn-exclude-pet" data-pet-id="${a.pet.id}" data-pet-name="${App.escapeHtml(a.pet.name || '')}" onclick="event.stopPropagation()" title="관리 제외 (이사·사망 등)" style="flex-shrink:0;color:var(--text-muted)">제외</button>
                 </div>
               </div>`;
             }).join('')}
+            ${revisitAlerts.length > 8 ? `<div style="text-align:center;padding:10px 0 2px;font-size:0.82rem;color:var(--text-muted)">외 ${revisitAlerts.length - 8}건 — 연락하면 다음 고객이 올라옵니다</div>` : ''}
+          </div>
+        </div>
+        ` : ''}
+
+        ${longGoneAlerts.length > 0 ? `
+        <div class="card dash-accordion" style="margin-bottom:20px">
+          <div class="card-header dash-accordion-toggle" style="cursor:pointer;user-select:none" data-target="dash-longgone">
+            <span class="card-title" style="color:var(--text-secondary)">&#x1F4A4; 장기 미방문</span>
+            <div style="display:flex;align-items:center;gap:8px">
+              <span class="badge badge-secondary">${longGoneAlerts.length}건</span>
+              <span class="dash-chevron" style="transition:transform 0.2s;font-size:0.8rem">&#x25BC;</span>
+            </div>
+          </div>
+          <div class="card-body" id="dash-longgone" style="display:none">
+            <div style="font-size:0.82rem;color:var(--text-muted);margin-bottom:10px;line-height:1.5">
+              미용 주기의 2배가 지난 고객입니다. 매일 보는 목록에서 분리해 두었습니다.<br>
+              다시 안 올 고객은 <strong>제외</strong>로 정리하시면 목록이 계속 쌓이지 않습니다.
+            </div>
+            ${longGoneAlerts.slice(0, 10).map(a => `
+              <div class="alert-item" data-alert-customer="${a.customer.id}">
+                <span class="days">${a.days}일</span>
+                <div class="flex-1">
+                  <strong>${App.escapeHtml(a.pet.name)}</strong>
+                  <span style="color:var(--text-muted);font-size:0.8rem">${App.escapeHtml(App.getCustomerLabel(a.customer))}</span>
+                  <span class="badge badge-secondary alert-contacted-tag" style="font-size:0.72rem;margin-left:4px;padding:3px 8px;display:none">연락함</span>
+                  <div style="font-size:0.78rem;color:var(--text-secondary);margin-top:2px">
+                    마지막 미용: ${App.formatDate(a.lastDate)}
+                    ${a.contactedAgo !== null ? ` | <span style="color:var(--text-muted)">${a.contactedAgo}일 전 연락함</span>` : ''}
+                  </div>
+                </div>
+                <div class="alert-item-actions" style="display:flex;gap:4px;flex-shrink:0">
+                  <button class="btn btn-sm btn-ghost btn-copy-sms btn-mark-contacted" data-customer-id="${a.customer.id}" data-sms="${App.escapeHtml(decodeURIComponent(a._smsBody))}" onclick="event.stopPropagation()" title="메시지 복사 (카톡용)">복사</button>
+                  <a href="sms:${App.escapeHtml((a.customer.phone || '').replace(/\D/g, ''))}${smsSep}body=${a._smsBody}" class="btn btn-sm btn-success btn-mark-contacted" data-customer-id="${a.customer.id}" onclick="event.stopPropagation()" title="문자 보내기">문자</a>
+                  <button class="btn btn-sm btn-ghost btn-exclude-pet" data-pet-id="${a.pet.id}" data-pet-name="${App.escapeHtml(a.pet.name || '')}" onclick="event.stopPropagation()" title="관리 제외 (이사·사망 등)" style="flex-shrink:0;color:var(--text-muted)">제외</button>
+                </div>
+              </div>`).join('')}
+            ${longGoneAlerts.length > 10 ? `<div style="text-align:center;padding:10px 0 2px;font-size:0.82rem;color:var(--text-muted)">외 ${longGoneAlerts.length - 10}건</div>` : ''}
           </div>
         </div>
         ` : ''}
@@ -689,6 +839,23 @@ App.pages.dashboard = {
         }).catch(() => {
           App.showToast('복사에 실패했습니다.', 'error');
         });
+      });
+    });
+
+    // 재방문 알림 — 복사/문자/전화를 누르면 '연락함'으로 기록하고 유예 기간 동안 목록에서 내린다.
+    // (연락이라는 행동이 목록을 바꾸지 못해 알림이 계속 쌓이던 문제)
+    document.querySelectorAll('.btn-mark-contacted').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const cid = Number(btn.dataset.customerId);
+        if (cid) App.pages.dashboard._markContacted(cid);
+      });
+    });
+
+    // 재방문 알림 — 관리 제외 (이사·사망 등으로 다시 오지 않는 고객)
+    document.querySelectorAll('.btn-exclude-pet').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const pid = Number(btn.dataset.petId);
+        if (pid) App.pages.dashboard._excludePet(pid, btn.dataset.petName || '');
       });
     });
 
