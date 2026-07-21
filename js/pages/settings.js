@@ -698,49 +698,69 @@ App.pages.settings = {
       const file = e.target.files[0];
       if (!file) return;
 
-      const confirmed = await App.confirm('데이터를 복원하면 현재 데이터가 모두 덮어쓰기됩니다.<br>복원 전 현재 데이터가 자동 백업됩니다.<br>계속하시겠습니까?');
+      const confirmed = await App.confirm('데이터를 복원하면 현재 데이터가 모두 덮어쓰기됩니다.<br>복원 전 현재 데이터가 자동 백업됩니다. <small style="color:var(--text-muted)">(사진 제외)</small><br>계속하시겠습니까?');
       if (!confirmed) {
         e.target.value = '';
         return;
       }
 
+      // ===== 1단계: 파일 읽기·파싱·검증 =====
+      // 이 단계 실패는 DB를 전혀 건드리지 않았다는 뜻이므로 '되돌리기'를 제안하면 안 된다.
+      // (기존에는 단일 catch라서, 손상된 파일을 고른 것만으로 되돌리기를 제안하고
+      //  사장님이 '예'를 누르면 수개월 전 자동 백업으로 전체가 덮어써졌다.)
+      let data;
       try {
         const text = await file.text();
-        const data = JSON.parse(text);
+        data = JSON.parse(text);
+      } catch (parseErr) {
+        console.error('Import parse error:', parseErr);
+        App.showToast('파일을 읽을 수 없습니다. 올바른 백업 JSON 파일인지 확인해주세요. (현재 데이터는 그대로입니다)', 'error');
+        e.target.value = '';
+        return;
+      }
 
-        // 데이터 검증 (DB.validateBackup에서 일괄 처리)
-        const validationError = DB.validateBackup(data);
-        if (validationError) {
-          App.showToast(validationError, 'error');
-          return;
-        }
+      const validationError = DB.validateBackup(data);
+      if (validationError) {
+        App.showToast(validationError + ' (현재 데이터는 그대로입니다)', 'error');
+        e.target.value = '';
+        return;
+      }
 
-        // 자동 백업: import 전 현재 데이터를 IndexedDB에 보관
-        try {
-          const currentData = await DB.exportAll();
-          await DB.setSetting('_autoBackupBeforeImport', {
-            data: currentData,
-            date: new Date().toISOString(),
-            reason: 'before-import'
-          });
-        } catch (backupErr) {
-          console.warn('Auto-backup before import failed:', backupErr);
-          const proceed = await App.confirm('자동 백업에 실패했습니다. 그래도 복원을 진행하시겠습니까?');
-          if (!proceed) { e.target.value = ''; return; }
-        }
+      // ===== 2단계: 자동 백업 =====
+      // 사진 포함으로 export 하면 수백MB 객체가 만들어지고, DB.importAll 의
+      // 인-플라이트 스냅샷이 이를 다시 JSON.stringify 하면서 모바일에서 OOM 크래시가 난다.
+      // (= 사진 많은 기기에서 복원 기능 자체를 쓸 수 없었다)
+      try {
+        const currentData = await DB.exportAll({ excludePhotos: true });
+        await DB.setSetting('_autoBackupBeforeImport', {
+          data: currentData,
+          date: new Date().toISOString(),
+          reason: 'before-import'
+        });
+      } catch (backupErr) {
+        console.warn('Auto-backup before import failed:', backupErr);
+        const proceed = await App.confirm('자동 백업에 실패했습니다. 그래도 복원을 진행하시겠습니까?');
+        if (!proceed) { e.target.value = ''; return; }
+      }
 
+      // ===== 3단계: 실제 복원 =====
+      // 여기서 실패한 경우에만 DB가 변경됐을 수 있으므로 되돌리기를 제안한다.
+      try {
         await DB.importAll(data);
         App.showToast('데이터가 복원되었습니다. (이전 데이터 자동 백업 완료)');
         App.handleRoute();
       } catch (err) {
         console.error('Import error:', err);
-        // import 실패 시 자동 백업에서 복원 제안
         const autoBackup = await DB.getSetting('_autoBackupBeforeImport');
         if (autoBackup && autoBackup.data) {
-          const restore = await App.confirm('복원에 실패했습니다. 자동 백업에서 이전 데이터를 되돌리시겠습니까?');
+          const restore = await App.confirm('복원에 실패했습니다. 자동 백업에서 이전 데이터를 되돌리시겠습니까?<br><small style="color:var(--text-muted)">사진은 자동 백업에 포함되지 않아 그대로 유지됩니다.</small>');
           if (restore) {
             try {
-              await DB.importAll(autoBackup.data);
+              // photos 키를 제거해 사진 스토어를 건드리지 않는다.
+              // (빈 배열을 넘기면 importAll 이 photos 를 clear 해서 사진이 전부 삭제된다)
+              const rollbackData = { ...autoBackup.data };
+              delete rollbackData.photos;
+              await DB.importAll(rollbackData);
               App.showToast('이전 데이터로 되돌렸습니다.');
               App.handleRoute();
             } catch (restoreErr) {
@@ -1222,7 +1242,10 @@ App.pages.settings = {
       document.body.appendChild(a);
       a.click();
       document.body.removeChild(a);
-      URL.revokeObjectURL(url);
+      // iOS Safari / 일부 안드로이드 WebView는 click() 이후 다운로드가 비동기로
+      // 시작된다. 즉시 revoke 하면 URL이 먼저 무효화되어 다운로드가 조용히 실패하고,
+      // 사장님은 "백업 완료" 토스트만 보고 없는 백업을 믿게 된다.
+      setTimeout(() => URL.revokeObjectURL(url), 60000);
       await DB.setSetting('lastBackupDate', date);
       App.showToast('백업 완료! 다운로드 폴더의 파일을 카톡(자기 자신) 또는 iCloud/Drive에 보관하세요.', 'info');
     } catch (err) {

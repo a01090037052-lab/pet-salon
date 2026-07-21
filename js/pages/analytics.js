@@ -1,6 +1,16 @@
 // ========== Analytics (분석) Page ==========
 App.pages.analytics = {
   _period: '1month',
+
+  // N개월 전 같은 날짜. 말일 오버플로 보정 (3/31 → 2/31 이 3/3 이 되는 문제).
+  _subMonths(date, n) {
+    const day = date.getDate();
+    const d = new Date(date.getFullYear(), date.getMonth(), 1);
+    d.setMonth(d.getMonth() - n);
+    const lastDay = new Date(d.getFullYear(), d.getMonth() + 1, 0).getDate();
+    d.setDate(Math.min(day, lastDay));
+    return d;
+  },
   _customStart: '',
   _customEnd: '',
 
@@ -15,13 +25,11 @@ App.pages.analytics = {
       periodStart = this._customStart;
       periodEnd = this._customEnd;
     } else {
-      const d = new Date(now.getFullYear(), now.getMonth(), 1); // 이번 달 1일
-      if (period === '1month') d.setMonth(d.getMonth() - 1);
-      else if (period === '3months') d.setMonth(d.getMonth() - 3);
-      else if (period === '6months') d.setMonth(d.getMonth() - 6);
-      else if (period === '1year') d.setFullYear(d.getFullYear() - 1);
-      else d.setMonth(d.getMonth()); // thisMonth - 이번 달 1일
-      periodStart = App.formatLocalDate(d);
+      // '최근 N개월'은 오늘 기준으로 N개월 전부터여야 한다.
+      // 기존에는 '이번 달 1일'에서 N개월을 빼서 최대 한 달을 초과 포함했다 —
+      // 7/21 기준 '최근 1개월'이 6/1~7/21(51일)이 되어 매출이 1.6배 이상 과다 집계됐다.
+      const months = period === '3months' ? 3 : period === '6months' ? 6 : period === '1year' ? 12 : 1;
+      periodStart = App.formatLocalDate(this._subMonths(now, months));
     }
     const periodLabels = { '1month': '최근 1개월', '3months': '최근 3개월', '6months': '최근 6개월', '1year': '최근 1년', 'custom': '직접 설정' };
 
