@@ -22,21 +22,22 @@ App.pages.dashboard = {
         const contactedAgo = customer.lastContactedAt ? App.getDaysAgo(customer.lastContactedAt) : null;
         if (contactedAgo !== null && contactedAgo < snooze) return; // 연락 후 유예 중
         const visitStatus = App.classifyVisitStatus(pet.lastVisitDate, cycleDays);
-        alerts.push({ pet, customer, days, lastDate: pet.lastVisitDate, cycleDays, visitStatus, contactedAgo });
+        // 주기+3일 이내(normal)는 알림에서 제외한다.
+        // classifyVisitStatus 가 이 구간을 '정상'으로 보는 것과 같은 이유 —
+        // 미용 주기는 대략적이라 3일 오차는 정상 범위이고, 이 고객들은 대개
+        // 알아서 재방문한다. 문자를 보내도 매출 변화는 없고 성가시기만 하다.
+        if (visitStatus === 'normal') return;
+        // 이탈 판정까지 남은 일수 (classifyVisitStatus 기준: 주기 2배 초과 = churned)
+        const daysUntilChurn = Math.max(0, cycleDays * 2 - days);
+        alerts.push({ pet, customer, days, lastDate: pet.lastVisitDate, cycleDays, visitStatus, contactedAgo, daysUntilChurn });
       }
     });
-    // 승산 있는 고객을 위로: remind(주기 갓 지남) → at-risk → churned.
-    // 같은 단계 안에서는 오래 지난 순. (이전에는 전체를 오래된 순으로만 정렬해서
-    // 상위 8건이 전부 가장 가망 없는 고객으로 채워졌다.)
-    // normal = 주기는 지났지만 classifyVisitStatus의 3일 유예 안 — 이제 막 도래한
-    // 가장 승산 높은 구간이므로 맨 앞에 둔다.
-    const bandOrder = { normal: 0, remind: 1, 'at-risk': 2, churned: 3 };
-    return alerts.sort((a, b) => {
-      const ba = bandOrder[a.visitStatus] ?? 9;
-      const bb = bandOrder[b.visitStatus] ?? 9;
-      if (ba !== bb) return ba - bb;
-      return b.days - a.days;
-    });
+    // 오래 지난 순.
+    // 이 목록은 '명단'이 아니라 유통기한이 있는 대기열이다 — 방치하면 고객이
+    // 다른 살롱을 찾아 영구히 이탈한다. 하루에 처리할 수 있는 건 3~5명뿐이므로,
+    // 새로 들어온 순으로 꺼내면 오래된 항목은 차례가 오기 전에 전부 썩는다.
+    // 따라서 아직 살릴 수 있는 것 중 기한이 임박한 것부터 처리한다.
+    return alerts.sort((a, b) => b.days - a.days);
   },
 
   // ----- 연락 기록 (재방문 알림 유예) -----
@@ -610,11 +611,13 @@ App.pages.dashboard = {
             </div>
           </div>
           <div class="card-body" id="dash-revisit" style="display:${revisitAlerts.length > 0 ? 'block' : 'none'}">
-            ${revisitAlerts.slice(0, 8).map(a => {
-              // 알림 목록 안에서 '정상' 배지는 모순되어 보인다 — 이 구간은
-              // 주기가 막 도래한 상태이므로 문맥에 맞는 라벨로 바꾼다.
-              const statusLabel = a.visitStatus === 'normal' ? '주기 도래' : App.getVisitStatusLabel(a.visitStatus);
+            ${revisitAlerts.slice(0, 5).map(a => {
+              const statusLabel = App.getVisitStatusLabel(a.visitStatus);
               const statusBadge = App.getVisitStatusBadge(a.visitStatus);
+              // 왜 이 고객이 위에 있는지 보이게 한다 — 순서의 근거를 드러냄
+              const churnHint = a.daysUntilChurn <= 14
+                ? `<span style="color:var(--danger);font-weight:700">이탈까지 ${a.daysUntilChurn}일</span>`
+                : '';
               const smsType = a.visitStatus === 'churned' ? 'churned' : a.visitStatus === 'at-risk' ? 'atRisk' : 'revisit';
               return `
               <div class="alert-item" data-alert-customer="${a.customer.id}">
@@ -626,7 +629,7 @@ App.pages.dashboard = {
                   <span class="badge badge-secondary alert-contacted-tag" style="font-size:0.72rem;margin-left:4px;padding:3px 8px;display:none">연락함</span>
                   <div style="font-size:0.78rem;color:var(--text-secondary);margin-top:2px">
                     마지막 미용: ${App.formatDate(a.lastDate)}
-                    ${a.pet.groomingCycle ? ' | 미용 주기 ' + a.cycleDays + '일 초과' : ''}
+                    ${churnHint ? ' | ' + churnHint : ''}
                     ${a.contactedAgo !== null ? ` | <span style="color:var(--text-muted)">${a.contactedAgo}일 전 연락함</span>` : ''}
                   </div>
                 </div>
@@ -639,7 +642,7 @@ App.pages.dashboard = {
                 </div>
               </div>`;
             }).join('')}
-            ${revisitAlerts.length > 8 ? `<div style="text-align:center;padding:10px 0 2px;font-size:0.82rem;color:var(--text-muted)">외 ${revisitAlerts.length - 8}건 — 연락하면 다음 고객이 올라옵니다</div>` : ''}
+            ${revisitAlerts.length > 5 ? `<div style="text-align:center;padding:10px 0 2px;font-size:0.82rem;color:var(--text-muted)">외 ${revisitAlerts.length - 5}건 — 연락하면 다음 고객이 올라옵니다</div>` : ''}
           </div>
         </div>
         ` : ''}
