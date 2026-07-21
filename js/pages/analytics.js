@@ -122,7 +122,12 @@ App.pages.analytics = {
       if (svcName) {
         if (!serviceRevMap[svcName]) serviceRevMap[svcName] = { count: 0, revenue: 0 };
         serviceRevMap[svcName].count++;
-        serviceRevMap[svcName].revenue += r.servicePrice || App.getRecordAmount(r);
+        // 기록마다 실제 결제 금액(할인·추가 반영)을 대표 서비스에 귀속시킨다.
+        // 이전에는 `r.servicePrice || getRecordAmount(r)` 라서 기준이 섞였다 —
+        // servicePrice 가 있는 기록은 서비스 단가만, 없는 구버전 기록은 전액이
+        // 들어가 서비스별 합계가 총매출과 맞지 않았고, 비율(%)의 분모 자체가
+        // 신뢰할 수 없었다. 이제 합계가 총매출과 일치한다.
+        serviceRevMap[svcName].revenue += App.getRecordAmount(r);
       }
       // 스타일 집계
       if (r.style) {

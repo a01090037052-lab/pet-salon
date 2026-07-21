@@ -245,7 +245,7 @@ App.pages.settings = {
             <div class="card-body">
               <div class="form-group">
                 <label class="form-label">월 고정비 (만원)</label>
-                <input type="number" id="s-fixedCost" value="${Math.round((Number(await DB.getSetting('monthlyFixedCost')) || 0) / 10000)}" placeholder="예: 350" min="0" step="10">
+                <input type="number" id="s-fixedCost" value="${Math.round((Number(await DB.getSetting('monthlyFixedCost')) || 0) / 10000)}" data-original="${Math.round((Number(await DB.getSetting('monthlyFixedCost')) || 0) / 10000)}" placeholder="예: 350" min="0" step="10">
                 <div class="form-hint">임대료 + 인건비 + 공과금 + 보험 등 합산 금액</div>
               </div>
             </div>
@@ -639,8 +639,17 @@ App.pages.settings = {
       const goal = Number(document.getElementById('s-monthlyGoal').value) || 0;
       await DB.setSetting('monthlyGoal', goal);
       // 월 고정비
-      const fixedCostMan = Number(document.getElementById('s-fixedCost').value) || 0;
-      await DB.setSetting('monthlyFixedCost', fixedCostMan * 10000);
+      // 입력란은 만원 단위로 반올림된 값을 보여준다. 사용자가 건드리지 않았는데도
+      // 그대로 저장하면 원 단위 정밀도가 날아간다 (3,456,789 → 3,460,000).
+      // 알림 시간만 바꾸고 저장해도 매번 반복되므로, 실제로 바뀐 경우에만 쓴다.
+      const fcEl = document.getElementById('s-fixedCost');
+      if (fcEl) {
+        const fixedCostMan = Number(fcEl.value) || 0;
+        if (String(fixedCostMan) !== String(fcEl.dataset.original ?? '')) {
+          await DB.setSetting('monthlyFixedCost', fixedCostMan * 10000);
+          fcEl.dataset.original = String(fixedCostMan);
+        }
+      }
       const currentTabOp = document.getElementById('tab-operation');
       if (currentTabOp) currentTabOp._modified = false;
       App.showToast('운영 설정이 저장되었습니다.');

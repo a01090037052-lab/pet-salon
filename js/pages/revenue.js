@@ -39,9 +39,18 @@ App.pages.revenue = {
     const monthRecords = records.filter(r => r.date && r.date.startsWith(thisMonth));
     const monthRevenue = monthRecords.reduce((sum, r) => sum + App.getRecordAmount(r), 0);
 
-    // 미수금 집계 (경량 데이터에서 집계)
+    // 미수금 집계 (경량 데이터에서 집계) — 전체 기간
     const unpaidRecs = allRecordsMin.filter(r => r.paymentMethod === 'unpaid');
     const unpaidTotal = unpaidRecs.reduce((sum, r) => sum + App.getRecordAmount(r), 0);
+
+    // 이번 달 미수금 / 실입금
+    // 매출(monthRevenue)은 청구 기준이라 미수금을 포함한다 — 서비스를 제공한 시점에
+    // 발생한 매출이므로 세무상으로도 이게 맞다. 다만 통장에 들어온 돈은 아니므로
+    // 현금흐름 판단이 흐려지지 않도록 실입금액을 나란히 보여준다.
+    const monthUnpaid = monthRecords
+      .filter(r => r.paymentMethod === 'unpaid')
+      .reduce((sum, r) => sum + App.getRecordAmount(r), 0);
+    const monthCollected = monthRevenue - monthUnpaid;
 
     // 결제 수단별 통계 (이번 달)
     const paymentStats = { cash: 0, card: 0, transfer: 0, unpaid: 0, none: 0 };
@@ -213,7 +222,12 @@ App.pages.revenue = {
         ${monthlyGoal > 0 ? (() => {
           const pct = Math.min(Math.round((monthRevenue / monthlyGoal) * 100), 100);
           const barColor = pct >= 100 ? 'var(--success)' : pct >= 70 ? 'var(--primary)' : 'var(--warning)';
-          return '<div class="card" style="margin-bottom:16px"><div class="card-body" style="padding:16px 20px"><div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px"><span style="font-weight:700">이번 달 매출 목표</span><span style="font-weight:800;color:' + barColor + '">' + pct + '%</span></div><div style="height:10px;background:var(--border-light);border-radius:5px;overflow:hidden"><div style="height:100%;width:' + pct + '%;background:' + barColor + ';border-radius:5px;transition:width 0.3s"></div></div><div style="display:flex;justify-content:space-between;margin-top:6px;font-size:0.82rem;color:var(--text-secondary)"><span>' + App.formatCurrency(monthRevenue) + '</span><span>목표: ' + App.formatCurrency(monthlyGoal) + '</span></div></div></div>';
+          // 미수금이 있으면 실입금액을 함께 보여준다 — 달성률은 청구 기준이라
+          // 100% 여도 통장에 다 들어온 게 아닐 수 있다.
+          const unpaidNote = monthUnpaid > 0
+            ? '<div style="margin-top:6px;font-size:0.8rem;color:var(--text-muted);display:flex;justify-content:space-between"><span>실입금 ' + App.formatCurrency(monthCollected) + '</span><span style="color:var(--danger)">미수 ' + App.formatCurrency(monthUnpaid) + '</span></div>'
+            : '';
+          return '<div class="card" style="margin-bottom:16px"><div class="card-body" style="padding:16px 20px"><div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px"><span style="font-weight:700">이번 달 매출 목표</span><span style="font-weight:800;color:' + barColor + '">' + pct + '%</span></div><div style="height:10px;background:var(--border-light);border-radius:5px;overflow:hidden"><div style="height:100%;width:' + pct + '%;background:' + barColor + ';border-radius:5px;transition:width 0.3s"></div></div><div style="display:flex;justify-content:space-between;margin-top:6px;font-size:0.82rem;color:var(--text-secondary)"><span>' + App.formatCurrency(monthRevenue) + '</span><span>목표: ' + App.formatCurrency(monthlyGoal) + '</span></div>' + unpaidNote + '</div></div>';
         })() : ''}
 
         ${unpaidRecs.length > 0 ? `
@@ -514,12 +528,17 @@ App.pages.revenue = {
                 <span style="font-size:0.8rem;color:var(--text-muted)">원</span>
               </div>
             </div>
-            <div style="display:flex;justify-content:space-between;padding:14px 0;font-size:1.1rem">
+            <div style="display:flex;justify-content:space-between;padding:14px 0 ${monthUnpaid > 0 ? '4px' : '14px'};font-size:1.1rem">
               <span style="font-weight:700">순이익</span>
               <strong style="color:${profit >= 0 ? 'var(--success)' : 'var(--danger)'}">
                 ${profit >= 0 ? '+' : ''}${App.formatCurrency(profit)}
               </strong>
             </div>
+            ${monthUnpaid > 0 ? `
+            <div style="display:flex;justify-content:space-between;padding:0 0 12px;font-size:0.82rem;color:var(--text-muted)">
+              <span>실입금 기준</span>
+              <span>${(monthCollected - totalCost) >= 0 ? '+' : ''}${App.formatCurrency(monthCollected - totalCost)}</span>
+            </div>` : ''}
             <div style="background:var(--bg);border-radius:20px;height:28px;overflow:hidden;margin-top:8px;position:relative">
               <div style="height:100%;width:${Math.min(100, Math.max(0, profitMargin))}%;background:${profit >= 0 ? 'var(--success)' : 'var(--danger)'};border-radius:20px;transition:width 0.3s"></div>
               <span style="position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);font-size:0.8rem;font-weight:700">
