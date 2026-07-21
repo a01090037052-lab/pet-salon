@@ -434,7 +434,11 @@ const App = {
 
     const saveBtn = document.getElementById('modal-save');
     saveBtn.textContent = saveText || '저장';
+    saveBtn.disabled = false;
     saveBtn.onclick = onSave ? async () => {
+      // 중복 탭/Enter 연타로 같은 레코드가 두 번 저장되는 것을 막는다.
+      if (saveBtn.disabled) return;
+      saveBtn.disabled = true;
       saveBtn.classList.add('loading');
       saveBtn.textContent = '저장 중...';
       try {
@@ -443,6 +447,7 @@ const App = {
         console.error('Save error:', err);
         App.showToast('저장 중 오류가 발생했습니다.', 'error');
       } finally {
+        saveBtn.disabled = false;
         saveBtn.classList.remove('loading');
         saveBtn.textContent = saveText || '저장';
       }
@@ -915,11 +920,17 @@ const App = {
     return '편안한 밤 보내세요 🌙';
   },
 
+  // 주의: 속성(attribute) 컨텍스트에서도 안전해야 하므로 따옴표까지 이스케이프한다.
+  // textContent→innerHTML 방식은 &, <, > 만 변환하고 " ' 를 그대로 통과시켜
+  // title="${escapeHtml(memo)}" 같은 지점이 정상 입력('푸들 "티컵"')에도 깨졌다.
   escapeHtml(str) {
-    if (!str) return '';
-    const div = document.createElement('div');
-    div.textContent = str;
-    return div.innerHTML;
+    if (str == null || str === '') return '';
+    return String(str)
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#39;');
   },
 
   async getCustomerOptions(selectedId) {

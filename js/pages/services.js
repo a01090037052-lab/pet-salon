@@ -209,7 +209,8 @@ App.pages.services = {
     if (!service) return;
     const isOff = service.isActive === false;
     App.showModal({
-      title: App.escapeHtml(service.name),
+      // showModal이 title을 textContent로 넣으므로 여기서 이스케이프하면 이중 처리된다.
+      title: service.name,
       hideFooter: true,
       content: `
         <div style="display:flex;flex-direction:column;gap:8px">

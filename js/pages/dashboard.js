@@ -44,8 +44,11 @@ App.pages.dashboard = {
   },
 
   async render(container) {
-    // Skip re-render if recent and no data changed
-    if (this._lastRender && Date.now() - this._lastRender < 5000 && !App._dashboardDirty) {
+    // Skip re-render if recent and no data changed.
+    // 단, 컨테이너에 대시보드 내용이 실제로 남아있을 때만 skip 한다 —
+    // 다른 페이지를 거쳐 돌아온 경우 early return 하면 이전 페이지 화면이 그대로 남는다.
+    if (this._lastRender && Date.now() - this._lastRender < 5000 && !App._dashboardDirty
+        && container.querySelector('[data-page-root="dashboard"]')) {
       return;
     }
     this._lastRender = Date.now();
@@ -311,6 +314,7 @@ App.pages.dashboard = {
       ` : '';
 
       container.innerHTML = `
+        <div data-page-root="dashboard"></div>
         <div id="storage-quota-banner"></div>
         ${backupWarning}
 

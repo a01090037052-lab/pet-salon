@@ -44,6 +44,9 @@ App.pages.customers = {
         customerVisitStatus[c.id] = App.classifyVisitStatus(lastVisit[c.id], null);
       }
     });
+    // _renderCustomerRow/_renderCustomerCard가 이 값을 읽으므로
+    // container.innerHTML 대입(=템플릿 평가)보다 반드시 먼저 대입해야 한다.
+    this._customerVisitStatus = customerVisitStatus;
 
     // Restore sort/filter from sessionStorage (render 시점에 selected 적용용)
     if (!this._sortKey || this._tagFilter === undefined || this._visitFilter === undefined) {
@@ -179,8 +182,6 @@ App.pages.customers = {
         </div>
       </div>
     `;
-
-    this._customerVisitStatus = customerVisitStatus;
   },
 
   async renderDetail(container, customerId) {

@@ -1,4 +1,4 @@
-const CACHE_NAME = 'petsalon-offline-v150';
+const CACHE_NAME = 'petsalon-offline-v151';
 const ASSETS = [
   './',
   './index.html',
@@ -41,6 +41,10 @@ self.addEventListener('activate', (e) => {
 self.addEventListener('fetch', (e) => {
   const url = new URL(e.request.url);
   if (url.pathname.includes('/api/')) return;
+  if (e.request.method !== 'GET') return;
+  // sw.js 는 캐시하지 않는다 — 버전 표시용으로 './sw.js?v=<timestamp>' 를 매번
+  // 새 URL로 요청하기 때문에, 캐시하면 앱을 열 때마다 항목이 영구 누적된다.
+  if (url.pathname.endsWith('/sw.js')) return;
 
   // Stale-while-revalidate: 캐시 즉시 반환 + 백그라운드 업데이트
   e.respondWith(
