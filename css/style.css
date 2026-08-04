@@ -1284,6 +1284,119 @@ a.stat-card { display: flex; }
 .search-select-option:hover,
 .search-select-option.highlighted { background: var(--primary-light); }
 .search-select-option .sub { font-size: 0.78rem; color: var(--text-muted); }
+.search-select-new {
+  color: var(--primary);
+  font-weight: 700;
+  border-top: 1px solid var(--border);
+  text-align: center;
+  min-height: 44px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+/* 드롭다운 안에서 신규 등록 폼이 열렸을 때 — 모바일 키보드 위로 스크롤되도록 */
+.search-select-dropdown-form {
+  max-height: 60vh;
+  overscroll-behavior: contain;
+}
+
+/* 선택된 고객 칩 — 확정되면 잠기고, ✕를 눌러야 다시 검색된다 */
+.cust-chip {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 46px;
+  padding: 8px 8px 8px 14px;
+  background: var(--primary-light);
+  border: 1.5px solid var(--primary);
+  border-radius: var(--radius);
+  box-sizing: border-box;
+}
+.cust-chip-text {
+  flex: 1;
+  min-width: 0;
+  font-weight: 700;
+  font-size: 0.92rem;
+  color: var(--primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.cust-chip-clear {
+  flex-shrink: 0;
+  width: 32px;
+  height: 32px;
+  border: none;
+  border-radius: 8px;
+  background: rgba(255,255,255,0.7);
+  color: var(--text-secondary);
+  font-size: 0.9rem;
+  line-height: 1;
+  cursor: pointer;
+}
+.cust-chip-clear:active { background: #fff; color: var(--danger); }
+
+/* ========== 공통 고객 등록 폼 ========== */
+.form-optional { font-size: 0.85em; color: var(--text-muted); font-weight: normal; }
+.cf-more-toggle {
+  width: 100%;
+  min-height: 44px;
+  margin-top: 4px;
+  padding: 10px 14px;
+  background: transparent;
+  border: 1.5px dashed var(--border);
+  border-radius: var(--radius);
+  color: var(--text-secondary);
+  font-size: 0.85rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+#cf-more {
+  border-top: 1px dashed var(--border);
+  margin-top: 10px;
+  padding-top: 12px;
+}
+.cf-dup {
+  margin-top: 8px;
+  background: var(--warning-light);
+  border: 1px solid var(--warning);
+  border-radius: var(--radius);
+  padding: 10px 12px;
+}
+.cf-dup-title {
+  font-size: 0.82rem;
+  font-weight: 700;
+  color: var(--warning-text-strong, #92400E);
+  margin-bottom: 8px;
+}
+.cf-dup-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 0;
+}
+.cf-dup-row + .cf-dup-row { border-top: 1px dashed rgba(0,0,0,0.08); }
+.cf-dup-info { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+.cf-dup-info strong {
+  font-size: 0.88rem;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.cf-dup-info span {
+  font-size: 0.76rem;
+  color: var(--text-secondary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.cf-dup-row .btn { flex-shrink: 0; min-height: 36px; }
+
+/* 드롭다운/폼 안에 끼워 넣는 등록 폼 */
+.cf-inline { padding: 14px; }
+.cf-inline-title { font-weight: 700; font-size: 0.95rem; margin-bottom: 10px; }
+.cf-inline-actions { display: flex; gap: 8px; margin-top: 12px; }
+.cf-inline-actions .btn { flex: 1; min-height: 44px; }
 
 /* ========== Pet Info Box in forms ========== */
 .pet-info-box {

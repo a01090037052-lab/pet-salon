@@ -686,7 +686,12 @@ App.pages.records = {
     document.getElementById('f-petId')?.addEventListener('change', async (e) => {
       const pid = Number(e.target.value);
       const copyArea = document.getElementById('f-copy-last-area');
-      if (!pid) { if (copyArea) copyArea.style.display = 'none'; return; }
+      if (!pid) {
+        if (copyArea) copyArea.style.display = 'none';
+        // 이전 반려견의 특이사항 경고가 남아 다른 아이의 것으로 오해되지 않도록 지운다
+        document.getElementById('pet-info-display')?.remove();
+        return;
+      }
       const pet = await DB.get('pets', pid);
       if (pet) {
         // Auto-set size
@@ -874,21 +879,19 @@ App.pages.records = {
       });
     });
 
-    const origCustomerOnChange = async (cid) => {
-      const petSelect = document.getElementById('f-petId');
-      petSelect.innerHTML = '<option value="">반려견 선택</option>' + await App.getPetOptions(cid);
-      // 반려견 1마리 자동 선택
-      if (cid) {
-        const cPets = await DB.getByIndex('pets', 'customerId', Number(cid));
-        if (cPets.length === 1) {
-          petSelect.value = cPets[0].id;
-          petSelect.dispatchEvent(new Event('change'));
-        }
-      }
+    // 반려견 목록 갱신 + 없으면 그 자리에서 등록 버튼 제공 (change 이벤트도 여기서 발생시킨다)
+    const origCustomerOnChange = async (cid, preferPetId) => {
+      await App.refreshPetSelect(cid, preferPetId);
     };
 
     // Re-render customer select with enhanced onChange
     await App.renderCustomerSelect('record-customer-select', record.customerId, origCustomerOnChange);
+
+    // 이미 고객이 정해진 채로 열렸는데 반려견이 하나도 없으면, 여기서 바로 등록할 수 있게 한다
+    if (record.customerId) {
+      const cPets = await DB.getByIndex('pets', 'customerId', Number(record.customerId));
+      if (cPets.length === 0) await App.refreshPetSelect(record.customerId);
+    }
 
     // 초기 합계 계산
     calcTotal();

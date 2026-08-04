@@ -1025,16 +1025,9 @@ App.pages.appointments = {
     }
 
     // 검색 가능한 고객 선택 렌더링
-    await App.renderCustomerSelect('appt-customer-select', appt.customerId, async (cid) => {
-      const petSelect = document.getElementById('f-petId');
-      petSelect.innerHTML = '<option value="">반려견 선택</option>' + await App.getPetOptions(cid);
-      // 반려견 1마리 자동 선택
-      if (cid) {
-        const cPets = await DB.getByIndex('pets', 'customerId', Number(cid));
-        if (cPets.length === 1) {
-          petSelect.value = cPets[0].id;
-        }
-      }
+    await App.renderCustomerSelect('appt-customer-select', appt.customerId, async (cid, preferPetId) => {
+      // 반려견 목록 갱신 + 없으면 그 자리에서 등록 버튼 제공
+      await App.refreshPetSelect(cid, preferPetId);
       // 노쇼 이력 경고
       const warn = document.getElementById('noshow-warning');
       if (warn) {
@@ -1070,6 +1063,12 @@ App.pages.appointments = {
     };
     document.getElementById('f-date')?.addEventListener('change', checkClosedDay);
     checkClosedDay();
+
+    // 이미 고객이 정해진 채로 열렸는데 반려견이 하나도 없으면, 여기서 바로 등록할 수 있게 한다
+    if (appt.customerId) {
+      const cPets = await DB.getByIndex('pets', 'customerId', Number(appt.customerId));
+      if (cPets.length === 0) await App.refreshPetSelect(appt.customerId);
+    }
 
     // 기존 고객 선택 시 노쇼 이력 즉시 표시
     if (appt.customerId) {

@@ -358,6 +358,7 @@ App.pages.customers = {
       sessionStorage.setItem('customer-filter', JSON.stringify({
         search: this._searchQuery || '',
         tag: this._tagFilter || '',
+        visitStatus: this._visitFilter || '',
         sort: this._sortKey
       }));
       App.handleRoute();
@@ -527,7 +528,7 @@ App.pages.customers = {
     });
   },
 
-  async showForm(id, afterSaveCallback) {
+  async showForm(id, afterSaveCallback, prefill) {
     let customer = id ? await DB.get('customers', id) : {};
 
     // afterSaveCallback 저장 (saveCustomer에서 사용)
@@ -568,73 +569,32 @@ App.pages.customers = {
           <label class="form-label">메모</label>
           <textarea id="f-memo" placeholder="특이사항, 메모 등">${App.escapeHtml(customer.memo || '')}</textarea>
         </div>
-      ` : `
-        <!-- 필수 항목 먼저 -->
-        <div class="form-group">
-          <label class="form-label">&#x1F436; 반려견 이름 <span class="required">*</span></label>
-          <input type="text" id="f-petName" placeholder="반려견 이름">
-        </div>
-        <div class="form-group">
-          <label class="form-label">&#x1F4DE; 연락처 <span class="required">*</span></label>
-          <input type="tel" id="f-phone" value="" placeholder="010-0000-0000">
-          <div id="phone-match-hint"></div>
-        </div>
-        <!-- 선택 항목 -->
-        <div style="border-top:1px dashed var(--border);margin-top:14px;padding-top:14px">
-          <div style="font-size:0.82rem;color:var(--text-muted);margin-bottom:10px">선택 항목 (나중에 수정 가능)</div>
-          <div class="form-group">
-            <label class="form-label">보호자 이름</label>
-            <input type="text" id="f-name" value="" placeholder="보호자 이름" maxlength="50">
-          </div>
-          <div class="form-row">
-            <div class="form-group">
-              <label class="form-label">견종</label>
-              <input type="text" id="f-petBreed" placeholder="예: 말티즈, 푸들">
-            </div>
-            <div class="form-group">
-              <label class="form-label">몸무게 (kg)</label>
-              <input type="number" id="f-petWeight" placeholder="예: 3.5" step="0.1" min="0">
-            </div>
-          </div>
-        </div>
-      `,
+      ` : App.customerFormHtml(prefill),
       onSave: () => this.saveCustomer(id)
     });
 
-    // 신규: 반려견 이름에 포커스 (iOS 모달 autofocus 미지원 대응)
+    // 신규 등록은 예약·기록 화면의 인라인 등록과 완전히 같은 폼·같은 규칙을 쓴다
     if (!id) {
-      setTimeout(() => document.getElementById('f-petName')?.focus(), 300);
-    }
-
-    // 신규 등록: 연락처 실시간 중복 매칭 힌트
-    if (!id) {
-      const phoneInput = document.getElementById('f-phone');
-      const hintEl = document.getElementById('phone-match-hint');
-      if (phoneInput && hintEl) {
-        const allCustomers = await DB.getAll('customers');
-        const checkPhone = App.debounce(() => {
-          const digits = (phoneInput.value || '').replace(/\D/g, '');
-          hintEl.innerHTML = '';
-          if (digits.length < 4) return;
-          const match = allCustomers.find(c => (c.phone || '').replace(/\D/g, '') === digits);
-          if (match) {
-            const pets = this._petNames?.[match.id] || '';
-            hintEl.innerHTML = `<div style="color:var(--warning);font-size:0.85rem;margin-top:6px;font-weight:600">&#x26A0; 이미 등록된 번호: ${App.escapeHtml(App.getCustomerLabel(match))}${pets ? ' (' + App.escapeHtml(pets) + ')' : ''} <a href="#customers/${match.id}" style="color:var(--primary);margin-left:6px" onclick="App.closeModal()">상세 보기</a></div>`;
-          }
-        }, 300);
-        phoneInput.addEventListener('input', checkPhone);
-        // 반려견 이름 캐시 (힌트용)
-        const allPets = await DB.getAllLight('pets', ['photo', 'temperament', 'healthNotes', 'preferredStyle']);
-        this._petNames = {};
-        allPets.forEach(p => {
-          if (!this._petNames[p.customerId]) this._petNames[p.customerId] = p.name;
-          else this._petNames[p.customerId] += ', ' + p.name;
-        });
-      }
+      App.bindCustomerForm({
+        onPick: (c) => {
+          const callback = this._afterSaveCallback;
+          this._afterSaveCallback = null;
+          App.closeModal();
+          if (callback) { callback(c.id, c.name || '', { customerId: c.id, label: App.getCustomerLabel(c) }); return; }
+          App.navigate('customers/' + c.id);
+        }
+      });
+      // iOS 모달 autofocus 미지원 대응
+      setTimeout(() => {
+        const focusId = (prefill && prefill.petName) ? 'cf-phone' : 'cf-petName';
+        document.getElementById(focusId)?.focus();
+      }, 300);
     }
   },
 
   async saveCustomer(id) {
+    if (!id) return this._saveNewCustomer();
+
     const name = document.getElementById('f-name').value.trim();
     const phone = document.getElementById('f-phone').value.trim();
     const address = document.getElementById('f-address')?.value?.trim() || '';
@@ -645,94 +605,100 @@ App.pages.customers = {
     document.querySelectorAll('input[name="customerTag"]:checked').forEach(cb => tags.push(cb.value));
 
     if (!phone) { App.showToast('연락처를 입력해주세요.', 'error'); App.highlightField('f-phone'); return; }
-    // 신규 등록 시 반려견 이름 필수
-    const petNameVal = document.getElementById('f-petName')?.value?.trim();
-    if (!id && !petNameVal) { App.showToast('반려견 이름을 입력해주세요.', 'error'); App.highlightField('f-petName'); return; }
 
     // Check phone duplicate
     const allCustomers = await DB.getAll('customers');
     const duplicate = allCustomers.find(c => (c.phone || '').replace(/\D/g, '') === phone.replace(/\D/g, '') && c.id !== id);
     if (duplicate) {
-      App.showToast(`이미 등록된 연락처입니다 (${App.getCustomerLabel(duplicate)})`, 'error');
+      const go = await App.confirm(
+        `이미 등록된 연락처입니다.<br><strong>${App.escapeHtml(App.getCustomerLabel(duplicate))}</strong><br>해당 고객 정보를 여시겠습니까?`,
+        { okLabel: '고객 열기', danger: false }
+      );
+      if (go) { App.closeModal(); App.navigate('customers/' + duplicate.id); return; }
+      App.highlightField('f-phone');
       return;
     }
 
     try {
-      const data = { name, phone, address, birthday, memo, tags };
-
-      let newId = id;
-      if (id) {
-        const existing = await DB.get('customers', id);
-        Object.assign(existing, data);
-        await DB.update('customers', existing);
-        App.showToast('고객 정보가 수정되었습니다.');
-      } else {
-        newId = await DB.add('customers', data);
-
-        // 인라인 반려견 등록 (이름이 입력된 경우)
-        const petName = (document.getElementById('f-petName')?.value || '').trim();
-        const petBreed = (document.getElementById('f-petBreed')?.value || '').trim();
-        const petWeight = parseFloat(document.getElementById('f-petWeight')?.value) || null;
-        if (petName) {
-          try {
-            const petData = { name: petName, breed: petBreed, customerId: newId };
-            if (petWeight) { petData.weight = petWeight; petData.size = petWeight < 7 ? 'small' : petWeight < 15 ? 'medium' : 'large'; }
-            await DB.add('pets', petData);
-          } catch (e) {
-            console.warn('Inline pet registration error:', e);
-          }
-        }
-      }
-
+      const existing = await DB.get('customers', id);
+      Object.assign(existing, { name, phone, address, birthday, memo, tags });
+      await DB.update('customers', existing);
+      App.showToast('고객 정보가 수정되었습니다.');
       App.closeModal();
 
-      // afterSaveCallback이 있으면 호출 (예약/기록에서 고객 선택 시)
       const callback = this._afterSaveCallback;
       this._afterSaveCallback = null;
-      if (callback) {
-        callback(newId, name);
-        return;
-      }
-
-      // 새 고객 등록 완료 모달
-      if (!id) {
-        const petNameForDisplay = (document.getElementById('f-petName')?.value || '').trim();
-        const displayLabel = petNameForDisplay ? petNameForDisplay + (name ? ' (' + name + ')' : '') : (name || '신규 고객');
-        App.handleRoute();
-        App.showModal({
-          title: '등록 완료',
-          hideFooter: true,
-          content: `
-            <div style="text-align:center;padding:16px 0">
-              <div style="font-size:2.2rem;margin-bottom:10px">&#x2705;</div>
-              <div style="font-size:1rem;font-weight:700;margin-bottom:16px">${App.escapeHtml(displayLabel)} 등록되었습니다</div>
-              <div style="display:flex;flex-direction:column;gap:8px;max-width:260px;margin:0 auto">
-                <button class="btn btn-primary" id="post-cust-appt">&#x1F4C5; 예약 등록</button>
-                <button class="btn btn-secondary" id="post-cust-detail">&#x1F4DD; 상세 보기</button>
-                <button class="btn btn-secondary" id="post-cust-close" style="opacity:0.7">완료</button>
-              </div>
-            </div>
-          `
-        });
-        document.getElementById('post-cust-appt')?.addEventListener('click', () => {
-          App.closeModal();
-          App.pages.appointments.showForm(null, newId);
-        });
-        document.getElementById('post-cust-detail')?.addEventListener('click', () => {
-          App.closeModal();
-          App.navigate('customers/' + newId);
-        });
-        document.getElementById('post-cust-close')?.addEventListener('click', () => {
-          App.closeModal();
-        });
-        return;
-      }
+      if (callback) { callback(id, name); return; }
 
       App.handleRoute();
     } catch (err) {
       console.error('Save customer error:', err);
       App.showToast('저장 중 오류가 발생했습니다.', 'error');
     }
+  },
+
+  // 신규 등록은 공통 폼(App.customerFormHtml)을 쓴다.
+  // 표시용 라벨은 App.saveCustomerForm이 폼을 읽는 시점에 만들어 두므로,
+  // 모달을 닫은 뒤에 입력값을 다시 읽는 실수를 하지 않는다.
+  async _saveNewCustomer() {
+    const callback = this._afterSaveCallback;
+    const finish = (customerId, label, petId) => {
+      this._afterSaveCallback = null;
+      App.closeModal();
+      if (callback) { callback(customerId, label, { customerId, petId, label }); return true; }
+      return false;
+    };
+
+    let result;
+    try {
+      result = await App.saveCustomerForm({
+        onPick: (c) => {
+          if (finish(c.id, App.getCustomerLabel(c), null)) return;
+          App.navigate('customers/' + c.id);
+        }
+      });
+    } catch (err) {
+      console.error('Save customer error:', err);
+      App.showToast('저장 중 오류가 발생했습니다.', 'error');
+      return;
+    }
+    if (!result) return; // 검증 실패 또는 기존 고객 선택 — 이미 처리됨
+
+    if (finish(result.customerId, result.label, result.petId)) return;
+
+    App.handleRoute();
+
+    // 완료 모달은 한 틱 늦춘다.
+    // closeModal()의 history.back()이 비동기라, 곧바로 showModal()이 pushState하면
+    // 안드로이드 뒤로가기가 한 번 씹힌다.
+    setTimeout(() => {
+      App.showModal({
+        title: '등록 완료',
+        hideFooter: true,
+        content: `
+          <div style="text-align:center;padding:16px 0">
+            <div style="font-size:2.2rem;margin-bottom:10px">&#x2705;</div>
+            <div style="font-size:1rem;font-weight:700;margin-bottom:16px">${App.escapeHtml(result.label)} 등록되었습니다</div>
+            <div style="display:flex;flex-direction:column;gap:8px;max-width:260px;margin:0 auto">
+              <button class="btn btn-primary" id="post-cust-appt">&#x1F4C5; 예약 등록</button>
+              <button class="btn btn-secondary" id="post-cust-detail">&#x1F4DD; 상세 보기</button>
+              <button class="btn btn-secondary" id="post-cust-close" style="opacity:0.7">완료</button>
+            </div>
+          </div>
+        `
+      });
+      document.getElementById('post-cust-appt')?.addEventListener('click', () => {
+        App.closeModal();
+        App.pages.appointments.showForm(null, result.customerId, result.petId ? { petId: result.petId } : undefined);
+      });
+      document.getElementById('post-cust-detail')?.addEventListener('click', () => {
+        App.closeModal();
+        App.navigate('customers/' + result.customerId);
+      });
+      document.getElementById('post-cust-close')?.addEventListener('click', () => {
+        App.closeModal();
+      });
+    }, 180);
   },
 
   async deleteCustomer(id) {
