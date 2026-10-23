@@ -31,7 +31,6 @@ App.pages.appointments = {
     const customerMap = {}; customers.forEach(c => customerMap[c.id] = c);
     const petMap = {}; pets.forEach(p => petMap[p.id] = p);
     const serviceMap = {}; services.forEach(s => serviceMap[s.id] = s.name);
-    const petsByCustomer = {}; pets.forEach(p => { (petsByCustomer[p.customerId] = petsByCustomer[p.customerId] || []).push(p); });
     this._customerMap = customerMap;
     this._petMap = petMap;
     this._serviceMap = serviceMap;
@@ -194,8 +193,6 @@ App.pages.appointments = {
               const pet = petMap[a.petId];
               const isToday = a.date === today;
               const isPast = a.date < today;
-              const statusLabels = { pending: '대기', confirmed: '확정', in_progress: '미용중', completed: '완료', cancelled: '취소', noshow: '노쇼' };
-              const statusClass = { pending: 'badge-warning', confirmed: 'badge-info', in_progress: 'badge-info', completed: 'badge-success', cancelled: 'badge-secondary', noshow: 'badge-danger' };
               const serviceNames = (a.serviceIds || []).map(id => serviceMap[id] || '').filter(Boolean).join(', ');
               const phoneDigits = (customer?.phone || '').replace(/\D/g, '');
               return `
@@ -210,16 +207,16 @@ App.pages.appointments = {
                     ${a.duration && a.duration !== 60 ? `<span style="font-size:0.75rem;color:var(--text-muted)">${a.duration}분</span>` : ''}
                     ${isPast && a.status !== 'completed' && a.status !== 'cancelled' ? '<span class="badge badge-danger">지남</span>' : ''}
                   </div>
-                  <span class="badge appt-status-badge ${statusClass[a.status] || 'badge-secondary'}">${statusLabels[a.status] || a.status}</span>
                 </div>
                 <div class="mobile-card-body">
-                  <div style="font-size:0.85rem;color:var(--text-secondary);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${[App.getCustomerLabel(customer, petsByCustomer[a.customerId] || []), serviceNames, a.groomer || ''].filter(Boolean).map(t => App.escapeHtml(t)).join(' &middot; ')}</div>
+                  <div style="font-size:0.85rem;color:var(--text-secondary);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${[App.getCustomerLabel(customer), serviceNames, a.groomer || ''].filter(Boolean).map(t => App.escapeHtml(t)).join(' &middot; ')}</div>
                   ${a.status === 'cancelled' && a.cancelReason ? `<div style="font-size:0.8rem;color:var(--text-muted);margin-top:4px">취소 사유: ${App.escapeHtml(a.cancelReason)}</div>` : ''}
                   ${a.memo ? `<div style="font-size:0.8rem;color:var(--text-secondary);margin-top:4px">${App.icon('note')} ${App.escapeHtml(a.memo.length > 40 ? a.memo.slice(0, 40) + '...' : a.memo)}</div>` : ''}
                 </div>
                 <div class="mobile-card-actions" style="flex-direction:column;gap:8px">
                   <div style="display:flex;gap:6px;align-items:center">
-                    <select class="status-select" data-id="${a.id}" style="flex:1;padding:8px 10px;font-size:max(16px,0.85rem);min-height:44px">
+                    <!-- 상태는 이 선택 상자 하나로 보여주고 바꾼다 (예전엔 위 배지와 두 번 표시) -->
+                    <select class="status-select appt-status-sel" data-id="${a.id}" data-st="${a.status || 'pending'}" aria-label="예약 상태" style="flex:1;padding:8px 10px;font-size:max(16px,0.85rem);min-height:44px">
                       <option value="pending" ${a.status === 'pending' ? 'selected' : ''}>대기</option>
                       <option value="confirmed" ${a.status === 'confirmed' ? 'selected' : ''}>확정</option>
                       <option value="in_progress" ${a.status === 'in_progress' ? 'selected' : ''}>미용중</option>
@@ -682,6 +679,7 @@ App.pages.appointments = {
         if (row) row.dataset.status = newStatus;
         // Update corresponding mobile card data-status and badge
         const card = document.querySelector(`#appt-card-list .mobile-card[data-id="${id}"]`);
+        e.target.dataset.st = newStatus;
         if (card) {
           card.dataset.status = newStatus;
           const statusLabels = { pending: '대기', confirmed: '확정', in_progress: '미용중', completed: '완료', cancelled: '취소', noshow: '노쇼' };

@@ -484,16 +484,18 @@ App.pages.dashboard = {
               const customer = customerMap[r.customerId];
               const pet = petMap[r.petId];
               return `
-                <div class="alert-item">
-                  <span style="font-weight:700;color:var(--danger)">${App.formatCurrency(App.getRecordAmount(r))}</span>
-                  <div class="flex-1">
-                    <strong>${App.escapeHtml(pet?.name || '-')}</strong>
-                    <span style="color:var(--text-muted);font-size:0.8rem">${App.escapeHtml(App.getCustomerLabel(customer, (this._petsByCustomer || {})[customer?.id]))}</span>
-                    <div style="font-size:0.78rem;color:var(--text-secondary);margin-top:2px">${App.formatDate(r.date)}</div>
+                <!-- 두 줄 배치: 좁은 화면에서 이름·날짜가 4줄로 쪼개지던 문제 -->
+                <div class="alert-item unpaid-item">
+                  <div class="unpaid-top">
+                    <div class="unpaid-who"><strong>${App.escapeHtml(pet?.name || '-')}</strong> <span>${App.escapeHtml(App.getCustomerLabel(customer))}</span></div>
+                    <strong class="unpaid-amount">${App.formatCurrency(App.getRecordAmount(r))}</strong>
                   </div>
-                  <div style="display:flex;gap:4px;flex-shrink:0">
-                    ${customer?.phone ? `<a href="tel:${App.escapeHtml((customer.phone || '').replace(/\D/g, ''))}" class="btn btn-sm btn-secondary" onclick="event.stopPropagation()">전화</a><a href="sms:${App.escapeHtml((customer.phone || '').replace(/\D/g, ''))}" class="btn btn-sm btn-secondary" onclick="event.stopPropagation()">문자</a>` : ''}
-                    <button class="btn btn-sm btn-success btn-pay-unpaid" data-id="${r.id}" onclick="event.stopPropagation()">결제</button>
+                  <div class="unpaid-bottom">
+                    <span class="unpaid-date">${App.formatDate(r.date)}</span>
+                    <div style="display:flex;gap:4px;flex-shrink:0">
+                      ${customer?.phone ? `<a href="tel:${App.escapeHtml((customer.phone || '').replace(/\D/g, ''))}" class="btn btn-sm btn-secondary" onclick="event.stopPropagation()">전화</a><a href="sms:${App.escapeHtml((customer.phone || '').replace(/\D/g, ''))}" class="btn btn-sm btn-secondary" onclick="event.stopPropagation()">문자</a>` : ''}
+                      <button class="btn btn-sm btn-success btn-pay-unpaid" data-id="${r.id}" onclick="event.stopPropagation()">결제</button>
+                    </div>
                   </div>
                 </div>`;
             }).join('')}
@@ -541,7 +543,7 @@ App.pages.dashboard = {
                             <a href="#pets/${a.petId}" class="reminder-pet-name" onclick="event.stopPropagation()">${App.escapeHtml(pet?.name || '?')}</a>
                             ${breedSize ? `<span class="reminder-pet-meta">· ${breedSize}</span>` : ''}
                           </div>
-                          <a href="#customers/${a.customerId}" class="reminder-customer" onclick="event.stopPropagation()">${App.escapeHtml(App.getCustomerLabel(customer, (this._petsByCustomer || {})[customer?.id]))}</a>
+                          <a href="#customers/${a.customerId}" class="reminder-customer" onclick="event.stopPropagation()">${App.escapeHtml(App.getCustomerLabel(customer))}</a>
                           ${(allergies || healthNotes || temperament || noShowCount > 0) ? `
                             <div class="reminder-warnings">
                               ${allergies ? `<span class="reminder-warning"><span class="reminder-warning-icon">${App.icon('alert')}</span> 알레르기: ${allergies}</span>` : ''}

@@ -192,7 +192,6 @@ App.pages.records = {
                         <button class="btn-icon btn-photo-card" data-id="${r.id}" title="사진 카드 생성" aria-label="사진 카드 생성" style="color:var(--info)">${App.icon('camera')}</button>
                         <button class="btn-icon btn-receipt-record" data-id="${r.id}" title="영수증" aria-label="영수증" style="color:var(--success)">${App.icon('receipt')}</button>
                         <button class="btn-icon btn-edit-record" data-id="${r.id}" title="수정" aria-label="수정">${App.icon('edit')}</button>
-                        <button class="btn-icon btn-delete-record text-danger" data-id="${r.id}" title="삭제" aria-label="삭제">${App.icon('trash')}</button>
                       </td>
                     </tr>`;
                 }).join(''); })()}
@@ -211,6 +210,7 @@ App.pages.records = {
               const customer = customerMap[r.customerId];
               const pet = petMap[r.petId];
               const isUnpaid = r.paymentMethod === 'unpaid';
+              const svcText = App.getRecordServiceDisplay(r, serviceMap);
               const gLabel = getGroupLabel(r.date);
               let hdr = '';
               if (gLabel !== _lastG) {
@@ -228,6 +228,7 @@ App.pages.records = {
                 </div>
                 <div class="mobile-card-body">
                   <span class="mobile-card-info">${App.icon('paw')} <strong>${App.escapeHtml(pet?.name || '-')}</strong> &middot; ${App.escapeHtml(App.getCustomerLabel(customer))}</span>
+                  ${svcText && svcText !== '-' ? `<div class="mobile-card-service">${App.escapeHtml(svcText)}</div>` : ''}
                   <div class="mobile-card-meta">
                     <span>${App.icon('scissors')} ${App.escapeHtml(r.groomer || '-')}</span>
                     <span>${this.getPaymentLabel(r.paymentMethod)}${paidNote(r)}</span>
@@ -235,11 +236,10 @@ App.pages.records = {
                   </div>
                   ${r.memo ? `<div style="font-size:0.82rem;color:var(--text-secondary);margin-top:6px;padding-top:6px;border-top:1px dashed var(--border-light);white-space:nowrap;overflow:hidden;text-overflow:ellipsis" title="${App.escapeHtml(r.memo)}">${App.icon('note')} ${App.escapeHtml(r.memo.length > 60 ? r.memo.slice(0, 60) + '...' : r.memo)}</div>` : ''}
                 </div>
-                <div class="mobile-card-actions">
-                  <button class="btn btn-sm btn-info btn-photo-card" data-id="${r.id}">${App.icon('camera')} 카드</button>
-                  <button class="btn btn-sm btn-success btn-receipt-record" data-id="${r.id}">${App.icon('receipt')} 영수증</button>
-                  <button class="btn btn-sm btn-secondary btn-edit-record" data-id="${r.id}">${App.icon('edit')} 수정</button>
-                  <button class="btn btn-sm btn-danger btn-delete-record" data-id="${r.id}">${App.icon('trash')} 삭제</button>
+                <!-- 카드를 누르면 수정. 삭제는 수정 화면 안에서만 (목록에서 잘못 눌러 지우는 일 방지) -->
+                <div class="mobile-card-actions record-card-actions">
+                  <button class="btn btn-sm btn-ghost btn-photo-card" data-id="${r.id}">${App.icon('camera')} 사진 카드</button>
+                  <button class="btn btn-sm btn-ghost btn-receipt-record" data-id="${r.id}">${App.icon('receipt')} 영수증</button>
                 </div>
               </div>`;
             }).join(''); })()}
@@ -388,8 +388,11 @@ App.pages.records = {
       btn.addEventListener('click', () => this.showForm(Number(btn.dataset.id)));
     });
 
-    document.querySelectorAll('.btn-delete-record').forEach(btn => {
-      btn.addEventListener('click', () => this.deleteRecord(Number(btn.dataset.id)));
+    document.querySelectorAll('#record-card-list .mobile-card').forEach(card => {
+      card.addEventListener('click', (e) => {
+        if (e.target.closest('button, a')) return;
+        this.showForm(Number(card.dataset.id));
+      });
     });
 
   },
@@ -722,9 +725,13 @@ App.pages.records = {
           </div>
         </div>
         <input type="hidden" id="f-appointmentId" value="${record.appointmentId || ''}">
+        ${id ? `<div style="margin-top:16px;padding-top:12px;border-top:1px dashed var(--border);text-align:center">
+          <button type="button" class="btn btn-ghost text-danger" id="btn-delete-record-form" style="min-height:44px">이 기록 삭제</button>
+        </div>` : ''}
       `,
       onSave: () => this.saveRecord(id)
     });
+    document.getElementById('btn-delete-record-form')?.addEventListener('click', () => this.deleteRecord(id, { fromForm: true }));
 
     // Pet change -> auto-set size and show pet notes + 마지막 기록 가져오기 버튼 표시
     document.getElementById('f-petId')?.addEventListener('change', async (e) => {
@@ -1280,7 +1287,7 @@ App.pages.records = {
     }
   },
 
-  async deleteRecord(id) {
+  async deleteRecord(id, opts = {}) {
     const record = await DB.get('records', id);
     if (!record) { App.showToast('기록을 찾을 수 없습니다.', 'error'); return; }
     const pet = record.petId ? await DB.get('pets', record.petId) : null;
@@ -1311,6 +1318,11 @@ App.pages.records = {
         catch (e) { console.warn('Auto-tag error:', e); }
       }
       App.showToast('미용 기록이 삭제되었습니다.');
+      if (opts.fromForm) {
+        // 모달 위 confirm 의 history.back() 이 처리된 뒤 모달을 닫는다
+        await new Promise(r => setTimeout(r, 180));
+        App.closeModal();
+      }
       App.handleRoute();
     } catch (err) {
       console.error('deleteRecord error:', err);

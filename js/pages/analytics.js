@@ -93,7 +93,7 @@ App.pages.analytics = {
     const breedRevMap = {};
     records.forEach(r => {
       const pet = petMap[r.petId];
-      const breed = pet?.breed || '미입력';
+      const breed = App.normalizeBreed(pet?.breed) || '미입력';
       if (!breedRevMap[breed]) breedRevMap[breed] = { count: 0, revenue: 0, pets: new Set() };
       breedRevMap[breed].count++;
       breedRevMap[breed].revenue += App.getRecordAmount(r);

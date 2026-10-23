@@ -456,7 +456,7 @@ App.pages.pets = {
         </div>
         <div class="form-group">
           <label class="form-label">견종</label>
-          <input type="text" id="f-breed" value="${App.escapeHtml(pet.breed || '')}" placeholder="예: 말티즈, 푸들">
+          ${App.breedInputHtml('f-breed', pet.breed)}
         </div>
         <div class="form-row three">
           <div class="form-group">
@@ -555,6 +555,7 @@ App.pages.pets = {
       `,
       onSave: () => this.savePet(id, presetCustomerId)
     });
+    App.ensureBreedList();
 
     if (!presetCustomerId) {
       await App.renderCustomerSelect('pet-customer-select', pet.customerId || null, async (cid, newPetId) => {
@@ -633,7 +634,7 @@ App.pages.pets = {
     try {
       const customerId = presetCustomerId || Number(document.getElementById('pet-customer-select-value')?.value || document.getElementById('f-customerId')?.value);
       const name = document.getElementById('f-name').value.trim();
-      const breed = document.getElementById('f-breed').value.trim();
+      const breed = App.normalizeBreed(document.getElementById('f-breed').value);
       const weight = parseFloat(document.getElementById('f-weight').value) || null;
       const gender = document.getElementById('f-gender').value;
       // 나이: 사용자가 바꾸지 않았으면 기존 birthDate/birthYear 를 그대로 둔다

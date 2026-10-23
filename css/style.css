@@ -3294,6 +3294,8 @@ a.stat-card { display: flex; }
    바텀 내비 위 우하단으로 옮긴다 (엄지 반경 안, 콘텐츠 겹침은 .page-content 하단 여백으로 해소).
    기본 .global-search-btn 규칙(위쪽)과 동일 특이도라 반드시 그보다 뒤에 있어야 한다. */
 @media (max-width: 768px) {
+  /* 하단 메뉴의 '고객' 탭(반려견·보호자·번호 검색)이 대신한다 — 떠 있는 버튼이 목록 카드를 가렸다 */
+  .global-search-btn { display: none !important; }
   .global-search-btn {
     top: auto;
     bottom: calc(var(--bottom-nav-h) + 14px + env(safe-area-inset-bottom));
@@ -3320,3 +3322,59 @@ a.stat-card { display: flex; }
 .stat-icon .ico { width: 24px; height: 24px; }
 .card-title .ico { width: 1.05em; height: 1.05em; margin-right: 4px; color: var(--text-secondary); }
 .alert-item .ico, .cf-dup-title .ico { color: var(--warning); }
+
+/* 견종 + 몸무게 한 줄 (모바일에서도 나란히 — 몸무게는 숫자 몇 자리라 좁게) */
+.form-row.breed-row { grid-template-columns: 1fr 104px !important; }
+
+/* 미용 기록 카드: 카드 전체가 수정 버튼 — 큰 색 버튼 4개 대신 보조 동작 2개만 작게 */
+#record-card-list .mobile-card { cursor: pointer; }
+.mobile-card-service { font-size: 0.85rem; color: var(--text-secondary); margin-top: 4px; }
+.record-card-actions { justify-content: flex-end; gap: 4px; padding-top: 6px; }
+.record-card-actions .btn { flex: 0 0 auto; min-height: 36px; color: var(--text-secondary); }
+
+/* 예약 카드 상태 선택 상자 — 배지 대신 상태 색을 직접 입힌다 */
+.appt-status-sel { font-weight: 700; border-width: 1.5px; }
+.appt-status-sel[data-st="pending"] { color: #B45309; border-color: #F59E0B; background-color: var(--warning-light); }
+.appt-status-sel[data-st="confirmed"], .appt-status-sel[data-st="in_progress"] { color: var(--primary); border-color: var(--primary-lighter); background-color: var(--primary-light); }
+.appt-status-sel[data-st="completed"] { color: var(--success); border-color: var(--success); background-color: var(--success-light); }
+.appt-status-sel[data-st="noshow"] { color: var(--danger); border-color: var(--danger); background-color: var(--danger-light); }
+.appt-status-sel[data-st="cancelled"] { color: var(--text-muted); }
+
+/* 모바일 달력 — 칸이 화면 한 장을 다 차지해 아래 예약 목록이 안 보였다 */
+@media (max-width: 768px) {
+  .calendar-cell { min-height: 50px; padding: 2px 3px; }
+}
+.cust-card-pets { font-size: 0.82rem; color: var(--text-secondary); margin-top: 4px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.cust-card-pets .ico { color: var(--text-muted); }
+
+/* 고객 상세 — 뒤로가기와 정보 수정을 한 줄에, 메모·주소는 있을 때만 */
+.detail-topbar { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 12px; }
+.detail-topbar .back-link { margin-bottom: 0; }
+.cust-detail-notes { display: flex; flex-direction: column; gap: 8px; }
+.cust-detail-notes > div { display: flex; gap: 10px; font-size: 0.9rem; }
+.cust-detail-notes label { flex: 0 0 36px; color: var(--text-muted); font-size: 0.82rem; font-weight: 600; padding-top: 1px; }
+.cust-detail-notes span { flex: 1; min-width: 0; white-space: pre-wrap; word-break: break-word; }
+
+/* 대시보드 미수금 — 위: 반려견·보호자 / 금액, 아래: 날짜 / 버튼 */
+.alert-item.unpaid-item { flex-direction: column; align-items: stretch; gap: 6px; }
+.unpaid-top, .unpaid-bottom { display: flex; align-items: center; justify-content: space-between; gap: 8px; min-width: 0; }
+.unpaid-who { min-width: 0; flex: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.unpaid-who span { color: var(--text-muted); font-size: 0.8rem; }
+.unpaid-amount { color: var(--danger); flex-shrink: 0; }
+.unpaid-date { font-size: 0.78rem; color: var(--text-secondary); }
+
+/* 모바일 모달 — 끌기 손잡이가 flex 항목이 되어 제목을 오른쪽으로 밀었다. 손잡이는 위에 띄우고, 하단 버튼은 넓게 */
+@media (max-width: 768px) {
+  .modal-header { position: relative; padding-top: 22px; }
+  .modal-header::before { position: absolute; top: 8px; left: 50%; transform: translateX(-50%); margin: 0; }
+  .modal-footer { padding: 12px 16px calc(12px + env(safe-area-inset-bottom)); }
+  .modal-footer .btn { flex: 1; min-height: 48px; justify-content: center; }
+}
+
+/* 고객 상세 요약 — 2열 격자에서 항목이 들쭉날쭉 정렬되던 것을 가운데 한 줄 흐름으로 */
+@media (max-width: 768px) {
+  .detail-meta { display: flex; flex-wrap: wrap; justify-content: center; gap: 4px 12px; font-size: 0.85rem; }
+}
+
+/* 달력 '+N' — 흐린 회색이라 바쁜 날을 놓쳤다. 작은 알약 모양으로 또렷하게 */
+.cal-overflow { align-self: flex-start; margin-top: 1px; padding: 0 6px; border-radius: 999px; background: var(--primary); color: #fff; font-weight: 700; line-height: 1.5; }

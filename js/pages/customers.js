@@ -179,7 +179,10 @@ App.pages.customers = {
   async renderDetail(container, customerId) {
     const customer = await DB.get('customers', customerId);
     if (!customer) {
-      container.innerHTML = '<div class="empty-state"><div class="empty-state-text">고객을 찾을 수 없습니다.</div></div>';
+      // 다른 기기에서 지웠거나 아직 동기화되지 않은 고객 — 막다른 화면이 되지 않게 돌아갈 길을 준다
+      container.innerHTML = `<div class="back-link" onclick="history.length>1?history.back():App.navigate('customers')">${App.icon('arrow-left')} 뒤로가기</div>
+        <div class="empty-state"><div class="empty-state-text">고객을 찾을 수 없습니다.<br><small style="color:var(--text-muted)">삭제되었거나 아직 다른 기기에서 받아오지 않았을 수 있습니다.</small></div>
+        <button class="btn btn-primary" onclick="App.navigate('customers')">고객 목록으로</button></div>`;
       return;
     }
 
@@ -196,7 +199,10 @@ App.pages.customers = {
     const noshowCount = appointments.filter(a => a.status === 'noshow').length;
 
     container.innerHTML = `
-      <div class="back-link" onclick="history.length>1?history.back():App.navigate('customers')">${App.icon('arrow-left')} 뒤로가기</div>
+      <div class="detail-topbar">
+        <div class="back-link" onclick="history.length>1?history.back():App.navigate('customers')">${App.icon('arrow-left')} 뒤로가기</div>
+        <button class="btn btn-sm btn-secondary btn-edit-customer" data-id="${customer.id}">${App.icon('edit')} 정보 수정</button>
+      </div>
       <div class="detail-header">
         <div class="detail-avatar">${App.icon('user', 'ico-xl')}</div>
         <div class="detail-info">
@@ -217,58 +223,10 @@ App.pages.customers = {
         </div>
       </div>
 
-      <div class="detail-section">
-        <div class="info-grid">
-          <div class="info-item"><label>주소</label><span>${App.escapeHtml(customer.address || '-')}</span></div>
-          <div class="info-item"><label>메모</label><span>${App.escapeHtml(customer.memo || '-')}</span></div>
-        </div>
-      </div>
-
-      <div class="detail-section">
-        <h3 class="detail-section-title">예정된 예약</h3>
-        ${(() => {
-          const today = App.getToday();
-          const petNameMap = {}; pets.forEach(p => { petNameMap[p.id] = p.name; });
-          const upcoming = appointments
-            .filter(a => (a.date || '') >= today && !['cancelled', 'completed', 'noshow'].includes(a.status))
-            .sort((a, b) => ((a.date || '') + (a.time || '')).localeCompare((b.date || '') + (b.time || '')));
-          if (upcoming.length === 0) return '<p style="color:var(--text-muted)">예정된 예약 없음</p>';
-          return upcoming.map(a => `
-            <div class="cust-upcoming-appt" data-appt-id="${a.id}" style="display:flex;align-items:center;gap:10px;min-height:44px;padding:0 4px;border-bottom:1px solid var(--border-light);cursor:pointer">
-              <strong style="font-size:0.9rem;white-space:nowrap">${App.formatDate(a.date)}${a.date === today ? ' (오늘)' : ''}</strong>
-              <span style="font-size:0.9rem;color:var(--primary);font-weight:700;white-space:nowrap">${App.escapeHtml(a.time || '')}</span>
-              <span style="font-size:0.85rem;color:var(--text-secondary);flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${App.escapeHtml(petNameMap[a.petId] || '')}</span>
-              <span style="color:var(--text-muted)">&#x203A;</span>
-            </div>`).join('');
-        })()}
-      </div>
-
-      ${visitCount > 0 ? (() => {
-        const avgSpend = Math.round(totalSpend / visitCount);
-        const firstVisit = records.length > 0 ? records[records.length - 1].date : null;
-        const lastVisitDate = records.length > 0 ? records[0].date : null;
-        let avgCycle = '-';
-        if (records.length >= 2) {
-          const dates = records.map(r => new Date(r.date)).sort((a, b) => a - b);
-          let totalDays = 0;
-          for (let i = 1; i < dates.length; i++) {
-            totalDays += Math.round((dates[i] - dates[i - 1]) / (1000 * 60 * 60 * 24));
-          }
-          avgCycle = Math.round(totalDays / (dates.length - 1)) + '일';
-        }
-        return `
-      <div class="detail-section">
-        <h3 class="detail-section-title">방문 통계</h3>
-        <div class="info-grid" style="grid-template-columns:repeat(auto-fit,minmax(140px,1fr))">
-          <div class="info-item"><label>총 방문</label><span style="font-weight:700;font-size:1.1rem">${visitCount}회</span></div>
-          <div class="info-item"><label>총 지출</label><span style="font-weight:700;font-size:1.1rem">${App.formatCurrency(totalSpend)}</span></div>
-          <div class="info-item"><label>평균 지출</label><span style="font-weight:700;font-size:1.1rem">${App.formatCurrency(avgSpend)}</span></div>
-          <div class="info-item"><label>평균 방문 주기</label><span style="font-weight:700;font-size:1.1rem">${avgCycle}</span></div>
-          <div class="info-item"><label>첫 방문</label><span>${App.formatDate(firstVisit)}</span></div>
-          <div class="info-item"><label>최근 방문</label><span>${App.formatDate(lastVisitDate)}</span></div>
-        </div>
-      </div>`;
-      })() : ''}
+      ${(customer.address || customer.memo) ? `<div class="detail-section cust-detail-notes">
+        ${customer.memo ? `<div><label>메모</label><span>${App.escapeHtml(customer.memo)}</span></div>` : ''}
+        ${customer.address ? `<div><label>주소</label><span>${App.escapeHtml(customer.address)}</span></div>` : ''}
+      </div>` : ''}
 
       <div class="detail-section">
         <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
@@ -293,6 +251,25 @@ App.pages.customers = {
               </div>
             `}).join('')}
         </div>
+      </div>
+
+      <div class="detail-section">
+        <h3 class="detail-section-title">예정된 예약</h3>
+        ${(() => {
+          const today = App.getToday();
+          const petNameMap = {}; pets.forEach(p => { petNameMap[p.id] = p.name; });
+          const upcoming = appointments
+            .filter(a => (a.date || '') >= today && !['cancelled', 'completed', 'noshow'].includes(a.status))
+            .sort((a, b) => ((a.date || '') + (a.time || '')).localeCompare((b.date || '') + (b.time || '')));
+          if (upcoming.length === 0) return '<p style="color:var(--text-muted)">예정된 예약 없음</p>';
+          return upcoming.map(a => `
+            <div class="cust-upcoming-appt" data-appt-id="${a.id}" style="display:flex;align-items:center;gap:10px;min-height:44px;padding:0 4px;border-bottom:1px solid var(--border-light);cursor:pointer">
+              <strong style="font-size:0.9rem;white-space:nowrap">${App.formatDate(a.date)}${a.date === today ? ' (오늘)' : ''}</strong>
+              <span style="font-size:0.9rem;color:var(--primary);font-weight:700;white-space:nowrap">${App.escapeHtml(a.time || '')}</span>
+              <span style="font-size:0.85rem;color:var(--text-secondary);flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${App.escapeHtml(petNameMap[a.petId] || '')}</span>
+              <span style="color:var(--text-muted)">&#x203A;</span>
+            </div>`).join('');
+        })()}
       </div>
 
       <div class="detail-section">
@@ -340,9 +317,35 @@ App.pages.customers = {
         })()}
       </div>
 
+      ${visitCount > 0 ? (() => {
+        const avgSpend = Math.round(totalSpend / visitCount);
+        const firstVisit = records.length > 0 ? records[records.length - 1].date : null;
+        const lastVisitDate = records.length > 0 ? records[0].date : null;
+        let avgCycle = '-';
+        if (records.length >= 2) {
+          const dates = records.map(r => new Date(r.date)).sort((a, b) => a - b);
+          let totalDays = 0;
+          for (let i = 1; i < dates.length; i++) {
+            totalDays += Math.round((dates[i] - dates[i - 1]) / (1000 * 60 * 60 * 24));
+          }
+          avgCycle = Math.round(totalDays / (dates.length - 1)) + '일';
+        }
+        return `
+      <div class="detail-section">
+        <h3 class="detail-section-title">방문 통계</h3>
+        <div class="info-grid" style="grid-template-columns:repeat(auto-fit,minmax(140px,1fr))">
+          <div class="info-item"><label>총 방문</label><span style="font-weight:700;font-size:1.1rem">${visitCount}회</span></div>
+          <div class="info-item"><label>총 지출</label><span style="font-weight:700;font-size:1.1rem">${App.formatCurrency(totalSpend)}</span></div>
+          <div class="info-item"><label>평균 지출</label><span style="font-weight:700;font-size:1.1rem">${App.formatCurrency(avgSpend)}</span></div>
+          <div class="info-item"><label>평균 방문 주기</label><span style="font-weight:700;font-size:1.1rem">${avgCycle}</span></div>
+          <div class="info-item"><label>첫 방문</label><span>${App.formatDate(firstVisit)}</span></div>
+          <div class="info-item"><label>최근 방문</label><span>${App.formatDate(lastVisitDate)}</span></div>
+        </div>
+      </div>`;
+      })() : ''}
+
       <div style="display:flex;gap:8px;justify-content:flex-end;margin:24px 0 8px">
-        <button class="btn btn-secondary btn-edit-customer" data-id="${customer.id}" style="min-height:44px">고객 정보 수정</button>
-        <button class="btn btn-secondary btn-delete-customer" data-id="${customer.id}" style="min-height:44px;color:var(--danger)">고객 삭제</button>
+        <button class="btn btn-ghost btn-delete-customer" data-id="${customer.id}" style="min-height:44px;color:var(--danger)">고객 삭제</button>
       </div>
     `;
   },
@@ -836,7 +839,9 @@ App.pages.customers = {
 
     const lastVisitText = lastVisit[c.id] ? App.getRelativeTime(lastVisit[c.id]) + ' 방문' : '방문 없음';
     const phoneText = c.phone ? App.formatPhoneHtml(c.phone) : '-';
-    const petN = petCount[c.id] || 0;
+    // '반려견 1마리' 대신 이름·견종 — 사장님은 반려견으로 손님을 기억한다
+    const petLine = cPets.slice(0, 3).map(p => `<strong>${App.escapeHtml(p.name || '-')}</strong>${p.breed ? ' ' + App.escapeHtml(p.breed) : ''}`).join(', ')
+      + (cPets.length > 3 ? ` 외 ${cPets.length - 3}마리` : '');
 
     return `<div class="mobile-card clickable-row" data-id="${c.id}" data-tags="${(c.tags || []).join(',')}" data-visit-status="${vs}" data-search="${App.escapeHtml(searchText)}" style="display:block;padding:12px;background:var(--bg-white);border:1px solid var(--border-light);border-left:4px solid ${barColor};border-radius:var(--radius);cursor:pointer;margin-bottom:6px;box-shadow:var(--shadow-xs)">
       <div style="display:flex;align-items:center;gap:8px;margin-bottom:5px;min-width:0">
@@ -847,10 +852,9 @@ App.pages.customers = {
       <div style="font-size:0.82rem;color:var(--text-secondary);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">
         ${c.phone ? `<a href="tel:${App.escapeHtml(c.phone.replace(/\D/g, ''))}" style="color:var(--primary);font-weight:600" onclick="event.stopPropagation()">${phoneText}</a>` : '<span style="color:var(--text-muted)">전화 없음</span>'}
         <span style="color:var(--border)">·</span>
-        <span>반려견 ${petN}마리</span>
-        <span style="color:var(--border)">·</span>
         <span style="color:var(--text-muted)">${lastVisitText}</span>
       </div>
+      ${petLine ? `<div class="cust-card-pets">${App.icon('paw')} ${petLine}</div>` : ''}
     </div>`;
   },
 

@@ -442,8 +442,10 @@ const App = {
       link.classList.toggle('active', link.dataset.page === page);
     });
     // Sync bottom nav
+    // 고객 탭은 반려견 상세에서도, 더보기는 그 안의 화면(매출·분석·설정 등)에서도 켜 둔다
     document.querySelectorAll('.bottom-nav-item').forEach(item => {
-      item.classList.toggle('active', item.dataset.page === page);
+      const also = (item.dataset.also || '').split(' ');
+      item.classList.toggle('active', item.dataset.page === page || also.includes(page));
     });
 
     this.renderPage(page, params);
@@ -1097,7 +1099,7 @@ const App = {
     const last4 = (customer.phone || '').replace(/\D/g, '').slice(-4);
     if (petNames.length > 0 && last4) return petNames[0] + ' 보호자(' + last4 + ')';
     if (petNames.length > 0) return petNames[0] + ' 보호자';
-    return last4 ? '고객(' + last4 + ')' : '미등록 고객';
+    return last4 ? '보호자(' + last4 + ')' : '미등록 고객';
   },
 
   // ========== 서비스/스타일 자동완성 이력 ==========
@@ -1247,12 +1249,65 @@ const App = {
   // ========== 공통 고객 등록 폼 ==========
   // 고객 페이지 모달 / 예약·기록 인라인 드롭다운이 같은 필드·같은 규칙을 쓰도록 한 곳에서 만든다.
   // 필수는 연락처뿐이고, 반려견 이름을 비우면 저장 직전에 한 번 확인한다.
+  // ========== 견종 입력 ==========
+  // 자유 입력이라 '말티즈/말티/멀티즈'가 따로 쌓여 견종별 분석이 쪼개졌다.
+  // 자주 쓰는 견종 + 이 매장에서 이미 쓴 견종을 자동완성으로 제안하고, 흔한 줄임말·띄어쓰기만 저장 때 맞춘다.
+  BREEDS: ['말티즈', '푸들', '토이푸들', '포메라니안', '비숑프리제', '시츄', '말티푸', '치와와', '요크셔테리어',
+    '슈나우저', '닥스훈트', '웰시코기', '스피츠', '폼피츠', '진돗개', '시바견', '프렌치불독', '퍼그', '페키니즈',
+    '미니핀', '이탈리안그레이하운드', '베들링턴테리어', '코카스패니얼', '비글', '보더콜리', '사모예드',
+    '골든리트리버', '래브라도리트리버', '골든두들', '믹스견'],
+  _BREED_ALIAS: {
+    '말티': '말티즈', '멀티즈': '말티즈', '말디즈': '말티즈', '포메': '포메라니안',
+    '비숑': '비숑프리제', '비숑프리즈': '비숑프리제', '시추': '시츄', '요키': '요크셔테리어', '요크셔': '요크셔테리어',
+    '슈나우져': '슈나우저', '미니어처슈나우저': '슈나우저', '닥스': '닥스훈트', '코기': '웰시코기', '웰시코키': '웰시코기',
+    '시바': '시바견', '시바이누': '시바견', '진도': '진돗개', '진도견': '진돗개', '프렌치불도그': '프렌치불독', '프불': '프렌치불독',
+    '미니핀셔': '미니핀', '이탈그레': '이탈리안그레이하운드', '베들링턴': '베들링턴테리어',
+    '골든': '골든리트리버', '래브라도': '래브라도리트리버', '믹스': '믹스견', '잡종': '믹스견'
+  },
+
+  normalizeBreed(v) {
+    const t = String(v || '').trim().replace(/\s+/g, ' ');
+    if (!t) return '';
+    const key = t.replace(/\s/g, '');
+    if (this._BREED_ALIAS[key]) return this._BREED_ALIAS[key];
+    return this.BREEDS.includes(key) ? key : t;
+  },
+
+  breedInputHtml(id, value) {
+    return `<input type="text" id="${id}" value="${this.escapeHtml(value || '')}" list="breed-suggestions" autocomplete="off" placeholder="예: 말티즈" maxlength="30">`;
+  },
+
+  // 폼을 열 때 호출 — 자동완성 목록을 (이 매장에서 많이 쓴 견종 → 기본 목록) 순으로 채운다
+  async ensureBreedList() {
+    let dl = document.getElementById('breed-suggestions');
+    if (!dl) { dl = document.createElement('datalist'); dl.id = 'breed-suggestions'; document.body.appendChild(dl); }
+    const fill = (names) => { dl.innerHTML = names.map(n => `<option value="${this.escapeHtml(n)}"></option>`).join(''); };
+    if (!dl.children.length) fill(this.BREEDS);
+    try {
+      const pets = await DB.getAllLight('pets', ['photo', 'photoThumb', 'temperament', 'healthNotes', 'preferredStyle']);
+      const count = {};
+      pets.forEach(p => { const b = this.normalizeBreed(p.breed); if (b) count[b] = (count[b] || 0) + 1; });
+      const used = Object.keys(count).sort((a, b) => count[b] - count[a]);
+      fill([...new Set([...used, ...this.BREEDS])]);
+    } catch (_) {}
+  },
+
   customerFormHtml(prefill) {
     const p = prefill || {};
     return `
       <div class="form-group">
         <label class="form-label">${App.icon('paw')} 반려견 이름</label>
         <input type="text" id="cf-petName" value="${this.escapeHtml(p.petName || '')}" placeholder="반려견 이름" maxlength="30">
+      </div>
+      <div class="form-row breed-row">
+        <div class="form-group">
+          <label class="form-label">견종</label>
+          ${this.breedInputHtml('cf-breed', p.breed)}
+        </div>
+        <div class="form-group">
+          <label class="form-label">몸무게(kg)</label>
+          <input type="number" id="cf-weight" inputmode="decimal" placeholder="3.5" step="0.1" min="0" max="120">
+        </div>
       </div>
       <div class="form-group">
         <label class="form-label">${App.icon('phone')} 연락처 <span class="required">*</span></label>
@@ -1263,18 +1318,8 @@ const App = {
         <label class="form-label">보호자 이름 <span class="form-optional">(선택)</span></label>
         <input type="text" id="cf-name" value="${this.escapeHtml(p.name || '')}" placeholder="보호자 이름" maxlength="50">
       </div>
-      <button type="button" class="cf-more-toggle" id="cf-more-toggle">+ 견종 &middot; 몸무게 &middot; 특이사항 &middot; 메모</button>
+      <button type="button" class="cf-more-toggle" id="cf-more-toggle">+ 특이사항 &middot; 메모</button>
       <div id="cf-more" style="display:none">
-        <div class="form-row">
-          <div class="form-group">
-            <label class="form-label">견종</label>
-            <input type="text" id="cf-breed" placeholder="예: 말티즈, 푸들">
-          </div>
-          <div class="form-group">
-            <label class="form-label">몸무게 (kg)</label>
-            <input type="number" id="cf-weight" placeholder="예: 3.5" step="0.1" min="0" max="120">
-          </div>
-        </div>
         <div class="form-group">
           <label class="form-label">특이사항 &middot; 알러지</label>
           <input type="text" id="cf-notes" placeholder="건강 특이사항, 알러지 등">
@@ -1291,6 +1336,7 @@ const App = {
   bindCustomerForm(opts) {
     const o = opts || {};
     setTimeout(() => this.setupPhoneInputs(), 50);
+    this.ensureBreedList();
 
     document.getElementById('cf-more-toggle')?.addEventListener('click', (e) => {
       e.stopPropagation();
@@ -1298,7 +1344,7 @@ const App = {
       if (!more) return;
       const show = more.style.display === 'none';
       more.style.display = show ? 'block' : 'none';
-      e.currentTarget.textContent = show ? '− 추가 항목 접기' : '+ 견종 · 몸무게 · 특이사항 · 메모';
+      e.currentTarget.textContent = show ? '− 추가 항목 접기' : '+ 특이사항 · 메모';
     });
 
     const phoneInput = document.getElementById('cf-phone');
@@ -1403,7 +1449,7 @@ const App = {
         const petData = {
           customerId,
           name: petName,
-          breed: g('cf-breed')?.value.trim() || '',
+          breed: this.normalizeBreed(g('cf-breed')?.value),
           healthNotes: g('cf-notes')?.value.trim() || ''
         };
         const weight = parseFloat(g('cf-weight')?.value);
@@ -1755,14 +1801,14 @@ const App = {
           <label class="form-label">반려견 이름 <span class="required">*</span></label>
           <input type="text" id="ip-name" placeholder="반려견 이름" maxlength="30">
         </div>
-        <div class="form-row">
+        <div class="form-row breed-row">
           <div class="form-group">
             <label class="form-label">견종</label>
-            <input type="text" id="ip-breed" placeholder="예: 말티즈">
+            ${this.breedInputHtml('ip-breed')}
           </div>
           <div class="form-group">
-            <label class="form-label">몸무게 (kg)</label>
-            <input type="number" id="ip-weight" placeholder="예: 3.5" step="0.1" min="0" max="120">
+            <label class="form-label">몸무게(kg)</label>
+            <input type="number" id="ip-weight" inputmode="decimal" placeholder="3.5" step="0.1" min="0" max="120">
           </div>
         </div>
         <div class="cf-inline-actions">
@@ -1770,6 +1816,7 @@ const App = {
           <button type="button" class="btn btn-secondary" id="ip-cancel">취소</button>
         </div>
       </div>`;
+    this.ensureBreedList();
     setTimeout(() => document.getElementById('ip-name')?.focus(), 80);
 
     document.getElementById('ip-cancel')?.addEventListener('click', (ev) => {
@@ -1795,7 +1842,7 @@ const App = {
         const data = {
           customerId: Number(customerId),
           name,
-          breed: document.getElementById('ip-breed')?.value.trim() || ''
+          breed: this.normalizeBreed(document.getElementById('ip-breed')?.value)
         };
         const weight = parseFloat(document.getElementById('ip-weight')?.value);
         if (weight > 0) {
