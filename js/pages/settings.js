@@ -555,7 +555,7 @@ App.pages.settings = {
     let actions;
     if (st.state === 'off') actions = btn('btn-sync-enable', 'refresh', '구글로 동기화 켜기', 'btn-primary') + btn('btn-sync-enable-pw', 'lock', '이메일·비밀번호로 켜기');
     else if (st.state === 'signin' || (st.state === 'error' && !st.signedIn)) actions = btn('btn-sync-signin', 'user', '구글로 다시 로그인', 'btn-primary') + btn('btn-sync-signin-pw', 'lock', '이메일·비밀번호로 로그인') + btn('btn-sync-disable', 'close', '동기화 끄기');
-    else actions = btn('btn-sync-now', 'refresh', '지금 동기화', 'btn-primary') + btn('btn-sync-setpw', 'lock', st.hasPassword ? '다른 기기용 비밀번호 변경' : '다른 기기용 비밀번호 설정') + btn('btn-sync-disable', 'close', '동기화 끄기');
+    else actions = btn('btn-sync-now', 'refresh', '지금 동기화', 'btn-primary') + btn('btn-sync-resync', 'copy', '전체 다시 맞추기') + btn('btn-sync-setpw', 'lock', st.hasPassword ? '다른 기기용 비밀번호 변경' : '다른 기기용 비밀번호 설정') + btn('btn-sync-disable', 'close', '동기화 끄기');
     return `
       <p style="color:var(--text-secondary);font-size:0.9rem;margin-bottom:12px">
         휴대폰과 컴퓨터에서 같은 예약·고객·기록을 봅니다. 미용 사진은 이 기기에만 남습니다.
@@ -590,6 +590,11 @@ App.pages.settings = {
         b.disabled = true;
         await Sync.syncNow();
         App.showToast('동기화를 확인했습니다.', 'info', { duration: 2000 });
+      } else if (b.id === 'btn-sync-resync') {
+        const ok = await App.confirm('이 기기와 클라우드를 하나씩 비교해 서로 빠진 데이터를 채웁니다.<br><small style="color:var(--text-muted)">지우는 데이터는 없습니다. 양쪽에 다 있으면 더 최근에 고친 쪽으로 맞춥니다. 다른 기기에서 예약에 반려견 이름이 ?로 보일 때 그 정보가 있는 기기에서 눌러주세요.</small>', { okLabel: '다시 맞추기', danger: false });
+        if (!ok) return;
+        b.disabled = true;
+        await Sync.resync();
       } else if (b.id === 'btn-sync-disable') {
         const ok = await App.confirm('동기화를 끕니다.<br><small style="color:var(--text-muted)">이 기기의 데이터는 그대로 남습니다. 아직 보내지 못한 변경은 보내지 않습니다.</small>', { okLabel: '동기화 끄기' });
         if (!ok) return;

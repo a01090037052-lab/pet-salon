@@ -306,6 +306,76 @@ const Sync = {
     } catch (e) { this._fail(e, true); }
   },
 
+  // 전체 다시 맞추기: 클라우드와 이 기기를 하나씩 비교 — 클라우드에 없거나 이 기기가 더 최신이면 올리고,
+  // 클라우드가 더 최신이면 받는다. 지우지 않는다(다른 기기에서 삭제한 것만 반영).
+  // 처음 켠 뒤 클라우드가 비워진 경우(콘솔 삭제·다른 기기의 교체)에 이 기기 데이터가 다시 올라가지 않던 문제 복구용.
+  async resync() {
+    if (this._busy) return false;
+    if (!this.isEnabled() || !this._fs || !this._user) { App.showToast('먼저 동기화에 로그인해주세요.', 'error'); return false; }
+    this._busy = true;
+    this._fatal = false;
+    this._error = null;
+    this._emit();
+    let received = 0;
+    try {
+      this._progressToast('클라우드와 비교하는 중...');
+      // 1) 다른 기기에서 지운 것 먼저 반영 → 아래에서 다시 올리지 않게
+      const tsnap = await this._col('tombstones').get();
+      received += await this._applyTombstones(tsnap.docs.map(d => ({ id: d.id, data: d.data() })));
+      // 2) 레코드: 클라우드가 더 최신이면 받고, 클라우드에 없거나 이 기기가 더 최신이면 올린다
+      const items = [];
+      for (const store of this.STORES) {
+        const snap = await this._col(store).get();
+        const docs = snap.docs.map(d => ({ id: d.id, data: d.data() }));
+        received += await this._applyRemote(store, docs, false);
+        this._s.lastPullAt[store] = Math.max(this._s.lastPullAt[store] || 0, this._maxServerAt(docs));
+        const remoteTs = new Map(docs.map(d => [d.id, Number(d.data._updatedAt) || 0]));
+        let rows = await DB.getAll(store);
+        if (store === 'settings') rows = rows.filter(r => !this.isLocalOnlySetting(r.key));
+        for (const r of rows) {
+          const id = store === 'settings' ? r.key : r.id;
+          if (remoteTs.has(String(id)) && this._localTs(r) <= remoteTs.get(String(id))) continue;
+          const data = this._toRemote(store, r);
+          if (!data) continue;
+          if (store !== 'settings') data.id = id;
+          items.push({ store, op: 'put', id, data });
+        }
+      }
+      // 3) 반려견 프로필 사진: 받을 것은 받고, 클라우드에 없는 이 기기 사진은 올린다
+      const ph = await this._col('petPhotos').get();
+      const phDocs = ph.docs.map(d => ({ id: d.id, data: d.data() }));
+      received += await this._applyPetPhotos(phDocs);
+      this._s.lastPullAt.petPhotos = Math.max(this._s.lastPullAt.petPhotos || 0, this._maxServerAt(phDocs));
+      const remotePhotos = new Set(phDocs.map(d => d.id));
+      for (const p of await DB.getAll('pets')) {
+        if (remotePhotos.has(String(p.id))) continue;
+        const it = this._petPhotoItem('put', p.id, p, true);
+        if (it && it.op === 'put') items.push(it);
+      }
+      await this._saveNow();
+      this._progressDone();
+      if (received) { this._settingsChanged = true; this._scheduleRefresh(); }
+      for (let i = 0; i < items.length; i += 1000) await this._enqueue(items.slice(i, i + 1000));
+      await this._refreshPending();
+      if (items.length) this._progress = { total: this._pending, done: 0 };
+      this._busy = false;
+      await this.flush();
+      const parts = [];
+      if (items.length) parts.push(`올림 ${items.length}건`);
+      if (received) parts.push(`받음 ${received}건`);
+      if (this._error) App.showToast(this._error, 'error');
+      else App.showToast(parts.length ? `다시 맞추기 완료 · ${parts.join(' · ')}` : '이미 모두 맞춰져 있습니다.');
+      return true;
+    } catch (e) {
+      this._progressDone();
+      this._fail(e, true);
+      return false;
+    } finally {
+      this._busy = false;
+      this._emit();
+    }
+  },
+
   async disable() {
     try {
       this._stopListeners();
