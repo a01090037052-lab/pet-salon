@@ -4,7 +4,7 @@ const DB = {
   mode: 'idb', // 'server' or 'idb'
   db: null,
   name: 'PetGroomingShop',
-  version: 5,
+  version: 6, // v6: syncQueue (기기 간 동기화 보낼 편지함)
 
   stores: {
     customers: { keyPath: 'id', autoIncrement: true, indexes: [{ name: 'name', keyPath: 'name' }, { name: 'phone', keyPath: 'phone' }] },
@@ -14,7 +14,17 @@ const DB = {
     records: { keyPath: 'id', autoIncrement: true, indexes: [{ name: 'customerId', keyPath: 'customerId' }, { name: 'petId', keyPath: 'petId' }, { name: 'date', keyPath: 'date' }, { name: 'paymentMethod', keyPath: 'paymentMethod' }] },
     settings: { keyPath: 'key' },
     photos: { keyPath: 'id', autoIncrement: true, indexes: [{ name: 'ownerId', keyPath: 'ownerId' }, { name: 'type', keyPath: 'type' }] },
-    expenses: { keyPath: 'id', autoIncrement: true, indexes: [{ name: 'month', keyPath: 'month' }, { name: 'category', keyPath: 'category' }] }
+    expenses: { keyPath: 'id', autoIncrement: true, indexes: [{ name: 'month', keyPath: 'month' }, { name: 'category', keyPath: 'category' }] },
+    // 기기 간 동기화 대기열 — 이 기기 전용. 백업·복원·무결성 점검 대상이 아니다.
+    syncQueue: { keyPath: 'id', autoIncrement: true, indexes: [{ name: 'qk', keyPath: 'qk' }] }
+  },
+
+  // 백업/복원/스냅샷에 포함하지 않는 기기 전용 스토어
+  _localOnlyStores: ['syncQueue'],
+
+  // 동기화 훅 — Sync 가 없거나 꺼져 있으면 아무것도 하지 않는다. 절대 throw 하지 않는다.
+  _syncHook(storeName, op, id, data) {
+    try { if (typeof Sync !== 'undefined' && Sync.onLocalWrite) Sync.onLocalWrite(storeName, op, id, data); } catch (e) { console.warn('sync hook error:', e); }
   },
 
   async init() {
@@ -119,6 +129,10 @@ const DB = {
       const result = await res.json();
       return result.id;
     }
+    // 동기화 중이면 기기별 id 대역에서 번호를 받는다 (두 기기가 같은 id 를 만들지 않게). 꺼져 있으면 null → autoIncrement.
+    if (data.id == null && typeof Sync !== 'undefined' && Sync.allocId) {
+      try { const nid = await Sync.allocId(storeName); if (nid != null) data.id = nid; } catch (_) {}
+    }
     return new Promise((resolve, reject) => {
       // 요청 성공(onsuccess)이 아니라 트랜잭션 커밋(oncomplete) 시점에 resolve 한다.
       // 커밋 단계에서 나는 quota 초과/abort 는 onsuccess 이후에 발생하므로,
@@ -130,7 +144,11 @@ const DB = {
       let result;
       const req = store.add(data);
       req.onsuccess = () => { result = req.result; };
-      tx.oncomplete = () => { if (typeof App !== 'undefined' && App.notifyTabSync) App.notifyTabSync(); resolve(result); };
+      tx.oncomplete = () => {
+        if (typeof App !== 'undefined' && App.notifyTabSync) App.notifyTabSync();
+        if (storeName !== 'photos') this._syncHook(storeName, 'put', result, data);
+        resolve(result);
+      };
       const fail = () => reject(this._txError(tx, req));
       tx.onerror = fail;
       tx.onabort = fail;
@@ -193,7 +211,11 @@ const DB = {
       let result;
       const req = tx.objectStore(storeName).put(data);
       req.onsuccess = () => { result = req.result; };
-      tx.oncomplete = () => { if (typeof App !== 'undefined' && App.notifyTabSync) App.notifyTabSync(); resolve(result); };
+      tx.oncomplete = () => {
+        if (typeof App !== 'undefined' && App.notifyTabSync) App.notifyTabSync();
+        if (storeName !== 'photos') this._syncHook(storeName, 'put', result, data);
+        resolve(result);
+      };
       const fail = () => reject(this._txError(tx, req));
       tx.onerror = fail;
       tx.onabort = fail;
@@ -209,7 +231,11 @@ const DB = {
     return new Promise((resolve, reject) => {
       const tx = this.db.transaction(storeName, 'readwrite');
       const req = tx.objectStore(storeName).delete(id);
-      tx.oncomplete = () => { if (typeof App !== 'undefined' && App.notifyTabSync) App.notifyTabSync(); resolve(); };
+      tx.oncomplete = () => {
+        if (typeof App !== 'undefined' && App.notifyTabSync) App.notifyTabSync();
+        if (storeName !== 'photos') this._syncHook(storeName, 'delete', id, null);
+        resolve();
+      };
       const fail = () => reject(this._txError(tx, req));
       tx.onerror = fail;
       tx.onabort = fail;
@@ -226,7 +252,10 @@ const DB = {
     return new Promise((resolve, reject) => {
       const tx = this.db.transaction(storeNames, 'readwrite');
       for (const { store, id } of ops) tx.objectStore(store).delete(id);
-      tx.oncomplete = () => resolve();
+      tx.oncomplete = () => {
+        for (const { store, id } of ops) if (store !== 'photos') this._syncHook(store, 'delete', id, null);
+        resolve();
+      };
       tx.onerror = () => reject(tx.error);
       tx.onabort = () => reject(tx.error);
     });
@@ -572,6 +601,7 @@ const DB = {
     const photoFields = ['photo', 'photoBefore', 'photoAfter', 'photo3', 'photo4'];
     const data = {};
     for (const storeName of Object.keys(this.stores)) {
+      if (this._localOnlyStores.includes(storeName)) continue;
       // 사진 제외 모드: photos 스토어 건너뛰기
       if (storeName === 'photos' && excludePhotos) { data[storeName] = []; continue; }
       // photos 스토어는 별도 처리 (Blob을 base64로 변환)
@@ -626,8 +656,9 @@ const DB = {
   },
 
   // 백업 파일에 포함하지 않고, 복원 시에도 덮어쓰지 않는 기기 내부 설정 키
+  // 'sync'(동기화 연결 정보: 기기 id·기기 번호·마지막 받은 시각) 와 '_sync*' 도 기기 전용이다.
   _isInternalSetting(key) {
-    return typeof key === 'string' && key.startsWith('_autoBackup');
+    return typeof key === 'string' && (key.startsWith('_autoBackup') || key.startsWith('_sync') || key === 'sync');
   },
 
   validateBackup(data) {
@@ -636,7 +667,7 @@ const DB = {
     if (typeof data._version === 'number' && data._version > this.version) {
       return `이 백업은 더 최신 버전(v${data._version})에서 생성되었습니다. 앱을 업데이트한 후 다시 시도해주세요.`;
     }
-    const validStores = Object.keys(data).filter(k => !k.startsWith('_') && this.stores[k]);
+    const validStores = Object.keys(data).filter(k => !k.startsWith('_') && this.stores[k] && !this._localOnlyStores.includes(k));
     if (validStores.length === 0) return '인식 가능한 데이터가 없습니다.';
     for (const store of validStores) {
       if (!Array.isArray(data[store])) return `"${store}" 데이터가 올바른 형식이 아닙니다.`;
@@ -713,7 +744,7 @@ const DB = {
     //   사진이 없는 백업은 기존 사진을 그대로 두고, 참조가 끊긴 사진은 무결성 점검이 정리한다.
     const skipPhotos = data._excludePhotos === true || !Array.isArray(data.photos) || data.photos.length === 0;
     const storeNames = Object.keys(data).filter(
-      k => !k.startsWith('_') && this.stores[k] && Array.isArray(data[k]) && !(skipPhotos && k === 'photos')
+      k => !k.startsWith('_') && this.stores[k] && Array.isArray(data[k]) && !(skipPhotos && k === 'photos') && !this._localOnlyStores.includes(k)
     );
 
     // 기기 내부 설정(_autoBackup*)은 복원으로 덮어쓰지 않는다 — 복원 직후 "되돌리기"의 유일한 근거이므로.
@@ -835,6 +866,9 @@ const DB = {
 
     // 5. 성공 — snapshot 정리
     try { localStorage.removeItem('__petsalon_import_snapshot__'); } catch (_) {}
+
+    // 6. 동기화 중이면 복원된 데이터로 클라우드를 맞춘다 (백그라운드, 실패해도 복원 결과에는 영향 없음)
+    try { if (typeof Sync !== 'undefined' && Sync.afterImport) Sync.afterImport(); } catch (e) { console.warn('Sync.afterImport 실패 (무시):', e); }
   },
 
   async _restoreInternalSettings(items) {
@@ -918,6 +952,8 @@ const DB = {
       tx.onerror = () => reject(tx.error);
       tx.onabort = () => reject(tx.error);
     });
+    // 'sync' 설정과 대기열도 지워졌다 → 동기화 연결을 끊는다 (클라우드 데이터는 건드리지 않음)
+    try { if (typeof Sync !== 'undefined' && Sync.afterClearAll) Sync.afterClearAll(); } catch (_) {}
   },
 
   // ========== Data Integrity Check ==========

@@ -1,0 +1,18 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // 펫살롱: 사장님 계정 하나만 모든 데이터를 읽고 쓸 수 있다.
+    // Firebase 콘솔 → Firestore → 규칙 탭에 그대로 붙여 넣는다 (프로젝트: petsalon-d6d50)
+    function isOwner() {
+      return request.auth != null
+        && request.auth.token.email == 'a01090037052@gmail.com'
+        && request.auth.token.email_verified == true;
+    }
+    match /shops/{shopId}/{document=**} {
+      allow read, write: if isOwner();
+    }
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

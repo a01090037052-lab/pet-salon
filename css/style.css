@@ -372,6 +372,16 @@ table { width: 100%; border-collapse: collapse; }
   text-align: center;
 }
 .sidebar.collapsed .sidebar-footer { display: none; }
+/* 기기 간 동기화 상태 점: 초록=동기화됨, 주황=보낼 것 대기, 빨강=오류, 회색=오프라인/로그인 필요 */
+.sync-dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-left: 6px; vertical-align: middle; background: var(--text-muted, #9CA3AF); }
+.sync-dot[hidden] { display: none; }
+.sync-dot.synced { background: var(--success); }
+.sync-dot.pending { background: var(--warning); }
+.sync-dot.error { background: var(--danger); }
+.sync-dot.offline { background: #9CA3AF; }
+.sync-status-line { display: flex; align-items: center; gap: 8px; font-weight: 600; margin-bottom: 6px; }
+.sync-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
+.sync-actions .btn { min-height: 44px; }
 
 /* ========== Main Content ========== */
 .main-content {

@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
   <title>펫살롱 - 애견 미용 고객 관리</title>
-  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' blob: data:">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' https://www.gstatic.com https://apis.google.com; style-src 'self' 'unsafe-inline'; img-src 'self' blob: data: https://*.googleusercontent.com; connect-src 'self' https://*.googleapis.com https://*.firebaseio.com wss://*.firebaseio.com https://securetoken.googleapis.com https://identitytoolkit.googleapis.com https://firestore.googleapis.com https://www.googleapis.com; frame-src https://petsalon-d6d50.firebaseapp.com https://accounts.google.com">
   <meta name="description" content="애견 미용 샵 고객 관리 시스템">
   <meta name="theme-color" media="(prefers-color-scheme: light)" content="#6366F1">
   <meta name="theme-color" media="(prefers-color-scheme: dark)" content="#0F1115">
@@ -137,7 +137,7 @@
         <span class="nav-icon"><svg class="ico" aria-hidden="true"><use href="#i-settings"/></svg></span><span class="nav-text">설정</span>
       </a></li>
     </ul>
-    <div class="sidebar-footer"><span id="app-version">…</span> &middot; 오프라인 전용 &middot; <a href="./guide.html" target="_blank" style="color:var(--primary)">사용 가이드</a></div>
+    <div class="sidebar-footer"><span id="app-version">…</span><span id="sync-dot" class="sync-dot" hidden></span> &middot; 오프라인 전용 &middot; <a href="./guide.html" target="_blank" style="color:var(--primary)">사용 가이드</a></div>
   </nav>
 
   <!-- Main Content -->
@@ -254,6 +254,8 @@
   <script src="js/db.js"></script>
   <script src="js/master-config.js"></script>
   <script src="js/security.js"></script>
+  <script src="js/sync-config.js"></script>
+  <script src="js/sync.js"></script>
   <script src="js/app.js"></script>
   <script src="js/pages/dashboard.js"></script>
   <script src="js/pages/customers.js"></script>

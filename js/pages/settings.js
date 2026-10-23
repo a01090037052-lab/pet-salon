@@ -358,6 +358,15 @@ App.pages.settings = {
           </div>
         </div>
 
+        <!-- 기기 간 동기화 -->
+        ${typeof Sync !== 'undefined' ? `
+        <div class="card" style="margin-top:20px">
+          <div class="card-header">
+            <span class="card-title">${App.icon('refresh')} 기기 간 동기화</span>
+          </div>
+          <div class="card-body" id="sync-card-body">${this.syncCardHtml()}</div>
+        </div>` : ''}
+
         <!-- Backup & Restore -->
         <div class="card" style="margin-top:20px">
           <div class="card-header">
@@ -492,7 +501,72 @@ App.pages.settings = {
     `;
   },
 
+  // ========== 기기 간 동기화 카드 ==========
+  syncCardHtml() {
+    const st = Sync.getStatus();
+    const dotCls = { synced: 'synced', pending: 'pending', error: 'error', offline: 'offline', signin: 'offline', off: 'offline' }[st.state];
+    const label = {
+      off: '꺼짐',
+      signin: '로그인 필요',
+      offline: `오프라인 — 대기 ${st.pending}건`,
+      error: '오류',
+      pending: `동기화 중 · 대기 ${st.pending}건`,
+      synced: '동기화됨'
+    }[st.state];
+    const btn = (id, icon, text, cls = 'btn-secondary') => `<button class="btn ${cls}" id="${id}">${App.icon(icon)} ${text}</button>`;
+    let actions;
+    if (st.state === 'off') actions = btn('btn-sync-enable', 'refresh', '동기화 켜기', 'btn-primary');
+    else if (st.state === 'signin' || (st.state === 'error' && !st.signedIn)) actions = btn('btn-sync-signin', 'user', '다시 로그인', 'btn-primary') + btn('btn-sync-disable', 'close', '동기화 끄기');
+    else actions = btn('btn-sync-now', 'refresh', '지금 동기화', 'btn-primary') + btn('btn-sync-disable', 'close', '동기화 끄기');
+    return `
+      <p style="color:var(--text-secondary);font-size:0.9rem;margin-bottom:12px">
+        휴대폰과 컴퓨터에서 같은 예약·고객·기록을 봅니다. 미용 사진은 이 기기에만 남습니다.
+      </p>
+      <div class="sync-status-line"><span class="sync-dot ${dotCls}"></span>${App.escapeHtml(label)}</div>
+      ${st.error ? `<div style="color:var(--danger);font-size:0.85rem;margin-bottom:6px">${App.escapeHtml(st.error)}</div>` : ''}
+      ${st.enabled && st.email ? `<div style="color:var(--text-muted);font-size:0.85rem">계정: ${App.escapeHtml(st.email)}</div>` : ''}
+      ${st.enabled && st.lastSyncAt ? `<div style="color:var(--text-muted);font-size:0.85rem">마지막 동기화: ${App.escapeHtml(App.formatDateTime(new Date(st.lastSyncAt).toISOString()))}</div>` : ''}
+      <div class="sync-actions">${actions}</div>
+    `;
+  },
+
+  bindSyncCard() {
+    const body = document.getElementById('sync-card-body');
+    if (!body || typeof Sync === 'undefined') return;
+    body.onclick = async (e) => {
+      const b = e.target.closest('button');
+      if (!b || b.disabled) return;
+      if (b.id === 'btn-sync-enable') {
+        b.disabled = true;
+        await Sync.enable();
+      } else if (b.id === 'btn-sync-signin') {
+        b.disabled = true;
+        await Sync.signIn();
+      } else if (b.id === 'btn-sync-now') {
+        b.disabled = true;
+        await Sync.syncNow();
+        App.showToast('동기화를 확인했습니다.', 'info', { duration: 2000 });
+      } else if (b.id === 'btn-sync-disable') {
+        const ok = await App.confirm('동기화를 끕니다.<br><small style="color:var(--text-muted)">이 기기의 데이터는 그대로 남습니다. 아직 보내지 못한 변경은 보내지 않습니다.</small>', { okLabel: '동기화 끄기' });
+        if (!ok) return;
+        await Sync.disable();
+        App.showToast('동기화를 껐습니다.', 'info');
+      }
+      const el = document.getElementById('sync-card-body');
+      if (el) el.innerHTML = this.syncCardHtml();
+    };
+    // 상태가 바뀌면 카드만 다시 그린다 (페이지 전체를 다시 그리지 않음) — 리스너는 한 번만 등록
+    if (!this._syncStatusBound) {
+      this._syncStatusBound = true;
+      window.addEventListener('sync:status', () => {
+        const el = document.getElementById('sync-card-body');
+        if (el && !el.querySelector('button:disabled')) el.innerHTML = this.syncCardHtml();
+      });
+    }
+  },
+
   async init() {
+    this.bindSyncCard();
     // Tab switching with unsaved changes warning
     document.querySelectorAll('.settings-tab').forEach(tab => {
       tab.addEventListener('click', async () => {

@@ -1,4 +1,4 @@
-const CACHE_NAME = 'petsalon-offline-v158';
+const CACHE_NAME = 'petsalon-offline-v159';
 const ASSETS = [
   './',
   './index.html',
@@ -6,6 +6,8 @@ const ASSETS = [
   './js/db.js',
   './js/master-config.js',
   './js/security.js',
+  './js/sync-config.js',
+  './js/sync.js',
   './js/app.js',
   './js/pages/dashboard.js',
   './js/pages/customers.js',
@@ -44,6 +46,9 @@ self.addEventListener('fetch', (e) => {
   const url = new URL(e.request.url);
   if (url.pathname.includes('/api/')) return;
   if (e.request.method !== 'GET') return;
+  // 다른 출처(Firebase SDK·Firestore 실시간 채널·Google 로그인)는 건드리지 않는다.
+  // 캐시하면 Firestore 의 GET 롱폴링 응답이 재사용되어 동기화가 멈춘다.
+  if (url.origin !== self.location.origin) return;
   // sw.js 는 캐시하지 않는다 — 버전 표시용으로 './sw.js?v=<timestamp>' 를 매번
   // 새 URL로 요청하기 때문에, 캐시하면 앱을 열 때마다 항목이 영구 누적된다.
   if (url.pathname.endsWith('/sw.js')) return;

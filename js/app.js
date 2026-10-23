@@ -24,6 +24,11 @@ const App = {
       this.setupMobileKeyboard();
       this.handleRoute();
       window.addEventListener('hashchange', () => this.handleRoute());
+      // 기기 간 동기화 (켜져 있을 때만 동작, 앱 시작을 막지 않는다)
+      this.setupSyncDot();
+      if (typeof Sync !== 'undefined') {
+        Sync.init().catch(e => console.warn('Sync.init 실패 (무시):', e));
+      }
       await this.updateBadges();
       await this.applyShopName();
       await this.applyTheme();
@@ -221,6 +226,23 @@ const App = {
         console.warn('SW 등록 실패:', err.message);
       });
     }
+  },
+
+  // 사이드바 버전 옆 동기화 상태 점 (꺼져 있으면 숨김)
+  setupSyncDot() {
+    const labels = { synced: '동기화됨', pending: '보낼 변경 대기 중', error: '동기화 오류', offline: '오프라인', signin: '로그인 필요' };
+    window.addEventListener('sync:status', (e) => {
+      const dot = document.getElementById('sync-dot');
+      if (!dot) return;
+      const st = (e.detail) || (typeof Sync !== 'undefined' ? Sync.getStatus() : null);
+      if (!st || st.state === 'off') { dot.hidden = true; return; }
+      dot.hidden = false;
+      const cls = st.state === 'signin' ? 'offline' : st.state;
+      dot.className = 'sync-dot ' + cls;
+      const label = labels[st.state] || '';
+      dot.title = st.pending > 0 ? `${label} · 대기 ${st.pending}건` : label;
+      dot.setAttribute('aria-label', dot.title);
+    });
   },
 
   setupTabSync() {
