@@ -375,14 +375,15 @@ const Sync = {
   async _signIn(forEnable) {
     const provider = new firebase.auth.GoogleAuthProvider();
     provider.setCustomParameters({ prompt: 'select_account' });
-    if (!this._isStandalone()) {
-      try {
-        const r = await this._auth.signInWithPopup(provider);
-        return r.user;
-      } catch (e) {
-        const fallback = ['auth/popup-blocked', 'auth/operation-not-supported-in-this-environment', 'auth/web-storage-unsupported'];
-        if (!fallback.includes(e && e.code)) throw e;
-      }
+    // 팝업을 항상 먼저 쓴다. 설치한 데스크탑 앱(standalone)도 팝업은 되지만, 리다이렉트 방식은
+    // 앱 주소(github.io)와 로그인 주소(firebaseapp.com)가 달라 최신 Chrome·Safari 가 결과를 돌려주지 않는다
+    // (로그인 후 돌아오면 그대로 '꺼짐'이던 문제). 리다이렉트는 팝업 자체가 불가능할 때만 쓴다.
+    try {
+      const r = await this._auth.signInWithPopup(provider);
+      return r.user;
+    } catch (e) {
+      const fallback = ['auth/popup-blocked', 'auth/operation-not-supported-in-this-environment', 'auth/web-storage-unsupported'];
+      if (!fallback.includes(e && e.code)) throw e;
     }
     // 홈 화면 앱(iOS)·팝업 차단 → 리다이렉트. 페이지가 이동하므로 돌아와서 이어갈 표시를 남긴다
     try { sessionStorage.setItem(this.PENDING_ENABLE_KEY, forEnable ? '1' : 'signin'); } catch (_) {}
