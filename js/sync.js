@@ -384,8 +384,18 @@ const Sync = {
     const meta = await shopRef.get(); // 허용되지 않은 계정이면 여기서 permission-denied
     const [nc, nr] = await Promise.all([DB.count('customers'), DB.count('records')]);
     const localHas = (nc + nr) > 0;
+    // 클라우드에 실제 데이터가 있는지 확인 (meta 문서만 있고 빈 경우 = 빈 기기가 먼저 켠 경우)
+    // 예전엔 meta 존재만 봐서, 빈 컴퓨터가 먼저 켠 뒤 폰을 켜면 "클라우드로 교체"를 먼저 물어 폰 데이터가 비워질 수 있었다.
+    let remoteHas = false;
+    if (meta.exists) {
+      const [rc, rr] = await Promise.all([
+        this._shop().collection('customers').limit(1).get(),
+        this._shop().collection('records').limit(1).get()
+      ]);
+      remoteHas = !rc.empty || !rr.empty;
+    }
     let mode;
-    if (!meta.exists) {
+    if (!remoteHas) {
       mode = 'push';
     } else if (!localHas) {
       mode = 'pull';
