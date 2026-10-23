@@ -637,6 +637,10 @@ const App = {
   _confirmResolve: null,
 
   confirm(message, options = {}) {
+    // 직전 confirm 이 닫히며 낸 history.back() 이 아직 처리 전이면, 그 popstate 가 새 confirm 을 즉시 '취소'로 닫아 버린다
+    // (예: 전체 데이터 초기화의 2단계 확인이 눌러도 아무 일 없이 끝나던 문제). 잠깐 기다렸다가 연다.
+    const since = Date.now() - (this._lastConfirmCloseAt || 0);
+    if (since < 300) return new Promise(r => setTimeout(r, 300 - since)).then(() => this.confirm(message, options));
     // options: { okLabel, danger, cancelLabel }
     return new Promise((resolve) => {
       // 이전 confirm 이 아직 대기 중이면 취소로 종료시켜 호출자가 영원히 멈추지 않게 한다
@@ -674,6 +678,7 @@ const App = {
       window.removeEventListener('popstate', this._confirmPopHandler);
       this._confirmPopHandler = null;
     }
+    this._lastConfirmCloseAt = Date.now();
     if (!fromPopstate && history.state && history.state.confirmOpen) {
       // 모달 위에서 열린 confirm이면 back()이 만드는 popstate가 모달까지 닫지 않도록 표시
       if (this._modalPopHandler) this._suppressModalPop = true;
