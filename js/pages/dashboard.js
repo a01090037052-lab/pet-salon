@@ -205,6 +205,7 @@ App.pages.dashboard = {
 
       // Today's revenue
       const todayRecords = recentRecords.filter(r => r.date === today);
+      this._apptRecMap = App.apptRecordMap(recentRecords);
       const todayRevenue = todayRecords.reduce((sum, r) => sum + App.getRecordAmount(r), 0);
 
       // ===== 내일 예약 리마인더 =====
@@ -621,7 +622,7 @@ App.pages.dashboard = {
                 <span class="days">${a.days}일</span>
                 <div class="flex-1">
                   <strong>${App.escapeHtml(a.pet.name)}</strong>
-                  <span style="color:var(--text-muted);font-size:0.8rem">${App.escapeHtml(App.getCustomerLabel(a.customer, (this._petsByCustomer || {})[a.customer.id]))}</span>
+                  <span style="color:var(--text-muted);font-size:0.8rem">${App.escapeHtml(App.getCustomerLabel(a.customer))}</span>
                   <span class="badge ${statusBadge}" style="font-size:0.72rem;margin-left:4px;padding:3px 8px">${statusLabel}</span>
                   <span class="badge badge-secondary alert-contacted-tag" style="font-size:0.72rem;margin-left:4px;padding:3px 8px;display:none">연락함</span>
                   <div style="font-size:0.78rem;color:var(--text-secondary);margin-top:2px">
@@ -663,7 +664,7 @@ App.pages.dashboard = {
                 <span class="days">${a.days}일</span>
                 <div class="flex-1">
                   <strong>${App.escapeHtml(a.pet.name)}</strong>
-                  <span style="color:var(--text-muted);font-size:0.8rem">${App.escapeHtml(App.getCustomerLabel(a.customer, (this._petsByCustomer || {})[a.customer.id]))}</span>
+                  <span style="color:var(--text-muted);font-size:0.8rem">${App.escapeHtml(App.getCustomerLabel(a.customer))}</span>
                   <span class="badge badge-secondary alert-contacted-tag" style="font-size:0.72rem;margin-left:4px;padding:3px 8px;display:none">연락함</span>
                   <div style="font-size:0.78rem;color:var(--text-secondary);margin-top:2px">
                     마지막 미용: ${App.formatDate(a.lastDate)}
@@ -781,7 +782,7 @@ App.pages.dashboard = {
         <div class="appointment-item" style="cursor:pointer" onclick="App.navigate('appointments')">
           <div class="appointment-time">${appt.time || '--:--'}</div>
           <div class="appointment-info">
-            <div class="name">${dateLabel}<a href="#customers/${appt.customerId}" onclick="event.stopPropagation()" style="color:inherit;font-weight:700">${App.escapeHtml(App.getCustomerLabel(customer, (this._petsByCustomer || {})[customer?.id]))}</a> <span style="color:var(--text-muted)">/</span> <a href="#pets/${appt.petId}" onclick="event.stopPropagation()" style="color:inherit">${App.escapeHtml(pet?.name || '?')}</a></div>
+            <div class="name">${dateLabel}<a href="#pets/${appt.petId}" onclick="event.stopPropagation()" style="color:inherit;font-weight:700">${App.escapeHtml(pet?.name || '?')}</a> <a href="#customers/${appt.customerId}" onclick="event.stopPropagation()" class="appt-guardian">${App.escapeHtml(App.getCustomerLabel(customer))}</a></div>
             <div class="detail">${App.escapeHtml(serviceNames || '서비스 미지정')}${appt.groomer ? ' &middot; ' + App.escapeHtml(appt.groomer) : ''}</div>
             ${(() => { const w = [pet?.temperament, pet?.healthNotes, pet?.allergies].filter(Boolean); if (!w.length) return ''; const s = w.join(', '); return '<div style="font-size:0.75rem;color:var(--danger);margin-top:2px">' + App.icon('alert') + ' ' + App.escapeHtml(s.length > 50 ? s.slice(0, 50) + '...' : s) + '</div>'; })()}
           </div>
@@ -792,7 +793,7 @@ App.pages.dashboard = {
         </div>
         ${appt.status !== 'completed' ? `<div style="margin-top:8px;display:flex;gap:6px">
           <button class="btn btn-sm btn-success" onclick="event.stopPropagation();App.pages.appointments.completeToRecord(${appt.id})" style="flex:1;min-height:40px;font-size:0.88rem">${App.icon('scissors')} 미용 완료</button>
-        </div>` : ''}
+        </div>` : App.apptResultHtml(appt, (this._apptRecMap || {})[String(appt.id)])}
       `;
     }).join('');
   },
@@ -890,45 +891,6 @@ App.pages.dashboard = {
       });
     });
 
-    // Unpaid record payment buttons
-    document.querySelectorAll('.btn-pay-unpaid').forEach(btn => {
-      btn.addEventListener('click', async () => {
-        const recordId = Number(btn.dataset.id);
-        App.showModal({
-          title: '결제 완료 처리',
-          content: `
-            <div class="form-group">
-              <label class="form-label">결제 수단을 선택하세요</label>
-              <select id="f-pay-method">
-                <option value="cash">현금</option>
-                <option value="card">카드</option>
-                <option value="transfer">계좌이체</option>
-              </select>
-            </div>
-          `,
-          saveText: '결제 완료',
-          onSave: async () => {
-            const method = document.getElementById('f-pay-method').value;
-            try {
-              const record = await DB.get('records', recordId);
-              if (record) {
-                record.paymentMethod = method;
-                // 수금일 기록 — 지난주 미용비를 오늘 받은 경우를 추적할 수 있게 한다
-                record.paidAt = App.getToday();
-                record.paidMethod = method;
-                await DB.update('records', record);
-                App.showToast('결제가 완료 처리되었습니다.');
-                App.closeModal();
-                App._dashboardDirty = true;
-                App.handleRoute();
-              }
-            } catch (err) {
-              console.error('Payment update error:', err);
-              App.showToast('처리 중 오류가 발생했습니다.', 'error');
-            }
-          }
-        });
-      });
-    });
+    // 미수금 '결제' 버튼은 App.setupApptResultActions 가 문서 전체에서 처리한다 (예약 카드와 공용)
   }
 };

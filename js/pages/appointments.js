@@ -26,8 +26,9 @@ App.pages.appointments = {
       DB.getAll('customers'), DB.getAll('pets'), DB.getAll('services'),
       DB.getByDateRange('records', 'date', threeMonthsAgo, '9999-12-31')
     ]);
-    // 미용 기록이 연결된 예약 id (완료됐지만 기록 없는 예약에 "기록 작성" 버튼 노출용)
-    const recordedApptIds = new Set(recentRecords.filter(r => r.appointmentId).map(r => String(r.appointmentId)));
+    // 완료된 예약 카드에 붙일 미용 결과(금액·결제). 기록은 최근 3개월만 읽으므로 그 이전 예약은 '기록 없음'이라 단정하지 않는다
+    const recByAppt = App.apptRecordMap(recentRecords);
+    const resultOf = (a) => App.apptResultHtml(a, recByAppt[String(a.id)], (a.date || '') >= threeMonthsAgo);
     const customerMap = {}; customers.forEach(c => customerMap[c.id] = c);
     const petMap = {}; pets.forEach(p => petMap[p.id] = p);
     const serviceMap = {}; services.forEach(s => serviceMap[s.id] = s.name);
@@ -160,7 +161,7 @@ App.pages.appointments = {
                       <td class="hide-mobile">${App.escapeHtml(a.groomer || '-')}</td>
                       <td class="hide-mobile" style="max-width:120px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${App.escapeHtml(a.memo || '')}">${App.escapeHtml(a.memo || '-')}</td>
                       <td>
-                        <select class="status-select" data-id="${a.id}" style="padding:4px 8px;font-size:max(16px,0.8rem);width:auto;min-width:70px">
+                        <select class="status-select appt-status-sel appt-status-sel-table" data-id="${a.id}" data-st="${a.status || 'pending'}" aria-label="예약 상태">
                           <option value="pending" ${a.status === 'pending' ? 'selected' : ''}>대기</option>
                           <option value="confirmed" ${a.status === 'confirmed' ? 'selected' : ''}>확정</option>
                           <option value="in_progress" ${a.status === 'in_progress' ? 'selected' : ''}>미용중</option>
@@ -168,11 +169,12 @@ App.pages.appointments = {
                           <option value="cancelled" ${a.status === 'cancelled' ? 'selected' : ''}>취소</option>
                           <option value="noshow" ${a.status === 'noshow' ? 'selected' : ''}>노쇼</option>
                         </select>
+                        ${a.status === 'completed' ? `<div class="appt-result-compact">${resultOf(a)}</div>` : ''}
                       </td>
                       <td class="table-actions">
                         <button class="btn-icon btn-reminder-appt" data-id="${a.id}" title="재확인 문자" aria-label="재확인 문자" style="color:var(--info)">${App.icon('send')}</button>
                         <button class="btn-icon btn-edit-appt" data-id="${a.id}" title="수정" aria-label="수정">${App.icon('edit')}</button>
-                        <button class="btn-icon btn-complete-appt" data-id="${a.id}" title="미용 기록 작성" aria-label="미용 기록 작성" style="color:var(--success)">${App.icon('check')}</button>
+                        ${a.status !== 'completed' ? `<button class="btn-icon btn-complete-appt" data-id="${a.id}" title="미용 완료 · 기록 작성" aria-label="미용 완료 · 기록 작성" style="color:var(--success)">${App.icon('check')}</button>` : ''}
                       </td>
                     </tr>`;
                 }).join('')}
@@ -213,10 +215,13 @@ App.pages.appointments = {
                   ${a.status === 'cancelled' && a.cancelReason ? `<div style="font-size:0.8rem;color:var(--text-muted);margin-top:4px">취소 사유: ${App.escapeHtml(a.cancelReason)}</div>` : ''}
                   ${a.memo ? `<div style="font-size:0.8rem;color:var(--text-secondary);margin-top:4px">${App.icon('note')} ${App.escapeHtml(a.memo.length > 40 ? a.memo.slice(0, 40) + '...' : a.memo)}</div>` : ''}
                 </div>
+                ${a.status === 'completed' ? `
+                <!-- 끝난 예약: 결과 줄(금액·결제)만 크게, 전화·문자는 숨긴다 -->
                 <div class="mobile-card-actions" style="flex-direction:column;gap:8px">
+                  ${resultOf(a)}
                   <div style="display:flex;gap:6px;align-items:center">
                     <!-- 상태는 이 선택 상자 하나로 보여주고 바꾼다 (예전엔 위 배지와 두 번 표시) -->
-                    <select class="status-select appt-status-sel" data-id="${a.id}" data-st="${a.status || 'pending'}" aria-label="예약 상태" style="flex:1;padding:8px 10px;font-size:max(16px,0.85rem);min-height:44px">
+                    <select class="status-select appt-status-sel" data-id="${a.id}" data-st="${a.status || 'pending'}" aria-label="예약 상태" style="flex:1;min-height:44px">
                       <option value="pending" ${a.status === 'pending' ? 'selected' : ''}>대기</option>
                       <option value="confirmed" ${a.status === 'confirmed' ? 'selected' : ''}>확정</option>
                       <option value="in_progress" ${a.status === 'in_progress' ? 'selected' : ''}>미용중</option>
@@ -224,18 +229,28 @@ App.pages.appointments = {
                       <option value="cancelled" ${a.status === 'cancelled' ? 'selected' : ''}>취소</option>
                       <option value="noshow" ${a.status === 'noshow' ? 'selected' : ''}>노쇼</option>
                     </select>
-                    ${a.status !== 'completed'
-                      ? `<button class="btn btn-sm btn-success btn-complete-appt" data-id="${a.id}" style="white-space:nowrap;min-height:44px">${App.icon('scissors')} 미용 완료</button>`
-                      : !recordedApptIds.has(String(a.id))
-                        ? `<button class="btn btn-sm btn-success btn-complete-appt" data-id="${a.id}" style="white-space:nowrap;min-height:44px">${App.icon('note')} 기록 작성</button>`
-                        : ''}
+                    <button class="btn btn-sm btn-secondary btn-edit-appt flex-1" data-id="${a.id}" style="min-height:44px">${App.icon('edit')} 수정</button>
+                  </div>
+                </div>` : `
+                <div class="mobile-card-actions" style="flex-direction:column;gap:8px">
+                  <div style="display:flex;gap:6px;align-items:center">
+                    <!-- 상태는 이 선택 상자 하나로 보여주고 바꾼다 (예전엔 위 배지와 두 번 표시) -->
+                    <select class="status-select appt-status-sel" data-id="${a.id}" data-st="${a.status || 'pending'}" aria-label="예약 상태" style="flex:1;min-height:44px">
+                      <option value="pending" ${a.status === 'pending' ? 'selected' : ''}>대기</option>
+                      <option value="confirmed" ${a.status === 'confirmed' ? 'selected' : ''}>확정</option>
+                      <option value="in_progress" ${a.status === 'in_progress' ? 'selected' : ''}>미용중</option>
+                      <option value="completed" ${a.status === 'completed' ? 'selected' : ''}>완료</option>
+                      <option value="cancelled" ${a.status === 'cancelled' ? 'selected' : ''}>취소</option>
+                      <option value="noshow" ${a.status === 'noshow' ? 'selected' : ''}>노쇼</option>
+                    </select>
+                    <button class="btn btn-sm btn-success btn-complete-appt" data-id="${a.id}" style="white-space:nowrap;min-height:44px">${App.icon('scissors')} 미용 완료</button>
                   </div>
                   <div style="display:flex;gap:6px">
                     ${phoneDigits ? `<a class="btn btn-sm btn-secondary" href="tel:${phoneDigits}" style="flex:0 0 auto;min-width:44px;min-height:44px;display:inline-flex;align-items:center;justify-content:center" title="전화 걸기" aria-label="전화 걸기">${App.icon('phone')}</a>` : ''}
                     <button class="btn btn-sm btn-info btn-reminder-appt flex-1" data-id="${a.id}" style="min-height:44px">${App.icon('send')} 재확인 문자</button>
                     <button class="btn btn-sm btn-secondary btn-edit-appt flex-1" data-id="${a.id}" style="min-height:44px">${App.icon('edit')} 수정</button>
                   </div>
-                </div>
+                </div>`}
               </div>`;
             }).join('')}
           </div>`}

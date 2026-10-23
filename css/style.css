@@ -3378,3 +3378,24 @@ a.stat-card { display: flex; }
 
 /* 달력 '+N' — 흐린 회색이라 바쁜 날을 놓쳤다. 작은 알약 모양으로 또렷하게 */
 .cal-overflow { align-self: flex-start; margin-top: 1px; padding: 0 6px; border-radius: 999px; background: var(--primary); color: #fff; font-weight: 700; line-height: 1.5; }
+
+/* 상태 선택 상자 — 예전 인라인 padding 이 화살표 자리(padding-right)를 덮어 글자와 화살표가 겹쳤다 */
+.appt-status-sel { padding: 8px 32px 8px 12px; background-position: right 10px center; text-align: left; font-size: max(16px, 0.85rem); }
+.appt-status-sel-table { padding: 5px 28px 5px 12px; min-width: 88px; font-size: 0.85rem; background-position: right 9px center; }
+/* 터치 기기(아이패드 등)는 16px 미만이면 누를 때 화면이 확대된다 */
+@media (pointer: coarse) { .appt-status-sel-table { font-size: 16px; } }
+
+/* 완료된 예약의 미용 결과 줄 (예약 카드·대시보드 오늘 예약·데스크탑 표 공용) */
+.appt-result { display: flex; align-items: center; justify-content: space-between; gap: 8px; width: 100%; min-height: 44px; padding: 8px 12px; border-radius: var(--radius); font-size: 0.88rem; border: 1px solid transparent; text-align: left; font-family: inherit; }
+.appt-result > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.appt-result.paid { background: var(--success-light); color: var(--success); border-color: rgba(16,185,129,0.25); cursor: pointer; }
+.appt-result.paid strong { color: var(--text-primary); margin-left: 2px; }
+.appt-result.unpaid { background: var(--danger-light); color: var(--danger); border-color: rgba(239,68,68,0.25); }
+.appt-result.none { background: var(--warning-light); color: #B45309; border-color: rgba(245,158,11,0.3); }
+.appt-result .btn { flex: 0 0 auto; min-width: 64px; min-height: 34px; }
+.appointment-item + .appt-result { margin-top: 8px; }
+.appt-guardian { color: var(--text-muted); font-size: 0.82rem; font-weight: 400; margin-left: 4px; }
+.appt-result-compact { margin-top: 6px; }
+.appt-result-compact .appt-result { min-height: 32px; padding: 4px 8px; font-size: 0.78rem; }
+.appt-result-compact .appt-result .btn { min-height: 26px; padding: 2px 8px; font-size: 0.75rem; }
+.appointment-item + .appt-result { margin-bottom: 12px; }

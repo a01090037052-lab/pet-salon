@@ -15,6 +15,7 @@ const App = {
       this.setupModal();
       this.setupKeyboard();
       this.setupBottomNav();
+      this.setupApptResultActions();
       this.setupGlobalSearch();
       this.setupLightbox();
       this.setupVersionDisplay();
@@ -819,6 +820,85 @@ const App = {
   debounce(fn, ms = 300) {
     let timer;
     return (...args) => { clearTimeout(timer); timer = setTimeout(() => fn(...args), ms); };
+  },
+
+  // ========== 예약 ↔ 미용 기록 ==========
+  // 완료된 예약 카드에 그 미용의 결과(금액·결제)를 붙여, 오늘 일은 예약 화면 하나에서 끝나게 한다.
+  apptRecordMap(records) {
+    const m = {};
+    (records || []).forEach(r => { if (r.appointmentId) m[String(r.appointmentId)] = r; });
+    return m;
+  },
+
+  // recordKnown=false: 기록을 불러오지 않은 오래된 예약 — '기록 없음'이라고 단정하지 않는다
+  apptResultHtml(appt, rec, recordKnown = true) {
+    if (!appt || appt.status !== 'completed') return '';
+    if (rec) {
+      const amt = this.formatCurrency(this.getRecordAmount(rec));
+      if (rec.paymentMethod === 'unpaid') {
+        return `<div class="appt-result unpaid"><span>${this.icon('alert')} 미결제 <strong>${amt}</strong></span>` +
+          `<button type="button" class="btn btn-sm btn-success btn-pay-unpaid" data-id="${rec.id}">결제</button></div>`;
+      }
+      const pay = this.pages.records ? this.pages.records.getPaymentLabel(rec.paymentMethod) : '';
+      return `<button type="button" class="appt-result paid btn-open-record" data-record-id="${rec.id}">` +
+        `<span>${this.icon('check-circle')} 미용 완료 <strong>${amt}</strong>${pay && pay !== '-' ? ' · ' + pay : ''}</span>${this.icon('chevron-right')}</button>`;
+    }
+    if (!recordKnown) return '';
+    return `<div class="appt-result none"><span>기록 없음 · 매출에 안 잡혔어요</span>` +
+      `<button type="button" class="btn btn-sm btn-primary btn-appt-write-record" data-id="${appt.id}">기록 작성</button></div>`;
+  },
+
+  // 결과 줄의 버튼은 어느 화면에서 그려도 같은 동작 — 문서 한 곳에서 받는다
+  setupApptResultActions() {
+    document.addEventListener('click', (e) => {
+      const open = e.target.closest('.btn-open-record');
+      const pay = e.target.closest('.btn-pay-unpaid');
+      const write = e.target.closest('.btn-appt-write-record');
+      if (!open && !pay && !write) return;
+      e.preventDefault();
+      e.stopPropagation();
+      if (open) this.pages.records?.showForm(Number(open.dataset.recordId));
+      else if (pay) this.showPayUnpaid(Number(pay.dataset.id));
+      else this.pages.appointments?.completeToRecord(Number(write.dataset.id));
+    }, true);
+  },
+
+  // 미결제 기록 결제 처리 (대시보드 미수금·예약 카드 공용)
+  showPayUnpaid(recordId) {
+    this.showModal({
+      title: '결제 완료 처리',
+      content: `
+        <div class="form-group">
+          <label class="form-label">결제 수단을 선택하세요</label>
+          <select id="f-pay-method">
+            <option value="cash">현금</option>
+            <option value="card">카드</option>
+            <option value="transfer">계좌이체</option>
+          </select>
+        </div>
+      `,
+      saveText: '결제 완료',
+      onSave: async () => {
+        const method = document.getElementById('f-pay-method').value;
+        try {
+          const record = await DB.get('records', recordId);
+          if (record) {
+            record.paymentMethod = method;
+            // 수금일 기록 — 지난주 미용비를 오늘 받은 경우를 추적할 수 있게 한다
+            record.paidAt = this.getToday();
+            record.paidMethod = method;
+            await DB.update('records', record);
+            this.showToast('결제가 완료 처리되었습니다.');
+            this.closeModal();
+            this._dashboardDirty = true;
+            this.handleRoute();
+          }
+        } catch (err) {
+          console.error('Payment update error:', err);
+          this.showToast('처리 중 오류가 발생했습니다.', 'error');
+        }
+      }
+    });
   },
 
   getRecordAmount(r) {
