@@ -4,9 +4,11 @@ service cloud.firestore {
     // 펫살롱: 사장님 계정 하나만 모든 데이터를 읽고 쓸 수 있다.
     // Firebase 콘솔 → Firestore → 규칙 탭에 그대로 붙여 넣는다 (프로젝트: petsalon-d6d50)
     function isOwner() {
+      // email_verified 조건은 뺐다: 구글 계정에 비밀번호를 연결하면 토큰의 email_verified 가 false 로 바뀌어
+      // 사장님 본인도 막혔다. 대신 Authentication → 설정 → 사용자 작업에서 '가입(생성)'을 꺼서
+      // 같은 이메일로 남이 새 계정을 만드는 길을 막는다 (기존 계정 로그인은 영향 없음).
       return request.auth != null
-        && request.auth.token.email == 'a01090037052@gmail.com'
-        && request.auth.token.email_verified == true;
+        && request.auth.token.email == 'a01090037052@gmail.com';
     }
     match /shops/{shopId}/{document=**} {
       allow read, write: if isOwner();
