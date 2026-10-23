@@ -303,6 +303,15 @@ App.pages.settings = {
 
       <!-- Tab 3: 데이터 -->
       <div class="settings-tab-content" id="tab-data" style="display:none">
+        <!-- 기기 간 동기화 -->
+        ${typeof Sync !== 'undefined' ? `
+        <div class="card" style="margin-bottom:20px">
+          <div class="card-header">
+            <span class="card-title">${App.icon('refresh')} 기기 간 동기화</span>
+          </div>
+          <div class="card-body" id="sync-card-body">${this.syncCardHtml()}</div>
+        </div>` : ''}
+
         <div class="grid-2">
           <!-- Data Stats -->
           <div class="card">
@@ -357,15 +366,6 @@ App.pages.settings = {
             <div id="optimize-result" style="margin-top:8px"></div>
           </div>
         </div>
-
-        <!-- 기기 간 동기화 -->
-        ${typeof Sync !== 'undefined' ? `
-        <div class="card" style="margin-top:20px">
-          <div class="card-header">
-            <span class="card-title">${App.icon('refresh')} 기기 간 동기화</span>
-          </div>
-          <div class="card-body" id="sync-card-body">${this.syncCardHtml()}</div>
-        </div>` : ''}
 
         <!-- Backup & Restore -->
         <div class="card" style="margin-top:20px">
