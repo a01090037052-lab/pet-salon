@@ -488,7 +488,7 @@ App.pages.dashboard = {
                   <span style="font-weight:700;color:var(--danger)">${App.formatCurrency(App.getRecordAmount(r))}</span>
                   <div class="flex-1">
                     <strong>${App.escapeHtml(pet?.name || '-')}</strong>
-                    <span style="color:var(--text-muted);font-size:0.8rem">${App.escapeHtml(App.getCustomerLabel(customer, (this._petsByCustomer || {})[customer.id]))}</span>
+                    <span style="color:var(--text-muted);font-size:0.8rem">${App.escapeHtml(App.getCustomerLabel(customer, (this._petsByCustomer || {})[customer?.id]))}</span>
                     <div style="font-size:0.78rem;color:var(--text-secondary);margin-top:2px">${App.formatDate(r.date)}</div>
                   </div>
                   <div style="display:flex;gap:4px;flex-shrink:0">
@@ -541,7 +541,7 @@ App.pages.dashboard = {
                             <a href="#pets/${a.petId}" class="reminder-pet-name" onclick="event.stopPropagation()">${App.escapeHtml(pet?.name || '?')}</a>
                             ${breedSize ? `<span class="reminder-pet-meta">· ${breedSize}</span>` : ''}
                           </div>
-                          <a href="#customers/${a.customerId}" class="reminder-customer" onclick="event.stopPropagation()">${App.escapeHtml(App.getCustomerLabel(customer, (this._petsByCustomer || {})[customer.id]))}</a>
+                          <a href="#customers/${a.customerId}" class="reminder-customer" onclick="event.stopPropagation()">${App.escapeHtml(App.getCustomerLabel(customer, (this._petsByCustomer || {})[customer?.id]))}</a>
                           ${(allergies || healthNotes || temperament || noShowCount > 0) ? `
                             <div class="reminder-warnings">
                               ${allergies ? `<span class="reminder-warning"><span class="reminder-warning-icon">${App.icon('alert')}</span> 알레르기: ${allergies}</span>` : ''}
@@ -779,7 +779,7 @@ App.pages.dashboard = {
         <div class="appointment-item" style="cursor:pointer" onclick="App.navigate('appointments')">
           <div class="appointment-time">${appt.time || '--:--'}</div>
           <div class="appointment-info">
-            <div class="name">${dateLabel}<a href="#customers/${appt.customerId}" onclick="event.stopPropagation()" style="color:inherit;font-weight:700">${App.escapeHtml(App.getCustomerLabel(customer, (this._petsByCustomer || {})[customer.id]))}</a> <span style="color:var(--text-muted)">/</span> <a href="#pets/${appt.petId}" onclick="event.stopPropagation()" style="color:inherit">${App.escapeHtml(pet?.name || '?')}</a></div>
+            <div class="name">${dateLabel}<a href="#customers/${appt.customerId}" onclick="event.stopPropagation()" style="color:inherit;font-weight:700">${App.escapeHtml(App.getCustomerLabel(customer, (this._petsByCustomer || {})[customer?.id]))}</a> <span style="color:var(--text-muted)">/</span> <a href="#pets/${appt.petId}" onclick="event.stopPropagation()" style="color:inherit">${App.escapeHtml(pet?.name || '?')}</a></div>
             <div class="detail">${App.escapeHtml(serviceNames || '서비스 미지정')}${appt.groomer ? ' &middot; ' + App.escapeHtml(appt.groomer) : ''}</div>
             ${(() => { const w = [pet?.temperament, pet?.healthNotes, pet?.allergies].filter(Boolean); if (!w.length) return ''; const s = w.join(', '); return '<div style="font-size:0.75rem;color:var(--danger);margin-top:2px">' + App.icon('alert') + ' ' + App.escapeHtml(s.length > 50 ? s.slice(0, 50) + '...' : s) + '</div>'; })()}
           </div>
