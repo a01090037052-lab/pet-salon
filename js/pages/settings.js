@@ -501,6 +501,44 @@ App.pages.settings = {
     `;
   },
 
+  // 이메일·비밀번호 로그인/설정 모달 (아이폰 Safari 등 구글 로그인이 막히는 기기용)
+  _syncPasswordModal(mode) {
+    const st = Sync.getStatus();
+    const title = mode === 'set' ? '다른 기기용 비밀번호' : '이메일·비밀번호로 로그인';
+    const hint = mode === 'set'
+      ? `지금 로그인한 구글 계정(${App.escapeHtml(st.email)})에 비밀번호를 연결합니다. 아이폰처럼 구글 로그인이 안 되는 기기에서 이 이메일과 비밀번호로 로그인하세요. 6자 이상.`
+      : '컴퓨터에서 먼저 <strong>다른 기기용 비밀번호 설정</strong>을 해 두어야 합니다. 같은 구글 이메일과 그 비밀번호를 입력하세요.';
+    App.showModal({
+      title,
+      saveText: mode === 'set' ? '비밀번호 저장' : '로그인',
+      content: `
+        <p style="font-size:0.88rem;color:var(--text-secondary);margin:0 0 12px">${hint}</p>
+        ${mode === 'set' ? '' : `<div class="form-group"><label class="form-label">이메일</label>
+          <input type="email" id="sync-pw-email" autocomplete="username" autocapitalize="off" value="${App.escapeHtml(st.email || '')}" placeholder="example@gmail.com"></div>`}
+        <div class="form-group"><label class="form-label">비밀번호</label>
+          <input type="password" id="sync-pw-pass" autocomplete="${mode === 'set' ? 'new-password' : 'current-password'}" minlength="6" placeholder="6자 이상"></div>`,
+      onSave: async () => {
+        const pass = document.getElementById('sync-pw-pass').value;
+        if (!pass || pass.length < 6) { App.showToast('비밀번호는 6자 이상이어야 합니다.', 'error'); App.highlightField('sync-pw-pass'); return; }
+        let ok = false;
+        if (mode === 'set') ok = await Sync.setPassword(pass);
+        else {
+          const email = (document.getElementById('sync-pw-email').value || '').trim();
+          if (!email) { App.showToast('이메일을 입력해주세요.', 'error'); return; }
+          App.closeModal();
+          await new Promise(r => setTimeout(r, 200));
+          ok = mode === 'enable' ? await Sync.enableWithPassword(email, pass) : await Sync.signInWithPassword(email, pass);
+          const el = document.getElementById('sync-card-body');
+          if (el) el.innerHTML = this.syncCardHtml();
+          return;
+        }
+        if (ok) { App.closeModal(); App.showToast('비밀번호를 저장했습니다. 다른 기기에서 이 이메일과 비밀번호로 로그인하세요.', 'success', { duration: 6000 }); }
+        const el = document.getElementById('sync-card-body');
+        if (el) el.innerHTML = this.syncCardHtml();
+      }
+    });
+  },
+
   // ========== 기기 간 동기화 카드 ==========
   syncCardHtml() {
     const st = Sync.getStatus();
@@ -515,9 +553,9 @@ App.pages.settings = {
     }[st.state];
     const btn = (id, icon, text, cls = 'btn-secondary') => `<button class="btn ${cls}" id="${id}">${App.icon(icon)} ${text}</button>`;
     let actions;
-    if (st.state === 'off') actions = btn('btn-sync-enable', 'refresh', '동기화 켜기', 'btn-primary');
-    else if (st.state === 'signin' || (st.state === 'error' && !st.signedIn)) actions = btn('btn-sync-signin', 'user', '다시 로그인', 'btn-primary') + btn('btn-sync-disable', 'close', '동기화 끄기');
-    else actions = btn('btn-sync-now', 'refresh', '지금 동기화', 'btn-primary') + btn('btn-sync-disable', 'close', '동기화 끄기');
+    if (st.state === 'off') actions = btn('btn-sync-enable', 'refresh', '구글로 동기화 켜기', 'btn-primary') + btn('btn-sync-enable-pw', 'lock', '이메일·비밀번호로 켜기');
+    else if (st.state === 'signin' || (st.state === 'error' && !st.signedIn)) actions = btn('btn-sync-signin', 'user', '구글로 다시 로그인', 'btn-primary') + btn('btn-sync-signin-pw', 'lock', '이메일·비밀번호로 로그인') + btn('btn-sync-disable', 'close', '동기화 끄기');
+    else actions = btn('btn-sync-now', 'refresh', '지금 동기화', 'btn-primary') + btn('btn-sync-setpw', 'lock', st.hasPassword ? '다른 기기용 비밀번호 변경' : '다른 기기용 비밀번호 설정') + btn('btn-sync-disable', 'close', '동기화 끄기');
     return `
       <p style="color:var(--text-secondary);font-size:0.9rem;margin-bottom:12px">
         휴대폰과 컴퓨터에서 같은 예약·고객·기록을 봅니다. 미용 사진은 이 기기에만 남습니다.
@@ -542,6 +580,12 @@ App.pages.settings = {
       } else if (b.id === 'btn-sync-signin') {
         b.disabled = true;
         await Sync.signIn();
+      } else if (b.id === 'btn-sync-enable-pw' || b.id === 'btn-sync-signin-pw') {
+        this._syncPasswordModal(b.id === 'btn-sync-enable-pw' ? 'enable' : 'signin');
+        return;
+      } else if (b.id === 'btn-sync-setpw') {
+        this._syncPasswordModal('set');
+        return;
       } else if (b.id === 'btn-sync-now') {
         b.disabled = true;
         await Sync.syncNow();

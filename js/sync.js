@@ -156,8 +156,91 @@ const Sync = {
       pending: this._pending,
       lastSyncAt: this._lastSyncAt || (this._s && this._s.lastSyncAt) || null,
       deviceNo: this._s ? this._s.deviceNo : null,
+      // 이메일·비밀번호 로그인이 이 계정에 연결돼 있는지 (아이폰 Safari 등 구글 로그인이 막히는 기기용)
+      hasPassword: !!(this._user && (this._user.providerData || []).some(p => p && p.providerId === 'password')),
       error: this._error
     };
+  },
+
+  // ========== 이메일·비밀번호 로그인 ==========
+  // 아이폰 Safari·홈 화면 앱은 앱 주소(github.io)와 로그인 주소(firebaseapp.com)가 달라
+  // 구글 로그인 결과가 돌아오지 못한다. 같은 계정에 비밀번호를 연결해 두고 그걸로 로그인한다.
+  _authErrorText(e) {
+    const c = e && e.code;
+    return ({
+      'auth/invalid-credential': '이메일 또는 비밀번호가 맞지 않습니다.',
+      'auth/wrong-password': '이메일 또는 비밀번호가 맞지 않습니다.',
+      'auth/user-not-found': '이 이메일로 비밀번호가 설정되지 않았습니다. 컴퓨터에서 먼저 "다른 기기용 비밀번호 설정"을 해주세요.',
+      'auth/too-many-requests': '시도가 너무 많습니다. 잠시 후 다시 시도해주세요.',
+      'auth/weak-password': '비밀번호는 6자 이상이어야 합니다.',
+      'auth/operation-not-allowed': 'Firebase 콘솔에서 "이메일/비밀번호" 로그인이 아직 켜지지 않았습니다.',
+      'auth/requires-recent-login': '보안을 위해 구글로 한 번 더 로그인한 뒤 다시 시도해주세요.',
+      'auth/network-request-failed': '인터넷 연결을 확인해주세요.'
+    })[c] || ('로그인 오류: ' + ((e && (e.code || e.message)) || '알 수 없음'));
+  },
+
+  async _passwordSignIn(email, password) {
+    await this._loadSdk();
+    const r = await this._auth.signInWithEmailAndPassword(String(email || '').trim(), password);
+    return r.user;
+  },
+
+  // 동기화가 꺼진 기기에서 이메일·비밀번호로 켜기
+  async enableWithPassword(email, password) {
+    if (this._busy) return false;
+    this._busy = true;
+    try {
+      if (DB.mode !== 'idb') { App.showToast('이 모드에서는 동기화를 사용할 수 없습니다.', 'error'); return false; }
+      if (!navigator.onLine) { App.showToast('인터넷에 연결된 상태에서 켜주세요.', 'error'); return false; }
+      const user = await this._passwordSignIn(email, password);
+      await this._finishEnable(user);
+      return true;
+    } catch (e) {
+      App.showToast(this._authErrorText(e), 'error', { duration: 7000 });
+      return false;
+    } finally {
+      this._busy = false;
+      this._emit();
+    }
+  },
+
+  // 켜져 있는데 로그인이 풀린 기기에서 이메일·비밀번호로 다시 로그인
+  async signInWithPassword(email, password) {
+    if (this._busy) return false;
+    this._busy = true;
+    try {
+      const user = await this._passwordSignIn(email, password);
+      if (!this._acceptUser(user)) return false;
+      this._fatal = false;
+      this._error = null;
+      await this._connect();
+      return true;
+    } catch (e) {
+      App.showToast(this._authErrorText(e), 'error', { duration: 7000 });
+      return false;
+    } finally {
+      this._busy = false;
+      this._emit();
+    }
+  },
+
+  // 구글로 로그인된 기기에서 같은 계정에 비밀번호 연결 (이미 있으면 변경)
+  async setPassword(password) {
+    try {
+      const user = this._auth && this._auth.currentUser;
+      if (!user) { App.showToast('먼저 구글 계정으로 로그인해주세요.', 'error'); return false; }
+      const cred = firebase.auth.EmailAuthProvider.credential(user.email, password);
+      const has = (user.providerData || []).some(p => p && p.providerId === 'password');
+      if (has) await user.updatePassword(password);
+      else await user.linkWithCredential(cred);
+      await user.reload();
+      this._user = this._auth.currentUser;
+      this._emit();
+      return true;
+    } catch (e) {
+      App.showToast(this._authErrorText(e), 'error', { duration: 7000 });
+      return false;
+    }
   },
 
   // 동기화 켜기 (연결 마법사)
