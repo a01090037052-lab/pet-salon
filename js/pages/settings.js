@@ -3,8 +3,8 @@ const DEFAULT_SMS_TEMPLATES = {
   revisit: '[{매장명}] {고객명}님 안녕하세요! {반려견명}의 마지막 미용 후 {경과일수}일이 지났습니다. 예약 문의: {전화번호}',
   atRisk: '[{매장명}] {고객명}님, {반려견명}이(가) 보고 싶어요! 미용 시기가 많이 지났는데 괜찮으신가요? 예약 문의: {전화번호}',
   churned: '[{매장명}] {고객명}님 안녕하세요! 오랫동안 뵙지 못했네요. {반려견명} 잘 지내고 있나요? 다시 방문해주시면 특별 케어 해드릴게요! 문의: {전화번호}',
-  appointment: '[{매장명}] {고객명}님, {날짜} {시간}에 {반려견명} 예약이 확인되었습니다. 담당: {미용사}. 문의: {전화번호}',
-  reminder: '[{매장명}] {고객명}님, 내일({날짜}) {시간}에 {반려견명} 미용 예약이 있습니다. 변경/취소는 {전화번호}로 연락 부탁드립니다.',
+  appointment: '[{매장명}] {고객명}님, {날짜} {시간}에 {반려견명} 예약이 확인되었습니다. {담당}문의: {전화번호}',
+  reminder: '[{매장명}] {고객명}님, {시점} {날짜} {시간}에 {반려견명} 미용 예약이 있습니다. 변경/취소는 {전화번호}로 연락 부탁드립니다.',
   birthday: '[{매장명}] {고객명}님! {반려견명}의 생일을 축하합니다! 🎂 생일 기념 특별 할인을 준비했어요. 문의: {전화번호}',
   complete: '[{매장명}] {고객명}님, {반려견명}의 미용이 완료되었습니다! 서비스: {서비스}, 금액: {금액}원. 감사합니다! 💕'
 };
@@ -40,6 +40,8 @@ App.pages.settings = {
       DB.count('records'),
       DB.count('services')
     ]);
+    // 직전 복원 취소용 메타 (사본 본문은 크므로 메타만 읽는다)
+    const undoMeta = await DB.getSetting('_autoBackupBeforeImportMeta');
 
     // 보안 설정 로드
     const sec = (typeof Security !== 'undefined') ? await Security._load() : { enabled: false, pinLength: 6, maxAttempts: 5, lockoutSeconds: 30 };
@@ -53,16 +55,16 @@ App.pages.settings = {
           <p class="page-subtitle">매장 정보 및 데이터 관리</p>
         </div>
         <div class="page-actions">
-          <a href="./guide.html" target="_blank" class="btn btn-secondary">&#x1F4D6; 사용 가이드</a>
+          <a href="./guide.html" target="_blank" class="btn btn-secondary">${App.icon('book')} 사용 가이드</a>
         </div>
       </div>
 
       <!-- Tab Navigation -->
       <div class="settings-tabs" id="settings-tabs">
-        <button class="settings-tab active" data-tab="shop">&#x1F3EA; 매장 관리</button>
-        <button class="settings-tab" data-tab="operation">&#x2699; 운영 설정</button>
-        <button class="settings-tab" data-tab="data">&#x1F4BE; 데이터</button>
-        <button class="settings-tab" data-tab="security">&#x1F512; 보안</button>
+        <button class="settings-tab active" data-tab="shop">${App.icon('store')} 매장 관리</button>
+        <button class="settings-tab" data-tab="operation">${App.icon('settings')} 운영 설정</button>
+        <button class="settings-tab" data-tab="data">${App.icon('save')} 데이터</button>
+        <button class="settings-tab" data-tab="security">${App.icon('lock')} 보안</button>
       </div>
 
       <!-- Tab 1: 매장 관리 -->
@@ -71,7 +73,7 @@ App.pages.settings = {
           <!-- Shop Info -->
           <div class="card">
             <div class="card-header">
-              <span class="card-title">&#x1F3EA; 매장 정보</span>
+              <span class="card-title">${App.icon('store')} 매장 정보</span>
             </div>
             <div class="card-body">
               <div class="form-group">
@@ -107,7 +109,7 @@ App.pages.settings = {
           <!-- Groomer Management -->
           <div class="card">
             <div class="card-header">
-              <span class="card-title">&#x1F4C7; 미용사 관리</span>
+              <span class="card-title">${App.icon('users')} 미용사 관리</span>
             </div>
             <div class="card-body">
               <div class="form-group">
@@ -132,7 +134,7 @@ App.pages.settings = {
           <!-- 영업 설정 -->
           <div class="card">
             <div class="card-header">
-              <span class="card-title">&#x1F4C5; 영업 설정</span>
+              <span class="card-title">${App.icon('calendar')} 영업 설정</span>
             </div>
             <div class="card-body">
               <div class="form-group">
@@ -155,7 +157,7 @@ App.pages.settings = {
         <!-- Theme Color -->
         <div class="card" style="margin-top:16px">
           <div class="card-header">
-            <span class="card-title">&#x1F3A8; 테마 색상</span>
+            <span class="card-title">${App.icon('palette')} 테마 색상</span>
           </div>
           <div class="card-body">
             <div class="form-group">
@@ -182,12 +184,12 @@ App.pages.settings = {
         <!-- 내 프레임 라이브러리 (사진 카드 시즌·이벤트별 프레임 관리) -->
         <div class="card" style="margin-top:16px">
           <div class="card-header">
-            <span class="card-title">&#x1F5BC; 내 프레임 라이브러리</span>
+            <span class="card-title">${App.icon('image')} 내 프레임 라이브러리</span>
             <span style="font-size:0.78rem;color:var(--text-muted)" id="frame-lib-count"></span>
           </div>
           <div class="card-body">
             <div id="frame-library-list" style="display:flex;flex-direction:column;gap:8px;margin-bottom:12px"></div>
-            <button type="button" id="btn-add-frame" class="btn btn-secondary" style="width:100%;min-height:44px">&#x002B; 새 프레임 추가</button>
+            <button type="button" id="btn-add-frame" class="btn btn-secondary" style="width:100%;min-height:44px">${App.icon('plus')} 새 프레임 추가</button>
             <div class="form-hint" style="margin-top:8px">시즌·이벤트별 프레임을 만들어 사진 카드 생성 시 선택할 수 있어요. 최대 5개.</div>
           </div>
         </div>
@@ -201,7 +203,7 @@ App.pages.settings = {
           <!-- 예약 알림 설정 -->
           <div class="card">
             <div class="card-header">
-              <span class="card-title">&#x1F514; 알림 설정</span>
+              <span class="card-title">${App.icon('bell')} 알림 설정</span>
             </div>
             <div class="card-body">
               <div class="form-group">
@@ -226,7 +228,7 @@ App.pages.settings = {
           <!-- 매출 목표 -->
           <div class="card">
             <div class="card-header">
-              <span class="card-title">&#x1F3AF; 매출 목표</span>
+              <span class="card-title">${App.icon('target')} 매출 목표</span>
             </div>
             <div class="card-body">
               <div class="form-group">
@@ -240,7 +242,7 @@ App.pages.settings = {
           <!-- 매장 고정비 -->
           <div class="card">
             <div class="card-header">
-              <span class="card-title">&#x1F4B0; 고정비</span>
+              <span class="card-title">${App.icon('coins')} 고정비</span>
             </div>
             <div class="card-body">
               <div class="form-group">
@@ -255,13 +257,13 @@ App.pages.settings = {
 
         <!-- 메시지 템플릿 (접이식) — 수정된 템플릿 있으면 자동 펼침 -->
         <div class="card" style="margin-top:20px">
-          <div class="card-header" style="cursor:pointer" onclick="this.parentElement.querySelector('.card-body').classList.toggle('hidden');this.querySelector('.toggle-icon').innerHTML=this.parentElement.querySelector('.card-body').classList.contains('hidden')?'&#x25B6;':'&#x25BC;'">
-            <span class="card-title">&#x1F4AC; 메시지 템플릿 <span class="toggle-icon" style="font-size:0.75rem">${hasCustomTemplate ? '&#x25BC;' : '&#x25B6;'}</span></span>
+          <div class="card-header" style="cursor:pointer" onclick="this.parentElement.querySelector('.card-body').classList.toggle('hidden');this.querySelector('.toggle-icon').style.transform=this.parentElement.querySelector('.card-body').classList.contains('hidden')?'rotate(-90deg)':''">
+            <span class="card-title">${App.icon('message')} 메시지 템플릿 <span class="toggle-icon" style="font-size:0.75rem;display:inline-block;transition:transform .15s${hasCustomTemplate ? '' : ';transform:rotate(-90deg)'}">${App.icon('chevron-down')}</span></span>
           </div>
           <div class="card-body${hasCustomTemplate ? '' : ' hidden'}">
             <p style="color:var(--text-secondary);font-size:0.85rem;margin-bottom:16px">
               문자 발송 시 사용되는 메시지를 수정할 수 있습니다.<br>
-              사용 가능한 변수: <code>{매장명}</code> <code>{고객명}</code> <code>{반려견명}</code> <code>{경과일수}</code> <code>{날짜}</code> <code>{시간}</code> <code>{서비스}</code> <code>{금액}</code> <code>{미용사}</code> <code>{전화번호}</code>
+              사용 가능한 변수: <code>{매장명}</code> <code>{고객명}</code> <code>{반려견명}</code> <code>{경과일수}</code> <code>{날짜}</code> <code>{시간}</code> <code>{서비스}</code> <code>{금액}</code> <code>{미용사}</code> <code>{담당}</code> <code>{시점}</code> <code>{전화번호}</code>
             </p>
             <div class="form-group">
               <label class="form-label">재방문 알림 문자</label>
@@ -305,7 +307,7 @@ App.pages.settings = {
           <!-- Data Stats -->
           <div class="card">
             <div class="card-header">
-              <span class="card-title">&#x1F4CA; 데이터 현황</span>
+              <span class="card-title">${App.icon('chart')} 데이터 현황</span>
             </div>
             <div class="card-body">
               <div style="display:flex;flex-direction:column;gap:12px;margin-bottom:20px">
@@ -331,13 +333,13 @@ App.pages.settings = {
           <!-- 세무 자료 내보내기 -->
           <div class="card">
             <div class="card-header">
-              <span class="card-title">&#x1F4C4; 세무 자료 내보내기</span>
+              <span class="card-title">${App.icon('file')} 세무 자료 내보내기</span>
             </div>
             <div class="card-body">
               <p style="color:var(--text-secondary);font-size:0.9rem;margin-bottom:12px">
                 기간별 매출 내역을 CSV 파일로 내보냅니다. 세무사에게 제출하거나 엑셀에서 열 수 있습니다.
               </p>
-              <button class="btn btn-success" id="btn-export-revenue-csv">&#x1F4C4; 세무 자료 내보내기</button>
+              <button class="btn btn-success" id="btn-export-revenue-csv">${App.icon('file')} 세무 자료 내보내기</button>
             </div>
           </div>
         </div>
@@ -345,13 +347,13 @@ App.pages.settings = {
         <!-- 저장 공간 최적화 -->
         <div class="card" style="margin-top:20px">
           <div class="card-header">
-            <span class="card-title">&#x1F9F9; 저장 공간 최적화</span>
+            <span class="card-title">${App.icon('sparkle')} 저장 공간 최적화</span>
           </div>
           <div class="card-body">
             <p style="color:var(--text-secondary);font-size:0.9rem;margin-bottom:12px">
               사진 데이터를 최적화하여 저장 공간을 확보합니다. 반려견·기록에 저장된 큰 사진을 압축 분리합니다.
             </p>
-            <button class="btn btn-primary" id="btn-optimize-storage">&#x1F9F9; 저장 공간 최적화</button>
+            <button class="btn btn-primary" id="btn-optimize-storage">${App.icon('sparkle')} 저장 공간 최적화</button>
             <div id="optimize-result" style="margin-top:8px"></div>
           </div>
         </div>
@@ -359,7 +361,7 @@ App.pages.settings = {
         <!-- Backup & Restore -->
         <div class="card" style="margin-top:20px">
           <div class="card-header">
-            <span class="card-title">&#x1F4BE; 데이터 백업 및 복원</span>
+            <span class="card-title">${App.icon('save')} 데이터 백업 및 복원</span>
           </div>
           <div class="card-body">
             <div class="grid-2" style="gap:24px">
@@ -369,8 +371,8 @@ App.pages.settings = {
                   데이터를 JSON 파일로 저장합니다. 사진 제외 시 파일 크기가 대폭 줄어 빠르고 안전합니다.
                 </p>
                 <div style="display:flex;flex-direction:column;gap:8px">
-                  <button class="btn btn-success" id="btn-export">&#x1F4E5; 백업 (사진 제외 · 권장)</button>
-                  <button class="btn btn-secondary" id="btn-export-full" style="font-size:0.85rem">&#x1F4F7; 사진 포함 백업 (용량 주의)</button>
+                  <button class="btn btn-success" id="btn-export">${App.icon('download')} 백업 (사진 제외 · 권장)</button>
+                  <button class="btn btn-secondary" id="btn-export-full" style="font-size:0.85rem">${App.icon('camera')} 사진 포함 백업 (용량 주의)</button>
                 </div>
               </div>
               <div>
@@ -379,7 +381,16 @@ App.pages.settings = {
                   백업 파일에서 데이터를 복원합니다. 기존 데이터는 덮어쓰기됩니다.
                 </p>
                 <input type="file" id="import-file" accept=".json" style="display:none">
-                <button class="btn btn-warning" id="btn-import">&#x1F4E4; 데이터 복원하기</button>
+                <button class="btn btn-warning" id="btn-import">${App.icon('upload')} 데이터 복원하기</button>
+                ${undoMeta && undoMeta.date ? `
+                <div id="undo-import-box" style="margin-top:12px;padding:10px 12px;border:1px solid var(--border);border-radius:8px;background:var(--bg)">
+                  <div style="font-size:0.85rem;color:var(--text-secondary);margin-bottom:8px">
+                    ${App.formatDateTime(undoMeta.date)} 복원 직전 상태가 보관되어 있습니다.<br>
+                    <span style="color:var(--text-muted)">고객 ${undoMeta.customers ?? '-'}명 · 기록 ${undoMeta.records ?? '-'}건 · 사진 제외</span>
+                    ${undoMeta.photosReplaced ? `<br><span style="color:var(--danger)">복원 파일에 사진이 포함되어 있어 기기 사진은 이미 교체됐습니다. 되돌려도 사진은 복구되지 않습니다.</span>` : ''}
+                  </div>
+                  <button class="btn btn-secondary" id="btn-undo-import" style="width:100%">복원 전 상태로 되돌리기</button>
+                </div>` : ''}
               </div>
             </div>
           </div>
@@ -388,13 +399,13 @@ App.pages.settings = {
         <!-- Danger Zone -->
         <div class="card" style="margin-top:20px;border:1px solid var(--danger)">
           <div class="card-header" style="background:var(--danger-light)">
-            <span class="card-title text-danger">&#x26A0; 위험 영역</span>
+            <span class="card-title text-danger">${App.icon('alert')} 위험 영역</span>
           </div>
           <div class="card-body">
             <p style="color:var(--text-secondary);font-size:0.9rem;margin-bottom:12px">
               모든 데이터를 삭제합니다. 이 작업은 되돌릴 수 없으니 반드시 백업 후 실행해주세요.
             </p>
-            <button class="btn btn-danger" id="btn-clear-all">&#x1F5D1; 전체 데이터 초기화</button>
+            <button class="btn btn-danger" id="btn-clear-all">${App.icon('trash')} 전체 데이터 초기화</button>
           </div>
         </div>
       </div>
@@ -403,14 +414,14 @@ App.pages.settings = {
       <div class="settings-tab-content" id="tab-security" style="display:none">
         <div class="card">
           <div class="card-header">
-            <span class="card-title">&#x1F512; 마스터 코드 잠금</span>
+            <span class="card-title">${App.icon('lock')} 마스터 코드 잠금</span>
           </div>
           <div class="card-body">
             <p style="color:var(--text-secondary);font-size:0.9rem;margin-bottom:14px">
               URL을 알아도 마스터 코드 모르면 사용 불가. 사장님이 직접 등록한 디바이스만 영구 사용할 수 있습니다.
             </p>
             <div style="display:flex;align-items:center;gap:12px;padding:12px;background:var(--bg);border-radius:var(--radius);margin-bottom:16px">
-              <span style="font-size:1.4rem">${isLockOn ? '&#x1F512;' : '&#x1F513;'}</span>
+              <span style="font-size:1.4rem">${App.icon(isLockOn ? 'lock' : 'unlock')}</span>
               <div class="flex-1">
                 <div style="font-weight:700">${isLockOn ? '마스터 코드 잠금 사용 중' : '잠금 비활성'}</div>
                 <div style="font-size:0.82rem;color:var(--text-muted)">${isLockOn ? `${sec.pinLength}자리 코드 · 등록된 디바이스만 사용` : '누구나 접근 가능'}</div>
@@ -422,12 +433,12 @@ App.pages.settings = {
 
             ${isLockOn ? `
             <div class="form-group" style="margin-top:12px">
-              <button class="btn btn-warning" id="btn-sec-show-config" style="width:100%;min-height:44px">&#x1F310; GitHub 배포 설정 보기</button>
-              <div class="form-hint">⚠ 다른 디바이스 잠금 작동을 위해 GitHub 에 master-config.js push 필요. 첫 설정 또는 변경 시에만 실행.</div>
+              <button class="btn btn-warning" id="btn-sec-show-config" style="width:100%;min-height:44px">${App.icon('globe')} GitHub 배포 설정 보기</button>
+              <div class="form-hint">${App.icon('alert')} 다른 디바이스 잠금 작동을 위해 GitHub 에 master-config.js push 필요. 첫 설정 또는 변경 시에만 실행.</div>
             </div>
             <div class="form-group" style="margin-top:12px">
               <button class="btn btn-secondary" id="btn-sec-change-pin" style="width:100%;min-height:44px">마스터 코드 변경</button>
-              <div class="form-hint">&#x26A0; 변경 시 다른 모든 등록 디바이스가 재등록 필요합니다</div>
+              <div class="form-hint">${App.icon('alert')} 변경 시 다른 모든 등록 디바이스가 재등록 필요합니다</div>
             </div>
             <div class="form-group">
               <button class="btn btn-secondary" id="btn-sec-regen-recovery" style="width:100%;min-height:44px">복구 코드 재발급</button>
@@ -463,7 +474,7 @@ App.pages.settings = {
         <div class="card" style="margin-top:16px">
           <div class="card-body">
             <div style="font-size:0.85rem;color:var(--text-secondary);line-height:1.6">
-              <div style="font-weight:700;color:var(--text-primary);margin-bottom:6px">&#x2139; 운영 안내 — 마스터 코드 사용법</div>
+              <div style="font-weight:700;color:var(--text-primary);margin-bottom:6px">${App.icon('info')} 운영 안내 — 마스터 코드 사용법</div>
               <ul style="margin:0;padding-left:18px">
                 <li><strong>코드 비공개</strong>: 마스터 코드는 사장님만 알고 있어야 합니다</li>
                 <li><strong>새 디바이스 등록</strong>: 직원·가족 폰을 받아서 사장님이 직접 코드 입력 (5초)</li>
@@ -676,14 +687,14 @@ App.pages.settings = {
         if (migratedCount === 0) {
           result.innerHTML = '<div style="color:var(--success);font-size:0.88rem">이미 최적화되어 있습니다.</div>';
         } else {
-          result.innerHTML = `<div style="color:var(--success);font-size:0.88rem;font-weight:600">✅ ${migratedCount}장 사진 최적화 완료 (약 ${savedMB}MB 절약)</div>`;
+          result.innerHTML = `<div style="color:var(--success);font-size:0.88rem;font-weight:600">${App.icon('check-circle')} ${migratedCount}장 사진 최적화 완료 (약 ${savedMB}MB 절약)</div>`;
         }
       } catch (e) {
         console.error('Storage optimize error:', e);
         result.innerHTML = '<div style="color:var(--danger);font-size:0.88rem">최적화 중 오류가 발생했습니다.</div>';
       }
       btn.disabled = false;
-      btn.textContent = '🧹 저장 공간 최적화';
+      btn.innerHTML = App.icon('sparkle') + ' 저장 공간 최적화';
     });
 
     // Revenue CSV export
@@ -741,46 +752,64 @@ App.pages.settings = {
       // (= 사진 많은 기기에서 복원 기능 자체를 쓸 수 없었다)
       try {
         const currentData = await DB.exportAll({ excludePhotos: true });
+        const backupDate = new Date().toISOString();
         await DB.setSetting('_autoBackupBeforeImport', {
           data: currentData,
-          date: new Date().toISOString(),
+          date: backupDate,
           reason: 'before-import'
+        });
+        await DB.setSetting('_autoBackupBeforeImportMeta', {
+          date: backupDate,
+          customers: (currentData.customers || []).length,
+          records: (currentData.records || []).length,
+          // 복원 파일에 사진이 들어 있으면 기기 사진이 통째로 교체된다 — 되돌려도 사진은 못 돌아온다
+          photosReplaced: !(data._excludePhotos === true || !Array.isArray(data.photos) || data.photos.length === 0)
         });
       } catch (backupErr) {
         console.warn('Auto-backup before import failed:', backupErr);
-        const proceed = await App.confirm('자동 백업에 실패했습니다. 그래도 복원을 진행하시겠습니까?');
+        const proceed = await App.confirm('자동 백업에 실패했습니다. 그래도 복원을 진행하시겠습니까?<br><small style="color:var(--text-muted)">이번 복원은 되돌릴 수 없습니다.</small>');
         if (!proceed) { e.target.value = ''; return; }
+        // 이전 복원의 사본이 남아 있으면 '방금 복원 직전'으로 오해되므로 지운다
+        try { await DB.delete('settings', '_autoBackupBeforeImport'); await DB.delete('settings', '_autoBackupBeforeImportMeta'); } catch (_) {}
       }
 
       // ===== 3단계: 실제 복원 =====
       // 여기서 실패한 경우에만 DB가 변경됐을 수 있으므로 되돌리기를 제안한다.
       try {
         await DB.importAll(data);
+        // 구버전 백업엔 반려견 방문 통계가 없을 수 있다 → 즉시 재계산 (목록·분석이 이 값을 읽는다)
+        if (App.migratePetVisitStats) await App.migratePetVisitStats(true);
         App.showToast('데이터가 복원되었습니다. (이전 데이터 자동 백업 완료)');
         App.handleRoute();
       } catch (err) {
         console.error('Import error:', err);
-        const autoBackup = await DB.getSetting('_autoBackupBeforeImport');
-        if (autoBackup && autoBackup.data) {
-          const restore = await App.confirm('복원에 실패했습니다. 자동 백업에서 이전 데이터를 되돌리시겠습니까?<br><small style="color:var(--text-muted)">사진은 자동 백업에 포함되지 않아 그대로 유지됩니다.</small>');
-          if (restore) {
-            try {
-              // photos 키를 제거해 사진 스토어를 건드리지 않는다.
-              // (빈 배열을 넘기면 importAll 이 photos 를 clear 해서 사진이 전부 삭제된다)
-              const rollbackData = { ...autoBackup.data };
-              delete rollbackData.photos;
-              await DB.importAll(rollbackData);
-              App.showToast('이전 데이터로 되돌렸습니다.');
-              App.handleRoute();
-            } catch (restoreErr) {
-              App.showToast('되돌리기에도 실패했습니다. 수동 백업 파일을 사용해주세요.', 'error');
-            }
-          }
-        } else {
+        // importAll 이 DB 상태를 알려준다:
+        //  untouched   — clear 단계 실패, 기존 데이터 그대로
+        //  rolled-back — insert 실패 후 snapshot 으로 자동 복구 완료
+        //  dirty       — 자동 복구까지 실패 → 이때만 자동 백업으로 되돌리기 제안
+        // (예전엔 어느 경우든 되돌리기를 제안해서, 이미 정상인 DB를 사진 없는 사본으로 덮어썼다)
+        if (err.dbState === 'untouched' || err.dbState === 'rolled-back') {
           App.showToast(err.message || '복원 중 오류가 발생했습니다. 파일을 확인해주세요.', 'error');
+        } else {
+          const autoBackup = await DB.getSetting('_autoBackupBeforeImport');
+          if (autoBackup && autoBackup.data) {
+            const restore = await App.confirm('복원에 실패했고 자동 복구도 되지 않았습니다. 복원 직전 사본으로 되돌리시겠습니까?<br><small style="color:var(--text-muted)">사진 스토어는 건드리지 않습니다.</small>');
+            if (restore) await this._undoImport(autoBackup);
+          } else {
+            App.showToast(err.message || '복원 중 오류가 발생했습니다. 파일을 확인해주세요.', 'error');
+          }
         }
       }
       e.target.value = '';
+    });
+
+    // 복원 전 상태로 되돌리기 (직전 복원이 잘못된 파일이었을 때)
+    document.getElementById('btn-undo-import')?.addEventListener('click', async () => {
+      const ok = await App.confirm('현재 데이터를 지우고 <strong>복원 직전 상태</strong>로 되돌립니다.<br><small style="color:var(--text-muted)">사진 스토어는 건드리지 않습니다. 되돌린 뒤에도 이 사본은 유지됩니다.</small>', { okLabel: '되돌리기' });
+      if (!ok) return;
+      const autoBackup = await DB.getSetting('_autoBackupBeforeImport');
+      if (!autoBackup || !autoBackup.data) { App.showToast('보관된 사본이 없습니다.', 'error'); return; }
+      await this._undoImport(autoBackup);
     });
 
     // Clear all
@@ -821,7 +850,7 @@ App.pages.settings = {
     if (frames.length === 0) {
       listEl.innerHTML = `
         <div style="text-align:center;padding:28px 16px;background:var(--bg);border-radius:var(--radius);border:2px dashed var(--border)">
-          <div style="font-size:2rem;margin-bottom:8px">🖼</div>
+          <div style="font-size:2rem;margin-bottom:8px">${App.icon('image')}</div>
           <div style="font-weight:700;font-size:0.95rem;margin-bottom:4px">등록된 프레임이 없습니다</div>
           <div style="font-size:0.82rem;color:var(--text-muted);line-height:1.5">시즌·이벤트별 프레임을 만들면<br>사진 카드 생성 시 1탭으로 선택 가능합니다</div>
         </div>
@@ -831,7 +860,7 @@ App.pages.settings = {
     listEl.innerHTML = frames.map(f => `
       <div class="frame-lib-row" data-id="${App.escapeHtml(f.id)}" style="display:flex;align-items:center;gap:12px;padding:12px;border:1px solid var(--border-light);border-left:4px solid ${f.enabled === false ? 'var(--border)' : (f.accentColor || 'var(--primary)')};border-radius:var(--radius);background:var(--bg-white);box-shadow:var(--shadow-xs);cursor:pointer;position:relative;overflow:hidden${f.enabled === false ? ';opacity:0.6' : ''}">
         <div style="width:100px;height:100px;border-radius:10px;background:${f.image ? '#fff' : (f.accentColor || 'var(--border)')};flex-shrink:0;overflow:hidden;display:flex;align-items:center;justify-content:center;border:1px solid var(--border-light);box-shadow:inset 0 0 0 1px rgba(0,0,0,0.04)">
-          ${f.image ? `<img src="${f.image}" style="max-width:100%;max-height:100%;width:auto;height:auto;object-fit:contain" alt="${App.escapeHtml(f.name)}">` : '<span style="font-size:2rem;opacity:0.5">🖼</span>'}
+          ${f.image ? `<img src="${f.image}" style="max-width:100%;max-height:100%;width:auto;height:auto;object-fit:contain" alt="${App.escapeHtml(f.name)}">` : '<span style="font-size:2rem;opacity:0.5">' + App.icon('image') + '</span>'}
         </div>
         <div style="flex:1;min-width:0">
           <div style="font-weight:800;font-size:1rem;color:var(--text-primary);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-bottom:4px">${App.escapeHtml(f.name)}</div>
@@ -844,7 +873,7 @@ App.pages.settings = {
             ${f.enabled === false ? '비활성' : '활성'}
           </label>
         </div>
-        <button type="button" class="frame-delete-btn" data-id="${App.escapeHtml(f.id)}" title="삭제" style="flex-shrink:0;background:none;border:none;cursor:pointer;font-size:1.2rem;color:var(--danger);padding:8px;width:40px;height:40px;border-radius:8px">🗑</button>
+        <button type="button" class="frame-delete-btn" data-id="${App.escapeHtml(f.id)}" title="삭제" aria-label="삭제" style="flex-shrink:0;background:none;border:none;cursor:pointer;font-size:1.2rem;color:var(--danger);padding:8px;width:40px;height:40px;border-radius:8px">${App.icon('trash')}</button>
       </div>
     `).join('');
     // 행 전체 클릭 = 편집 (자식 버튼은 stopPropagation)
@@ -974,19 +1003,19 @@ App.pages.settings = {
       onSave: () => { App.closeModal(); },
       content: `
         <div style="font-size:0.88rem;color:var(--text-secondary);line-height:1.6;margin-bottom:14px">
-          <strong style="color:var(--danger)">⚠ 다른 디바이스에서도 잠금이 작동하려면 아래 내용을 GitHub에 push 해야 합니다.</strong><br>
+          <strong style="color:var(--danger)">${App.icon('alert')} 다른 디바이스에서도 잠금이 작동하려면 아래 내용을 GitHub에 push 해야 합니다.</strong><br>
           이 작업은 <strong>매장 첫 설정 시 한 번</strong> 또는 <strong>마스터 코드 변경 시</strong>에만 필요합니다.
         </div>
 
         <div style="margin-bottom:14px">
           <div style="font-weight:700;margin-bottom:6px">1단계 — 아래 내용 복사</div>
-          <textarea id="master-config-code" readonly style="width:100%;height:180px;font-family:monospace;font-size:0.78rem;padding:10px;border:1.5px solid var(--border);border-radius:6px;background:var(--bg);resize:vertical">${snippet}</textarea>
-          <button class="btn btn-secondary btn-sm" id="master-config-copy" style="margin-top:6px;width:100%">📋 전체 복사</button>
+          <textarea id="master-config-code" readonly style="width:100%;height:180px;font-family:monospace;font-size:max(16px,0.78rem);padding:10px;border:1.5px solid var(--border);border-radius:6px;background:var(--bg);resize:vertical">${snippet}</textarea>
+          <button class="btn btn-secondary btn-sm" id="master-config-copy" style="margin-top:6px;width:100%">${App.icon('copy')} 전체 복사</button>
         </div>
 
         <div style="margin-bottom:14px">
           <div style="font-weight:700;margin-bottom:6px">2단계 — GitHub에서 편집</div>
-          <a href="${repoEditUrl}" target="_blank" rel="noopener" class="btn btn-primary btn-sm" style="width:100%;text-decoration:none;display:block;text-align:center">🔗 GitHub 편집 페이지 열기</a>
+          <a href="${repoEditUrl}" target="_blank" rel="noopener" class="btn btn-primary btn-sm" style="width:100%;text-decoration:none;display:block;text-align:center">${App.icon('edit')} GitHub 편집 페이지 열기</a>
           <div style="font-size:0.8rem;color:var(--text-muted);margin-top:6px">
             • 페이지 열림 → 기존 내용 전체 지우기 → 복사한 내용 붙여넣기<br>
             • 우측 상단 [Commit changes] → 메시지 "마스터 코드 업데이트" → Commit
@@ -1028,17 +1057,17 @@ App.pages.settings = {
     App.showModal({
       title: isReissue ? '새 복구 코드' : '복구 코드 (한 번만 표시됩니다!)',
       hideFooter: false,
-      saveText: '✓ 메모 완료',
+      saveText: '메모 완료',
       onSave: () => { App.closeModal(); },
       content: `
         <div style="text-align:center">
           <div style="background:var(--warning-light);border:2px solid var(--warning);border-radius:var(--radius);padding:20px;margin-bottom:16px">
             <div style="font-size:0.85rem;color:var(--text-secondary);margin-bottom:8px">마스터 코드 분실 시 사용할 복구 코드</div>
             <div id="recovery-code-display" style="font-size:1.6rem;font-weight:800;letter-spacing:2px;font-family:monospace;color:var(--danger);margin-bottom:12px">${code}</div>
-            <button class="btn btn-secondary btn-sm" id="recovery-copy">&#x1F4CB; 복사</button>
+            <button class="btn btn-secondary btn-sm" id="recovery-copy">${App.icon('copy')} 복사</button>
           </div>
           <div style="font-size:0.85rem;color:var(--text-secondary);text-align:left;background:var(--bg);padding:12px;border-radius:var(--radius)">
-            <div style="font-weight:700;margin-bottom:4px">&#x26A0; 중요</div>
+            <div style="font-weight:700;margin-bottom:4px">${App.icon('alert')} 중요</div>
             <ul style="margin:0;padding-left:18px;line-height:1.6">
               <li>이 코드는 다시 표시되지 않습니다</li>
               <li>종이에 적거나 안전한 곳에 따로 보관하세요</li>
@@ -1202,6 +1231,24 @@ App.pages.settings = {
     });
   },
 
+  // 복원 직전 사본(_autoBackupBeforeImport)으로 되돌리기. 사본은 사진 제외로 저장되어
+  // photos: [] 이지만 importAll 이 빈 photos 를 건너뛰므로 기기 사진은 보존된다.
+  async _undoImport(autoBackup) {
+    try {
+      const btn = document.getElementById('btn-undo-import');
+      if (btn) { btn.disabled = true; btn.textContent = '되돌리는 중...'; }
+      await DB.importAll(autoBackup.data);
+      if (App.migratePetVisitStats) await App.migratePetVisitStats(true);
+      App.showToast('복원 직전 상태로 되돌렸습니다.');
+      App.handleRoute();
+    } catch (restoreErr) {
+      console.error('undo import error:', restoreErr);
+      App.showToast('되돌리기에 실패했습니다. 수동 백업 파일을 사용해주세요.', 'error');
+      const btn = document.getElementById('btn-undo-import');
+      if (btn) { btn.disabled = false; btn.textContent = '복원 전 상태로 되돌리기'; }
+    }
+  },
+
   bindGroomerRemove() {
     document.querySelectorAll('.btn-remove-groomer').forEach(btn => {
       btn.onclick = async () => {
@@ -1240,14 +1287,37 @@ App.pages.settings = {
       const data = await DB.exportAll({ excludePhotos: !includePhotos });
       const json = JSON.stringify(data); // pretty-print 제거 — 메모리 30% 절감
       const blob = new Blob([json], { type: 'application/json' });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
       const now = new Date();
       const date = App.getToday();
       const time = `${String(now.getHours()).padStart(2, '0')}${String(now.getMinutes()).padStart(2, '0')}`;
       const backupName = await DB.getSetting('shopName') || '펫살롱';
+      const fileName = `${backupName}_백업_${date}_${time}.json`;
+
+      // iOS 홈 화면 앱에서는 <a download> 가 조용히 아무 일도 안 할 수 있다.
+      // 공유 시트(파일에 저장 / 카톡 / AirDrop)로 넘기고, 사용자가 실제로 보낸 뒤에만 백업 완료로 기록한다.
+      const isIOS = /iPhone|iPad|iPod/.test(navigator.userAgent);
+      if (isIOS && navigator.share && navigator.canShare) {
+        const file = new File([blob], fileName, { type: 'application/json' });
+        if (navigator.canShare({ files: [file] })) {
+          try {
+            await navigator.share({ files: [file], title: fileName });
+          } catch (shareErr) {
+            if (shareErr && shareErr.name === 'AbortError') {
+              App.showToast('백업이 취소되었습니다. (파일이 저장되지 않았습니다)', 'info');
+              return;
+            }
+            throw shareErr;
+          }
+          await DB.setSetting('lastBackupDate', date);
+          App.showToast('백업 완료! 보낸 파일을 iCloud/Drive 또는 카톡(나에게)에 보관하세요.', 'info');
+          return;
+        }
+      }
+
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
       a.href = url;
-      a.download = `${backupName}_백업_${date}_${time}.json`;
+      a.download = fileName;
       document.body.appendChild(a);
       a.click();
       document.body.removeChild(a);

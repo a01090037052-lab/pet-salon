@@ -11,32 +11,30 @@ App.pages.pets = {
   async renderList(container) {
     const allPets = await DB.getAll('pets');
     const customers = await DB.getAllLight('customers', ['memo', 'address']);
-    // 효율적 쿼리: 목록에서는 사진/메모 등 큰 필드 제외
-    const records = await DB.getAllLight('records', ['photoBefore', 'photoAfter', 'memo']);
     const customerMap = {};
     customers.forEach(c => customerMap[c.id] = c);
+    // 이름 없는 보호자를 "초코 보호자"로 표기하기 위한 보호자별 반려견 묶음
+    const petsByCustomer = {};
+    allPets.forEach(p => { (petsByCustomer[p.customerId] = petsByCustomer[p.customerId] || []).push(p); });
 
-    // Last visit per pet
+    // Last visit per pet — 기록 전체를 읽지 않고 반려견에 비정규화된 값을 쓴다 (기록 저장·삭제 시 유지, 시작 시 1회 마이그레이션)
     const petLastVisit = {};
-    records.forEach(r => {
-      if (!petLastVisit[r.petId] || (r.date || '') > (petLastVisit[r.petId] || '')) {
-        petLastVisit[r.petId] = r.date;
-      }
-    });
+    allPets.forEach(p => { if (p.lastVisitDate) petLastVisit[p.id] = p.lastVisitDate; });
 
     // 사망/양도 반려견은 기본 목록에서 제외 (재방문 알림·통계 오염 방지)
     const showInactive = !!this._showInactive;
     const pets = showInactive ? allPets : allPets.filter(p => (p.petStatus || 'active') === 'active');
     const inactiveCount = allPets.length - allPets.filter(p => (p.petStatus || 'active') === 'active').length;
 
-    // 방문 상태 사전 계산 (정렬 비교 중 반복 호출 방지)
+    // 방문 상태 사전 계산 (정렬 비교 중 반복 호출 방지) — 대시보드/고객 페이지와 같은 헬퍼
+    const revisitDays = await App.getRevisitDays();
     const visitStatusMap = {};
     pets.forEach(p => {
-      visitStatusMap[p.id] = App.classifyVisitStatus(p.lastVisitDate || petLastVisit[p.id], p.groomingCycle);
+      visitStatusMap[p.id] = App.getPetVisitStatus(p, revisitDays, petLastVisit[p.id]);
     });
 
     const sortKey = this._sortKey || 'name';
-    const statusPriority = { churned: 0, 'at-risk': 1, remind: 2, normal: 3 };
+    const statusPriority = { churned: 0, 'at-risk': 1, remind: 2, normal: 3, new: 4 };
     const sorted = pets.sort((a, b) => {
       if (sortKey === 'lastVisit') return (petLastVisit[b.id] || '').localeCompare(petLastVisit[a.id] || '');
       if (sortKey === 'breed') return (a.breed || '').localeCompare(b.breed || '', 'ko');
@@ -62,20 +60,20 @@ App.pages.pets = {
           </p>
         </div>
         <div class="page-actions">
-          <select id="pet-sort" style="width:auto;min-width:100px;font-size:0.88rem;padding:10px 12px;min-height:40px">
+          <select id="pet-sort" style="width:auto;min-width:100px;font-size:max(16px,0.88rem);padding:10px 12px;min-height:40px">
             ${sortOptions.map(o => `<option value="${o.v}"${sortKey === o.v ? ' selected' : ''}>${o.l}</option>`).join('')}
           </select>
           <button class="btn btn-primary" id="btn-add-pet">+ 등록</button>
         </div>
       </div>
       <div class="search-box" style="margin-bottom:12px;max-width:none">
-        <span class="search-icon">&#x1F50D;</span>
+        <span class="search-icon">${App.icon('search')}</span>
         <input type="text" id="pet-search" placeholder="이름, 견종, 보호자 검색..." style="width:100%">
       </div>
 
       ${sorted.length === 0 ? `
         <div class="empty-state" style="padding:60px 20px">
-          <div class="empty-state-icon">&#x1F436;</div>
+          <div class="empty-state-icon">${App.icon('paw', 'ico-xl')}</div>
           <div class="empty-state-text">등록된 반려견이 없습니다</div>
           <button class="btn btn-primary" onclick="App.pages.pets.showForm()" style="margin-top:12px">+ 반려견 등록</button>
         </div>
@@ -85,6 +83,7 @@ App.pages.pets = {
           if (vs === 'at-risk') return 'var(--danger)';
           if (vs === 'remind') return 'var(--warning)';
           if (vs === 'churned') return 'var(--text-muted)';
+          if (vs === 'new') return 'var(--info)';
           return 'var(--success)';
         };
         const renderCard = (p) => {
@@ -105,10 +104,12 @@ App.pages.pets = {
             rightChip = `<span style="font-size:0.72rem;padding:4px 10px;background:var(--warning);color:#fff;border-radius:12px;font-weight:700;flex-shrink:0;white-space:nowrap">리마인드</span>`;
           } else if (vs === 'churned') {
             rightChip = `<span style="font-size:0.72rem;padding:4px 10px;background:var(--text-muted);color:#fff;border-radius:12px;font-weight:600;flex-shrink:0;white-space:nowrap">이탈</span>`;
+          } else if (vs === 'new') {
+            rightChip = `<span style="font-size:0.72rem;padding:4px 10px;background:var(--bg);color:var(--text-muted);border:1px solid var(--border);border-radius:12px;font-weight:600;flex-shrink:0;white-space:nowrap">방문 전</span>`;
           } else if (p.groomingCycle && (p.lastVisitDate || lastVisit)) {
-            const last = new Date((p.lastVisitDate || lastVisit) + 'T00:00:00');
-            const next = new Date(last); next.setDate(next.getDate() + p.groomingCycle);
-            const days = Math.floor((next - new Date()) / (1000*60*60*24));
+            // 자정 기준 정수 일수 (예전엔 '지금'과 자정의 차를 내림해 하루 전에 '오늘', 당일에 '1일 초과'로 표시됐다)
+            const next = App.parseLocalDate(p.lastVisitDate || lastVisit); next.setDate(next.getDate() + p.groomingCycle);
+            const days = App.daysUntil(App.formatLocalDate(next));
             const label = days < 0 ? Math.abs(days) + '일 초과' : days === 0 ? '오늘' : 'D-' + days;
             const cColor = days < 0 ? 'var(--danger)' : 'var(--success)';
             rightChip = `<span style="font-size:0.72rem;padding:4px 10px;background:var(--bg);color:${cColor};border-radius:12px;font-weight:700;flex-shrink:0;white-space:nowrap;border:1px solid ${cColor}33">${label}</span>`;
@@ -117,12 +118,12 @@ App.pages.pets = {
           // 알러지/건강 주의 아이콘
           const hasWarn = (p.allergies && p.allergies.trim() && !['없음','-'].includes(p.allergies.trim())) ||
                           (p.healthNotes && p.healthNotes.trim() && !['없음','-'].includes(p.healthNotes.trim()));
-          const warnIcon = hasWarn ? `<span style="color:var(--danger);font-size:0.85rem;font-weight:700;line-height:1" title="알러지/건강 주의">&#x26A0;</span>` : '';
+          const warnIcon = hasWarn ? `<span style="color:var(--danger);font-size:0.85rem;font-weight:700;line-height:1" title="알러지/건강 주의">${App.icon('alert', 'ico-sm')}</span>` : '';
 
           // 사진
           const photo = (p.photoThumb || p.photo)
             ? `<img src="${p.photoThumb || p.photo}" style="width:60px;height:60px;border-radius:14px;object-fit:cover" alt="">`
-            : `<div style="width:60px;height:60px;border-radius:14px;background:linear-gradient(135deg,var(--primary-light),var(--info-light));display:flex;align-items:center;justify-content:center;font-size:1.6rem">&#x1F436;</div>`;
+            : `<div style="width:60px;height:60px;border-radius:14px;background:linear-gradient(135deg,var(--primary-light),var(--info-light));display:flex;align-items:center;justify-content:center;font-size:1.6rem;color:var(--primary)">${App.icon('paw', 'ico-lg')}</div>`;
 
           const opacityStyle = isInactive ? 'opacity:0.55;' : '';
           const breedWeight = (p.breed || '견종 미입력') + (p.weight ? ' · ' + p.weight + 'kg' : '');
@@ -134,7 +135,7 @@ App.pages.pets = {
                 <strong style="font-size:1.05rem;font-weight:800;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${App.escapeHtml(p.name)}</strong>
                 ${warnIcon}
               </div>
-              <div style="font-size:0.82rem;color:var(--text-secondary);margin-bottom:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${App.escapeHtml(breedWeight)} · ${App.escapeHtml(App.getCustomerLabel(owner))}</div>
+              <div style="font-size:0.82rem;color:var(--text-secondary);margin-bottom:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${App.escapeHtml(breedWeight)} · ${App.escapeHtml(App.getCustomerLabel(owner, petsByCustomer[p.customerId]))}</div>
               <div style="font-size:0.78rem;color:var(--text-muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${lastVisit ? App.getRelativeTime(lastVisit) + ' 방문' : '방문 없음'}</div>
             </div>
             ${rightChip}
@@ -143,7 +144,7 @@ App.pages.pets = {
 
         // 그룹 헤더 (정렬 = 상태별일 때만)
         if (sortKey === 'status') {
-          const groups = { 'at-risk': [], 'remind': [], 'normal': [], 'churned': [], 'inactive': [] };
+          const groups = { 'at-risk': [], 'remind': [], 'normal': [], 'new': [], 'churned': [], 'inactive': [] };
           sorted.forEach(p => {
             const isInactive = (p.petStatus || 'active') !== 'active';
             if (isInactive) groups['inactive'].push(p);
@@ -153,6 +154,7 @@ App.pages.pets = {
             'at-risk': { label: '이탈 임박', color: 'var(--danger)' },
             'remind': { label: '리마인드 필요', color: 'var(--warning)' },
             'normal': { label: '정상', color: 'var(--success)' },
+            'new': { label: '방문 전', color: 'var(--info)' },
             'churned': { label: '이탈', color: 'var(--text-muted)' },
             'inactive': { label: '비활성 (사망/양도)', color: 'var(--border)' }
           };
@@ -177,18 +179,19 @@ App.pages.pets = {
       return;
     }
     const customer = await DB.get('customers', pet.customerId);
+    const ownerPets = pet.customerId ? await DB.getByIndex('pets', 'customerId', pet.customerId) : [];
     const records = (await DB.getByIndex('records', 'petId', petId)).sort((a, b) => (b.date || '').localeCompare(a.date || ''));
 
     const age = pet.birthYear ? (new Date().getFullYear() - pet.birthYear) + '살' : (pet.birthDate ? this.calculateAge(pet.birthDate) : '-');
 
     container.innerHTML = `
-      <div class="back-link" onclick="history.length>1?history.back():App.navigate('pets')">&#x2190; 뒤로가기</div>
+      <div class="back-link" onclick="history.length>1?history.back():App.navigate('pets')">${App.icon('arrow-left')} 뒤로가기</div>
       <div class="detail-header">
         <div class="pet-detail-photo">
           ${(pet.photoThumb || pet.photo)
             ? `<img src="${pet.photoThumb || pet.photo}" class="photo-viewable" data-caption="${App.escapeHtml(pet.name)}"
                 style="width:200px;height:200px;object-fit:cover;border-radius:var(--radius-lg);cursor:pointer" alt="${App.escapeHtml(pet.name)}">`
-            : `<div style="width:200px;height:200px;border-radius:var(--radius-lg);background:var(--warning-light);display:flex;align-items:center;justify-content:center;font-size:4rem">&#x1F436;</div>`
+            : `<div style="width:200px;height:200px;border-radius:var(--radius-lg);background:var(--warning-light);display:flex;align-items:center;justify-content:center;font-size:4rem;color:var(--primary)">${App.icon('paw', 'ico-xl')}</div>`
           }
         </div>
         <div class="detail-info">
@@ -196,11 +199,12 @@ App.pages.pets = {
           <div class="detail-meta">
             <span>${App.escapeHtml(pet.breed || '견종 미입력')}</span>
             <span>${pet.weight ? pet.weight + 'kg' : ''}</span>
-            <span>보호자: <a href="#customers/${pet.customerId}" style="color:var(--primary)">${App.escapeHtml(App.getCustomerLabel(customer))}</a></span>
-            ${customer?.phone ? `<a href="tel:${App.escapeHtml((customer.phone || '').replace(/\\D/g, ''))}" style="color:var(--primary)">&#x1F4DE;</a> <a href="sms:${App.escapeHtml((customer.phone || '').replace(/\\D/g, ''))}" style="color:var(--primary)">&#x1F4AC;</a>` : ''}
+            <span>보호자: <a href="#customers/${pet.customerId}" style="color:var(--primary)">${App.escapeHtml(App.getCustomerLabel(customer, ownerPets))}</a></span>
+            ${customer?.phone ? `<a href="tel:${App.escapeHtml((customer.phone || '').replace(/\D/g, ''))}" style="color:var(--primary)" aria-label="전화" title="전화">${App.icon('phone')}</a> <a href="sms:${App.escapeHtml((customer.phone || '').replace(/\D/g, ''))}" style="color:var(--primary)" aria-label="문자" title="문자">${App.icon('message')}</a>` : ''}
           </div>
         </div>
         <div style="margin-left:auto;display:flex;gap:8px;flex-wrap:wrap">
+          <button class="btn btn-primary" id="btn-pet-record" data-pet-id="${pet.id}" data-customer-id="${pet.customerId}">+ 미용 기록</button>
           <button class="btn btn-primary" id="btn-pet-appt" data-pet-id="${pet.id}" data-customer-id="${pet.customerId}">예약</button>
           <button class="btn btn-secondary btn-edit-pet" data-id="${pet.id}">수정</button>
           <button class="btn btn-danger btn-delete-pet" data-id="${pet.id}">삭제</button>
@@ -213,7 +217,7 @@ App.pages.pets = {
         if (!hasAllergy && !hasHealth) return '';
         return `
       <div style="background:var(--danger-bg-soft);border:1.5px solid var(--danger);border-radius:var(--radius);padding:12px 14px;margin-bottom:16px;display:flex;gap:10px;align-items:flex-start">
-        <span style="font-size:1.1rem;color:var(--danger);font-weight:800;flex-shrink:0;line-height:1.3">&#x26A0;</span>
+        <span style="font-size:1.1rem;color:var(--danger);font-weight:800;flex-shrink:0;line-height:1.3">${App.icon('alert')}</span>
         <div style="flex:1;min-width:0">
           <div style="font-weight:800;color:var(--danger);font-size:0.9rem;margin-bottom:4px">미용 전 확인</div>
           ${hasAllergy ? `<div style="font-size:0.85rem;color:var(--danger-text-strong)"><strong>알러지:</strong> ${App.escapeHtml(pet.allergies)}</div>` : ''}
@@ -245,11 +249,12 @@ App.pages.pets = {
         const cycleSourceLabel = pet.groomingCycle ? '권장' : (avgCycleNum ? '평균' : null);
         let nextDays = null, nextStr = null, isOverdue = false;
         if (cycleSource && lastVisitDate) {
-          const next = new Date(lastVisitDate);
+          // 'YYYY-MM-DD' 를 new Date() 로 파싱하면 UTC 자정이 되어 한국에선 하루가 밀린다 → 로컬 파싱
+          const next = App.parseLocalDate(lastVisitDate);
           next.setDate(next.getDate() + cycleSource);
-          nextDays = Math.floor((next - new Date()) / 86400000);
-          isOverdue = nextDays < 0;
           nextStr = App.formatLocalDate(next);
+          nextDays = App.daysUntil(nextStr);
+          isOverdue = nextDays < 0;
         }
         const lastDays = lastVisitDate ? Math.floor((new Date() - new Date(lastVisitDate + 'T00:00:00')) / 86400000) : null;
 
@@ -377,6 +382,12 @@ App.pages.pets = {
       const petId = Number(e.target.dataset.petId);
       App.pages.appointments.showForm(null, customerId, { petId });
     });
+    // 반려견 상세 → 바로 미용 기록 (고객·반려견 선택 생략)
+    document.getElementById('btn-pet-record')?.addEventListener('click', (e) => {
+      const customerId = Number(e.target.dataset.customerId);
+      const petId = Number(e.target.dataset.petId);
+      App.pages.records.showForm(null, { customerId, petId, date: App.getToday() });
+    });
     // 검색
     const _debouncedPetFilter = App.debounce((val) => {
       const q = (val || '').toLowerCase();
@@ -421,44 +432,31 @@ App.pages.pets = {
 
   async showForm(id, presetCustomerId) {
     let pet = id ? await DB.get('pets', id) : {};
-    const customerOptions = await App.getCustomerOptions(pet.customerId || presetCustomerId);
+    // 보호자가 정해져 들어온 경우(고객 상세)만 잠긴 셀렉트, 그 외엔 검색형 고객 선택 + 인라인 신규 등록
+    const customerOptions = presetCustomerId ? await App.getCustomerOptions(presetCustomerId) : '';
+    const curYear = new Date().getFullYear();
+    const origAge = pet.birthYear ? String(curYear - pet.birthYear) : (pet.birthDate ? String(curYear - new Date(pet.birthDate).getFullYear()) : '');
+    this._inlinePetId = null;
 
     App.showModal({
       title: id ? '반려견 정보 수정' : '새 반려견 등록',
       size: 'lg',
       content: `
         <div class="form-group">
+          <label class="form-label">반려견 이름 <span class="required">*</span></label>
+          <input type="text" id="f-name" value="${App.escapeHtml(pet.name || '')}" placeholder="반려견 이름">
+        </div>
+        <div class="form-group">
           <label class="form-label">보호자 <span class="required">*</span></label>
-          <select id="f-customerId" ${presetCustomerId ? 'disabled' : ''}>
+          ${presetCustomerId ? `<select id="f-customerId" disabled>
             <option value="">보호자 선택</option>
             ${customerOptions}
           </select>
-          ${presetCustomerId ? `<input type="hidden" id="f-customerId-hidden" value="${presetCustomerId}">` : ''}
+          <input type="hidden" id="f-customerId-hidden" value="${presetCustomerId}">` : '<div id="pet-customer-select"></div>'}
         </div>
         <div class="form-group">
-          <label class="form-label">사진</label>
-          <div class="pet-photo-upload">
-            <div class="pet-photo-preview" id="f-photo-preview">
-              ${(pet.photoThumb || pet.photo) ? `<img src="${pet.photoThumb || pet.photo}" alt="반려견 사진">` : '<span class="pet-photo-placeholder">&#x1F436;</span>'}
-            </div>
-            <div class="flex-1">
-              <input type="file" id="f-photo" accept="image/*" style="display:none">
-              <button type="button" class="btn btn-sm btn-secondary" id="f-photo-btn">&#x1F4F7; 사진 선택</button>
-              ${(pet.photoThumb || pet.photo || pet.photoId) ? '<button type="button" class="btn btn-sm btn-danger" id="f-photo-remove" style="margin-left:8px">삭제</button>' : ''}
-              <div class="form-hint">JPG, PNG 등 이미지 파일 (최대 1MB 권장)</div>
-            </div>
-          </div>
-          <input type="hidden" id="f-photo-data" value="">
-        </div>
-        <div class="form-row">
-          <div class="form-group">
-            <label class="form-label">이름 <span class="required">*</span></label>
-            <input type="text" id="f-name" value="${App.escapeHtml(pet.name || '')}" placeholder="반려견 이름">
-          </div>
-          <div class="form-group">
-            <label class="form-label">견종</label>
-            <input type="text" id="f-breed" value="${App.escapeHtml(pet.breed || '')}" placeholder="예: 말티즈, 푸들">
-          </div>
+          <label class="form-label">견종</label>
+          <input type="text" id="f-breed" value="${App.escapeHtml(pet.breed || '')}" placeholder="예: 말티즈, 푸들">
         </div>
         <div class="form-row three">
           <div class="form-group">
@@ -475,7 +473,7 @@ App.pages.pets = {
           </div>
           <div class="form-group">
             <label class="form-label">나이 (살)</label>
-            <input type="number" id="f-age" value="${pet.birthYear ? (new Date().getFullYear() - pet.birthYear) : (pet.birthDate ? (new Date().getFullYear() - new Date(pet.birthDate).getFullYear()) : '')}" placeholder="예: 3" min="0" max="30" step="1">
+            <input type="number" id="f-age" value="${origAge}" data-orig="${origAge}" placeholder="예: 3" min="0" max="30" step="1">
             <div class="form-hint">입력한 나이는 매년 자동으로 업데이트됩니다</div>
           </div>
         </div>
@@ -494,6 +492,21 @@ App.pages.pets = {
             <option value="large" ${pet.size === 'large' ? 'selected' : ''}>대형 (15kg 이상)</option>
           </select>
           <div class="form-hint">미용 가격 자동 계산에 사용됩니다</div>
+        </div>
+        <div class="form-group">
+          <label class="form-label">사진</label>
+          <div class="pet-photo-upload">
+            <div class="pet-photo-preview" id="f-photo-preview">
+              ${(pet.photoThumb || pet.photo) ? `<img src="${pet.photoThumb || pet.photo}" alt="반려견 사진">` : '<span class="pet-photo-placeholder">' + App.icon('paw', 'ico-xl') + '</span>'}
+            </div>
+            <div class="flex-1">
+              <input type="file" id="f-photo" accept="image/*" style="display:none">
+              <button type="button" class="btn btn-sm btn-secondary" id="f-photo-btn">${App.icon('camera')} 사진 선택</button>
+              ${(pet.photoThumb || pet.photo || pet.photoId) ? '<button type="button" class="btn btn-sm btn-danger" id="f-photo-remove" style="margin-left:8px">삭제</button>' : ''}
+              <div class="form-hint">JPG, PNG 등 이미지 파일 (최대 1MB 권장)</div>
+            </div>
+          </div>
+          <input type="hidden" id="f-photo-data" value="">
         </div>
         <div class="form-group">
           <label class="form-label">성격/행동 특이사항</label>
@@ -543,6 +556,21 @@ App.pages.pets = {
       onSave: () => this.savePet(id, presetCustomerId)
     });
 
+    if (!presetCustomerId) {
+      await App.renderCustomerSelect('pet-customer-select', pet.customerId || null, async (cid, newPetId) => {
+        // 인라인 "새 고객 등록"에서 반려견까지 만들어졌으면, 이 폼이 그 반려견을 이어서 채운다 (같은 아이 중복 등록 방지)
+        this._inlinePetId = null;
+        if (id || !newPetId) return;
+        const created = await DB.get('pets', newPetId);
+        if (!created) return;
+        this._inlinePetId = newPetId;
+        const fill = (elId, v) => { const el = document.getElementById(elId); if (el && !el.value.trim() && v) el.value = v; };
+        fill('f-name', created.name || '');
+        fill('f-breed', created.breed || '');
+        fill('f-weight', created.weight ? String(created.weight) : '');
+      });
+    }
+
     // 기존 사진 데이터 설정 (photos 스토어 마이그레이션 대응)
     if (pet.photo || pet.photoId) {
       const photoData = document.getElementById('f-photo-data');
@@ -584,7 +612,7 @@ App.pages.pets = {
             removeBtn.textContent = '삭제';
             removeBtn.addEventListener('click', () => {
               document.getElementById('f-photo-data').value = '';
-              preview.innerHTML = '<span class="pet-photo-placeholder">&#x1F436;</span>';
+              preview.innerHTML = '<span class="pet-photo-placeholder">' + App.icon('paw', 'ico-xl') + '</span>';
               removeBtn.remove();
             });
             document.getElementById('f-photo-btn')?.after(removeBtn);
@@ -596,22 +624,27 @@ App.pages.pets = {
     document.getElementById('f-photo-remove')?.addEventListener('click', () => {
       document.getElementById('f-photo-data').value = '';
       const preview = document.getElementById('f-photo-preview');
-      if (preview) preview.innerHTML = '<span class="pet-photo-placeholder">&#x1F436;</span>';
+      if (preview) preview.innerHTML = '<span class="pet-photo-placeholder">' + App.icon('paw', 'ico-xl') + '</span>';
       document.getElementById('f-photo-remove')?.remove();
     });
   },
 
   async savePet(id, presetCustomerId) {
     try {
-      const customerId = presetCustomerId || Number(document.getElementById('f-customerId').value);
+      const customerId = presetCustomerId || Number(document.getElementById('pet-customer-select-value')?.value || document.getElementById('f-customerId')?.value);
       const name = document.getElementById('f-name').value.trim();
       const breed = document.getElementById('f-breed').value.trim();
       const weight = parseFloat(document.getElementById('f-weight').value) || null;
       const gender = document.getElementById('f-gender').value;
-      const ageInput = Number(document.getElementById('f-age')?.value);
-      if (ageInput > 30) { App.showToast('나이를 확인해주세요 (최대 30살).', 'error'); return; }
-      const birthYear = ageInput > 0 ? (new Date().getFullYear() - ageInput) : null;
-      const birthDate = birthYear ? `${birthYear}-01-01` : '';
+      // 나이: 사용자가 바꾸지 않았으면 기존 birthDate/birthYear 를 그대로 둔다
+      // (예전엔 수정할 때마다 정확한 생일이 YYYY-01-01 로 덮어써졌고, 0살 강아지는 비어 버렸다)
+      const ageEl = document.getElementById('f-age');
+      const ageRaw = (ageEl?.value || '').trim();
+      const ageUnchanged = !!id && ageRaw === (ageEl?.dataset.orig || '');
+      const ageInput = Number(ageRaw);
+      if (ageRaw && (!Number.isFinite(ageInput) || ageInput < 0 || ageInput > 30)) { App.showToast('나이를 확인해주세요 (0~30살).', 'error'); App.highlightField('f-age'); return; }
+      const birthYear = ageRaw ? (new Date().getFullYear() - Math.floor(ageInput)) : null;
+      const birthDate = birthYear != null ? `${birthYear}-01-01` : '';
       const neutered = document.getElementById('f-neutered').checked;
       const size = document.getElementById('f-size').value;
       const temperament = document.getElementById('f-temperament').value.trim();
@@ -623,10 +656,18 @@ App.pages.pets = {
       const petStatus = document.getElementById('f-petStatus')?.value || 'active';
       const photoRaw = document.getElementById('f-photo-data')?.value || '';
 
-      if (!customerId) { App.showToast('보호자를 선택해주세요.', 'error'); App.highlightField('f-customerId'); return; }
+      if (!customerId) { App.showToast('보호자를 선택해주세요.', 'error'); App.highlightField(presetCustomerId ? 'f-customerId' : 'pet-customer-select-input'); return; }
       if (!name) { App.showToast('이름을 입력해주세요.', 'error'); App.highlightField('f-name'); return; }
 
       const data = { customerId, name, breed, weight, gender, birthDate, birthYear, neutered, size, temperament, healthNotes, allergies, memo, preferredStyle, groomingCycle, petStatus };
+      if (ageUnchanged) { delete data.birthDate; delete data.birthYear; }
+
+      // 인라인 고객 등록에서 같은 이름의 반려견이 이미 만들어졌다면 새로 추가하지 않고 그 반려견을 채운다
+      let inlineTarget = null;
+      if (!id && this._inlinePetId) {
+        const p = await DB.get('pets', this._inlinePetId);
+        if (p && p.customerId === customerId && (p.name || '').trim() === name) inlineTarget = p;
+      }
 
       if (id) {
         const existing = await DB.get('pets', id);
@@ -665,7 +706,25 @@ App.pages.pets = {
         App.handleRoute();
       } else {
         // 새 반려견: 사진은 photos 스토어에 저장
-        if (photoRaw) {
+        if (inlineTarget) {
+          // 폼에서 비워둔 칸은 인라인 등록 때 입력한 값을 유지
+          Object.keys(data).forEach(k => {
+            if ((data[k] === '' || data[k] == null) && inlineTarget[k] != null && inlineTarget[k] !== '') data[k] = inlineTarget[k];
+          });
+          Object.assign(inlineTarget, data);
+          if (photoRaw) {
+            try {
+              inlineTarget.photoId = await DB.savePhoto(photoRaw, { type: 'pet-profile', ownerId: inlineTarget.id });
+              inlineTarget.photoThumb = await DB._createThumb(photoRaw, 150, 0.5);
+              inlineTarget.photo = null;
+            } catch (e) {
+              inlineTarget.photo = photoRaw; // fallback: 인라인 저장
+            }
+          }
+          await DB.update('pets', inlineTarget);
+          this._inlinePetId = null;
+          data._newPetId = inlineTarget.id;
+        } else if (photoRaw) {
           try {
             data.photo = null;
             const newPetId = await DB.add('pets', data);
@@ -687,7 +746,9 @@ App.pages.pets = {
         const newPetId = data._newPetId;
         App.showToast('새 반려견이 등록되었습니다.');
         App.closeModal();
-        const doAppt = await App.confirm('바로 예약을 등록하시겠습니까?');
+        // closeModal()의 history.back()이 비동기라 바로 confirm 을 띄우면 그 popstate 가 confirm 을 닫아버린다
+        await new Promise(r => setTimeout(r, 180));
+        const doAppt = await App.confirm('바로 예약을 등록하시겠습니까?', { danger: false, okLabel: '예약 등록' });
         if (doAppt) {
           App.pages.appointments.showForm(null, customerId, { petId: newPetId });
           return;
@@ -705,13 +766,19 @@ App.pages.pets = {
       const pet = await DB.get('pets', id);
       if (!pet) return;
 
-      const confirmed = await App.confirm(`"${App.escapeHtml(pet.name)}"을(를) 삭제하시겠습니까?<br>관련 예약과 미용 기록도 함께 삭제됩니다.<br><strong>이 작업은 되돌릴 수 없습니다.</strong>`, { okLabel: '삭제' });
-      if (!confirmed) return;
-
       const [appointments, records] = await Promise.all([
         DB.getByIndex('appointments', 'petId', id),
         DB.getByIndex('records', 'petId', id)
       ]);
+      const unpaidSum = records.filter(r => r.paymentMethod === 'unpaid').reduce((s, r) => s + App.getRecordAmount(r), 0);
+      const revenueSum = records.reduce((s, r) => s + App.getRecordAmount(r), 0);
+      const confirmed = await App.confirm(
+        `"${App.escapeHtml(pet.name)}"을(를) 삭제하시겠습니까?<br>` +
+        `예약 <strong>${appointments.length}</strong>건 · 미용 기록 <strong>${records.length}</strong>건 (매출 ${App.formatCurrency(revenueSum)})이 함께 삭제됩니다.` +
+        (unpaidSum > 0 ? `<br><span style="color:var(--danger)">미수금 ${App.formatCurrency(unpaidSum)}도 사라집니다.</span>` : '') +
+        `<br><small style="color:var(--text-muted)">사망·양도라면 삭제 대신 수정에서 상태를 바꾸세요 — 기록은 남고 알림에서만 빠집니다.</small>`,
+        { okLabel: '삭제' });
+      if (!confirmed) return;
       // photos 스토어 정리 (반려견 프로필 + 기록 사진)
       if (pet.photoId) await DB.deletePhoto(pet.photoId).catch(() => {});
       for (const r of records) {

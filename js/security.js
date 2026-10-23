@@ -201,7 +201,7 @@ const MASTER_CONFIG = {
       overlay.id = 'security-lock-overlay';
       overlay.innerHTML = `
         <div class="lock-screen">
-          <div class="lock-icon">&#x1F512;</div>
+          <div class="lock-icon"><svg class="ico ico-xl" aria-hidden="true"><use href="#i-lock"/></svg></div>
           <div class="lock-title">펫살롱 — 등록되지 않은 기기</div>
           <div class="lock-subtitle" id="lock-subtitle">마스터 코드 ${s.pinLength}자리 입력</div>
           <div class="lock-dots" id="lock-dots"></div>

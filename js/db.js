@@ -18,20 +18,20 @@ const DB = {
   },
 
   async init() {
-    // Try server API first (when served via server.js)
-    if (window.location.protocol !== 'file:') {
+    // 서버 모드(server.js)는 로컬 개발용이며 배포본(GitHub Pages)에는 없다.
+    // 매 실행마다 /api 를 탐색하던 코드는 404 로그 + 느린 네트워크에서 최대 2초 지연을 만들고,
+    // 알 수 없는 경로에 200 을 주는 호스팅(SPA rewrite)에서는 모든 저장이 조용히 실패할 수 있어 제거했다.
+    // 필요 시 ?mode=server 로만 명시적 전환.
+    const explicit = new URLSearchParams(location.search).get('mode');
+    if (explicit === 'server' && window.location.protocol !== 'file:') {
       try {
-        const controller = new AbortController();
-        const timer = setTimeout(() => controller.abort(), 2000);
-        const res = await fetch('/api/customers', { method: 'GET', signal: controller.signal });
-        clearTimeout(timer);
-        if (res.ok) {
+        const res = await fetch('/api/customers', { headers: { Accept: 'application/json' } });
+        if (res.ok && (res.headers.get('content-type') || '').includes('application/json')) {
           this.mode = 'server';
           return;
         }
       } catch (e) { /* server not available */ }
     }
-    // Fall back to IndexedDB
     this.mode = 'idb';
     return this._initIDB();
   },
@@ -56,8 +56,27 @@ const DB = {
           }
         }
       };
+      // 다른 탭/PWA 창이 구버전 연결을 쥐고 있으면 스키마 업그레이드가 영원히 대기한다.
+      // 로딩 화면에 갇히지 않도록 사용자에게 알린다.
+      req.onblocked = () => {
+        const el = document.querySelector('#loading-screen .text');
+        if (el) el.textContent = '다른 탭(또는 창)에서 앱이 열려 있습니다. 모두 닫은 뒤 다시 열어주세요.';
+      };
       req.onsuccess = (e) => {
         this.db = e.target.result;
+        // 다른 탭이 새 버전으로 업그레이드하면 이 연결을 즉시 놓아주고 새로고침 (업그레이드 차단 방지)
+        this.db.onversionchange = () => {
+          try { this.db.close(); } catch (_) {}
+          location.reload();
+        };
+        // iOS가 백그라운드에서 연결을 끊는 경우 — 이후 모든 호출이 실패하므로 재연결
+        this.db.onclose = () => {
+          console.warn('IndexedDB 연결이 외부 요인으로 닫힘 — 재연결 시도');
+          this.db = null;
+          this._initIDB().catch(() => {
+            if (typeof App !== 'undefined' && App.showToast) App.showToast('저장소 연결이 끊어졌습니다. 앱을 다시 열어주세요.', 'error');
+          });
+        };
         // Safari ITP 데이터 자동 삭제 방지
         const isIOS = /iPhone|iPad|iPod/.test(navigator.userAgent);
         if (navigator.storage && navigator.storage.persist) {
@@ -67,7 +86,7 @@ const DB = {
               if (isIOS && !isStandalone) {
                 // iOS 비홈스크린: 7일 미사용 시 데이터 삭제 위험 — 강력 경고
                 setTimeout(() => {
-                  App.showToast('⚠️ iPhone에서는 홈 화면에 추가하지 않으면 7일 미사용 시 데이터가 삭제될 수 있습니다. 정기 백업을 권장합니다.', 'warning', { duration: 15000 });
+                  App.showToast('iPhone에서는 홈 화면에 추가하지 않으면 7일 미사용 시 데이터가 삭제될 수 있습니다. 정기 백업을 권장합니다.', 'warning', { duration: 15000 });
                 }, 2000);
               } else if (!isStandalone) {
                 setTimeout(() => {
@@ -101,20 +120,34 @@ const DB = {
       return result.id;
     }
     return new Promise((resolve, reject) => {
-      const store = this._idbStore(storeName, 'readwrite');
+      // 요청 성공(onsuccess)이 아니라 트랜잭션 커밋(oncomplete) 시점에 resolve 한다.
+      // 커밋 단계에서 나는 quota 초과/abort 는 onsuccess 이후에 발생하므로,
+      // 그 전에 "저장되었습니다" 토스트를 띄우면 조용한 데이터 손실이 된다.
+      const tx = this.db.transaction(storeName, 'readwrite');
+      const store = tx.objectStore(storeName);
       data.createdAt = data.createdAt || new Date().toISOString();
       data.updatedAt = new Date().toISOString();
+      let result;
       const req = store.add(data);
-      req.onsuccess = () => { if (typeof App !== 'undefined' && App.notifyTabSync) App.notifyTabSync(); resolve(req.result); };
-      req.onerror = () => {
-        if (req.error && req.error.name === 'QuotaExceededError') {
-          if (typeof App !== 'undefined' && App.showToast) {
-            App.showToast('저장 공간이 부족합니다. 오래된 사진을 삭제하거나 데이터를 백업 후 정리해주세요.', 'error');
-          }
-        }
-        reject(req.error);
-      };
+      req.onsuccess = () => { result = req.result; };
+      tx.oncomplete = () => { if (typeof App !== 'undefined' && App.notifyTabSync) App.notifyTabSync(); resolve(result); };
+      const fail = () => reject(this._txError(tx, req));
+      tx.onerror = fail;
+      tx.onabort = fail;
     });
+  },
+
+  // 트랜잭션 실패 원인 추출 + quota 초과 시 사용자 안내
+  _txError(tx, req) {
+    const err = (tx && tx.error) || (req && req.error) || new Error('IndexedDB 트랜잭션 실패');
+    if (tx && tx._errHandled) return err; // onerror → onabort 연속 호출 시 토스트 1회만
+    if (tx) tx._errHandled = true;
+    if (err && err.name === 'QuotaExceededError') {
+      if (typeof App !== 'undefined' && App.showToast) {
+        App.showToast('저장 공간이 부족합니다. 오래된 사진을 삭제하거나 데이터를 백업 후 정리해주세요.', 'error');
+      }
+    }
+    return err;
   },
 
   async get(storeName, id) {
@@ -156,16 +189,14 @@ const DB = {
     }
     return new Promise((resolve, reject) => {
       data.updatedAt = new Date().toISOString();
-      const req = this._idbStore(storeName, 'readwrite').put(data);
-      req.onsuccess = () => { if (typeof App !== 'undefined' && App.notifyTabSync) App.notifyTabSync(); resolve(req.result); };
-      req.onerror = () => {
-        if (req.error && req.error.name === 'QuotaExceededError') {
-          if (typeof App !== 'undefined' && App.showToast) {
-            App.showToast('저장 공간이 부족합니다. 오래된 사진을 삭제하거나 데이터를 백업 후 정리해주세요.', 'error');
-          }
-        }
-        reject(req.error);
-      };
+      const tx = this.db.transaction(storeName, 'readwrite');
+      let result;
+      const req = tx.objectStore(storeName).put(data);
+      req.onsuccess = () => { result = req.result; };
+      tx.oncomplete = () => { if (typeof App !== 'undefined' && App.notifyTabSync) App.notifyTabSync(); resolve(result); };
+      const fail = () => reject(this._txError(tx, req));
+      tx.onerror = fail;
+      tx.onabort = fail;
     });
   },
 
@@ -176,9 +207,12 @@ const DB = {
       return;
     }
     return new Promise((resolve, reject) => {
-      const req = this._idbStore(storeName, 'readwrite').delete(id);
-      req.onsuccess = () => { if (typeof App !== 'undefined' && App.notifyTabSync) App.notifyTabSync(); resolve(); };
-      req.onerror = () => reject(req.error);
+      const tx = this.db.transaction(storeName, 'readwrite');
+      const req = tx.objectStore(storeName).delete(id);
+      tx.oncomplete = () => { if (typeof App !== 'undefined' && App.notifyTabSync) App.notifyTabSync(); resolve(); };
+      const fail = () => reject(this._txError(tx, req));
+      tx.onerror = fail;
+      tx.onabort = fail;
     });
   },
 
@@ -561,6 +595,9 @@ const DB = {
         continue;
       }
       let items = await this.getAll(storeName);
+      // 복원 전 자동 백업(_autoBackup*)은 DB 전체 사본이다. 백업 파일에 넣으면
+      // 복원할 때마다 사본이 중첩되어 파일이 매번 2배로 커진다 → 항상 제외.
+      if (storeName === 'settings') items = items.filter(item => !this._isInternalSetting(item.key));
       // 사진 제외 모드: 인라인 base64 사진 필드 제거 (pets, records, settings)
       if (excludePhotos && (storeName === 'pets' || storeName === 'records')) {
         items = items.map(item => {
@@ -586,6 +623,11 @@ const DB = {
     data._version = this.version;
     data._excludePhotos = excludePhotos;
     return data;
+  },
+
+  // 백업 파일에 포함하지 않고, 복원 시에도 덮어쓰지 않는 기기 내부 설정 키
+  _isInternalSetting(key) {
+    return typeof key === 'string' && key.startsWith('_autoBackup');
   },
 
   validateBackup(data) {
@@ -666,9 +708,23 @@ const DB = {
     // 1b. 구버전 백업 마이그레이션
     data = await this._migrateBackup(data);
 
+    // ⚠ 사진 보호: '사진 제외 백업'은 photos: [] 로 저장된다. 이를 복원 대상에 넣으면
+    //   photos 스토어가 통째로 clear 되어 기기의 사진이 전부 사라진다 (되돌릴 수 없음).
+    //   사진이 없는 백업은 기존 사진을 그대로 두고, 참조가 끊긴 사진은 무결성 점검이 정리한다.
+    const skipPhotos = data._excludePhotos === true || !Array.isArray(data.photos) || data.photos.length === 0;
     const storeNames = Object.keys(data).filter(
-      k => !k.startsWith('_') && this.stores[k] && Array.isArray(data[k])
+      k => !k.startsWith('_') && this.stores[k] && Array.isArray(data[k]) && !(skipPhotos && k === 'photos')
     );
+
+    // 기기 내부 설정(_autoBackup*)은 복원으로 덮어쓰지 않는다 — 복원 직후 "되돌리기"의 유일한 근거이므로.
+    let preservedSettings = [];
+    try {
+      const curSettings = await this.getAll('settings');
+      preservedSettings = curSettings.filter(item => this._isInternalSetting(item.key));
+    } catch (_) {}
+    if (Array.isArray(data.settings)) {
+      data.settings = data.settings.filter(item => !this._isInternalSetting(item && item.key));
+    }
 
     const CHUNK_SIZE = 500; // 사진 5만 장 + 트랜잭션 시간 초과 방지
     const totalItems = storeNames.reduce((sum, s) => sum + (data[s] ? data[s].length : 0), 0);
@@ -685,6 +741,8 @@ const DB = {
           req.onsuccess = () => resolve(req.result || []);
           req.onerror = () => reject(req.error);
         });
+        // 자동 백업 사본은 snapshot 에서 제외 (localStorage 용량 초과 방지) — rollback 후 별도로 복구
+        if (sn === 'settings') snapshot[sn] = snapshot[sn].filter(item => !this._isInternalSetting(item.key));
       }
       try {
         localStorage.setItem('__petsalon_import_snapshot__', JSON.stringify({ ts: Date.now(), data: snapshot }));
@@ -707,7 +765,10 @@ const DB = {
     } catch (e) {
       console.error('importAll: clear phase failed:', e);
       try { localStorage.removeItem('__petsalon_import_snapshot__'); } catch (_) {}
-      throw new Error('기존 데이터 정리 중 오류가 발생했습니다.');
+      // clear 는 단일 트랜잭션(원자적) → 실패해도 기존 데이터는 그대로다
+      const err = new Error('기존 데이터 정리 중 오류가 발생했습니다. (현재 데이터는 그대로입니다)');
+      err.dbState = 'untouched';
+      throw err;
     }
 
     // 3. 스토어별로 청크 단위 insert — 실패 시 snapshot으로 자동 rollback
@@ -747,24 +808,79 @@ const DB = {
     } catch (insertError) {
       console.error(`importAll insert 실패 — snapshot으로 rollback 시도:`, insertError);
       try {
-        await this._rollbackFromSnapshot(snapshot);
+        await this._rollbackFromSnapshot(snapshot, preservedSettings);
         try { localStorage.removeItem('__petsalon_import_snapshot__'); } catch (_) {}
-        throw new Error('복원 중 오류 — 이전 데이터로 자동 복구되었습니다. 백업 파일을 확인 후 다시 시도해주세요.');
+        const err = new Error('복원 중 오류 — 이전 데이터로 자동 복구되었습니다. 백업 파일을 확인 후 다시 시도해주세요.');
+        err.dbState = 'rolled-back';
+        throw err;
       } catch (rbErr) {
-        if (rbErr.message && rbErr.message.includes('자동 복구')) throw rbErr;
+        if (rbErr.dbState === 'rolled-back') throw rbErr;
         console.error('rollback도 실패 — snapshot이 localStorage에 보관됨:', rbErr);
-        throw new Error('심각한 오류 — 앱을 닫지 마시고 즉시 개발자에게 문의하세요. (snapshot 보관 중)');
+        // 되돌리기 사본만이라도 다시 써 둔다 — 그래야 설정의 '복원 전 상태로 되돌리기'가 동작한다
+        await this._restoreInternalSettings(preservedSettings);
+        const err = new Error('심각한 오류 — 앱을 닫지 마시고 즉시 개발자에게 문의하세요. (snapshot 보관 중)');
+        err.dbState = 'dirty';
+        throw err;
       }
     }
 
-    // 4. 성공 — snapshot 정리
+    // 4. 기기 내부 설정 복구 (자동 백업 사본 등)
+    await this._restoreInternalSettings(preservedSettings);
+
+    // 4b. 사진을 건너뛴 복원이면, 복원된 반려견/기록이 가리키는 사진이 실제로 그 소유자의 것인지 확인한다.
+    //     (다른 기기의 백업이면 photoId 가 이 기기의 엉뚱한 사진과 번호만 같을 수 있다)
+    if (skipPhotos) {
+      try { await this._pruneMismatchedPhotoRefs(); } catch (e) { console.warn('사진 참조 점검 실패 (무시):', e); }
+    }
+
+    // 5. 성공 — snapshot 정리
     try { localStorage.removeItem('__petsalon_import_snapshot__'); } catch (_) {}
   },
 
+  async _restoreInternalSettings(items) {
+    if (!items || items.length === 0) return;
+    try {
+      await new Promise((resolve, reject) => {
+        const tx = this.db.transaction('settings', 'readwrite');
+        const store = tx.objectStore('settings');
+        items.forEach(item => { try { store.put(item); } catch (_) {} });
+        tx.oncomplete = resolve;
+        tx.onerror = () => reject(tx.error);
+        tx.onabort = () => reject(tx.error);
+      });
+    } catch (e) { console.warn('내부 설정 복구 실패 (무시):', e); }
+  },
+
+  // photoId 가 가리키는 사진의 ownerId 가 소유자와 다르면 참조를 끊는다 (사진 자체는 무결성 점검이 정리)
+  async _pruneMismatchedPhotoRefs() {
+    const photos = await this.getAllLight('photos', ['data']);
+    const owner = {}; photos.forEach(ph => { owner[ph.id] = ph; });
+    const pets = await this.getAll('pets');
+    for (const p of pets) {
+      if (!p.photoId) continue;
+      const ph = owner[p.photoId];
+      if (!ph || (ph.ownerId && ph.ownerId !== p.id)) { p.photoId = null; await this.update('pets', p); }
+    }
+    const records = await this.getAll('records');
+    const fields = ['photoBeforeId', 'photoAfterId', 'photo3Id', 'photo4Id'];
+    for (const r of records) {
+      let changed = false;
+      for (const f of fields) {
+        if (!r[f]) continue;
+        const ph = owner[r[f]];
+        if (!ph || (ph.ownerId && ph.ownerId !== r.id)) { r[f] = null; changed = true; }
+      }
+      if (changed) await this.update('records', r);
+    }
+  },
+
   // 인-플라이트 snapshot으로부터 rollback (importAll catch에서 호출)
-  async _rollbackFromSnapshot(snapshot) {
+  async _rollbackFromSnapshot(snapshot, preservedSettings = []) {
     const stores = Object.keys(snapshot);
     if (stores.length === 0) throw new Error('snapshot 비어있음');
+    if (preservedSettings.length > 0 && Array.isArray(snapshot.settings)) {
+      snapshot.settings = snapshot.settings.filter(item => !this._isInternalSetting(item.key)).concat(preservedSettings);
+    }
     // 1) clear (photos 제외)
     await new Promise((resolve, reject) => {
       const tx = this.db.transaction(stores, 'readwrite');

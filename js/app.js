@@ -35,6 +35,8 @@ const App = {
       this.setupIntegrityCheck();
       // 인라인 등록 폼이 한글 사이즈를 저장하던 시기의 데이터 정정 (1회)
       this.migratePetSizes();
+      // 반려견 방문 통계(firstVisitDate·lastVisitDate·visitCount) 1회 채우기 — 목록 페이지가 기록 전체를 읽지 않게 한다
+      this.migratePetVisitStats();
       // Hide loading screen
       setTimeout(() => {
         document.getElementById('loading-screen')?.classList.add('hidden');
@@ -143,6 +145,11 @@ const App = {
     const moreMenu = document.getElementById('bottom-more-menu');
     const addBtn = document.getElementById('bottom-nav-add');
     const addMenu = document.getElementById('bottom-nav-add-menu');
+    // 키보드(Enter/Space)로도 열리게 — div 기반 버튼이라 기본 동작이 없다
+    [moreBtn, addBtn].forEach(btn => btn && btn.addEventListener('keydown', (e) => {
+      if (e.target !== btn) return; // 메뉴 안의 링크에서 누른 Enter 는 링크가 처리
+      if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); btn.click(); }
+    }));
 
     // More menu toggle
     if (moreBtn && moreMenu) {
@@ -153,7 +160,8 @@ const App = {
       });
       document.addEventListener('click', () => moreMenu?.classList.remove('open'));
       moreMenu.querySelectorAll('.bottom-more-item').forEach(item => {
-        item.addEventListener('click', () => moreMenu.classList.remove('open'));
+        // 메뉴 항목이 토글 버튼의 자식이라 클릭이 버블링되면 메뉴가 닫혔다가 다시 열린다
+        item.addEventListener('click', (e) => { e.stopPropagation(); moreMenu.classList.remove('open'); });
       });
     }
 
@@ -170,7 +178,8 @@ const App = {
         }
       });
       addMenu.querySelectorAll('.bottom-add-item').forEach(item => {
-        item.addEventListener('click', () => {
+        item.addEventListener('click', (e) => {
+          e.stopPropagation();
           addMenu.classList.remove('open');
           const action = item.dataset.action;
           switch (action) {
@@ -235,6 +244,40 @@ const App = {
   // 예약/기록의 인라인 등록 폼이 pet.size를 '소형/중형/대형'(한글)으로 저장하던 시기가 있었다.
   // 나머지 코드는 전부 small/medium/large를 전제하므로(서비스 가격 키가 priceSmall 등)
   // 그대로 두면 영수증 금액이 0원으로 찍힌다. 1회만 정정한다.
+  // 반려견별 방문 통계 비정규화. 고객/반려견 목록·분석이 매번 records 전체를 읽지 않도록
+  // pet.firstVisitDate / lastVisitDate / visitCount 를 채운다. 이후엔 기록 저장·삭제 시 records.js 가 유지.
+  // 플래그는 IDB 설정에 두어 백업 복원(구버전 데이터) 후에도 다시 실행되게 한다 (force=true 로 호출).
+  async migratePetVisitStats(force = false) {
+    if (DB.mode === 'server') return;
+    try {
+      if (!force && (await DB.getSetting('petVisitStatsVersion')) === 1) return;
+      const [pets, records] = await Promise.all([
+        DB.getAll('pets'),
+        DB.getAllLight('records', ['photoBefore', 'photoAfter', 'photo3', 'photo4', 'memo', 'addons', 'skinStatus'])
+      ]);
+      const stat = {};
+      records.forEach(r => {
+        if (!r.petId || !r.date) return;
+        const s = stat[r.petId] || (stat[r.petId] = { first: null, last: null, count: 0 });
+        s.count++;
+        if (!s.first || r.date < s.first) s.first = r.date;
+        if (!s.last || r.date > s.last) s.last = r.date;
+      });
+      let changed = 0;
+      for (const p of pets) {
+        const s = stat[p.id] || { first: null, last: null, count: 0 };
+        if (p.firstVisitDate !== s.first || p.lastVisitDate !== s.last || p.visitCount !== s.count) {
+          p.firstVisitDate = s.first; p.lastVisitDate = s.last; p.visitCount = s.count;
+          await DB.update('pets', p); changed++;
+        }
+      }
+      await DB.setSetting('petVisitStatsVersion', 1);
+      if (changed > 0) console.info(`[migrate] 반려견 방문 통계 ${changed}건 갱신`);
+    } catch (e) {
+      console.warn('pet visit stats migration failed', e);
+    }
+  },
+
   async migratePetSizes() {
     if (DB.mode === 'server') return;
     if (localStorage.getItem('petSizeMigrated') === '1') return;
@@ -274,7 +317,7 @@ const App = {
       if (report.issues.length > 0) {
         console.warn('[Integrity] 모순 감지 (수동 확인 필요):', report.issues);
         this.showToast(
-          `⚠️ 데이터 모순 ${report.issues.length}건 감지. 백업 후 설정에서 점검하세요. (콘솔 로그 확인)`,
+          `데이터 모순 ${report.issues.length}건 감지. 백업 후 설정에서 점검하세요. (콘솔 로그 확인)`,
           'error'
         );
       }
@@ -297,7 +340,7 @@ const App = {
       if (quota.percentage >= 95) {
         // CRITICAL: 항상 경고 (하루 1회 제한 무시)
         this.showToast(
-          `⚠️ 저장 공간 위험 (${quota.percentage}%, ${usedMB}/${quotaMB}MB) — 즉시 백업 후 사진을 정리해주세요.`,
+          `저장 공간 위험 (${quota.percentage}%, ${usedMB}/${quotaMB}MB) — 즉시 백업 후 사진을 정리해주세요.`,
           'error'
         );
         localStorage.setItem('lastQuotaWarning', today + '-critical');
@@ -406,7 +449,7 @@ const App = {
         console.error(`Page render error (${page}):`, err);
         content.innerHTML = `
           <div class="empty-state">
-            <div class="empty-state-icon">&#x26A0;</div>
+            <div class="empty-state-icon">${this.icon('alert', 'ico-xl')}</div>
             <div class="empty-state-text">페이지를 불러오는 중 오류가 발생했습니다.</div>
             <div style="font-size:0.82rem;color:var(--text-muted);margin:8px 0">${App.escapeHtml(err?.message || '')}</div>
             <div style="display:flex;gap:8px;justify-content:center">
@@ -446,6 +489,8 @@ const App = {
 
   // ========== Modal ==========
   showModal(options) {
+    // 이전 confirm 이 남긴 억제 플래그가 새 모달의 첫 뒤로가기를 삼키지 않도록 초기화
+    this._suppressModalPop = false;
     this._lastFocusedElement = document.activeElement;
     const { title, content, onSave, size, hideFooter, saveText } = options;
     document.getElementById('modal-title').textContent = title;
@@ -527,11 +572,14 @@ const App = {
     // Enter key to save (use onkeydown to avoid listener accumulation)
     const modalBody = document.getElementById('modal-body');
     modalBody.onkeydown = (e) => {
-      if (e.key === 'Enter' && e.target.tagName !== 'TEXTAREA' && e.target.tagName !== 'SELECT') {
-        e.preventDefault();
-        const saveBtn = document.getElementById('modal-save');
-        if (saveBtn && saveBtn.onclick) saveBtn.click();
-      }
+      if (e.key !== 'Enter' || e.target.tagName === 'TEXTAREA' || e.target.tagName === 'SELECT') return;
+      // 한글 조합 중 Enter 는 마지막 글자 확정용 — 저장하면 글자가 잘린 채 저장된다
+      if (e.isComposing || e.keyCode === 229) return;
+      // 모달 안의 보조 폼(인라인 고객 등록, 즉석 서비스 등록)에서는 그 폼의 Enter 동작만 수행
+      if (e.target.closest('.cf-inline, #quickadd-service-form, [data-no-enter-save]')) return;
+      e.preventDefault();
+      const saveBtn = document.getElementById('modal-save');
+      if (saveBtn && saveBtn.onclick) saveBtn.click();
     };
   },
 
@@ -557,6 +605,7 @@ const App = {
       window.removeEventListener('popstate', this._modalPopHandler);
       this._modalPopHandler = null;
     }
+    this._suppressModalPop = false;
     if (!fromPopstate && history.state && history.state.modalOpen) {
       history.back();
     }
@@ -568,6 +617,8 @@ const App = {
   confirm(message, options = {}) {
     // options: { okLabel, danger, cancelLabel }
     return new Promise((resolve) => {
+      // 이전 confirm 이 아직 대기 중이면 취소로 종료시켜 호출자가 영원히 멈추지 않게 한다
+      if (this._confirmResolve) { try { this._confirmResolve(false); } catch (_) {} }
       this._confirmResolve = resolve;
       const body = document.getElementById('confirm-body');
       body.innerHTML = `<p>${message}</p>`;
@@ -627,10 +678,21 @@ const App = {
     return () => { container.innerHTML = prev; };
   },
 
+  // 선 아이콘 (index.html 스프라이트). 템플릿 문자열 안에서 ${App.icon('phone')} 로 사용.
+  // 이모지는 OS마다 모양·크기가 달라 미니멀 디자인과 맞지 않아 전부 이 아이콘으로 통일했다.
+  icon(name, cls = '') {
+    return `<svg class="ico${cls ? ' ' + cls : ''}" aria-hidden="true"><use href="#i-${name}"/></svg>`;
+  },
+
   showToast(message, type = 'success', opts = {}) {
     const container = document.getElementById('toast-container');
     const toast = document.createElement('div');
     toast.className = `toast ${type}`;
+    const icoName = type === 'success' ? 'check-circle' : type === 'error' ? 'close' : type === 'warning' ? 'alert' : 'info';
+    const icoWrap = document.createElement('span');
+    icoWrap.className = 'toast-ico';
+    icoWrap.innerHTML = this.icon(icoName, 'toast-ico');
+    toast.appendChild(icoWrap);
     const msgSpan = document.createElement('span');
     if (opts.html) {
       msgSpan.innerHTML = message;
@@ -645,8 +707,9 @@ const App = {
     toast.appendChild(dismissBtn);
     container.appendChild(toast);
 
-    // Duration: html(링크 포함)=10s, error=5s, info=5s, success=2.5s
-    const duration = opts.html ? 10000 : type === 'error' ? 5000 : type === 'info' ? 5000 : 2500;
+    // Duration: opts.duration 우선 → html(링크 포함)=10s, error=5s, warning=6s, info=5s, success=2.5s
+    const duration = (typeof opts.duration === 'number' && opts.duration > 0) ? opts.duration
+      : opts.html ? 10000 : type === 'error' ? 5000 : type === 'warning' ? 6000 : type === 'info' ? 5000 : 2500;
     setTimeout(() => {
       if (toast.parentElement) {
         toast.style.animation = 'toastOut 0.3s ease forwards';
@@ -668,11 +731,29 @@ const App = {
       input.dataset.formatted = 'true';
       input.addEventListener('input', (e) => {
         let val = e.target.value.replace(/\D/g, '');
+        // +82 붙여넣기 → 0 으로 (국내 번호는 8로 시작하지 않는다. '82' 두 글자만일 땐 아직 판단 보류)
+        if (val.length > 2 && val.startsWith('82')) {
+          val = val.slice(2);
+          if (!val.startsWith('0')) val = '0' + val;
+        }
+        if (val.startsWith('02')) {
+          // 서울 지역번호: 02-XXX-XXXX(9자리) / 02-XXXX-XXXX(10자리)
+          if (val.length > 10) val = val.slice(0, 10);
+          if (val.length === 10) e.target.value = `02-${val.slice(2, 6)}-${val.slice(6)}`;
+          else if (val.length >= 6) e.target.value = `02-${val.slice(2, 5)}-${val.slice(5)}`;
+          else if (val.length >= 3) e.target.value = `02-${val.slice(2)}`;
+          else e.target.value = val;
+          return;
+        }
         if (val.length > 11) val = val.slice(0, 11);
-        if (val.length >= 8) {
+        if (val.length === 10 && !val.startsWith('010')) {
+          e.target.value = `${val.slice(0, 3)}-${val.slice(3, 6)}-${val.slice(6)}`;
+        } else if (val.length >= 8) {
           e.target.value = val.replace(/(\d{3})(\d{4})(\d{0,4})/, '$1-$2-$3').replace(/-$/, '');
         } else if (val.length >= 4) {
           e.target.value = val.replace(/(\d{3})(\d{0,4})/, '$1-$2');
+        } else {
+          e.target.value = val;
         }
       });
     });
@@ -720,6 +801,26 @@ const App = {
     return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
   },
 
+  // 손님에게 보내는 문자용 한국어 날짜: '10월 23일(목)'
+  formatDateKo(dateStr) {
+    if (!dateStr) return '';
+    const d = this.parseLocalDate(dateStr);
+    if (!d || isNaN(d.getTime())) return dateStr;
+    const dow = ['일', '월', '화', '수', '목', '금', '토'][d.getDay()];
+    return `${d.getMonth() + 1}월 ${d.getDate()}일(${dow})`;
+  },
+
+  // 오늘 기준 시점 표현: 오늘 / 내일 / 모레 / N일 후 / N일 전
+  relativeDayLabel(dateStr) {
+    const n = this.daysUntil(dateStr);
+    if (n === null) return '';
+    if (n === 0) return '오늘';
+    if (n === 1) return '내일';
+    if (n === 2) return '모레';
+    // 지난 날짜는 손님 문자에 '2일 전' 같은 말이 들어가면 어색하므로 빈 값
+    return n > 0 ? `${n}일 후` : '';
+  },
+
   formatDate(dateStr) {
     if (!dateStr) return '-';
     const d = this.parseLocalDate ? this.parseLocalDate(dateStr) : new Date(dateStr);
@@ -741,13 +842,28 @@ const App = {
 
   formatPhone(phone) {
     if (!phone) return '-';
-    const cleaned = phone.replace(/\D/g, '');
+    let cleaned = String(phone).replace(/\D/g, '');
+    // +82 로 저장된 번호 → 국내 형식
+    if (cleaned.length >= 10 && cleaned.startsWith('82')) {
+      cleaned = cleaned.slice(2);
+      if (!cleaned.startsWith('0')) cleaned = '0' + cleaned;
+    }
+    if (cleaned.startsWith('02') && (cleaned.length === 9 || cleaned.length === 10)) {
+      const mid = cleaned.length === 9 ? 3 : 4;
+      return `02-${cleaned.slice(2, 2 + mid)}-${cleaned.slice(2 + mid)}`;
+    }
     if (cleaned.length === 11) {
       return `${cleaned.slice(0, 3)}-${cleaned.slice(3, 7)}-${cleaned.slice(7)}`;
     } else if (cleaned.length === 10) {
       return `${cleaned.slice(0, 3)}-${cleaned.slice(3, 6)}-${cleaned.slice(6)}`;
     }
+    // 형식이 맞지 않으면 입력값 그대로 (textContent 사용처도 있어 여기서 escape 하지 않는다 — innerHTML 사용처는 formatPhoneHtml)
     return phone;
+  },
+
+  // innerHTML 템플릿용: 형식 불일치 입력값이 그대로 들어가도 안전하게
+  formatPhoneHtml(phone) {
+    return this.escapeHtml(this.formatPhone(phone));
   },
 
   getToday() {
@@ -773,11 +889,20 @@ const App = {
     return diff;
   },
 
-  // 고객 방문 상태 분류: normal(정상), remind(리마인드), at-risk(이탈위험), churned(이탈)
+  // ========== 방문 상태 (모든 페이지가 이 헬퍼만 사용 — 화면마다 숫자가 달라지는 것을 막는다) ==========
+  // 상태: normal(정상) · new(방문 전) · remind(리마인드) · at-risk(이탈위험) · churned(이탈)
+  // 'new' = 아직 미용 기록이 없는 반려견. 예전엔 이 경우를 '이탈'로 분류해서
+  // 오늘 등록한 손님이 대시보드 이탈 카운트와 이탈 필터에 바로 잡혔다.
+  VISIT_STATUS_PRIORITY: { normal: 0, new: 1, remind: 2, 'at-risk': 3, churned: 4 },
+
+  async getRevisitDays() {
+    return Number(await DB.getSetting('revisitDays')) || 30;
+  },
+
   classifyVisitStatus(lastVisitDate, groomingCycle) {
-    if (!lastVisitDate) return 'churned';
+    if (!lastVisitDate) return 'new';
     const daysSince = this.getDaysAgo(lastVisitDate);
-    if (daysSince === null) return 'churned';
+    if (daysSince === null) return 'new';
     const cycle = groomingCycle || 30;
     if (daysSince <= cycle + 3) return 'normal';
     if (daysSince <= cycle * 1.5) return 'remind';
@@ -785,14 +910,93 @@ const App = {
     return 'churned';
   },
 
+  // 반려견 1마리의 상태. 주기 미설정 시 매장 기본 재방문 주기(revisitDays)를 쓴다.
+  // (예전엔 대시보드만 revisitDays 를 쓰고 고객/분석 페이지는 30일 고정이라 서로 다른 수가 나왔다)
+  getPetVisitStatus(pet, revisitDays, fallbackLastVisit) {
+    const last = pet.lastVisitDate || fallbackLastVisit || null;
+    return this.classifyVisitStatus(last, pet.groomingCycle || revisitDays || 30);
+  },
+
+  // 고객 단위 상태 = 활성 반려견 중 가장 좋은 상태 (반려견 없으면 기록 기준)
+  getCustomerVisitStatus(customerPets, revisitDays, fallbackLastVisit) {
+    let best = null;
+    (customerPets || []).forEach(p => {
+      if (p.petStatus && p.petStatus !== 'active') return;
+      const s = this.getPetVisitStatus(p, revisitDays, fallbackLastVisit);
+      if (best === null || this.VISIT_STATUS_PRIORITY[s] < this.VISIT_STATUS_PRIORITY[best]) best = s;
+    });
+    return best || this.classifyVisitStatus(fallbackLastVisit, revisitDays);
+  },
+
   getVisitStatusLabel(status) {
-    const labels = { normal: '정상', remind: '리마인드', 'at-risk': '이탈위험', churned: '이탈' };
+    const labels = { normal: '정상', new: '방문 전', remind: '리마인드', 'at-risk': '이탈위험', churned: '이탈' };
     return labels[status] || status;
   },
 
   getVisitStatusBadge(status) {
-    const badges = { normal: 'badge-success', remind: 'badge-warning', 'at-risk': 'badge-danger', churned: 'badge-secondary' };
+    const badges = { normal: 'badge-success', new: 'badge-info', remind: 'badge-warning', 'at-risk': 'badge-danger', churned: 'badge-secondary' };
     return badges[status] || 'badge-secondary';
+  },
+
+  // VIP 미방문: 활성 반려견 lastVisitDate 와 전달받은 기록 기반 최근 방문일 중 최신값 기준.
+  // 방문 기록이 전혀 없는 VIP 는 제외 (데이터 입력 중인 손님을 '미방문'으로 몰지 않는다).
+  computeVipUnvisited(customers, pets, recordLastVisitMap, thresholdDays) {
+    const lastMap = { ...(recordLastVisitMap || {}) };
+    (pets || []).forEach(p => {
+      if (p.petStatus && p.petStatus !== 'active') return;
+      if (p.lastVisitDate && (!lastMap[p.customerId] || p.lastVisitDate > lastMap[p.customerId])) lastMap[p.customerId] = p.lastVisitDate;
+    });
+    const limit = thresholdDays || 30;
+    return (customers || [])
+      .filter(c => (c.tags || []).includes('vip'))
+      .map(c => {
+        const lv = lastMap[c.id] || null;
+        const days = lv ? this.getDaysAgo(lv) : null;
+        return { customer: c, lastVisit: lv, days };
+      })
+      .filter(x => x.lastVisit && x.days > limit)
+      .sort((a, b) => b.days - a.days);
+  },
+
+  // ========== 기간 헬퍼 ==========
+  // 'YYYY-MM' (offset 개월 이동). 1일 기준으로 계산해 말일 오버플로(3/31 → 3/3)를 막는다.
+  getMonthKey(offset = 0, base) {
+    const b = base || new Date();
+    const d = new Date(b.getFullYear(), b.getMonth() + offset, 1);
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+  },
+
+  // dateStr(YYYY-MM-DD)까지 남은 일수. 오늘=0, 내일=1, 어제=-1 (자정 기준 정수)
+  daysUntil(dateStr) {
+    if (!dateStr) return null;
+    const target = this.parseLocalDate(dateStr);
+    if (!target || isNaN(target)) return null;
+    const now = new Date();
+    const todayMid = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    return Math.round((target - todayMid) / 86400000);
+  },
+
+  // 전월 동기 대비 (same-day pacing). 이번 달 1일~오늘 vs 지난달 1일~같은 일차.
+  // records 는 최소 지난달 1일부터의 기록을 포함해야 한다. 지난달 비교 기준이 0원이면 pct=null.
+  revenuePacing(records, today) {
+    const t = today || this.getToday();
+    const [y, m, d] = t.split('-').map(Number);
+    const thisKey = this.getMonthKey(0, new Date(y, m - 1, 1));
+    const lastKey = this.getMonthKey(-1, new Date(y, m - 1, 1));
+    const lastMonthDays = new Date(y, m - 1, 0).getDate();
+    const compareDay = Math.min(d, lastMonthDays);
+    let thisMonth = 0, lastToDate = 0, lastFull = 0;
+    (records || []).forEach(r => {
+      if (!r.date) return;
+      const amt = this.getRecordAmount(r);
+      if (r.date.startsWith(thisKey)) thisMonth += amt;
+      else if (r.date.startsWith(lastKey)) {
+        lastFull += amt;
+        if (parseInt(r.date.slice(8, 10), 10) <= compareDay) lastToDate += amt;
+      }
+    });
+    const pct = lastToDate > 0 ? Math.round(((thisMonth - lastToDate) / lastToDate) * 100) : null;
+    return { thisMonth, lastToDate, lastFull, pct, compareDay };
   },
 
   // 미용 리포트: 컨디션 기반 관리법 자동 매칭
@@ -888,32 +1092,68 @@ const App = {
   },
 
   // 같은 반려견 + 같은 서비스의 최근 기본가 조회
-  async getRecentServicePrice(petId, serviceName, sizeType) {
-    if (!serviceName) return null;
-    const records = await DB.getAllLight('records', ['photoBefore', 'photoAfter', 'memo', 'condition', 'skinStatus', 'earStatus', 'mattingLevel']);
-    // 1순위: 같은 반려견 + 같은 서비스 (추가 없는 것 우선)
-    const petRecords = records.filter(r => r.petId === petId && r.service === serviceName).sort((a, b) => (b.date || '').localeCompare(a.date || ''));
-    const noAddon = petRecords.find(r => !r.addons || r.addons.length === 0);
-    if (noAddon && noAddon.servicePrice) return noAddon.servicePrice;
-    if (petRecords[0]?.servicePrice) return petRecords[0].servicePrice;
-    // 2순위: 같은 사이즈 + 같은 서비스
-    if (sizeType) {
-      const pets = await DB.getAll('pets');
-      const sameSizePetIds = new Set(pets.filter(p => (p.size || (p.weight ? (p.weight < 7 ? 'small' : p.weight < 15 ? 'medium' : 'large') : '')) === sizeType).map(p => p.id));
-      const sizeRecords = records.filter(r => sameSizePetIds.has(r.petId) && r.service === serviceName && r.servicePrice).sort((a, b) => (b.date || '').localeCompare(a.date || ''));
-      if (sizeRecords[0]) return sizeRecords[0].servicePrice;
-    }
-    // 3순위: 같은 서비스 최근
-    const anyRecord = records.filter(r => r.service === serviceName && r.servicePrice).sort((a, b) => (b.date || '').localeCompare(a.date || ''));
-    if (anyRecord[0]) return anyRecord[0].servicePrice;
-    // 4순위: 기존 서비스 등록 가격 (호환)
-    const services = await DB.getAll('services');
-    const svc = services.find(s => s.name === serviceName && s.isActive !== false);
-    if (svc) {
-      const priceKey = 'price' + (sizeType || 'small').charAt(0).toUpperCase() + (sizeType || 'small').slice(1);
-      return svc[priceKey] || svc.priceSmall || null;
-    }
+  // ========== 서비스 가격 조회 ==========
+  // 서비스명 정규화 (앞뒤 공백·연속 공백 제거). 저장·비교 양쪽에서 같은 규칙을 쓴다.
+  normalizeServiceName(name) {
+    return String(name || '').trim().replace(/\s+/g, ' ');
+  },
+
+  // 반려견 사이즈 (size 우선, 없으면 체중으로 추정, 둘 다 없으면 null — 조용히 소형으로 가정하지 않는다)
+  getPetSizeType(pet) {
+    if (!pet) return null;
+    if (pet.size) return pet.size;
+    if (pet.weight) return pet.weight < 7 ? 'small' : pet.weight < 15 ? 'medium' : 'large';
     return null;
+  },
+
+  // 메뉴(services)에서 이름으로 서비스 + 해당 사이즈 가격을 찾는다.
+  // 반환: { service, price, hasSizePrices } 또는 null (메뉴에 없음). price 는 사이즈 미지정 시 소형가.
+  async getMenuPrice(serviceName, sizeType, servicesCache) {
+    const name = this.normalizeServiceName(serviceName);
+    if (!name) return null;
+    const services = servicesCache || await DB.getAll('services');
+    const svc = services.find(s => s.isActive !== false && this.normalizeServiceName(s.name) === name)
+      || services.find(s => this.normalizeServiceName(s.name) === name);
+    if (!svc) return null;
+    const small = Number(svc.priceSmall) || 0, medium = Number(svc.priceMedium) || 0, large = Number(svc.priceLarge) || 0;
+    const hasSizePrices = !!(medium || large) && !(small === medium && medium === large);
+    const key = sizeType === 'medium' ? medium : sizeType === 'large' ? large : small;
+    return { service: svc, price: key || small || 0, hasSizePrices };
+  },
+
+  // 기록 폼 가격 자동 채움.
+  // 원칙: 메뉴에 있는 서비스는 **메뉴의 현재 가격**이 기준이다. 예전엔 같은 반려견의 과거 기록 가격을
+  // 먼저 써서, 가격을 올려도 단골은 계속 옛 가격이 들어갔고 일괄 인상이 기록엔 반영되지 않았다.
+  // 예외: 그 반려견에게 메뉴 가격 변경(priceChangedAt) 이후에 다른 가격을 받은 기록이 있으면
+  //       (개별 협의가) 그 가격을 따른다.
+  // 메뉴에 없는 서비스(자유 입력)만 과거 기록에서 추정한다.
+  async getRecentServicePrice(petId, serviceName, sizeType) {
+    const name = this.normalizeServiceName(serviceName);
+    if (!name) return null;
+    const menu = await this.getMenuPrice(name, sizeType);
+    const petRecords = petId ? (await DB.getByIndex('records', 'petId', Number(petId)))
+      .filter(r => this.normalizeServiceName(r.service) === name && Number(r.servicePrice) > 0)
+      .sort((a, b) => (b.date || '').localeCompare(a.date || '')) : [];
+    if (menu) {
+      const changedAt = menu.service.priceChangedAt ? String(menu.service.priceChangedAt).slice(0, 10) : null;
+      const latest = petRecords.find(r => !r.addons || r.addons.length === 0) || petRecords[0];
+      if (latest && changedAt && latest.date && latest.date >= changedAt && Number(latest.servicePrice) !== menu.price) {
+        return Number(latest.servicePrice);
+      }
+      return menu.price || null;
+    }
+    // 메뉴에 없는 자유 입력 서비스 — 과거 기록에서 추정
+    if (petRecords[0]) return Number(petRecords[0].servicePrice);
+    const records = await DB.getAllLight('records', ['photoBefore', 'photoAfter', 'photo3', 'photo4', 'memo', 'condition', 'skinStatus', 'earStatus', 'mattingLevel']);
+    const same = records.filter(r => this.normalizeServiceName(r.service) === name && Number(r.servicePrice) > 0);
+    if (same.length === 0) return null;
+    if (sizeType) {
+      const pets = await DB.getAllLight('pets', ['photo', 'photoThumb', 'memo', 'healthNotes', 'temperament']);
+      const sameSize = new Set(pets.filter(p => this.getPetSizeType(p) === sizeType).map(p => p.id));
+      const sized = same.filter(r => sameSize.has(r.petId)).sort((a, b) => (b.date || '').localeCompare(a.date || ''));
+      if (sized[0]) return Number(sized[0].servicePrice);
+    }
+    return Number(same.sort((a, b) => (b.date || '').localeCompare(a.date || ''))[0].servicePrice);
   },
 
   // 미용 기록의 서비스 표시 (신/구 호환)
@@ -947,13 +1187,13 @@ const App = {
     const day = new Date().getDay();
     const dayNames = ['일요일', '월요일', '화요일', '수요일', '목요일', '금요일', '토요일'];
     const todayName = dayNames[day];
-    if (h < 6) return '새벽에도 수고하세요 🌙';
+    if (h < 6) return '새벽에도 수고하세요';
     if (h < 9) return `${todayName} 아침, 오늘도 화이팅!`;
-    if (h < 12) return '좋은 오전이에요 ☀️';
-    if (h < 14) return '맛있는 점심 드세요 🍽';
-    if (h < 18) return '오후도 힘내세요 💪';
-    if (h < 21) return '오늘 하루 수고했어요 ✨';
-    return '편안한 밤 보내세요 🌙';
+    if (h < 12) return '좋은 오전이에요';
+    if (h < 14) return '맛있는 점심 드세요';
+    if (h < 18) return '오후도 힘내세요';
+    if (h < 21) return '오늘 하루 수고했어요';
+    return '편안한 밤 보내세요';
   },
 
   // 주의: 속성(attribute) 컨텍스트에서도 안전해야 하므로 따옴표까지 이스케이프한다.
@@ -973,7 +1213,7 @@ const App = {
     const customers = await DB.getAll('customers');
     return customers
       .sort((a, b) => (a.name || '').localeCompare(b.name || '', 'ko'))
-      .map(c => `<option value="${c.id}" ${c.id === selectedId ? 'selected' : ''}>${this.escapeHtml(App.getCustomerLabel(c))} (${this.formatPhone(c.phone)})</option>`)
+      .map(c => `<option value="${c.id}" ${c.id === selectedId ? 'selected' : ''}>${this.escapeHtml(App.getCustomerLabel(c))} (${this.formatPhoneHtml(c.phone)})</option>`)
       .join('');
   },
 
@@ -984,11 +1224,11 @@ const App = {
     const p = prefill || {};
     return `
       <div class="form-group">
-        <label class="form-label">&#x1F436; 반려견 이름</label>
+        <label class="form-label">${App.icon('paw')} 반려견 이름</label>
         <input type="text" id="cf-petName" value="${this.escapeHtml(p.petName || '')}" placeholder="반려견 이름" maxlength="30">
       </div>
       <div class="form-group">
-        <label class="form-label">&#x1F4DE; 연락처 <span class="required">*</span></label>
+        <label class="form-label">${App.icon('phone')} 연락처 <span class="required">*</span></label>
         <input type="tel" id="cf-phone" value="${this.escapeHtml(p.phone || '')}" placeholder="010-0000-0000">
         <div id="cf-dup-area"></div>
       </div>
@@ -1052,21 +1292,23 @@ const App = {
         if (!byCustomer[p.customerId]) byCustomer[p.customerId] = [];
         byCustomer[p.customerId].push(p);
       });
+      // 뒷자리 일치로만 검사한다. 앞에서부터 새 번호를 치는 동안 '0101…' 이 모든 고객과 부분일치해
+      // 경고가 매번 떠서 사장님이 경고를 무시하게 되고 진짜 중복을 놓쳤다.
       const matches = all.filter(c => {
         const d = (c.phone || '').replace(/\D/g, '');
-        return d && d.includes(digits);
+        return d && (digits.length >= 10 ? d === digits : d.endsWith(digits));
       }).slice(0, 3);
       if (matches.length === 0) return;
       dupArea.innerHTML = `
         <div class="cf-dup">
-          <div class="cf-dup-title">&#x26A0; 번호가 겹치는 고객이 있습니다</div>
+          <div class="cf-dup-title">${this.icon('alert')} 번호가 겹치는 고객이 있습니다</div>
           ${matches.map(c => {
             const cp = byCustomer[c.id] || [];
             const petPart = cp.length === 0 ? '' : cp.map(p => p.name).filter(Boolean).join(', ');
             return `<div class="cf-dup-row">
               <div class="cf-dup-info">
                 <strong>${this.escapeHtml(this.getCustomerLabel(c, cp))}</strong>
-                <span>${this.formatPhone(c.phone)}${petPart ? ' &middot; ' + this.escapeHtml(petPart) : ''}</span>
+                <span>${this.formatPhoneHtml(c.phone)}${petPart ? ' &middot; ' + this.escapeHtml(petPart) : ''}</span>
               </div>
               <button type="button" class="btn btn-sm btn-primary cf-dup-pick" data-id="${c.id}">이 고객 사용</button>
             </div>`;
@@ -1193,7 +1435,7 @@ const App = {
       <div class="search-select">
         <div class="cust-chip" id="${containerId}-chip" style="display:none">
           <span class="cust-chip-text" id="${containerId}-chip-text"></span>
-          <button type="button" class="cust-chip-clear" id="${containerId}-chip-clear" aria-label="고객 선택 해제">&#x2715;</button>
+          <button type="button" class="cust-chip-clear" id="${containerId}-chip-clear" aria-label="고객 선택 해제">${this.icon('close')}</button>
         </div>
         <input type="text" id="${containerId}-input" placeholder="반려견/고객 이름, 전화번호 검색..." autocomplete="off">
         <input type="hidden" id="${containerId}-value" value="">
@@ -1306,8 +1548,8 @@ const App = {
             return head.name + (rest > 0 ? ' 외 ' + rest + '마리' : '');
           })();
           const display = petPart
-            ? `${this.escapeHtml(petPart)} · ${this.escapeHtml(whoOf(c))} <span class="sub">${this.formatPhone(c.phone)}</span>`
-            : `${this.escapeHtml(App.getCustomerLabel(c, cp))} <span class="sub">${this.formatPhone(c.phone)}</span>`;
+            ? `${this.escapeHtml(petPart)} · ${this.escapeHtml(whoOf(c))} <span class="sub">${this.formatPhoneHtml(c.phone)}</span>`
+            : `${this.escapeHtml(App.getCustomerLabel(c, cp))} <span class="sub">${this.formatPhoneHtml(c.phone)}</span>`;
           return `<div class="search-select-option" data-id="${c.id}">${display}</div>`;
         }).join('') + newCustomerRow('+ 새 고객 등록', 'btn-inline-new-cust');
       }
@@ -1453,9 +1695,11 @@ const App = {
       return;
     }
 
-    const pets = await DB.getByIndex('pets', 'customerId', Number(customerId));
+    const allPets = await DB.getByIndex('pets', 'customerId', Number(customerId));
+    // 사망/양도 반려견은 선택 대상에서 제외 (getPetOptions 와 같은 기준). 단, 수정 중인 기록이 가리키면 유지
+    const pets = allPets.filter(p => (p.petStatus || 'active') === 'active' || p.id === Number(preferPetId));
     if (pets.length === 0) {
-      select.innerHTML = '<option value="">등록된 반려견이 없습니다</option>';
+      select.innerHTML = `<option value="">${allPets.length > 0 ? '활동 중인 반려견이 없습니다' : '등록된 반려견이 없습니다'}</option>`;
       area.innerHTML = `
         <button type="button" class="btn btn-sm btn-primary" id="btn-inline-add-pet" style="margin-top:6px;width:100%;min-height:44px">+ 이 고객의 반려견 등록</button>
         <div id="inline-pet-form"></div>`;
@@ -1464,7 +1708,7 @@ const App = {
         this._showInlinePetForm(Number(customerId));
       });
     } else {
-      select.innerHTML = '<option value="">반려견 선택</option>' + await this.getPetOptions(customerId, null);
+      select.innerHTML = '<option value="">반려견 선택</option>' + await this.getPetOptions(customerId, preferPetId ? Number(preferPetId) : null);
       const prefer = preferPetId && pets.some(p => p.id === Number(preferPetId)) ? Number(preferPetId)
         : (pets.length === 1 ? pets[0].id : null);
       if (prefer) select.value = String(prefer);
@@ -1545,7 +1789,10 @@ const App = {
 
   async getPetOptions(customerId, selectedId) {
     if (!customerId) return '<option value="">먼저 고객을 선택하세요</option>';
-    const pets = await DB.getByIndex('pets', 'customerId', Number(customerId));
+    const allPets = await DB.getByIndex('pets', 'customerId', Number(customerId));
+    // 사망/양도 반려견은 목록에서 제외 — 활성 1마리 + 비활성 1마리일 때 자동 선택이 매번 막히던 문제.
+    // 단, 수정 중인 기록이 가리키는 반려견은 유지한다.
+    const pets = allPets.filter(p => (p.petStatus || 'active') === 'active' || p.id === selectedId);
     if (pets.length === 0) return '<option value="">등록된 반려견이 없습니다</option>';
     return pets
       .map(p => {
@@ -1657,7 +1904,7 @@ const App = {
     const display = name || '펫살롱';
     document.title = `${display} - 애견 미용 고객 관리`;
     const logo = document.querySelector('.logo');
-    if (logo) logo.innerHTML = `&#x2702; ${this.escapeHtml(display)}`;
+    if (logo) logo.innerHTML = `${this.icon('scissors')} ${this.escapeHtml(display)}`;
   },
 
   async applyTheme(color) {
@@ -1672,12 +1919,26 @@ const App = {
     const dg = Math.max(0, ((num >> 8) & 0xFF) - 25);
     const db = Math.max(0, (num & 0xFF) - 25);
     r.style.setProperty('--primary-hover', `#${((1 << 24) + (dr << 16) + (dg << 8) + db).toString(16).slice(1)}`);
-    // Derive light (mix with white ~90%)
-    const lr = Math.round(((num >> 16) & 0xFF) * 0.1 + 255 * 0.9);
-    const lg = Math.round(((num >> 8) & 0xFF) * 0.1 + 255 * 0.9);
-    const lb = Math.round((num & 0xFF) * 0.1 + 255 * 0.9);
-    r.style.setProperty('--primary-light', `#${((1 << 24) + (lr << 16) + (lg << 8) + lb).toString(16).slice(1)}`);
-    r.style.setProperty('--primary-lighter', `#${((1 << 24) + (Math.round(lr * 0.97) << 16) + (Math.round(lg * 0.97) << 8) + Math.round(lb * 0.97)).toString(16).slice(1)}`);
+    // Derive light: 라이트 모드는 흰색 쪽으로 90%, 다크 모드는 다크 배경 쪽으로 섞는다.
+    // (예전엔 다크 모드에서도 흰색 90% 를 인라인으로 덮어써 칩·선택 상태가 거의 흰색이 됐다)
+    const isDark = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
+    const base = isDark ? [0x1A, 0x1D, 0x23] : [255, 255, 255];
+    const ratio = isDark ? 0.78 : 0.9;
+    const mix = (c, b) => Math.round(c * (1 - ratio) + b * ratio);
+    const lr = mix((num >> 16) & 0xFF, base[0]);
+    const lg = mix((num >> 8) & 0xFF, base[1]);
+    const lb = mix(num & 0xFF, base[2]);
+    const toHex = (a, b, c) => `#${((1 << 24) + (a << 16) + (b << 8) + c).toString(16).slice(1)}`;
+    r.style.setProperty('--primary-light', toHex(lr, lg, lb));
+    const k = isDark ? 1.06 : 0.97;
+    r.style.setProperty('--primary-lighter', toHex(Math.min(255, Math.round(lr * k)), Math.min(255, Math.round(lg * k)), Math.min(255, Math.round(lb * k))));
+    r.style.setProperty('--primary-rgb', `${(num >> 16) & 0xFF},${(num >> 8) & 0xFF},${num & 0xFF}`);
+    // 시스템 테마가 바뀌면 다시 계산
+    this._themeColor = color;
+    if (!this._themeMediaBound && window.matchMedia) {
+      this._themeMediaBound = true;
+      window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => this.applyTheme(this._themeColor).catch(() => {}));
+    }
     // Sidebar active
     r.style.setProperty('--sidebar-active', color);
     // Meta theme-color
@@ -1703,7 +1964,8 @@ const App = {
     if (!('Notification' in window)) return;
 
     if (Notification.permission === 'default') {
-      await Notification.requestPermission();
+      // 사용자 제스처 없이 호출되면 일부 브라우저가 throw → init 전체가 catch 로 빠져 안전망이 건너뛰어진다
+      try { await Notification.requestPermission(); } catch (_) {}
     }
     if (Notification.permission !== 'granted') return;
 
@@ -1762,11 +2024,20 @@ const App = {
           } catch (e) { /* ignore */ }
 
           const minLeft = Math.round(diffMin);
-          new Notification('예약 알림 - 펫살롱', {
+          const notifOpts = {
             body: `${minLeft}분 후 예약: ${customerName}님의 ${petName} (${appt.time})`,
-            icon: 'data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><rect width="100" height="100" rx="20" fill="%236366F1"/><text x="50" y="68" font-size="55" text-anchor="middle" fill="white">✂</text></svg>',
+            icon: './icon-192.png',
             tag: key
-          });
+          };
+          // 안드로이드 크롬은 new Notification() 을 허용하지 않는다("Illegal constructor") → SW 알림 우선
+          try {
+            // ready 는 SW 가 없으면 영원히 대기하므로 getRegistration() 으로 즉시 확인
+            const reg = navigator.serviceWorker && navigator.serviceWorker.getRegistration ? await navigator.serviceWorker.getRegistration() : null;
+            if (reg && reg.active && reg.showNotification) await reg.showNotification('예약 알림 - 펫살롱', notifOpts);
+            else new Notification('예약 알림 - 펫살롱', notifOpts);
+          } catch (ne) {
+            try { new Notification('예약 알림 - 펫살롱', notifOpts); } catch (_) { /* 알림 불가 환경 */ }
+          }
         }
       }
     } catch (e) {
@@ -1905,7 +2176,7 @@ const App = {
     if (matched.length === 0) {
       resultsContainer.innerHTML = `
         <div class="gs-no-results">
-          <div class="gs-no-results-icon">&#x1F50D;</div>
+          <div class="gs-no-results-icon">${this.icon('search', 'ico-xl')}</div>
           <div class="gs-no-results-text">검색 결과 없음</div>
           <button class="btn btn-primary" id="gs-new-customer-btn">+ 새 반려견 등록</button>
         </div>`;
@@ -1938,18 +2209,18 @@ const App = {
     resultsContainer.innerHTML = matched.slice(0, 20).map(c => {
       const cPets = petsByCustomer[c.id] || [];
       const petNames = cPets.map(p => p.name).join(', ');
-      const label = App.getCustomerLabel(c);
+      const label = App.getCustomerLabel(c, cPets);
       const initial = label.charAt(0);
       return `
         <div class="gs-result-item" tabindex="0" data-customer-id="${c.id}">
           <div class="gs-result-avatar">${this.escapeHtml(initial)}</div>
           <div class="gs-result-info" style="flex:1">
             <div class="gs-result-name">${this.escapeHtml(label)}</div>
-            <div class="gs-result-phone">${this.formatPhone(c.phone)}</div>
+            <div class="gs-result-phone">${this.formatPhoneHtml(c.phone)}</div>
             ${petNames ? `<div class="gs-result-pets">${this.escapeHtml(petNames)}</div>` : ''}
           </div>
-          <button class="btn-icon" onclick="event.stopPropagation();App.closeSearch();setTimeout(()=>App.pages.appointments.showForm(null,${c.id}),150)" title="예약" style="color:var(--primary);font-size:1.1rem;flex-shrink:0">&#x1F4C5;</button>
-          <div class="gs-result-arrow">&#x276F;</div>
+          <button class="btn-icon" onclick="event.stopPropagation();App.closeSearch();setTimeout(()=>App.pages.appointments.showForm(null,${c.id}),150)" title="예약" style="color:var(--primary);font-size:1.1rem;flex-shrink:0">${this.icon('calendar')}</button>
+          <div class="gs-result-arrow">${this.icon('chevron-right')}</div>
         </div>`;
     }).join('');
 
@@ -1982,12 +2253,12 @@ const App = {
     if (cPets.length > 0) {
       petsHtml = `
         <div class="gs-card-section">
-          <div class="gs-card-section-title">&#x1F415; 반려견</div>
+          <div class="gs-card-section-title">${this.icon('paw')} 반려견</div>
           ${cPets.map(p => {
             const hasPhoto = p.photoThumb || p.photo;
             const photoHtml = hasPhoto
-              ? `<img src="${p.photoThumb || p.photo}" alt="${this.escapeHtml(p.name)}">`
-              : '&#x1F436;';
+              ? `<img src="${this.escapeHtml(p.photoThumb || p.photo)}" alt="${this.escapeHtml(p.name)}">`
+              : this.icon('paw', 'ico-lg');
             const details = [p.breed, p.weight ? p.weight + 'kg' : null].filter(Boolean).join(' | ');
             const notes = [p.temperament, p.healthNotes, p.allergies].filter(Boolean);
             return `
@@ -2008,7 +2279,7 @@ const App = {
     if (recentRecords.length > 0) {
       recordsHtml = `
         <div class="gs-card-section">
-          <div class="gs-card-section-title">&#x1F4CB; 최근 미용 기록</div>
+          <div class="gs-card-section-title">${this.icon('scissors')} 최근 미용 기록</div>
           ${recentRecords.map(r => {
             const sNames = (r.serviceIds || []).map(id => serviceMap[id] || '').filter(Boolean).join(', ') || '-';
             const pet = petMap[r.petId];
@@ -2029,7 +2300,7 @@ const App = {
       unpaidHtml = `
         <div class="gs-card-section">
           <div class="gs-unpaid">
-            <span class="gs-unpaid-label">&#x1F4B0; 미수금</span>
+            <span class="gs-unpaid-label">${this.icon('coins')} 미수금</span>
             <span class="gs-unpaid-amount">${this.formatCurrency(unpaidBalance)}</span>
           </div>
         </div>`;
@@ -2037,7 +2308,7 @@ const App = {
       unpaidHtml = `
         <div class="gs-card-section">
           <div style="display:flex;align-items:center;gap:6px;font-size:0.9rem;color:var(--success);font-weight:600">
-            <span>&#x1F4B0;</span> 미수금: 0원
+            ${this.icon('coins')} 미수금: 0원
           </div>
         </div>`;
     }
@@ -2047,7 +2318,7 @@ const App = {
     if (customer.memo) {
       memoHtml = `
         <div class="gs-card-section">
-          <div class="gs-card-section-title">&#x1F4DD; 메모</div>
+          <div class="gs-card-section-title">${this.icon('note')} 메모</div>
           <div class="gs-memo">${this.escapeHtml(customer.memo)}</div>
         </div>`;
     }
@@ -2057,10 +2328,10 @@ const App = {
 
     container.innerHTML = `
       <div class="gs-customer-card">
-        ${showBack ? `<button class="gs-back-link" id="gs-back-btn">&#x2190; 검색 결과로 돌아가기</button>` : ''}
+        ${showBack ? `<button class="gs-back-link" id="gs-back-btn">${this.icon('arrow-left')} 검색 결과로 돌아가기</button>` : ''}
         <div class="gs-card-header">
-          <span class="gs-card-name">${this.escapeHtml(App.getCustomerLabel(customer))}${this.pages.customers.getTagBadges(customer.tags)}</span>
-          <a href="tel:${this.escapeHtml(phoneClean)}" class="gs-card-phone">${this.formatPhone(customer.phone)}</a>
+          <span class="gs-card-name">${this.escapeHtml(App.getCustomerLabel(customer, cPets))}${this.pages.customers.getTagBadges(customer.tags)}</span>
+          <a href="tel:${this.escapeHtml(phoneClean)}" class="gs-card-phone">${this.formatPhoneHtml(customer.phone)}</a>
         </div>
         <div class="gs-card-body">
           ${petsHtml}
@@ -2069,28 +2340,28 @@ const App = {
           ${memoHtml}
           <div class="gs-card-actions">
             <a href="tel:${this.escapeHtml(phoneClean)}" class="gs-action-btn">
-              <span class="gs-action-btn-icon">&#x1F4DE;</span>
+              <span class="gs-action-btn-icon">${this.icon('phone')}</span>
               <span>전화</span>
             </a>
             <a href="sms:${this.escapeHtml(phoneClean)}" class="gs-action-btn">
-              <span class="gs-action-btn-icon">&#x1F4AC;</span>
+              <span class="gs-action-btn-icon">${this.icon('message')}</span>
               <span>문자</span>
             </a>
             ${cPets.length > 1 ? cPets.map(p =>
               `<button class="gs-action-btn gs-appt-pet" data-customer-id="${customer.id}" data-pet-id="${p.id}">
-                <span class="gs-action-btn-icon">&#x1F4C5;</span>
+                <span class="gs-action-btn-icon">${this.icon('calendar')}</span>
                 <span>${App.escapeHtml(p.name)}</span>
               </button>`
             ).join('') : `<button class="gs-action-btn" id="gs-action-appt" data-customer-id="${customer.id}">
-              <span class="gs-action-btn-icon">&#x1F4C5;</span>
+              <span class="gs-action-btn-icon">${this.icon('calendar')}</span>
               <span>예약</span>
             </button>`}
             <button class="gs-action-btn" id="gs-action-record" data-customer-id="${customer.id}">
-              <span class="gs-action-btn-icon">&#x2702;</span>
+              <span class="gs-action-btn-icon">${this.icon('scissors')}</span>
               <span>미용기록</span>
             </button>
             <button class="gs-action-btn" id="gs-action-detail" data-customer-id="${customer.id}">
-              <span class="gs-action-btn-icon">&#x1F4CB;</span>
+              <span class="gs-action-btn-icon">${this.icon('receipt')}</span>
               <span>상세</span>
             </button>
           </div>
@@ -2162,8 +2433,8 @@ const App = {
       revisit: '[{매장명}] {고객명}님 안녕하세요! {반려견명}의 마지막 미용 후 {경과일수}일이 지났습니다. 예약 문의: {전화번호}',
       atRisk: '[{매장명}] {고객명}님, {반려견명}이(가) 보고 싶어요! 미용 시기가 많이 지났는데 괜찮으신가요? 예약 문의: {전화번호}',
       churned: '[{매장명}] {고객명}님 안녕하세요! 오랫동안 뵙지 못했네요. {반려견명} 잘 지내고 있나요? 다시 방문해주시면 특별 케어 해드릴게요! 문의: {전화번호}',
-      appointment: '[{매장명}] {고객명}님, {날짜} {시간}에 {반려견명} 예약이 확인되었습니다. 담당: {미용사}. 문의: {전화번호}',
-      reminder: '[{매장명}] {고객명}님, 내일({날짜}) {시간}에 {반려견명} 미용 예약이 있습니다. 변경/취소는 {전화번호}로 연락 부탁드립니다.',
+      appointment: '[{매장명}] {고객명}님, {날짜} {시간}에 {반려견명} 예약이 확인되었습니다. {담당}문의: {전화번호}',
+      reminder: '[{매장명}] {고객명}님, {시점} {날짜} {시간}에 {반려견명} 미용 예약이 있습니다. 변경/취소는 {전화번호}로 연락 부탁드립니다.',
       birthday: '[{매장명}] {고객명}님! {반려견명}의 생일을 축하합니다! 🎂 생일 기념 특별 할인을 준비했어요. 문의: {전화번호}',
       complete: '[{매장명}] {고객명}님, {반려견명}의 미용이 완료되었습니다! 서비스: {서비스}, 금액: {금액}원. 감사합니다! 💕'
     };
@@ -2316,6 +2587,8 @@ const App = {
     for (const [key, val] of Object.entries(allVars)) {
       tpl = tpl.replace(new RegExp(`\\{${key}\\}`, 'g'), val || '');
     }
+    // 호출처가 넘기지 않은 변수({시점}, {담당} 등)는 손님에게 그대로 보이면 안 된다 → 제거 후 공백 정리
+    tpl = tpl.replace(/\{[^{}]{1,12}\}/g, '').replace(/[ \t]{2,}/g, ' ').replace(/ ([.,!?])/g, '$1').trim();
 
     return tpl;
   },

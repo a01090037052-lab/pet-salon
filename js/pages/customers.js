@@ -13,36 +13,28 @@ App.pages.customers = {
     // 효율적 쿼리: 목록에서는 사진 등 큰 필드 제외
     const customers = await DB.getAll('customers');
     const pets = await DB.getAllLight('pets', ['photo', 'temperament', 'healthNotes', 'preferredStyle']);
-    const records = await DB.getAllLight('records', ['photoBefore', 'photoAfter', 'memo']);
+    // 기록 전체를 읽지 않는다 — 반려견에 비정규화된 lastVisitDate / visitCount 를 합산한다
+    // (10년치 기록이 쌓여도 목록은 고객·반려견 수에만 비례)
 
     // Pet count per customer
     const petCount = {};
     pets.forEach(p => { petCount[p.customerId] = (petCount[p.customerId] || 0) + 1; });
 
-    // Last visit per customer
+    // Last visit / visit count per customer (from pets)
     const lastVisit = {};
-    records.forEach(r => {
-      if (!lastVisit[r.customerId] || r.date > lastVisit[r.customerId]) {
-        lastVisit[r.customerId] = r.date;
-      }
+    const visitCount = {};
+    pets.forEach(p => {
+      if (p.lastVisitDate && (!lastVisit[p.customerId] || p.lastVisitDate > lastVisit[p.customerId])) lastVisit[p.customerId] = p.lastVisitDate;
+      visitCount[p.customerId] = (visitCount[p.customerId] || 0) + (Number(p.visitCount) || 0);
     });
 
-    // 고객별 방문 상태 계산 (반려견 중 가장 좋은 상태 기준)
+    // 고객별 방문 상태 계산 (반려견 중 가장 좋은 상태 기준) — 대시보드/분석과 같은 헬퍼 사용
+    const revisitDays = await App.getRevisitDays();
+    const petsByCustomer = {};
+    pets.forEach(p => { (petsByCustomer[p.customerId] = petsByCustomer[p.customerId] || []).push(p); });
     const customerVisitStatus = {};
-    const statusPriority = { normal: 0, remind: 1, 'at-risk': 2, churned: 3 };
-    pets.forEach(p => {
-      if (p.petStatus && p.petStatus !== 'active') return;
-      const status = App.classifyVisitStatus(p.lastVisitDate, p.groomingCycle);
-      const prev = customerVisitStatus[p.customerId];
-      if (!prev || statusPriority[status] < statusPriority[prev]) {
-        customerVisitStatus[p.customerId] = status;
-      }
-    });
-    // 반려견 없는 고객은 기록 기반으로 판정
     customers.forEach(c => {
-      if (!customerVisitStatus[c.id]) {
-        customerVisitStatus[c.id] = App.classifyVisitStatus(lastVisit[c.id], null);
-      }
+      customerVisitStatus[c.id] = App.getCustomerVisitStatus(petsByCustomer[c.id], revisitDays, lastVisit[c.id]);
     });
     // _renderCustomerRow/_renderCustomerCard가 이 값을 읽으므로
     // container.innerHTML 대입(=템플릿 평가)보다 반드시 먼저 대입해야 한다.
@@ -71,11 +63,9 @@ App.pages.customers = {
     } else if (sortKey === 'createdAt') {
       sorted = customers.sort((a, b) => (b.createdAt || '').localeCompare(a.createdAt || ''));
     } else if (sortKey === 'visitCount') {
-      const visitCount = {};
-      records.forEach(r => { visitCount[r.customerId] = (visitCount[r.customerId] || 0) + 1; });
       sorted = customers.sort((a, b) => (visitCount[b.id] || 0) - (visitCount[a.id] || 0));
     } else if (sortKey === 'status') {
-      const sp = { 'at-risk': 0, 'remind': 1, 'normal': 2, 'churned': 3 };
+      const sp = { 'at-risk': 0, 'remind': 1, 'normal': 2, 'new': 3, 'churned': 4 };
       sorted = customers.sort((a, b) => (sp[customerVisitStatus[a.id]] ?? 2) - (sp[customerVisitStatus[b.id]] ?? 2));
     } else {
       sorted = customers.sort((a, b) => (a.name || '').localeCompare(b.name || '', 'ko'));
@@ -93,8 +83,8 @@ App.pages.customers = {
       </div>
       <div class="filter-bar">
         <div class="search-box" style="max-width:none;position:relative">
-          <span class="search-icon">&#x1F50D;</span>
-          <input type="text" id="customer-search" placeholder="고객 이름, 전화번호, 메모 검색..." style="width:100%;min-height:44px;padding-right:60px">
+          <span class="search-icon">${App.icon('search')}</span>
+          <input type="text" id="customer-search" placeholder="고객·반려견 이름, 전화번호, 메모" style="width:100%;min-height:44px;padding-right:60px">
           <span id="customer-search-count" style="display:none;position:absolute;right:14px;top:50%;transform:translateY(-50%);font-size:0.78rem;color:var(--text-muted);font-weight:700;pointer-events:none"></span>
         </div>
         <div class="filter-bar-row">
@@ -104,6 +94,7 @@ App.pages.customers = {
             <option value="remind" ${curVisit === 'remind' ? 'selected' : ''}>리마인드</option>
             <option value="at-risk" ${curVisit === 'at-risk' ? 'selected' : ''}>이탈위험</option>
             <option value="churned" ${curVisit === 'churned' ? 'selected' : ''}>이탈</option>
+            <option value="new" ${curVisit === 'new' ? 'selected' : ''}>방문 전</option>
           </select>
           <select id="customer-tag-filter" style="flex:1;min-height:44px;font-size:max(16px,0.88rem)">
             <option value="" ${curTag === '' ? 'selected' : ''}>전체 분류</option>
@@ -140,12 +131,12 @@ App.pages.customers = {
                 ${sorted.length === 0 ? `
                   <tr><td colspan="6">
                     <div class="empty-state">
-                      <div class="empty-state-icon">&#x1F464;</div>
+                      <div class="empty-state-icon">${App.icon('user', 'ico-xl')}</div>
                       <div class="empty-state-text">등록된 고객이 없습니다</div>
                       <button class="btn btn-primary" onclick="document.getElementById('btn-add-customer').click()">첫 고객 등록하기</button>
                     </div>
                   </td></tr>
-                ` : sorted.map(c => this._renderCustomerRow(c, petCount, lastVisit)).join('')}
+                ` : sorted.map(c => this._renderCustomerRow(c, petCount, lastVisit, petsByCustomer)).join('')}
               </tbody>
             </table>
           </div>`}
@@ -153,20 +144,21 @@ App.pages.customers = {
           ${!isMobile ? '' : `<div class="mobile-card-list" id="customer-card-list" style="display:block;padding:8px">
             ${sorted.length === 0 ? `
               <div class="empty-state">
-                <div class="empty-state-icon">&#x1F464;</div>
+                <div class="empty-state-icon">${App.icon('user', 'ico-xl')}</div>
                 <div class="empty-state-text">등록된 고객이 없습니다</div>
                 <button class="btn btn-primary" onclick="document.getElementById('btn-add-customer').click()">첫 고객 등록하기</button>
               </div>
             ` : (sortKey === 'status' ? (() => {
-              const groups = { 'at-risk': [], 'remind': [], 'normal': [], 'churned': [] };
+              const groups = { 'at-risk': [], 'remind': [], 'normal': [], 'new': [], 'churned': [] };
               sorted.forEach(c => {
                 const s = customerVisitStatus[c.id] || 'normal';
                 (groups[s] || groups['normal']).push(c);
               });
               const groupMeta = {
-                'at-risk': { label: '이탈 임박', color: 'var(--danger)' },
+                'at-risk': { label: '이탈위험', color: 'var(--danger)' },
                 'remind': { label: '리마인드 필요', color: 'var(--warning)' },
                 'normal': { label: '정상', color: 'var(--success)' },
+                'new': { label: '방문 전', color: 'var(--info)' },
                 'churned': { label: '이탈', color: 'var(--text-muted)' }
               };
               return Object.entries(groups).filter(([, gp]) => gp.length > 0).map(([gs, gp]) => {
@@ -175,9 +167,9 @@ App.pages.customers = {
                   <span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:${meta.color};flex-shrink:0"></span>
                   <span style="font-size:0.88rem;font-weight:800;color:var(--text-primary)">${meta.label}</span>
                   <span style="font-size:0.78rem;color:var(--text-muted)">${gp.length}명</span>
-                </div>` + gp.map(c => this._renderCustomerCard(c, petCount, lastVisit)).join('');
+                </div>` + gp.map(c => this._renderCustomerCard(c, petCount, lastVisit, petsByCustomer)).join('');
               }).join('');
-            })() : sorted.map(c => this._renderCustomerCard(c, petCount, lastVisit)).join(''))}
+            })() : sorted.map(c => this._renderCustomerCard(c, petCount, lastVisit, petsByCustomer)).join(''))}
           </div>`}
         </div>
       </div>
@@ -204,14 +196,13 @@ App.pages.customers = {
     const noshowCount = appointments.filter(a => a.status === 'noshow').length;
 
     container.innerHTML = `
-      <div class="back-link" onclick="history.length>1?history.back():App.navigate('customers')">&#x2190; 뒤로가기</div>
+      <div class="back-link" onclick="history.length>1?history.back():App.navigate('customers')">${App.icon('arrow-left')} 뒤로가기</div>
       <div class="detail-header">
-        <div class="detail-avatar">&#x1F464;</div>
+        <div class="detail-avatar">${App.icon('user', 'ico-xl')}</div>
         <div class="detail-info">
-          <h2>${App.escapeHtml(App.getCustomerLabel(customer))}${this.getTagBadges(customer.tags)}</h2>
+          <h2>${App.escapeHtml(App.getCustomerLabel(customer, pets))}${this.getTagBadges(customer.tags)}</h2>
           <div class="detail-meta">
-            <a href="tel:${App.escapeHtml((customer.phone || '').replace(/\D/g, ''))}" style="color:var(--primary)">&#x1F4DE; ${App.formatPhone(customer.phone)}</a>
-            <a href="sms:${App.escapeHtml((customer.phone || '').replace(/\D/g, ''))}" style="color:var(--primary);font-size:0.85rem" title="문자 보내기">&#x1F4AC; 문자</a>
+            <span>${App.formatPhoneHtml(customer.phone)}</span>
             <span>방문 ${visitCount}회</span>
             <span>총 ${App.formatCurrency(totalSpend)}</span>
             ${unpaidBalance > 0 ? `<span style="color:var(--danger);font-weight:700">미수금 ${App.formatCurrency(unpaidBalance)}</span>` : ''}
@@ -219,10 +210,10 @@ App.pages.customers = {
           </div>
         </div>
         <div style="margin-left:auto;display:flex;gap:8px;flex-wrap:wrap">
-          <button class="btn btn-success" id="btn-send-message" data-customer-id="${customer.id}">메시지</button>
-          <button class="btn btn-primary" id="btn-new-appt-for-customer" data-customer-id="${customer.id}">+ 예약</button>
-          <button class="btn btn-secondary btn-edit-customer" data-id="${customer.id}">수정</button>
-          <button class="btn btn-danger btn-delete-customer" data-id="${customer.id}">삭제</button>
+          ${(customer.phone || '').replace(/\D/g, '') ? `<a class="btn btn-secondary" href="tel:${App.escapeHtml(customer.phone.replace(/\D/g, ''))}" style="min-height:44px;flex:1 1 auto;text-decoration:none">${App.icon('phone')} 전화</a>` : ''}
+          <button class="btn btn-success" id="btn-send-message" data-customer-id="${customer.id}" style="min-height:44px;flex:1 1 auto">메시지</button>
+          <button class="btn btn-primary" id="btn-new-appt-for-customer" data-customer-id="${customer.id}" style="min-height:44px;flex:1 1 auto">+ 예약</button>
+          <button class="btn btn-primary" id="btn-new-record-for-customer" data-customer-id="${customer.id}" style="min-height:44px;flex:1 1 auto">+ 미용 기록</button>
         </div>
       </div>
 
@@ -231,6 +222,25 @@ App.pages.customers = {
           <div class="info-item"><label>주소</label><span>${App.escapeHtml(customer.address || '-')}</span></div>
           <div class="info-item"><label>메모</label><span>${App.escapeHtml(customer.memo || '-')}</span></div>
         </div>
+      </div>
+
+      <div class="detail-section">
+        <h3 class="detail-section-title">예정된 예약</h3>
+        ${(() => {
+          const today = App.getToday();
+          const petNameMap = {}; pets.forEach(p => { petNameMap[p.id] = p.name; });
+          const upcoming = appointments
+            .filter(a => (a.date || '') >= today && !['cancelled', 'completed', 'noshow'].includes(a.status))
+            .sort((a, b) => ((a.date || '') + (a.time || '')).localeCompare((b.date || '') + (b.time || '')));
+          if (upcoming.length === 0) return '<p style="color:var(--text-muted)">예정된 예약 없음</p>';
+          return upcoming.map(a => `
+            <div class="cust-upcoming-appt" data-appt-id="${a.id}" style="display:flex;align-items:center;gap:10px;min-height:44px;padding:0 4px;border-bottom:1px solid var(--border-light);cursor:pointer">
+              <strong style="font-size:0.9rem;white-space:nowrap">${App.formatDate(a.date)}${a.date === today ? ' (오늘)' : ''}</strong>
+              <span style="font-size:0.9rem;color:var(--primary);font-weight:700;white-space:nowrap">${App.escapeHtml(a.time || '')}</span>
+              <span style="font-size:0.85rem;color:var(--text-secondary);flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${App.escapeHtml(petNameMap[a.petId] || '')}</span>
+              <span style="color:var(--text-muted)">&#x203A;</span>
+            </div>`).join('');
+        })()}
       </div>
 
       ${visitCount > 0 ? (() => {
@@ -273,12 +283,12 @@ App.pages.customers = {
               <div class="pet-card" onclick="App.navigate('pets/${p.id}')">
                 ${(p.photoThumb || p.photo)
                   ? `<img src="${p.photoThumb || p.photo}" class="photo-viewable" data-caption="${App.escapeHtml(p.name)}" style="width:48px;height:48px;object-fit:cover;border-radius:var(--radius);flex-shrink:0" alt="${App.escapeHtml(p.name)}" onclick="event.stopPropagation()">`
-                  : `<div class="pet-avatar">&#x1F436;</div>`
+                  : `<div class="pet-avatar">${App.icon('paw')}</div>`
                 }
                 <div>
                   <div class="pet-name">${App.escapeHtml(p.name)}</div>
                   <div class="pet-breed">${App.escapeHtml(p.breed || '견종 미입력')} | ${p.weight ? p.weight + 'kg' : '체중 미입력'}</div>
-                  ${petNotes.length > 0 ? `<div style="font-size:0.78rem;color:var(--danger);margin-top:4px;line-height:1.3">&#x26A0; ${petNotes.map(n => App.escapeHtml(n)).join(', ')}</div>` : ''}
+                  ${petNotes.length > 0 ? `<div style="font-size:0.78rem;color:var(--danger);margin-top:4px;line-height:1.3">${App.icon('alert', 'ico-sm')} ${petNotes.map(n => App.escapeHtml(n)).join(', ')}</div>` : ''}
                 </div>
               </div>
             `}).join('')}
@@ -289,8 +299,8 @@ App.pages.customers = {
         <h3 class="detail-section-title">최근 미용 기록</h3>
         ${await (async () => {
           if (records.length === 0) return '<p style="color:var(--text-muted)">미용 기록이 없습니다.</p>';
-          const allPets = await DB.getAll('pets');
-          const petMap = {}; allPets.forEach(p => petMap[p.id] = p);
+          // 이 고객의 반려견은 이미 로드되어 있다 — 전체 pets 스토어(사진 포함)를 다시 읽지 않는다
+          const petMap = {}; pets.forEach(p => petMap[p.id] = p);
           const allServices = await DB.getAll('services');
           const serviceMap = {}; allServices.forEach(s => serviceMap[s.id] = s.name);
           const _isMobile = window.matchMedia('(max-width: 768px)').matches;
@@ -328,6 +338,11 @@ App.pages.customers = {
             </table>
           </div>`;
         })()}
+      </div>
+
+      <div style="display:flex;gap:8px;justify-content:flex-end;margin:24px 0 8px">
+        <button class="btn btn-secondary btn-edit-customer" data-id="${customer.id}" style="min-height:44px">고객 정보 수정</button>
+        <button class="btn btn-secondary btn-delete-customer" data-id="${customer.id}" style="min-height:44px;color:var(--danger)">고객 삭제</button>
       </div>
     `;
   },
@@ -440,6 +455,18 @@ App.pages.customers = {
       App.pages.appointments.showForm(null, customerId);
     });
 
+    // 워크인 미용 기록 (상세에서 바로) — 기록 탭 → 새 기록 → 검색 → 선택의 5탭을 1탭으로
+    document.getElementById('btn-new-record-for-customer')?.addEventListener('click', async (e) => {
+      const customerId = Number(e.target.dataset.customerId);
+      const cPets = (await DB.getByIndex('pets', 'customerId', customerId)).filter(p => (p.petStatus || 'active') === 'active');
+      App.pages.records.showForm(null, { customerId, petId: cPets.length === 1 ? cPets[0].id : null, date: App.getToday() });
+    });
+
+    // 예정된 예약 (detail view) → 예약 수정
+    document.querySelectorAll('.cust-upcoming-appt').forEach(row => {
+      row.addEventListener('click', () => App.pages.appointments.showForm(Number(row.dataset.apptId)));
+    });
+
     // Send message (detail view)
     document.getElementById('btn-send-message')?.addEventListener('click', (e) => {
       const customerId = Number(e.target.dataset.customerId);
@@ -482,7 +509,7 @@ App.pages.customers = {
         </div>` : ''}
         <div class="form-group">
           <label class="form-label">미리보기</label>
-          <textarea id="msg-preview" rows="4" style="background:var(--bg);font-size:0.9rem"></textarea>
+          <textarea id="msg-preview" rows="4" style="background:var(--bg);font-size:max(16px,0.9rem)"></textarea>
         </div>
         <div style="display:flex;gap:8px">
           <button class="btn btn-success flex-1" id="msg-sms">문자 보내기</button>
@@ -501,7 +528,7 @@ App.pages.customers = {
       const selPet = pets.find(p => p.id === selPetId) || firstPet;
       const days = selPet?.lastVisitDate ? App.getDaysAgo(selPet.lastVisitDate) : '';
       const msg = await App.buildSms(typeEl.value, {
-        '고객명': App.getCustomerLabel(customer),
+        '고객명': customer.name || '',
         '반려견명': selPet?.name || '',
         '경과일수': String(days || ''),
         '마지막방문일': selPet?.lastVisitDate ? App.formatDate(selPet.lastVisitDate) : ''
@@ -677,15 +704,23 @@ App.pages.customers = {
         hideFooter: true,
         content: `
           <div style="text-align:center;padding:16px 0">
-            <div style="font-size:2.2rem;margin-bottom:10px">&#x2705;</div>
+            <div style="font-size:2.2rem;margin-bottom:10px;color:var(--success)">${App.icon('check-circle', 'ico-xl')}</div>
             <div style="font-size:1rem;font-weight:700;margin-bottom:16px">${App.escapeHtml(result.label)} 등록되었습니다</div>
             <div style="display:flex;flex-direction:column;gap:8px;max-width:260px;margin:0 auto">
-              <button class="btn btn-primary" id="post-cust-appt">&#x1F4C5; 예약 등록</button>
-              <button class="btn btn-secondary" id="post-cust-detail">&#x1F4DD; 상세 보기</button>
+              <button class="btn btn-primary" id="post-cust-record">지금 미용 기록</button>
+              <button class="btn btn-secondary" id="post-cust-appt">${App.icon('calendar')} 예약 등록</button>
+              <button class="btn btn-secondary" id="post-cust-detail">${App.icon('note')} 상세 보기</button>
               <button class="btn btn-secondary" id="post-cust-close" style="opacity:0.7">완료</button>
             </div>
           </div>
         `
+      });
+      document.getElementById('post-cust-record')?.addEventListener('click', () => {
+        App.closeModal();
+        // closeModal()의 history.back()이 끝난 뒤에 새 모달을 연다 (뒤로가기 씹힘 방지)
+        setTimeout(() => {
+          App.pages.records.showForm(null, { customerId: result.customerId, petId: result.petId || null, date: App.getToday() });
+        }, 180);
       });
       document.getElementById('post-cust-appt')?.addEventListener('click', () => {
         App.closeModal();
@@ -714,6 +749,19 @@ App.pages.customers = {
         DB.getByIndex('appointments', 'customerId', id),
         DB.getByIndex('records', 'customerId', id)
       ]);
+      // 지워지는 것이 무엇인지 숫자로 보여준다 — 매출 이력·미수금까지 사라지는 걸 모르고 삭제하던 문제
+      if (records.length > 0 || appointments.length > 0) {
+        const unpaidSum = records.filter(r => r.paymentMethod === 'unpaid').reduce((s, r) => s + App.getRecordAmount(r), 0);
+        const revenueSum = records.reduce((s, r) => s + App.getRecordAmount(r), 0);
+        // 1차 confirm 의 history.back() 이 끝나기 전에 2차를 열면 그 popstate 가 2차를 취소시킨다
+        await new Promise(r => setTimeout(r, 180));
+        const second = await App.confirm(
+          `삭제되는 데이터:<br>반려견 <strong>${pets.length}</strong>마리 · 예약 <strong>${appointments.length}</strong>건 · 미용 기록 <strong>${records.length}</strong>건 (매출 ${App.formatCurrency(revenueSum)})` +
+          (unpaidSum > 0 ? `<br><span style="color:var(--danger)">미수금 ${App.formatCurrency(unpaidSum)}도 함께 사라집니다.</span>` : '') +
+          `<br><small style="color:var(--text-muted)">매출·분석 숫자가 과거 기간까지 바뀝니다. 손님만 더 안 오는 경우라면 삭제 대신 그대로 두세요.</small>`,
+          { okLabel: '모두 삭제' });
+        if (!second) return;
+      }
       // photos 스토어 정리 (반려견 프로필 + 기록 사진)
       for (const p of pets) {
         if (p.photoId) await DB.deletePhoto(p.photoId).catch(() => {});
@@ -738,38 +786,42 @@ App.pages.customers = {
     }
   },
 
-  _renderCustomerRow(c, petCount, lastVisit) {
-    const displayName = App.getCustomerLabel(c);
-    const initial = c.name ? App.escapeHtml(c.name.charAt(0)) : '&#x1F464;';
+  _renderCustomerRow(c, petCount, lastVisit, petsByCustomer) {
+    const cPets = (petsByCustomer && petsByCustomer[c.id]) || [];
+    const displayName = App.getCustomerLabel(c, cPets);
+    const initial = c.name ? App.escapeHtml(c.name.charAt(0)) : App.icon('user');
     const vs = this._customerVisitStatus?.[c.id] || 'normal';
     const visitBadge = vs !== 'normal' ? `<span class="badge ${App.getVisitStatusBadge(vs)}" style="margin-left:6px;font-size:0.72rem;padding:3px 8px">${App.getVisitStatusLabel(vs)}</span>` : '';
     const tagLabelMap = { vip: 'VIP', 'new': '신규', normal: '일반', regular: '단골', caution: '주의' };
     const tagText = (c.tags || []).map(t => tagLabelMap[t] || t).join(' ');
-    const searchText = ((c.name || '') + ' ' + (c.phone || '') + ' ' + (c.phone || '').replace(/\D/g, '') + ' ' + (c.memo || '') + ' ' + tagText).toLowerCase();
+    const searchText = ((c.name || '') + ' ' + (c.phone || '') + ' ' + (c.phone || '').replace(/\D/g, '') + ' ' + (c.memo || '') + ' ' + tagText + ' ' + cPets.map(p => (p.name || '') + ' ' + (p.breed || '')).join(' ')).toLowerCase();
     return `<tr data-id="${c.id}" data-tags="${(c.tags || []).join(',')}" data-visit-status="${vs}" data-search="${App.escapeHtml(searchText)}" class="clickable-row" style="cursor:pointer">
       <td><div style="display:flex;align-items:center;gap:10px"><div style="width:34px;height:34px;border-radius:10px;background:linear-gradient(135deg,var(--primary-light),var(--primary-lighter));display:flex;align-items:center;justify-content:center;font-weight:800;color:var(--primary);font-size:0.85rem;flex-shrink:0">${initial}</div><strong>${App.escapeHtml(displayName)}</strong>${this.getTagBadges(c.tags)}${visitBadge}</div></td>
-      <td><a href="tel:${App.escapeHtml((c.phone || '').replace(/\D/g, ''))}" style="color:var(--primary)" onclick="event.stopPropagation()">${App.formatPhone(c.phone)}</a></td>
+      <td><a href="tel:${App.escapeHtml((c.phone || '').replace(/\D/g, ''))}" style="color:var(--primary)" onclick="event.stopPropagation()">${App.formatPhoneHtml(c.phone)}</a></td>
       <td><span class="badge badge-info">${petCount[c.id] || 0}마리</span></td>
       <td>${lastVisit[c.id] ? App.getRelativeTime(lastVisit[c.id]) : '-'}</td>
       <td>${App.formatDate(c.createdAt)}</td>
-      <td class="table-actions"><button class="btn-icon btn-edit-customer" data-id="${c.id}" title="수정">&#x270F;</button><button class="btn-icon btn-delete-customer text-danger" data-id="${c.id}" title="삭제">&#x1F5D1;</button></td>
+      <td class="table-actions"><button class="btn-icon btn-edit-customer" data-id="${c.id}" title="수정" aria-label="수정">${App.icon('edit')}</button><button class="btn-icon btn-delete-customer text-danger" data-id="${c.id}" title="삭제" aria-label="삭제">${App.icon('trash')}</button></td>
     </tr>`;
   },
 
-  _renderCustomerCard(c, petCount, lastVisit) {
-    const displayName = App.getCustomerLabel(c);
+  _renderCustomerCard(c, petCount, lastVisit, petsByCustomer) {
+    const cPets = (petsByCustomer && petsByCustomer[c.id]) || [];
+    const displayName = App.getCustomerLabel(c, cPets);
     const vs = this._customerVisitStatus?.[c.id] || 'normal';
     const tagLabelMap = { vip: 'VIP', 'new': '신규', normal: '일반', regular: '단골', caution: '주의' };
     const tagText = (c.tags || []).map(t => tagLabelMap[t] || t).join(' ');
-    const searchText = ((c.name || '') + ' ' + (c.phone || '') + ' ' + (c.phone || '').replace(/\D/g, '') + ' ' + (c.memo || '') + ' ' + tagText).toLowerCase();
+    const searchText = ((c.name || '') + ' ' + (c.phone || '') + ' ' + (c.phone || '').replace(/\D/g, '') + ' ' + (c.memo || '') + ' ' + tagText + ' ' + cPets.map(p => (p.name || '') + ' ' + (p.breed || '')).join(' ')).toLowerCase();
 
     // 좌측 컬러바 색
-    const barColor = vs === 'at-risk' ? 'var(--danger)' : vs === 'remind' ? 'var(--warning)' : vs === 'churned' ? 'var(--text-muted)' : 'var(--success)';
+    const barColor = vs === 'at-risk' ? 'var(--danger)' : vs === 'remind' ? 'var(--warning)' : vs === 'churned' ? 'var(--text-muted)' : vs === 'new' ? 'var(--info)' : 'var(--success)';
 
     // 우측 상태 칩 (정상은 숨김)
     let rightChip = '';
-    if (vs === 'at-risk') {
-      rightChip = `<span style="font-size:0.7rem;padding:3px 9px;background:var(--danger);color:#fff;border-radius:11px;font-weight:700;flex-shrink:0;white-space:nowrap">이탈 임박</span>`;
+    if (vs === 'new') {
+      rightChip = `<span style="font-size:0.7rem;padding:3px 9px;background:var(--bg);color:var(--text-muted);border:1px solid var(--border);border-radius:11px;font-weight:600;flex-shrink:0;white-space:nowrap">방문 전</span>`;
+    } else if (vs === 'at-risk') {
+      rightChip = `<span style="font-size:0.7rem;padding:3px 9px;background:var(--danger);color:#fff;border-radius:11px;font-weight:700;flex-shrink:0;white-space:nowrap">이탈위험</span>`;
     } else if (vs === 'remind') {
       rightChip = `<span style="font-size:0.7rem;padding:3px 9px;background:var(--warning);color:#fff;border-radius:11px;font-weight:700;flex-shrink:0;white-space:nowrap">리마인드</span>`;
     } else if (vs === 'churned') {
@@ -783,7 +835,7 @@ App.pages.customers = {
     }).join('');
 
     const lastVisitText = lastVisit[c.id] ? App.getRelativeTime(lastVisit[c.id]) + ' 방문' : '방문 없음';
-    const phoneText = c.phone ? App.formatPhone(c.phone) : '-';
+    const phoneText = c.phone ? App.formatPhoneHtml(c.phone) : '-';
     const petN = petCount[c.id] || 0;
 
     return `<div class="mobile-card clickable-row" data-id="${c.id}" data-tags="${(c.tags || []).join(',')}" data-visit-status="${vs}" data-search="${App.escapeHtml(searchText)}" style="display:block;padding:12px;background:var(--bg-white);border:1px solid var(--border-light);border-left:4px solid ${barColor};border-radius:var(--radius);cursor:pointer;margin-bottom:6px;box-shadow:var(--shadow-xs)">

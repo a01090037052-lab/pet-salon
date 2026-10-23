@@ -1,4 +1,4 @@
-const CACHE_NAME = 'petsalon-offline-v157';
+const CACHE_NAME = 'petsalon-offline-v158';
 const ASSETS = [
   './',
   './index.html',
@@ -26,7 +26,9 @@ const ASSETS = [
 
 self.addEventListener('install', (e) => {
   e.waitUntil(
-    caches.open(CACHE_NAME).then(cache => cache.addAll(ASSETS)).then(() => self.skipWaiting())
+    // GitHub Pages 는 max-age=600 을 주므로, 새 CACHE_NAME 으로 설치하면서도 HTTP 캐시의 구버전 파일을
+    // 담을 수 있다 → cache:'reload' 로 네트워크에서 새로 받아 저장
+    caches.open(CACHE_NAME).then(cache => cache.addAll(ASSETS.map(u => new Request(u, { cache: 'reload' })))).then(() => self.skipWaiting())
   );
 });
 

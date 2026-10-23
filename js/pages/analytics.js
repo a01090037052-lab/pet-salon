@@ -64,36 +64,29 @@ App.pages.analytics = {
       .map(([cid, stats]) => ({ id: Number(cid), name: App.getCustomerLabel(customerMap[cid] || {}), ...stats }));
     const topCustMax = customerTop10.length > 0 ? customerTop10[0].revenue || 1 : 1;
 
-    // 과거 기록 로드 (period 시작 이전만, 전체 스캔 회피)
-    const _ps = new Date(periodStart + 'T00:00:00'); _ps.setDate(_ps.getDate() - 1);
-    const dayBeforeStart = App.formatLocalDate(_ps);
-    const pastRecords = await DB.getByDateRange('records', 'date', '1900-01-01', dayBeforeStart);
-    const pastCustSet = new Set(pastRecords.map(r => r.customerId).filter(Boolean));
+    // 과거 이력은 기록 전체 대신 반려견에 비정규화된 firstVisitDate / lastVisitDate / visitCount 로 판단한다
+    // (예전엔 기간 탭을 누를 때마다 기간 이전 기록 전체를 읽었다 — 해가 갈수록 느려짐)
+    const petsByCustomer = {};
+    pets.forEach(p => { (petsByCustomer[p.customerId] = petsByCustomer[p.customerId] || []).push(p); });
+    const hadVisitBefore = (cid) => (petsByCustomer[cid] || []).some(p => p.firstVisitDate && p.firstVisitDate < periodStart);
 
     // 신규 vs 재방문 — period 내 고객 중 period 시작 이전 방문 이력이 있는지로 판정
     const periodCustomerIds = Object.keys(customerRevMap).map(Number);
     let newCount = 0, returnCount = 0;
     periodCustomerIds.forEach(cid => {
-      if (pastCustSet.has(cid)) returnCount++;
+      if (hadVisitBefore(cid)) returnCount++;
       else newCount++;
     });
 
-    // 평균 방문 주기 — period + past 결합해 고객별 전체 이력 기반
-    pastRecords.forEach(r => {
-      if (!r.customerId || !r.date) return;
-      (custDatesMap[r.customerId] = custDatesMap[r.customerId] || []).push(r.date);
-    });
+    // 평균 방문 주기 — 기간 내 고객의 반려견별 (마지막 방문 - 첫 방문) / (방문 수 - 1) 평균
     let totalCycles = 0, cycleCount = 0;
-    Object.values(custDatesMap).forEach(dates => {
-      if (dates.length < 2) return;
-      dates.sort();
-      let sum = 0;
-      for (let i = 1; i < dates.length; i++) {
-        sum += Math.round((new Date(dates[i] + 'T00:00:00') - new Date(dates[i-1] + 'T00:00:00')) / (1000*60*60*24));
-      }
-      totalCycles += sum / (dates.length - 1);
+    periodCustomerIds.forEach(cid => (petsByCustomer[cid] || []).forEach(p => {
+      if (!p.firstVisitDate || !p.lastVisitDate || !(Number(p.visitCount) >= 2)) return;
+      const span = (App.parseLocalDate(p.lastVisitDate) - App.parseLocalDate(p.firstVisitDate)) / 86400000;
+      if (!(span > 0)) return;
+      totalCycles += span / (Number(p.visitCount) - 1);
       cycleCount++;
-    });
+    }));
     const avgCycle = cycleCount > 0 ? Math.round(totalCycles / cycleCount) : 0;
 
     // ===== 견종 분석 =====
@@ -116,10 +109,28 @@ App.pages.analytics = {
     const serviceRevMap = {};
     const styleCountMap = {};
     const addonCountMap = {};
+    // 묶음 기준: serviceId(현재 메뉴 이름으로 표시) → 이름이 현재 메뉴와 같으면 그 서비스 id 로 합침 → 그 외 정규화한 이름.
+    // 이름을 바꾼 서비스의 예전 기록(이름만)과 새 기록(id)이 한 줄로 합쳐진다.
+    const serviceIdByName = {};
+    services.filter(s => s.isActive === false).concat(services.filter(s => s.isActive !== false)).forEach(s => {
+      const nm = App.normalizeServiceName(s.name);
+      if (nm) serviceIdByName[nm] = s.id; // 활성 서비스가 나중에 덮어써 우선한다
+    });
+    const serviceLabelByKey = {};
     records.forEach(r => {
       // 서비스명 추출 (신: r.service, 구: r.serviceNames)
-      const svcName = r.service || (r.serviceNames && r.serviceNames.length > 0 ? r.serviceNames[0] : null) || (r.serviceIds ? r.serviceIds.map(id => serviceNameMap[id]).filter(Boolean)[0] : null);
-      if (svcName) {
+      const rawName = App.normalizeServiceName(r.service || (r.serviceNames && r.serviceNames.length > 0 ? r.serviceNames[0] : ''));
+      const legacyId = !rawName && Array.isArray(r.serviceIds) ? r.serviceIds.find(id => serviceNameMap[id] || serviceNameMap[Number(id)]) : null;
+      let svcKey = null;
+      if (r.serviceId != null && serviceNameMap[r.serviceId]) svcKey = 'id:' + r.serviceId;
+      else if (rawName && serviceIdByName[rawName] != null) svcKey = 'id:' + serviceIdByName[rawName];
+      else if (rawName) svcKey = 'name:' + rawName;
+      else if (legacyId != null) svcKey = 'id:' + Number(legacyId);
+      if (svcKey) {
+        if (!serviceLabelByKey[svcKey]) {
+          serviceLabelByKey[svcKey] = svcKey.startsWith('id:') ? App.normalizeServiceName(serviceNameMap[svcKey.slice(3)]) || rawName : rawName;
+        }
+        const svcName = svcKey;
         if (!serviceRevMap[svcName]) serviceRevMap[svcName] = { count: 0, revenue: 0 };
         serviceRevMap[svcName].count++;
         // 기록마다 실제 결제 금액(할인·추가 반영)을 대표 서비스에 귀속시킨다.
@@ -138,7 +149,7 @@ App.pages.analytics = {
         addonCountMap[a] = (addonCountMap[a] || 0) + 1;
       });
     });
-    const serviceRevList = Object.entries(serviceRevMap).sort((a, b) => b[1].revenue - a[1].revenue);
+    const serviceRevList = Object.entries(serviceRevMap).map(([key, v]) => [serviceLabelByKey[key] || key, v]).sort((a, b) => b[1].revenue - a[1].revenue);
     const serviceRevTotal = serviceRevList.reduce((s, [, v]) => s + v.revenue, 0) || 1;
     const serviceCntTotal = serviceRevList.reduce((s, [, v]) => s + v.count, 0) || 1;
     const styleList = Object.entries(styleCountMap).sort((a, b) => b[1] - a[1]);
@@ -156,8 +167,10 @@ App.pages.analytics = {
     });
     const months = period === '1year' ? 12 : period === '6months' ? 6 : period === '3months' ? 3 : period === 'custom' ? Math.max(1, Math.ceil((new Date(periodEnd) - new Date(periodStart)) / (1000*60*60*24*30))) : 1;
     const avgPriceByMonth = [];
+    // 직접 설정 기간은 '오늘'이 아니라 선택한 기간의 월을 따라간다 (예전엔 2024년 상반기를 골라도 최근 N개월 막대가 나왔다)
+    const chartEnd = period === 'custom' ? App.parseLocalDate(periodEnd) : now;
     for (let i = months - 1; i >= 0; i--) {
-      const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+      const d = new Date(chartEnd.getFullYear(), chartEnd.getMonth() - i, 1);
       const mon = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
       const cnt = monthlyCntMap[mon] || 0;
       const rev = monthlyRevMap[mon] || 0;
@@ -220,7 +233,7 @@ App.pages.analytics = {
     const prevPeriodStartDate = new Date(prevPeriodEndDate.getTime() - periodDurationMs);
     const prevStart = App.formatLocalDate(prevPeriodStartDate);
     const prevEnd = App.formatLocalDate(prevPeriodEndDate);
-    const prevRecords = pastRecords.filter(r => r.date && r.date >= prevStart && r.date <= prevEnd);
+    const prevRecords = await DB.getByDateRange('records', 'date', prevStart, prevEnd); // 직전 기간만 범위 조회
     const prevTotalRev = prevRecords.reduce((s, r) => s + App.getRecordAmount(r), 0);
     const prevCustomerCount = new Set(prevRecords.map(r => r.customerId).filter(Boolean)).size;
     const prevVisitCount = prevRecords.length;
@@ -257,7 +270,7 @@ App.pages.analytics = {
     // 4. 최대 견종 비중
     if (breedList.length > 0 && breedList[0].name !== '미입력') {
       const sharePct = Math.round((breedList[0].count / breedTotal) * 100);
-      if (sharePct >= 30) insights.push({ type: 'info', text: `${breedList[0].name} 견종이 매출 ${sharePct}% 차지` });
+      if (sharePct >= 30) insights.push({ type: 'info', text: `${breedList[0].name} 견종이 방문의 ${sharePct}% 차지` });
     }
 
     // 5. 최다 요일
@@ -296,7 +309,7 @@ App.pages.analytics = {
     const atRiskPets = [], remindPets = [];
     pets.forEach(p => {
       if ((p.petStatus || 'active') !== 'active') return;
-      const s = App.classifyVisitStatus(p.lastVisitDate, p.groomingCycle);
+      const s = App.getPetVisitStatus(p, revisitDaysSetting);
       if (s === 'at-risk') atRiskPets.push(p);
       else if (s === 'remind') remindPets.push(p);
     });
@@ -331,20 +344,16 @@ App.pages.analytics = {
 
     // 9. VIP 미방문 (Action) — 클릭 시 고객 페이지 VIP 필터
     const customerLastVisitMap = {};
-    [...records, ...pastRecords].forEach(r => {
+    // 기간 밖 마지막 방문은 computeVipUnvisited 가 pets.lastVisitDate 로 합쳐 본다
+    records.forEach(r => {
       if (!r.customerId || !r.date) return;
       if (!customerLastVisitMap[r.customerId] || r.date > customerLastVisitMap[r.customerId]) {
         customerLastVisitMap[r.customerId] = r.date;
       }
     });
     const todayMs = Date.now();
-    const vipUnvisitedArr = customers.filter(c => {
-      if (!(c.tags || []).includes('vip')) return false;
-      const lv = customerLastVisitMap[c.id];
-      if (!lv) return true;
-      const days = Math.floor((todayMs - new Date(lv + 'T00:00:00').getTime()) / 86400000);
-      return days > 30;
-    });
+    // 대시보드와 같은 헬퍼·기준(revisitDays) — 두 화면의 VIP 수가 달랐던 문제 해소
+    const vipUnvisitedArr = App.computeVipUnvisited(customers, pets, customerLastVisitMap, revisitDaysSetting).map(x => x.customer);
     if (vipUnvisitedArr.length > 0) {
       const vipList = vipUnvisitedArr
         .sort((a, b) => (customerLastVisitMap[a.id] || '').localeCompare(customerLastVisitMap[b.id] || ''))
@@ -362,7 +371,7 @@ App.pages.analytics = {
         });
       insights.push({
         type: 'warning',
-        text: `VIP 손님 ${vipUnvisitedArr.length}명 30일 이상 미방문`,
+        text: `VIP 손님 ${vipUnvisitedArr.length}명 ${revisitDaysSetting}일 이상 미방문`,
         link: { page: 'customers', custTag: 'vip', custSort: 'lastVisit', list: vipList, totalCount: vipUnvisitedArr.length }
       });
     }
@@ -440,7 +449,7 @@ App.pages.analytics = {
       const pct = Math.round((diff / prev) * 100);
       const sign = diff > 0 ? '+' : '';
       const color = diff > 0 ? 'var(--success)' : 'var(--danger)';
-      const arrow = diff > 0 ? '&#x2191;' : '&#x2193;';
+      const arrow = diff > 0 ? App.icon('arrow-up','ico-sm') : App.icon('arrow-down','ico-sm');
       return `<span style="font-size:0.7rem;color:${color};font-weight:700;margin-left:4px">${sign}${pct}% ${arrow}</span>`;
     };
     const cmpCorner = (current, prev) => {
@@ -450,7 +459,7 @@ App.pages.analytics = {
       const pct = Math.round((diff / prev) * 100);
       const sign = diff > 0 ? '+' : '';
       const color = diff > 0 ? 'var(--success)' : 'var(--danger)';
-      const arrow = diff > 0 ? '&#x2191;' : '&#x2193;';
+      const arrow = diff > 0 ? App.icon('arrow-up','ico-sm') : App.icon('arrow-down','ico-sm');
       return `<span style="position:absolute;top:6px;right:8px;font-size:0.72rem;color:${color};font-weight:700;line-height:1">${sign}${pct}%${arrow}</span>`;
     };
 
@@ -458,7 +467,7 @@ App.pages.analytics = {
     container.innerHTML = `
       <div class="page-header">
         <div>
-          <h1 class="page-title">&#x1F4CA; 분석</h1>
+          <h1 class="page-title">${App.icon('chart')} 분석</h1>
           <p class="page-subtitle">매출 데이터 상세 분석</p>
         </div>
       </div>
@@ -473,9 +482,9 @@ App.pages.analytics = {
       </div>
       ${period === 'custom' ? `
       <div style="display:flex;align-items:center;gap:8px;margin-bottom:12px;justify-content:center;flex-wrap:wrap">
-        <input type="date" id="analytics-custom-start" value="${this._customStart || periodStart}" style="padding:8px 12px;border:1.5px solid var(--border);border-radius:8px;font-size:0.85rem">
+        <input type="date" id="analytics-custom-start" value="${this._customStart || periodStart}" style="padding:8px 12px;border:1.5px solid var(--border);border-radius:8px;font-size:max(16px,0.85rem)">
         <span style="color:var(--text-muted)">~</span>
-        <input type="date" id="analytics-custom-end" value="${this._customEnd || today}" style="padding:8px 12px;border:1.5px solid var(--border);border-radius:8px;font-size:0.85rem">
+        <input type="date" id="analytics-custom-end" value="${this._customEnd || today}" style="padding:8px 12px;border:1.5px solid var(--border);border-radius:8px;font-size:max(16px,0.85rem)">
         <button class="btn btn-sm btn-primary" id="analytics-custom-apply">적용</button>
       </div>` : ''}
 
@@ -484,7 +493,7 @@ App.pages.analytics = {
       <!-- 핵심 인사이트 (자동 생성, 두 섹션 분리) -->
       ${(() => {
         const renderItem = (i, idx) => {
-          const icon = i.type === 'good' ? '&#x2713;' : i.type === 'warning' ? '&#x26A0;' : '&#x1F4A1;';
+          const icon = i.type === 'good' ? App.icon('check') : i.type === 'warning' ? App.icon('alert') : App.icon('bulb');
           const cls = i.type === 'good' ? 'analytics-insight-good' : i.type === 'warning' ? 'analytics-insight-warning' : 'analytics-insight-info';
           const expandable = !!(i.link && i.link.list);
           const linkAttr = expandable ? `data-insight-idx="${idx}"` : '';
@@ -494,7 +503,7 @@ App.pages.analytics = {
             <div class="insight-detail" data-insight-detail-idx="${idx}" style="display:none;padding:6px 14px 10px;background:var(--bg);border-radius:8px;margin:-2px 0 6px;font-size:0.85rem;max-height:220px;overflow-y:auto;-webkit-overflow-scrolling:touch;overscroll-behavior:contain">
               ${i.link.list.map(item => {
                 const phoneClean = item.phone ? item.phone.replace(/\D/g, '') : '';
-                const phoneLink = item.phone ? `<a href="tel:${phoneClean}" onclick="event.stopPropagation()" style="color:var(--primary);font-weight:700;text-decoration:none;font-size:0.78rem;flex-shrink:0">${App.formatPhone(item.phone)}</a>` : '';
+                const phoneLink = item.phone ? `<a href="tel:${phoneClean}" onclick="event.stopPropagation()" style="color:var(--primary);font-weight:700;text-decoration:none;font-size:0.78rem;flex-shrink:0">${App.formatPhoneHtml(item.phone)}</a>` : '';
                 const subRow = (item.sublabel || phoneLink) ? `<div style="font-size:0.78rem;color:var(--text-muted);margin-top:3px;display:flex;align-items:center;gap:8px;flex-wrap:wrap"><span>${App.escapeHtml(item.sublabel || '')}</span>${phoneLink}</div>` : '';
                 return `<div class="insight-detail-item" data-page="${item.page}"${item.id != null ? ` data-id="${item.id}"` : ''} style="padding:10px 0;border-bottom:1px solid var(--border-light);cursor:pointer;color:var(--text-primary);min-height:40px">
                   <div>${App.escapeHtml(item.label)}</div>
@@ -525,7 +534,7 @@ App.pages.analytics = {
             <div class="analytics-insights-list" style="margin-bottom:14px">
               ${realtimeInsights.length === 0 ? `
                 <div style="display:flex;align-items:center;justify-content:center;gap:6px;padding:10px 0;color:var(--success);font-size:0.88rem;font-weight:600">
-                  <span>&#x2713;</span> 점검할 사항 없음 &mdash; 양호
+                  <span>${App.icon('check')}</span> 점검할 사항 없음 &mdash; 양호
                 </div>
               ` : realtimeInsights.map((i, localIdx) => renderItem(i, rtOffset + localIdx)).join('')}
             </div>
@@ -567,7 +576,7 @@ App.pages.analytics = {
       </div>
 
       <!-- 고객 분석 -->
-      <h3 style="font-size:1rem;font-weight:800;margin-bottom:12px;color:var(--text-primary)">&#x1F464; 고객 분석</h3>
+      <h3 style="font-size:1rem;font-weight:800;margin-bottom:12px;color:var(--text-primary)">${App.icon('user')} 고객 분석</h3>
 
       <!-- 신규 vs 재방문 + 방문 주기 -->
       <div class="card" style="margin-bottom:16px">
@@ -599,7 +608,7 @@ App.pages.analytics = {
       ${customerTop10.length > 0 ? `
       <div class="card" style="margin-bottom:20px">
         <div class="card-header">
-          <span class="card-title">&#x1F451; 고객별 매출 TOP 10</span>
+          <span class="card-title">${App.icon('crown')} 고객별 매출 TOP 10</span>
         </div>
         <div class="card-body" style="padding:12px 16px">
           ${customerTop10.map((c, i) => {
@@ -619,7 +628,7 @@ App.pages.analytics = {
       ` : ''}
 
       <!-- 견종 분석 -->
-      <h3 style="font-size:1rem;font-weight:800;margin-bottom:12px;color:var(--text-primary)">&#x1F436; 견종 분석</h3>
+      <h3 style="font-size:1rem;font-weight:800;margin-bottom:12px;color:var(--text-primary)">${App.icon('paw')} 견종 분석</h3>
 
       ${breedList.length > 0 ? `
       <div class="card" style="margin-bottom:20px">
@@ -651,7 +660,7 @@ App.pages.analytics = {
       ` : ''}
 
       <!-- 서비스 분석 -->
-      <h3 style="font-size:1rem;font-weight:800;margin-bottom:12px;color:var(--text-primary)">&#x2702; 서비스 분석</h3>
+      <h3 style="font-size:1rem;font-weight:800;margin-bottom:12px;color:var(--text-primary)">${App.icon('scissors')} 서비스 분석</h3>
 
       ${serviceRevList.length > 0 ? `
       <div class="card" style="margin-bottom:20px">
@@ -691,7 +700,7 @@ App.pages.analytics = {
       ${styleList.length > 0 ? `
       <div class="card" style="margin-bottom:20px">
         <div class="card-header">
-          <span class="card-title">&#x2702; 인기 스타일</span>
+          <span class="card-title">${App.icon('scissors')} 인기 스타일</span>
         </div>
         <div class="card-body" style="padding:12px 16px">
           ${styleList.slice(0, 8).map(([name, count], i) => {
@@ -706,7 +715,7 @@ App.pages.analytics = {
       ${addonList.length > 0 ? `
       <div class="card" style="margin-bottom:20px">
         <div class="card-header">
-          <span class="card-title">&#x2795; 추가 항목 빈도</span>
+          <span class="card-title">${App.icon('plus')} 추가 항목 빈도</span>
         </div>
         <div class="card-body" style="padding:12px 16px">
           ${addonList.slice(0, 8).map(([name, count]) => {
@@ -718,7 +727,7 @@ App.pages.analytics = {
       ` : ''}
 
       <!-- 매출 추이 -->
-      <h3 style="font-size:1rem;font-weight:800;margin-bottom:12px;color:var(--text-primary)">&#x1F4B5; 매출 추이</h3>
+      <h3 style="font-size:1rem;font-weight:800;margin-bottom:12px;color:var(--text-primary)">${App.icon('cash')} 매출 추이</h3>
 
       <!-- 객단가 추이 (3개월 이상일 때만 의미 있음) -->
       ${avgPriceByMonth.length >= 3 ? `
@@ -790,7 +799,7 @@ App.pages.analytics = {
 
       <!-- 미용사 성과 (미용사 배정된 기록이 있을 때만) -->
       ${groomerList.length > 0 ? `
-      <h3 style="font-size:1rem;font-weight:800;margin-bottom:12px;color:var(--text-primary)">&#x1F9D1; 미용사 성과</h3>
+      <h3 style="font-size:1rem;font-weight:800;margin-bottom:12px;color:var(--text-primary)">${App.icon('user')} 미용사 성과</h3>
       <div class="card" style="margin-bottom:20px">
         <div class="card-body" style="padding:12px 16px">
           ${groomerList.map(([name, stats]) => {
@@ -808,7 +817,7 @@ App.pages.analytics = {
                   <div style="height:100%;width:${pct}%;background:linear-gradient(90deg,var(--primary),#818CF8);border-radius:4px"></div>
                 </div>
                 <div style="display:flex;gap:12px;font-size:0.82rem;color:var(--text-secondary);flex-wrap:wrap">
-                  <span>&#x2702; ${stats.count}건</span>
+                  <span>${App.icon('scissors')} ${stats.count}건</span>
                   <span>건당 ${App.formatCurrency(avgPrice)}</span>
                   <span>비율 ${sharePct}%</span>
                   <span>고객 ${stats.customers.size}명</span>

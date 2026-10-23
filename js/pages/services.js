@@ -9,19 +9,35 @@ App.pages.services = {
       // 1) 비활성 → 맨 뒤
       if (a.isActive === false && b.isActive !== false) return 1;
       if (a.isActive !== false && b.isActive === false) return -1;
-      // 2) 즐겨찾기 (활성 내에서) → 위로
-      const favA = !!a.favorite, favB = !!b.favorite;
-      if (favA !== favB) return favA ? -1 : 1;
-      // 3) 카테고리 순서
+      // 2) 카테고리 순서 (카테고리 헤더가 한 번씩만 나오도록 즐겨찾기보다 먼저)
       const catA = catOrder.indexOf(a.category || 'grooming');
       const catB = catOrder.indexOf(b.category || 'grooming');
       if (catA !== catB) return catA - catB;
+      // 3) 즐겨찾기 → 같은 카테고리 안에서 위로
+      const favA = !!a.favorite, favB = !!b.favorite;
+      if (favA !== favB) return favA ? -1 : 1;
       // 4) sortOrder → 이름순
       const sA = a.sortOrder || 999;
       const sB = b.sortOrder || 999;
       if (sA !== sB) return sA - sB;
       return (a.name || '').localeCompare(b.name || '', 'ko');
     });
+  },
+
+  // 기록이 이 서비스를 사용했는지 (기록당 1회만 센다).
+  // 주 서비스 우선순위: serviceId → 구형 serviceIds 배열 → 이름(정규화). 이름이 바뀌어도 id 로 이어진다.
+  // 추가 항목도 사용으로 센다: addonServiceIds 가 있으면 id, 없는 예전 기록은 태그 이름으로.
+  _recordUsesService(r, s) {
+    const sid = Number(s.id);
+    const nm = App.normalizeServiceName(s.name);
+    const legacyIds = Array.isArray(r.serviceIds) ? r.serviceIds.filter(Boolean) : [];
+    let main;
+    if (r.serviceId != null) main = Number(r.serviceId) === sid;
+    else if (legacyIds.length > 0) main = legacyIds.some(x => Number(x) === sid);
+    else main = !!r.service && App.normalizeServiceName(r.service) === nm;
+    if (main) return true;
+    if (Array.isArray(r.addonServiceIds)) return r.addonServiceIds.some(x => Number(x) === sid);
+    return Array.isArray(r.addons) && r.addons.some(a => App.normalizeServiceName(a) === nm);
   },
 
   async render(container) {
@@ -34,14 +50,10 @@ App.pages.services = {
     const active = services.filter(s => s.isActive !== false);
     const inactive = services.filter(s => s.isActive === false);
 
-    // 서비스 사용 횟수 집계 (신형 r.service 문자열 + 구형 r.serviceIds 배열 모두 매칭)
-    const usageByName = {};
+    // 서비스 사용 횟수 집계 — 기록 1건은 서비스당 한 번만 센다 (_recordUsesService 우선순위)
     const usageById = {};
-    records.forEach(r => {
-      if (r.service) usageByName[r.service] = (usageByName[r.service] || 0) + 1;
-      (r.serviceIds || []).forEach(id => { usageById[id] = (usageById[id] || 0) + 1; });
-    });
-    const getUsage = (s) => (usageByName[s.name] || 0) + (usageById[s.id] || 0);
+    services.forEach(s => { usageById[s.id] = records.filter(r => this._recordUsesService(r, s)).length; });
+    const getUsage = (s) => usageById[s.id] || 0;
 
     const sorted = this._sortServices([...services]);
 
@@ -53,13 +65,13 @@ App.pages.services = {
         </div>
         <div class="page-actions">
           <button class="btn btn-secondary" id="btn-init-services">+ 기본 템플릿</button>
-          ${active.length > 0 ? '<button class="btn btn-warning" id="btn-bulk-price">&#x1F4B0; 일괄 가격 조정</button>' : ''}
+          ${active.length > 0 ? '<button class="btn btn-warning" id="btn-bulk-price">' + App.icon('coins') + ' 일괄 가격 조정</button>' : ''}
           <button class="btn btn-primary" id="btn-add-service">+ 새 서비스</button>
         </div>
       </div>
       ${services.length > 0 ? `
       <div class="search-box" style="margin-bottom:12px;max-width:none;position:relative">
-        <span class="search-icon">&#x1F50D;</span>
+        <span class="search-icon">${App.icon('search')}</span>
         <input type="text" id="service-search" placeholder="서비스 이름 검색..." style="width:100%;min-height:44px;padding-right:60px">
         <span id="service-search-count" style="display:none;position:absolute;right:14px;top:50%;transform:translateY(-50%);font-size:0.78rem;color:var(--text-muted);font-weight:700;pointer-events:none"></span>
       </div>
@@ -67,7 +79,7 @@ App.pages.services = {
 
       ${services.length === 0 ? `
         <div class="empty-state" style="padding:60px 20px">
-          <div class="empty-state-icon">&#x1F4CB;</div>
+          <div class="empty-state-icon">${App.icon('list', 'ico-xl')}</div>
           <div class="empty-state-text">등록된 서비스가 없습니다</div>
           <p style="color:var(--text-muted);font-size:0.85rem;margin-bottom:16px">기본 서비스를 등록하거나 직접 추가하세요</p>
           <div style="display:flex;gap:8px;justify-content:center">
@@ -94,8 +106,8 @@ App.pages.services = {
             inInactive = true;
             lastCat = '__inactive__';
             html += '<div class="service-category-header" data-category="__inactive__" style="cursor:pointer;font-weight:700;font-size:0.85rem;color:var(--text-muted);padding:18px 8px 8px;border-bottom:2px solid var(--border-light);margin-bottom:8px;display:flex;align-items:center;justify-content:space-between">'
-                  + '<span>&#x26AA; 비활성 <span style="font-size:0.78rem;font-weight:500;margin-left:4px">' + inactive.length + '개</span></span>'
-                  + '<span class="cat-fold-icon" style="transition:transform 0.2s;font-size:0.7rem">&#x25BC;</span>'
+                  + '<span>' + App.icon('circle') + ' 비활성 <span style="font-size:0.78rem;font-weight:500;margin-left:4px">' + inactive.length + '개</span></span>'
+                  + '<span class="cat-fold-icon" style="transition:transform 0.2s;font-size:0.7rem">' + App.icon('chevron-down') + '</span>'
                   + '</div>';
           }
           // 활성 서비스만 카테고리 헤더 노출 (fold 가능)
@@ -106,17 +118,18 @@ App.pages.services = {
               lastCat = cat;
               html += '<div class="service-category-header" data-category="' + cat + '" style="cursor:pointer;font-weight:700;font-size:0.85rem;color:var(--primary);padding:14px 8px 8px;border-bottom:2px solid var(--primary-lighter);margin-bottom:8px;display:flex;align-items:center;justify-content:space-between">'
                     + '<span>' + (this._categoryLabels[cat] || cat) + ' <span style="color:var(--text-muted);font-size:0.78rem;font-weight:500;margin-left:4px">' + catCounts[cat] + '개</span></span>'
-                    + '<span class="cat-fold-icon" style="transition:transform 0.2s;font-size:0.7rem;color:var(--text-muted)">&#x25BC;</span>'
+                    + '<span class="cat-fold-icon" style="transition:transform 0.2s;font-size:0.7rem;color:var(--text-muted)">' + App.icon('chevron-down') + '</span>'
                     + '</div>';
             }
           }
           const usage = getUsage(s);
           const usageTxt = usage > 0 ? '1년간 ' + usage + '회' : '신규';
-          // 가격 표시: 모든 사이즈 같으면 단일, 다르면 "소/중/대"
+          // 가격 표시: 모든 사이즈 같으면 단일, 다르면 "소 3.5만 · 중 4.5만 · 대 5.5만" (0원은 "무료")
           const samePrices = (s.priceSmall || 0) === (s.priceMedium || 0) && (s.priceMedium || 0) === (s.priceLarge || 0);
+          const fmtPrice = (v) => App.formatPriceShort(v) || '무료';
           const priceDisplay = samePrices
-            ? App.formatPriceShort(s.priceSmall || 0)
-            : App.formatPriceShort(s.priceSmall) + ' / ' + App.formatPriceShort(s.priceMedium) + ' / ' + App.formatPriceShort(s.priceLarge);
+            ? fmtPrice(s.priceSmall)
+            : '소 ' + fmtPrice(s.priceSmall) + ' · 중 ' + fmtPrice(s.priceMedium) + ' · 대 ' + fmtPrice(s.priceLarge);
           // 가격 변경 이력 (30일 이상 전 변경 시만)
           let priceAgeTxt = '';
           if (s.priceChangedAt) {
@@ -130,13 +143,13 @@ App.pages.services = {
                                  : isFav ? 'border-left:4px solid #F59E0B;'
                                  : '';
           html += '<div class="service-row" data-id="' + s.id + '" data-category="' + cat + '" data-search="' + App.escapeHtml((s.name || '').toLowerCase()) + '" style="display:flex;align-items:center;gap:8px;padding:14px 12px;background:var(--bg-white);border:1px solid var(--border-light);' + barStyle + 'border-radius:var(--radius);box-shadow:var(--shadow-xs);margin-bottom:6px;cursor:pointer;' + (isOff ? 'opacity:0.55;' : '') + '">'
-                + '<button class="btn-favorite-service" data-id="' + s.id + '" title="' + (isFav ? '즐겨찾기 해제' : '즐겨찾기') + '" onclick="event.stopPropagation()" style="background:none;border:none;cursor:pointer;font-size:1.3rem;color:' + (isFav ? '#F59E0B' : 'var(--border)') + ';flex-shrink:0;width:36px;height:36px;padding:0;display:flex;align-items:center;justify-content:center">' + (isFav ? '&#x2605;' : '&#x2606;') + '</button>'
+                + '<button class="btn-favorite-service" data-id="' + s.id + '" title="' + (isFav ? '즐겨찾기 해제' : '즐겨찾기') + '" aria-label="' + (isFav ? '즐겨찾기 해제' : '즐겨찾기') + '" onclick="event.stopPropagation()" style="background:none;border:none;cursor:pointer;font-size:1.3rem;color:' + (isFav ? '#F59E0B' : 'var(--border)') + ';flex-shrink:0;min-width:44px;min-height:44px;padding:0;display:flex;align-items:center;justify-content:center">' + App.icon(isFav ? 'star-filled' : 'star') + '</button>'
                 + '<div style="flex:1;min-width:0">'
                 +   '<div style="font-size:1.05rem;font-weight:800;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">' + App.escapeHtml(s.name) + '</div>'
+                +   '<div class="service-price-display" data-id="' + s.id + '" style="font-size:0.95rem;font-weight:800;color:var(--primary);margin-top:3px;overflow-wrap:anywhere">' + priceDisplay + '</div>'
                 +   '<div style="font-size:0.78rem;color:var(--text-muted);margin-top:3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">' + usageTxt + (priceAgeTxt ? ' · ' + priceAgeTxt : '') + '</div>'
                 + '</div>'
-                + '<div class="service-price-display" data-id="' + s.id + '" data-same="' + samePrices + '" style="text-align:right;flex-shrink:0;font-size:1rem;font-weight:800;color:var(--primary);white-space:nowrap;padding:6px 8px">' + priceDisplay + '</div>'
-                + '<button class="btn-service-menu" data-id="' + s.id + '" title="더보기" onclick="event.stopPropagation()" style="background:none;border:none;cursor:pointer;font-size:1.4rem;color:var(--text-muted);padding:4px;flex-shrink:0;width:36px;height:36px;display:flex;align-items:center;justify-content:center;line-height:1">&#x22EF;</button>'
+                + '<button class="btn-service-menu" data-id="' + s.id + '" title="더보기" aria-label="더보기" onclick="event.stopPropagation()" style="background:none;border:none;cursor:pointer;font-size:1.4rem;color:var(--text-muted);padding:0;flex-shrink:0;min-width:44px;min-height:44px;display:flex;align-items:center;justify-content:center;line-height:1">' + App.icon('more') + '</button>'
                 + '</div>';
         });
         return html;
@@ -159,7 +172,7 @@ App.pages.services = {
 
     // 즐겨찾기 토글
     document.querySelectorAll('.btn-favorite-service').forEach(btn => {
-      btn.addEventListener('click', () => this.toggleFavoriteService(Number(btn.dataset.id)));
+      btn.addEventListener('click', () => this.toggleFavoriteService(Number(btn.dataset.id), btn));
     });
 
     // 가격 영역은 카드 일관성을 위해 클릭 시 수정 모달 (인라인 편집 제거 — 카드 폭 변형 방지)
@@ -214,10 +227,10 @@ App.pages.services = {
       hideFooter: true,
       content: `
         <div style="display:flex;flex-direction:column;gap:8px">
-          <button class="btn btn-secondary svc-menu-btn" data-action="edit" style="width:100%;text-align:left;min-height:48px;justify-content:flex-start">&#x270F; 수정</button>
-          <button class="btn btn-secondary svc-menu-btn" data-action="duplicate" style="width:100%;text-align:left;min-height:48px;justify-content:flex-start">&#x1F4CB; 복제</button>
-          <button class="btn btn-secondary svc-menu-btn" data-action="toggle" style="width:100%;text-align:left;min-height:48px;justify-content:flex-start">${isOff ? '&#x1F7E2; 활성화' : '&#x26AA; 비활성화'}</button>
-          <button class="btn btn-danger svc-menu-btn" data-action="delete" style="width:100%;text-align:left;min-height:48px;margin-top:6px;justify-content:flex-start">&#x1F5D1; 삭제</button>
+          <button class="btn btn-secondary svc-menu-btn" data-action="edit" style="width:100%;text-align:left;min-height:48px;justify-content:flex-start">${App.icon('edit')} 수정</button>
+          <button class="btn btn-secondary svc-menu-btn" data-action="duplicate" style="width:100%;text-align:left;min-height:48px;justify-content:flex-start">${App.icon('copy')} 복제</button>
+          <button class="btn btn-secondary svc-menu-btn" data-action="toggle" style="width:100%;text-align:left;min-height:48px;justify-content:flex-start">${isOff ? App.icon('circle-filled') + ' 활성화' : App.icon('circle') + ' 비활성화'}</button>
+          <button class="btn btn-danger svc-menu-btn" data-action="delete" style="width:100%;text-align:left;min-height:48px;margin-top:6px;justify-content:flex-start">${App.icon('trash')} 삭제</button>
         </div>
       `
     });
@@ -275,48 +288,61 @@ App.pages.services = {
           <div class="form-hint" style="margin-top:4px">예) +5000 = 모든 가격 5,000원 인상 / -5 = 5% 인하</div>
         </div>
 
+        <div class="form-group">
+          <label class="form-label">반올림 단위</label>
+          <div id="bulk-round-chips" style="display:flex;gap:6px;flex-wrap:wrap">
+            <button type="button" class="payment-chip" data-value="100">100원</button>
+            <button type="button" class="payment-chip active" data-value="1000">1,000원</button>
+          </div>
+          <input type="hidden" id="bulk-round" value="1000">
+        </div>
+
         <div id="bulk-preview" style="display:none;background:var(--bg);border-radius:var(--radius);padding:12px;margin-top:8px;max-height:240px;overflow-y:auto;font-size:0.82rem"></div>
       `,
       onSave: () => this._previewBulkPrice(active)
     });
 
-    // chips 핸들러
-    document.querySelectorAll('#bulk-target-chips .payment-chip').forEach(btn => {
-      btn.addEventListener('click', () => {
-        document.querySelectorAll('#bulk-target-chips .payment-chip').forEach(b => b.classList.remove('active'));
-        btn.classList.add('active');
-        document.getElementById('bulk-target').value = btn.dataset.value;
+    // 입력이 바뀌면 이전 미리보기는 무효 — 숨겨서 오래된 값으로 적용되지 않게 한다
+    const hidePreview = () => {
+      const preview = document.getElementById('bulk-preview');
+      if (preview) { preview.style.display = 'none'; preview.innerHTML = ''; }
+    };
+    // chips 핸들러 (대상 / 방식 / 반올림)
+    [['bulk-target-chips', 'bulk-target'], ['bulk-mode-chips', 'bulk-mode'], ['bulk-round-chips', 'bulk-round']].forEach(([chipsId, hiddenId]) => {
+      document.querySelectorAll('#' + chipsId + ' .payment-chip').forEach(btn => {
+        btn.addEventListener('click', () => {
+          document.querySelectorAll('#' + chipsId + ' .payment-chip').forEach(b => b.classList.remove('active'));
+          btn.classList.add('active');
+          document.getElementById(hiddenId).value = btn.dataset.value;
+          hidePreview();
+        });
       });
     });
-    document.querySelectorAll('#bulk-mode-chips .payment-chip').forEach(btn => {
-      btn.addEventListener('click', () => {
-        document.querySelectorAll('#bulk-mode-chips .payment-chip').forEach(b => b.classList.remove('active'));
-        btn.classList.add('active');
-        document.getElementById('bulk-mode').value = btn.dataset.value;
-      });
-    });
+    document.getElementById('bulk-value')?.addEventListener('input', hidePreview);
+  },
+
+  // 현재 모달 입력값으로 가격 계산기 생성 (미리보기·적용 모두 같은 입력을 다시 읽는다)
+  _readBulkInputs() {
+    const target = document.getElementById('bulk-target')?.value || 'all';
+    const mode = document.getElementById('bulk-mode')?.value || 'amount';
+    const unit = Number(document.getElementById('bulk-round')?.value) === 100 ? 100 : 1000;
+    const valueInput = Number(document.getElementById('bulk-value')?.value);
+    if (!valueInput || isNaN(valueInput)) return null;
+    const calcPrice = (orig) => {
+      const next = mode === 'percent' ? orig * (1 + valueInput / 100) : orig + valueInput;
+      return Math.max(0, Math.round(next / unit) * unit); // 선택한 단위로 반올림
+    };
+    return { target, calcPrice };
   },
 
   // 미리보기 → 실제 적용 단계
   async _previewBulkPrice(services) {
-    const target = document.getElementById('bulk-target')?.value || 'all';
-    const mode = document.getElementById('bulk-mode')?.value || 'amount';
-    const valueInput = Number(document.getElementById('bulk-value')?.value);
-    if (!valueInput || isNaN(valueInput)) { App.showToast('조정값을 입력하세요.', 'error'); return; }
+    const inputs = this._readBulkInputs();
+    if (!inputs) { App.showToast('조정값을 입력하세요.', 'error'); return; }
+    const { target, calcPrice } = inputs;
 
     const filtered = target === 'all' ? services : services.filter(s => (s.category || 'grooming') === target);
     if (filtered.length === 0) { App.showToast('해당하는 서비스가 없습니다.', 'info'); return; }
-
-    // 가격 계산
-    const calcPrice = (orig) => {
-      let next;
-      if (mode === 'percent') {
-        next = Math.round(orig * (1 + valueInput / 100));
-      } else {
-        next = orig + valueInput;
-      }
-      return Math.max(0, Math.round(next / 100) * 100); // 100원 단위 반올림
-    };
 
     const previewItems = filtered.map(s => ({
       id: s.id,
@@ -351,25 +377,31 @@ App.pages.services = {
       <div style="font-weight:700;margin-bottom:8px">변경 미리보기 (${previewItems.length}개)</div>
       ${previewHtml}
       <div style="display:flex;gap:8px;margin-top:14px">
-        <button class="btn btn-warning" id="bulk-confirm" style="flex:1">&#x2714; 적용</button>
+        <button class="btn btn-warning" id="bulk-confirm" style="flex:1">${App.icon('check')} 적용</button>
         <button class="btn btn-secondary" id="bulk-cancel" style="flex:1">취소</button>
       </div>
     `;
     preview.style.display = 'block';
 
     document.getElementById('bulk-confirm')?.addEventListener('click', async () => {
+      // 적용 시점의 입력값·DB 가격으로 다시 계산 (미리보기 이후 값이 바뀌어도 오래된 결과를 쓰지 않음)
+      const cur = this._readBulkInputs();
+      if (!cur) { App.showToast('조정값을 입력하세요.', 'error'); return; }
+      const ids = (cur.target === 'all' ? services : services.filter(s => (s.category || 'grooming') === cur.target)).map(s => s.id);
       try {
         const now = new Date().toISOString();
-        for (const p of previewItems) {
-          const svc = await DB.get('services', p.id);
+        let count = 0;
+        for (const sid of ids) {
+          const svc = await DB.get('services', sid);
           if (!svc) continue;
-          svc.priceSmall = p.newS;
-          svc.priceMedium = p.newM;
-          svc.priceLarge = p.newL;
+          svc.priceSmall = cur.calcPrice(svc.priceSmall || 0);
+          svc.priceMedium = cur.calcPrice(svc.priceMedium || 0);
+          svc.priceLarge = cur.calcPrice(svc.priceLarge || 0);
           svc.priceChangedAt = now;
           await DB.update('services', svc);
+          count++;
         }
-        App.showToast(`${previewItems.length}개 서비스 가격 일괄 변경 완료`);
+        App.showToast(`${count}개 서비스 가격 일괄 변경 완료`);
         App.closeModal();
         App.handleRoute();
       } catch (e) {
@@ -382,14 +414,28 @@ App.pages.services = {
     });
   },
 
-  // 즐겨찾기 토글
-  async toggleFavoriteService(id) {
+  // 즐겨찾기 토글 — 재렌더 없이 해당 줄만 갱신 (검색어·스크롤 유지, 위치는 다음 렌더 때 정렬)
+  async toggleFavoriteService(id, btn) {
     const service = await DB.get('services', id);
     if (!service) return;
     service.favorite = !service.favorite;
-    await DB.update('services', service);
-    App.showToast(service.favorite ? `"${service.name}" 즐겨찾기 추가` : `"${service.name}" 즐겨찾기 해제`);
-    App.handleRoute();
+    try {
+      await DB.update('services', service);
+    } catch (e) {
+      console.error('즐겨찾기 저장 실패:', e);
+      App.showToast('저장 중 오류가 발생했습니다.', 'error');
+      return;
+    }
+    const isFav = service.favorite;
+    if (btn) {
+      btn.innerHTML = App.icon(isFav ? 'star-filled' : 'star');
+      btn.setAttribute('aria-label', isFav ? '즐겨찾기 해제' : '즐겨찾기');
+      btn.style.color = isFav ? '#F59E0B' : 'var(--border)';
+      btn.title = isFav ? '즐겨찾기 해제' : '즐겨찾기';
+      const row = btn.closest('.service-row');
+      if (row && service.isActive !== false) row.style.borderLeft = isFav ? '4px solid #F59E0B' : '';
+    }
+    App.showToast(isFav ? `"${service.name}" 즐겨찾기 추가` : `"${service.name}" 즐겨찾기 해제`);
   },
 
   // 서비스 복제 — 같은 데이터로 새 서비스 즉시 등록 후 수정 폼 열기
@@ -418,80 +464,6 @@ App.pages.services = {
     }
   },
 
-  // 인라인 가격 편집 — 모달 열지 않고 즉시 수정
-  async openInlinePriceEdit(el) {
-    const id = Number(el.dataset.id);
-    const sameStr = el.dataset.same === 'true';
-    const service = await DB.get('services', id);
-    if (!service) { App.showToast('서비스를 찾을 수 없습니다.', 'error'); return; }
-
-    // 편집 input 으로 교체 (같은 가격이면 1개, 다르면 3개)
-    const originalHtml = el.innerHTML;
-    if (sameStr) {
-      el.innerHTML = `<input type="number" class="inline-price-input" value="${service.priceSmall || 0}" step="1000" min="0" style="width:90px;padding:8px 10px;font-size:0.9rem;border:1.5px solid var(--primary);border-radius:6px;min-height:40px"> 원 <button class="btn btn-sm btn-primary inline-price-save" style="padding:6px 14px;font-size:0.82rem">저장</button> <button class="btn btn-sm btn-secondary inline-price-cancel" style="padding:6px 14px;font-size:0.82rem">취소</button>`;
-    } else {
-      el.innerHTML = `
-        <span style="display:inline-flex;align-items:center;gap:6px;flex-wrap:wrap">
-          <input type="number" class="inline-price-input" data-size="small" value="${service.priceSmall || 0}" step="1000" min="0" style="width:80px;padding:8px;font-size:0.88rem;border:1.5px solid var(--primary);border-radius:6px;min-height:40px" title="소형">
-          /
-          <input type="number" class="inline-price-input" data-size="medium" value="${service.priceMedium || 0}" step="1000" min="0" style="width:80px;padding:8px;font-size:0.88rem;border:1.5px solid var(--primary);border-radius:6px;min-height:40px" title="중형">
-          /
-          <input type="number" class="inline-price-input" data-size="large" value="${service.priceLarge || 0}" step="1000" min="0" style="width:80px;padding:8px;font-size:0.88rem;border:1.5px solid var(--primary);border-radius:6px;min-height:40px" title="대형">
-          <button class="btn btn-sm btn-primary inline-price-save" style="padding:6px 14px;font-size:0.82rem;margin-left:4px">저장</button>
-          <button class="btn btn-sm btn-secondary inline-price-cancel" style="padding:6px 14px;font-size:0.82rem">취소</button>
-        </span>
-      `;
-    }
-    el.style.cursor = 'default';
-    el.onclick = null; // re-binding 까지 비활성
-
-    const inputs = el.querySelectorAll('.inline-price-input');
-    inputs[0]?.focus();
-    inputs[0]?.select();
-
-    const saveAndExit = async () => {
-      try {
-        const oldS = service.priceSmall || 0, oldM = service.priceMedium || 0, oldL = service.priceLarge || 0;
-        if (sameStr) {
-          const v = Math.max(0, Number(inputs[0].value) || 0);
-          service.priceSmall = service.priceMedium = service.priceLarge = v;
-        } else {
-          service.priceSmall = Math.max(0, Number(el.querySelector('[data-size="small"]').value) || 0);
-          service.priceMedium = Math.max(0, Number(el.querySelector('[data-size="medium"]').value) || 0);
-          service.priceLarge = Math.max(0, Number(el.querySelector('[data-size="large"]').value) || 0);
-        }
-        // 가격 변경 시 priceChangedAt 갱신
-        if (service.priceSmall !== oldS || service.priceMedium !== oldM || service.priceLarge !== oldL) {
-          service.priceChangedAt = new Date().toISOString();
-        }
-        await DB.update('services', service);
-        App.showToast(`"${service.name}" 가격 수정됨`);
-        App.handleRoute(); // 목록 재렌더 (가격 표시·정렬 갱신)
-      } catch (e) {
-        console.error('가격 수정 실패:', e);
-        App.showToast('수정 중 오류가 발생했습니다.', 'error');
-        el.innerHTML = originalHtml;
-        el.style.cursor = 'pointer';
-      }
-    };
-    const cancelEdit = () => {
-      el.innerHTML = originalHtml;
-      el.style.cursor = 'pointer';
-      // 다시 click 핸들러 재바인딩
-      el.addEventListener('click', () => this.openInlinePriceEdit(el), { once: true });
-    };
-
-    el.querySelector('.inline-price-save')?.addEventListener('click', (e) => { e.stopPropagation(); saveAndExit(); });
-    el.querySelector('.inline-price-cancel')?.addEventListener('click', (e) => { e.stopPropagation(); cancelEdit(); });
-    // Enter 시 저장, Esc 시 취소
-    inputs.forEach(inp => {
-      inp.addEventListener('keydown', (e) => {
-        if (e.key === 'Enter') { e.preventDefault(); saveAndExit(); }
-        if (e.key === 'Escape') { e.preventDefault(); cancelEdit(); }
-      });
-    });
-  },
-
   async showForm(id) {
     let service = id ? await DB.get('services', id) : { isActive: true };
 
@@ -511,9 +483,9 @@ App.pages.services = {
         <div class="form-group">
           <label class="form-label">분류</label>
           <div id="f-category-chips" style="display:flex;gap:6px;flex-wrap:wrap">
-            <button type="button" class="payment-chip${(service.category || 'grooming') === 'grooming' ? ' active' : ''}" data-value="grooming">&#x2702; 미용 코스</button>
-            <button type="button" class="payment-chip${service.category === 'addon' ? ' active' : ''}" data-value="addon">&#x2728; 추가 옵션</button>
-            <button type="button" class="payment-chip${service.category === 'care' ? ' active' : ''}" data-value="care">&#x1F4A7; 단독 케어</button>
+            <button type="button" class="payment-chip${(service.category || 'grooming') === 'grooming' ? ' active' : ''}" data-value="grooming">${App.icon('scissors')} 미용 코스</button>
+            <button type="button" class="payment-chip${service.category === 'addon' ? ' active' : ''}" data-value="addon">${App.icon('sparkle')} 추가 옵션</button>
+            <button type="button" class="payment-chip${service.category === 'care' ? ' active' : ''}" data-value="care">${App.icon('drop')} 단독 케어</button>
           </div>
           <input type="hidden" id="f-category" value="${service.category || 'grooming'}">
         </div>
@@ -560,7 +532,7 @@ App.pages.services = {
               return `<button type="button" class="payment-chip${active ? ' active' : ''}" data-included="${item}">${item}</button>`;
             }).join('')}
           </div>
-          <input type="text" id="f-included-custom" placeholder="기타 항목 입력 후 Enter (예: 마사지, 스파)" style="margin-bottom:6px;font-size:0.88rem">
+          <input type="text" id="f-included-custom" placeholder="기타 항목 입력 후 Enter (예: 마사지, 스파)" style="margin-bottom:6px;font-size:max(16px,0.88rem)">
           <div id="f-included-custom-list" style="display:flex;gap:4px;flex-wrap:wrap">
             ${(service.includedItems || []).filter(i => !['발톱 정리','귀청소','항문샘','발바닥','위생 미용','향수'].includes(i)).map(i => `<span class="badge badge-info custom-included-tag" data-item="${App.escapeHtml(i)}" style="cursor:pointer;padding:6px 10px" title="클릭하여 제거">${App.escapeHtml(i)} ×</span>`).join('')}
           </div>
@@ -622,11 +594,13 @@ App.pages.services = {
       const cb2 = document.getElementById('f-price-by-size-2');
       if (cb1) cb1.checked = bySize;
       if (cb2) cb2.checked = bySize;
-      // 단일 → 사이즈별 전환 시 단일 가격을 소형에 복사
+      // 단일 → 사이즈별 전환 시 현재 단일 가격을 소형에 복사하고 중형/대형 제안 재계산
       if (bySize) {
         const u = Number(document.getElementById('f-priceUnified')?.value) || 0;
-        if (u > 0 && !document.getElementById('f-priceSmall').value) {
+        if (u > 0) {
           document.getElementById('f-priceSmall').value = u;
+          mediumManual = false;
+          largeManual = false;
           // 자동 채움 트리거
           document.getElementById('f-priceSmall').dispatchEvent(new Event('input'));
         }
@@ -676,10 +650,32 @@ App.pages.services = {
 
     if (!name) { App.highlightField('f-name'); App.showToast('서비스명을 입력해주세요.', 'error'); return; }
 
+    // 같은 이름(공백 정규화·대소문자 무시) 서비스 중복 방지 — 수정 중인 자신은 제외
+    const normName = App.normalizeServiceName(name).toLowerCase();
+    const allServices = await DB.getAll('services');
+    const dup = allServices.find(s => s.id !== id && App.normalizeServiceName(s.name || '').toLowerCase() === normName);
+    if (dup) {
+      if (dup.isActive === false && !id) {
+        const ok = await App.confirm('같은 이름의 비활성 서비스가 있습니다. 활성화할까요?', { okLabel: '활성화', danger: false });
+        if (!ok) return;
+        dup.isActive = true;
+        await DB.update('services', dup);
+        App.showToast(`"${dup.name}" 서비스가 활성화되었습니다.`);
+        App.closeModal();
+        App.handleRoute();
+        return;
+      }
+      App.highlightField('f-name');
+      App.showToast(dup.isActive === false ? '같은 이름의 비활성 서비스가 있습니다.' : '같은 이름의 서비스가 이미 있습니다.', 'error');
+      return;
+    }
+
     const data = { name, description, priceSmall, priceMedium, priceLarge, category, isActive: true, includedItems };
 
+    let renamedFrom = null;
     if (id) {
       const existing = await DB.get('services', id);
+      if (App.normalizeServiceName(existing.name) !== App.normalizeServiceName(name)) renamedFrom = existing.name;
       data.isActive = existing.isActive;
       data.favorite = existing.favorite;
       // 가격 변경 감지 → priceChangedAt 갱신
@@ -696,7 +692,57 @@ App.pages.services = {
     }
 
     App.closeModal();
+    if (renamedFrom) await this._propagateRename(id, renamedFrom, name);
     App.handleRoute();
+  },
+
+  // 서비스 이름 변경 후: 기존 기록의 서비스명(스냅샷)과 자동완성 이력을 새 이름으로 맞출지 묻는다.
+  // 매출·가격 필드는 건드리지 않는다.
+  async _propagateRename(id, oldName, newName) {
+    const oldNorm = App.normalizeServiceName(oldName);
+    const newNorm = App.normalizeServiceName(newName);
+    try {
+      // 자동완성 이력: 옛 이름을 새 이름으로 교체 (중복 제거, 순서 유지)
+      const history = await App.getAutoHistory('serviceHistory');
+      if (Array.isArray(history) && history.some(v => App.normalizeServiceName(v) === oldNorm)) {
+        const next = [];
+        history.forEach(v => {
+          const val = App.normalizeServiceName(v) === oldNorm ? newNorm : v;
+          if (!next.includes(val)) next.push(val);
+        });
+        await DB.setSetting('serviceHistory', next);
+      }
+
+      const light = await DB.getAllLight('records', ['photoBefore', 'photoAfter', 'photo3', 'photo4', 'memo']);
+      const targetIds = light.filter(r =>
+        (r.serviceId != null && Number(r.serviceId) === Number(id)) ||
+        (r.serviceId == null && !!r.service && App.normalizeServiceName(r.service) === oldNorm)
+      ).map(r => r.id);
+      if (targetIds.length === 0) return;
+
+      const ok = await App.confirm(`이름을 바꿨습니다. 기존 미용 기록 ${targetIds.length}건의 서비스명도 새 이름으로 바꿀까요? (매출·가격은 그대로)`, { okLabel: '기록도 변경', danger: false });
+      if (!ok) return;
+
+      // 사진 포함 전체 기록을 다시 읽어 갱신 (경량 사본으로 update 하면 사진 필드가 지워진다)
+      let updated = 0;
+      const CHUNK = 50;
+      for (let i = 0; i < targetIds.length; i += CHUNK) {
+        for (const rid of targetIds.slice(i, i + CHUNK)) {
+          const rec = await DB.get('records', rid);
+          if (!rec) continue;
+          rec.service = newNorm;
+          if (Array.isArray(rec.serviceNames) && rec.serviceNames.length === 1) rec.serviceNames = [newNorm];
+          if (rec.serviceId == null) rec.serviceId = id;
+          await DB.update('records', rec);
+          updated++;
+        }
+        await new Promise(r => setTimeout(r, 0)); // 대량 갱신 중 UI 멈춤 방지
+      }
+      App.showToast(`미용 기록 ${updated}건의 서비스명을 변경했습니다.`);
+    } catch (e) {
+      console.error('서비스명 기록 반영 실패:', e);
+      App.showToast('기록 서비스명 변경 중 오류가 발생했습니다.', 'error');
+    }
   },
 
   async toggleService(id) {
@@ -714,18 +760,17 @@ App.pages.services = {
   async deleteService(id) {
     const service = await DB.get('services', id);
     if (!service) return;
-    const records = await DB.getAll('records');
-    // 신형(r.service 문자열) + 구형(r.serviceIds 배열) 모두 매칭
-    const refCount = records.filter(r =>
-      (r.serviceIds || []).includes(id) || r.service === service.name
-    ).length;
+    // 사진 필드를 뺀 경량 로드 (전체 기간 집계가 필요하지만 사진까지 메모리에 올릴 이유는 없다)
+    const records = await DB.getAllLight('records', ['photoBefore', 'photoAfter', 'photo3', 'photo4', 'memo']);
+    // serviceId → 구형 serviceIds → 이름 순으로 매칭, 추가 항목 포함 (기록당 1회)
+    const refCount = records.filter(r => this._recordUsesService(r, service)).length;
 
     let msg;
     if (refCount > 0) {
       msg = `"${App.escapeHtml(service.name)}" 서비스를 <strong>완전 삭제</strong>하시겠습니까?<br><br>
-        <span style="color:var(--danger)">&#x26A0; 미용 기록 <strong>${refCount}건</strong>에서 사용 중입니다.</span><br>
+        <span style="color:var(--danger)">${App.icon('alert')} 미용 기록 <strong>${refCount}건</strong>에서 사용 중입니다.</span><br>
         삭제 시: 기록의 서비스명은 텍스트로 유지되지만 서비스 목록에서 사라집니다.<br><br>
-        <small style="color:var(--text-muted)">잠시 숨기려면 [&#x1F7E2;&rarr;&#x26AA;] 버튼으로 비활성화하세요.</small>`;
+        <small style="color:var(--text-muted)">잠시 숨기려면 [${App.icon('circle-filled')}&rarr;${App.icon('circle')}] 버튼으로 비활성화하세요.</small>`;
     } else {
       msg = `"${App.escapeHtml(service.name)}" 서비스를 삭제하시겠습니까?`;
     }
