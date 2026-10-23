@@ -606,12 +606,13 @@ App.pages.customers = {
     // 신규 등록은 예약·기록 화면의 인라인 등록과 완전히 같은 폼·같은 규칙을 쓴다
     if (!id) {
       App.bindCustomerForm({
-        onPick: (c) => {
+        onPick: (c, petId) => {
           const callback = this._afterSaveCallback;
           this._afterSaveCallback = null;
           App.closeModal();
-          if (callback) { callback(c.id, c.name || '', { customerId: c.id, label: App.getCustomerLabel(c) }); return; }
-          App.navigate('customers/' + c.id);
+          if (callback) { callback(c.id, c.name || '', { customerId: c.id, petId: petId || null, label: App.getCustomerLabel(c) }); return; }
+          // closeModal()의 history.back()이 끝난 뒤 이동 — 바로 이동하면 뒤로가기가 이동을 되돌렸다
+          setTimeout(() => App.navigate('customers/' + c.id), 180);
         }
       });
       // iOS 모달 autofocus 미지원 대응
@@ -682,9 +683,9 @@ App.pages.customers = {
     let result;
     try {
       result = await App.saveCustomerForm({
-        onPick: (c) => {
-          if (finish(c.id, App.getCustomerLabel(c), null)) return;
-          App.navigate('customers/' + c.id);
+        onPick: (c, petId) => {
+          if (finish(c.id, App.getCustomerLabel(c), petId || null)) return;
+          setTimeout(() => App.navigate('customers/' + c.id), 180);
         }
       });
     } catch (err) {

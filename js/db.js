@@ -100,7 +100,13 @@ const DB = {
                 }, 2000);
               } else if (!isStandalone) {
                 setTimeout(() => {
-                  App.showToast('데이터 보호를 위해 앱을 홈 화면에 추가해주세요.', 'warning', { duration: 8000 });
+                  // 동기화 중이면 데이터는 클라우드에 있으므로 띄우지 않는다. 아니어도 일주일에 한 번만 (매번 떠서 화면을 가렸다)
+                  if (typeof Sync !== 'undefined' && Sync.isEnabled()) return;
+                  try {
+                    if (Number(localStorage.getItem('installHintAt') || 0) > Date.now() - 7 * 864e5) return;
+                    localStorage.setItem('installHintAt', String(Date.now()));
+                  } catch (_) {}
+                  App.showToast('데이터 보호를 위해 앱을 홈 화면에 추가해주세요.', 'info', { duration: 6000 });
                 }, 3000);
               }
             }

@@ -199,7 +199,7 @@
 
   <!-- Mobile Bottom Navigation -->
   <nav id="bottom-nav" class="bottom-nav">
-    <!-- 사용 빈도순: 예약·고객 찾기·등록이 가운데, 하루 한두 번 보는 매출·분석·설정은 더보기 -->
+    <!-- 5칸 — [+]가 정중앙. 오늘 일은 예약 화면(결과 줄)에서 끝나므로 기록 목록은 더보기 맨 위로 -->
     <a href="#dashboard" class="bottom-nav-item active" data-page="dashboard">
       <span class="bottom-nav-icon"><svg class="ico" aria-hidden="true"><use href="#i-home"/></svg></span><span class="bottom-nav-label">홈</span>
     </a>
@@ -211,21 +211,19 @@
     <div class="bottom-nav-add" id="bottom-nav-add" role="button" tabindex="0" aria-label="빠른 추가" aria-haspopup="true">
       <span>+</span>
       <div class="bottom-add-menu" id="bottom-nav-add-menu">
-        <div class="bottom-add-item" data-action="customer"><svg class="ico" aria-hidden="true"><use href="#i-user"/></svg> 새 고객</div>
+        <!-- 자주 쓰는 순. 기존 손님의 새 반려견은 '새 고객'에서 번호가 겹치면 바로 추가된다 -->
         <div class="bottom-add-item" data-action="appointment"><svg class="ico" aria-hidden="true"><use href="#i-calendar"/></svg> 새 예약</div>
         <div class="bottom-add-item" data-action="record"><svg class="ico" aria-hidden="true"><use href="#i-scissors"/></svg> 새 미용기록</div>
-        <div class="bottom-add-item" data-action="pet"><svg class="ico" aria-hidden="true"><use href="#i-paw"/></svg> 새 반려견</div>
+        <div class="bottom-add-item" data-action="customer"><svg class="ico" aria-hidden="true"><use href="#i-user"/></svg> 새 고객 · 반려견</div>
       </div>
     </div>
     <a href="#customers" class="bottom-nav-item" data-page="customers" data-also="pets">
       <span class="bottom-nav-icon"><svg class="ico" aria-hidden="true"><use href="#i-users"/></svg></span><span class="bottom-nav-label">고객</span>
     </a>
-    <a href="#records" class="bottom-nav-item" data-page="records">
-      <span class="bottom-nav-icon"><svg class="ico" aria-hidden="true"><use href="#i-scissors"/></svg></span><span class="bottom-nav-label">기록</span>
-    </a>
-    <div class="bottom-nav-item" id="bottom-more-btn" role="button" tabindex="0" aria-haspopup="true" data-also="revenue analytics services settings">
+    <div class="bottom-nav-item" id="bottom-more-btn" role="button" tabindex="0" aria-haspopup="true" data-also="records revenue analytics services settings">
       <span class="bottom-nav-icon"><svg class="ico" aria-hidden="true"><use href="#i-more"/></svg></span><span class="bottom-nav-label">더보기</span>
       <div class="bottom-more-menu" id="bottom-more-menu">
+        <a href="#records" class="bottom-more-item"><svg class="ico" aria-hidden="true"><use href="#i-scissors"/></svg> 미용 기록</a>
         <a href="#revenue" class="bottom-more-item"><svg class="ico" aria-hidden="true"><use href="#i-coins"/></svg> 매출</a>
         <a href="#pets" class="bottom-more-item"><svg class="ico" aria-hidden="true"><use href="#i-paw"/></svg> 반려견 목록</a>
         <a href="#analytics" class="bottom-more-item"><svg class="ico" aria-hidden="true"><use href="#i-chart"/></svg> 분석</a>

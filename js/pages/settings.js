@@ -560,6 +560,7 @@ App.pages.settings = {
       <p style="color:var(--text-secondary);font-size:0.9rem;margin-bottom:12px">
         휴대폰과 컴퓨터에서 같은 예약·고객·기록을 봅니다. 미용 사진은 이 기기에만 남습니다.
       </p>
+      ${st.state === 'off' ? `<p class="sync-owner-note">동기화는 등록된 매장 계정만 사용할 수 있습니다. 동기화 없이도 이 기기에서 모든 기능을 쓸 수 있으며, 데이터는 이 기기에만 저장되니 정기 백업을 해주세요.</p>` : ''}
       <div class="sync-status-line"><span class="sync-dot ${dotCls}"></span>${App.escapeHtml(label)}</div>
       ${st.error ? `<div style="color:var(--danger);font-size:0.85rem;margin-bottom:6px">${App.escapeHtml(st.error)}</div>` : ''}
       ${st.enabled && st.email ? `<div style="color:var(--text-muted);font-size:0.85rem">계정: ${App.escapeHtml(st.email)}</div>` : ''}

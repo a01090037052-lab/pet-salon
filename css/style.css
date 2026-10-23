@@ -3399,3 +3399,11 @@ a.stat-card { display: flex; }
 .appt-result-compact .appt-result { min-height: 32px; padding: 4px 8px; font-size: 0.78rem; }
 .appt-result-compact .appt-result .btn { min-height: 26px; padding: 2px 8px; font-size: 0.75rem; }
 .appointment-item + .appt-result { margin-bottom: 12px; }
+
+/* 홈 상단 데이터 보호 알림 (동기화 중일 때의 가벼운 버전) */
+.safety-note { display: flex; align-items: center; gap: 10px; padding: 10px 12px; margin-bottom: 14px; border-radius: var(--radius); background: var(--bg-white); border: 1px solid var(--border-light); font-size: 0.85rem; color: var(--text-secondary); }
+.safety-note > .ico { color: var(--text-muted); flex-shrink: 0; }
+.safety-note small { color: var(--text-muted); }
+.safety-note .btn { flex-shrink: 0; }
+.safety-note.warn { background: var(--warning-light); border-color: var(--warning); color: var(--warning-text-strong, #92400E); }
+.sync-owner-note { font-size: 0.8rem; color: var(--text-muted); background: var(--bg); border-radius: var(--radius-sm, 8px); padding: 8px 10px; margin: -4px 0 12px; line-height: 1.5; }

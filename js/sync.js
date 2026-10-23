@@ -1254,7 +1254,7 @@ const Sync = {
     const code = e && e.code;
     console.warn('Sync 오류:', code, e);
     if (code === 'permission-denied') {
-      this._error = '이 계정은 동기화 권한이 없습니다. 허용된 Google 계정으로 다시 로그인해주세요.';
+      this._error = '이 계정은 동기화 권한이 없습니다. 동기화는 등록된 매장 계정만 사용할 수 있습니다 — 동기화를 끄면 이 기기에서 그대로 쓸 수 있습니다.';
       this._fatal = true;
       this._stopListeners();
     } else if (code === 'resource-exhausted') {

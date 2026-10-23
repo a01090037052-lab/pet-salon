@@ -358,25 +358,41 @@ App.pages.dashboard = {
       // 월 매출 목표
       const monthlyGoal = Number(await DB.getSetting('monthlyGoal')) || 0;
 
-      // Auto-backup warning
-      const needsBackup = await App.checkBackup();
-      const lastBackupDate = await DB.getSetting('lastBackupDate');
-      const backupDays = lastBackupDate ? App.getDaysAgo(lastBackupDate) : null;
+      // 데이터 보호 알림 — 동기화 중이면 백업 경고 대신 동기화 상태·사진 백업만 (App.getDataSafetyNotice)
+      const safety = await App.getDataSafetyNotice();
       const _isIOS = /iPhone|iPad|iPod/.test(navigator.userAgent);
-      const _urgent = backupDays !== null && backupDays >= (_isIOS ? 7 : 14);
-      const backupWarning = needsBackup ? `
+      let backupWarning = '';
+      if (safety && safety.kind === 'backup') {
+        const _urgent = safety.urgent;
+        backupWarning = `
         <div style="background:${_urgent ? 'var(--danger-bg-soft)' : 'var(--warning-light)'};border:1.5px solid ${_urgent ? 'var(--danger)' : 'var(--warning)'};border-radius:var(--radius);padding:14px 16px;margin-bottom:16px;display:flex;align-items:center;gap:12px;flex-wrap:wrap">
           <span style="font-size:1.3rem">${App.icon('alert')}</span>
           <div class="flex-1" style="min-width:200px">
             <strong style="color:${_urgent ? 'var(--danger)' : 'var(--warning-text-strong)'}">${_urgent ? '백업 필요 (긴급)' : '백업 알림'}</strong>
             <div style="font-size:0.85rem;margin-top:3px;color:var(--text-secondary)">
-              ${backupDays !== null ? `마지막 백업 ${backupDays}일 전.` : '아직 백업하지 않았습니다.'}
+              ${safety.days !== null ? `마지막 백업 ${safety.days}일 전.` : '아직 백업하지 않았습니다.'}
               ${_isIOS ? ' iOS는 7일 이상 미사용 시 데이터 자동 삭제 위험.' : ' 폰 분실·고장 대비 데이터 보호 권장.'}
+              <a href="#settings" style="color:var(--primary);font-weight:600;white-space:nowrap">기기 간 동기화를 켜면 자동 보관 &rarr;</a>
             </div>
           </div>
           <button class="btn btn-sm ${_urgent ? 'btn-danger' : 'btn-warning'}" onclick="App.pages.settings?.directBackup()">지금 백업</button>
-        </div>
-      ` : '';
+        </div>`;
+      } else if (safety && safety.kind === 'sync') {
+        backupWarning = `
+        <div class="safety-note warn">
+          ${App.icon('refresh')}
+          <div class="flex-1">${safety.days === null ? '아직 클라우드와 동기화되지 않았습니다.' : `${safety.days}일째 클라우드와 동기화되지 않았습니다.`}<br><small>인터넷 연결과 로그인 상태를 확인해주세요.</small></div>
+          <button class="btn btn-sm btn-primary" onclick="(async()=>{await Sync.syncNow();App.handleRoute();})()">지금 동기화</button>
+        </div>`;
+      } else if (safety && safety.kind === 'photo') {
+        backupWarning = `
+        <div class="safety-note" id="photo-backup-note">
+          ${App.icon('image')}
+          <div class="flex-1">고객·예약·기록은 클라우드에 보관 중입니다.<br><small>사진 원본은 이 기기에만 있어요. 한 달에 한 번 백업을 권장합니다.</small></div>
+          <button class="btn btn-sm btn-secondary" onclick="App.pages.settings?.directBackup()">백업</button>
+          <button class="btn btn-sm btn-ghost" aria-label="한 달 동안 숨기기" onclick="try{localStorage.setItem('photoBackupSnoozeUntil',String(Date.now()+30*864e5))}catch(_){};document.getElementById('photo-backup-note')?.remove()">${App.icon('close')}</button>
+        </div>`;
+      }
 
       // Onboarding card for new users (shopName 재사용, services는 기 로드된 배열 길이 사용)
       const shopInfo = shopName;

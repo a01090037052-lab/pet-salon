@@ -1412,7 +1412,7 @@ const App = {
     `;
   },
 
-  // opts: { onPick(customer) } — 중복 후보를 눌렀을 때 그 고객을 쓰는 동작
+  // opts: { onPick(customer, petId) } — 중복 후보를 눌렀을 때 그 고객을 쓰는 동작 (폼에 적은 반려견은 그 고객에게 추가된 뒤 petId 로 온다)
   bindCustomerForm(opts) {
     const o = opts || {};
     setTimeout(() => this.setupPhoneInputs(), 50);
@@ -1458,12 +1458,15 @@ const App = {
           ${matches.map(c => {
             const cp = byCustomer[c.id] || [];
             const petPart = cp.length === 0 ? '' : cp.map(p => p.name).filter(Boolean).join(', ');
+            // 입력한 반려견이 이 보호자에게 아직 없으면 '추가' — 기존 손님의 두 번째 강아지도 새 고객 폼 하나로 끝낸다
+            const typedPet = (document.getElementById('cf-petName')?.value || '').trim();
+            const isNewPet = typedPet && !cp.some(p => (p.name || '').trim() === typedPet);
             return `<div class="cf-dup-row">
               <div class="cf-dup-info">
                 <strong>${this.escapeHtml(this.getCustomerLabel(c, cp))}</strong>
                 <span>${this.formatPhoneHtml(c.phone)}${petPart ? ' &middot; ' + this.escapeHtml(petPart) : ''}</span>
               </div>
-              <button type="button" class="btn btn-sm btn-primary cf-dup-pick" data-id="${c.id}">이 고객 사용</button>
+              <button type="button" class="btn btn-sm btn-primary cf-dup-pick" data-id="${c.id}">${isNewPet ? `'${this.escapeHtml(typedPet)}' 추가` : '이 고객 사용'}</button>
             </div>`;
           }).join('')}
         </div>`;
@@ -1471,13 +1474,42 @@ const App = {
         btn.addEventListener('click', async (ev) => {
           ev.stopPropagation();
           const picked = all.find(c => c.id === Number(btn.dataset.id));
-          if (picked && o.onPick) o.onPick(picked);
+          if (!picked || !o.onPick) return;
+          btn.disabled = true;
+          const petId = await this._petFromFormFor(picked.id);
+          o.onPick(picked, petId);
         });
       });
     }, 300);
 
     phoneInput.addEventListener('input', check);
+    // 번호를 먼저 치고 반려견 이름을 나중에 적어도 '추가' 버튼 문구가 맞게 바뀌도록
+    document.getElementById('cf-petName')?.addEventListener('input', check);
     if (phoneInput.value) check(); // 검색어에서 넘어온 번호도 바로 검사
+  },
+
+  // 새 고객 폼에 적은 반려견을 기존 보호자에게 붙인다. 같은 이름이 이미 있으면 그 반려견 id, 이름이 비었으면 null.
+  async _petFromFormFor(customerId) {
+    const g = (id) => document.getElementById(id);
+    const name = (g('cf-petName')?.value || '').trim();
+    if (!name) return null;
+    try {
+      const existing = (await DB.getByIndex('pets', 'customerId', customerId)).find(p => (p.name || '').trim() === name);
+      if (existing) return existing.id;
+      const petData = { customerId, name, breed: this.normalizeBreed(g('cf-breed')?.value), healthNotes: g('cf-notes')?.value.trim() || '' };
+      const weight = parseFloat(g('cf-weight')?.value);
+      if (weight > 0) {
+        petData.weight = weight;
+        petData.size = weight < 7 ? 'small' : weight < 15 ? 'medium' : 'large';
+      }
+      const id = await DB.add('pets', petData);
+      this.showToast(`${name} 등록 완료`);
+      return id;
+    } catch (e) {
+      console.warn('기존 보호자에 반려견 추가 실패:', e);
+      this.showToast('반려견 등록에 실패했습니다.', 'error');
+      return null;
+    }
   },
 
   // 폼을 읽어 고객(+반려견)을 저장한다. 저장했으면 결과 객체, 중단했으면 null.
@@ -1503,11 +1535,14 @@ const App = {
     const all = await DB.getAll('customers');
     const dup = all.find(c => (c.phone || '').replace(/\D/g, '') === digits);
     if (dup) {
+      const dupPets = await DB.getByIndex('pets', 'customerId', dup.id);
+      const isNewPet = petName && !dupPets.some(p => (p.name || '').trim() === petName);
       const use = await this.confirm(
-        `이미 등록된 연락처입니다.<br><strong>${this.escapeHtml(this.getCustomerLabel(dup))}</strong><br>이 고객을 사용하시겠습니까?`,
-        { okLabel: '이 고객 사용', danger: false }
+        `이미 등록된 연락처입니다.<br><strong>${this.escapeHtml(this.getCustomerLabel(dup, dupPets))}</strong><br>` +
+        (isNewPet ? `이 보호자에게 <strong>${this.escapeHtml(petName)}</strong>을(를) 추가할까요?` : '이 고객을 사용하시겠습니까?'),
+        { okLabel: isNewPet ? '반려견 추가' : '이 고객 사용', danger: false }
       );
-      if (use && o.onPick) { o.onPick(dup); return null; }
+      if (use && o.onPick) { o.onPick(dup, await this._petFromFormFor(dup.id)); return null; }
       this.highlightField('cf-phone');
       return null;
     }
@@ -1787,9 +1822,10 @@ const App = {
       </div>
     `;
 
-    const pickExisting = (c) => {
+    const pickExisting = async (c, petId) => {
+      if (petId) { const pet = await DB.get('pets', petId); if (pet) addLocal(c, pet); }
       lockSelection(c.id, labelOf(c));
-      if (onChange) onChange(c.id);
+      if (onChange) onChange(c.id, petId || undefined);
     };
 
     App.bindCustomerForm({ onPick: pickExisting });
@@ -2567,6 +2603,30 @@ const App = {
       this.closeSearch();
       this.navigate('customers/' + customer.id);
     });
+  },
+
+  // 홈 화면 상단 '데이터 보호' 알림 — 동기화가 켜져 있으면 고객·예약·기록은 클라우드에 있으므로
+  // 백업 경고 대신 (1) 동기화가 며칠째 안 될 때만 경고, (2) 이 기기에만 있는 미용 사진은 한 달에 한 번 가볍게 권한다.
+  // 반환: null | { kind: 'sync', days } | { kind: 'photo', days } | { kind: 'backup', days, urgent }
+  async getDataSafetyNotice() {
+    const lastBackup = await DB.getSetting('lastBackupDate');
+    const backupDays = lastBackup ? this.getDaysAgo(lastBackup) : null;
+    // 앱 시작 직후엔 Sync.init 이 아직 설정을 읽기 전일 수 있어 저장된 설정을 직접 본다
+    const syncSetting = await DB.getSetting('sync');
+    if (syncSetting && syncSetting.enabled) {
+      const lastSyncAt = (typeof Sync !== 'undefined' && Sync._lastSyncAt) || syncSetting.lastSyncAt || null;
+      const syncDays = lastSyncAt ? Math.floor((Date.now() - lastSyncAt) / 864e5) : null;
+      if (syncDays === null || syncDays >= 3) return { kind: 'sync', days: syncDays };
+      let snoozed = false;
+      try { snoozed = Number(localStorage.getItem('photoBackupSnoozeUntil') || 0) > Date.now(); } catch (_) {}
+      if (!snoozed && (backupDays === null || backupDays >= 30) && await DB.count('photos').catch(() => 0) > 0) {
+        return { kind: 'photo', days: backupDays };
+      }
+      return null;
+    }
+    if (!(await this.checkBackup())) return null;
+    const isIOS = /iPhone|iPad|iPod/.test(navigator.userAgent);
+    return { kind: 'backup', days: backupDays, urgent: backupDays !== null && backupDays >= (isIOS ? 7 : 14) };
   },
 
   // Check auto-backup
