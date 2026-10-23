@@ -813,6 +813,11 @@ a.stat-card { display: flex; }
   backdrop-filter: blur(10px);
   -webkit-backdrop-filter: blur(10px);
 }
+/* 토스트 타입별 배경 — 흰 글씨 대비 4.5:1 이상 (밝은 주황·초록은 흰 글씨가 묻혀 한 톤 진하게) */
+.toast.success { background: linear-gradient(135deg, #059669, #047857); }
+.toast.error { background: linear-gradient(135deg, #DC2626, #B91C1C); }
+.toast.warning { background: linear-gradient(135deg, #D97706, #B45309); }
+.toast.info { background: linear-gradient(135deg, #2563EB, #1D4ED8); }
 .toast .toast-ico { display: inline-flex; flex-shrink: 0; color: inherit; opacity: .95; }
 .toast .toast-ico .ico { width: 18px; height: 18px; stroke-width: 2.2; }
 
