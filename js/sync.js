@@ -732,7 +732,13 @@ const Sync = {
             let data = row.data;
             if (row.store === 'petPhotos') data = await this._buildPetPhoto(row.id, row.ts);
             if (!data) { done.push(row.qid); continue; }
-            batch.set(ref, { ...data, _serverAt: FV.serverTimestamp() });
+            try {
+              batch.set(ref, { ...data, _serverAt: FV.serverTimestamp() });
+            } catch (e) {
+              // 저장할 수 없는 모양의 데이터는 set() 에서 바로 거부된다 — 이 한 건만 건너뛰고 나머지는 보낸다
+              if (e && e.code === 'invalid-argument') { console.warn(`Sync: 전송 불가 데이터 건너뜀 (${row.store} #${row.id})`, e); done.push(row.qid); continue; }
+              throw e;
+            }
           } else {
             batch.set(this._col('tombstones').doc(`${row.store}_${row.id}`), {
               store: row.store, id: row.id, _updatedAt: row.ts, _deviceId: this._s.deviceId, _serverAt: FV.serverTimestamp()
@@ -1145,7 +1151,9 @@ const Sync = {
       const idx = os.index('qk');
       const now = Date.now();
       for (const [qk, it] of map) {
-        const row = { qk, store: it.store, op: it.op, id: it.id, data: it.data || null, ts: now };
+        // 레코드 번호는 rid 에 둔다 — 편지함의 keyPath 가 'id' 라서 id 로 넣으면 편지함 번호로 쓰여
+        // 고객 1번과 반려견 1번처럼 종류가 다른 같은 번호가 부딪혀 묶음 전체가 저장되지 않았다.
+        const row = { qk, store: it.store, op: it.op, rid: it.id, data: it.data || null, ts: now };
         const r = idx.getAllKeys(qk);
         r.onsuccess = () => { (r.result || []).forEach(k => os.delete(k)); os.add(row); };
       }
@@ -1162,7 +1170,10 @@ const Sync = {
       const keysReq = os.getAllKeys(null, n);
       keysReq.onsuccess = () => {
         const rows = req.result || [];
-        rows.forEach((r, i) => { r.qid = keysReq.result[i]; });
+        rows.forEach((r, i) => {
+          r.qid = keysReq.result[i];
+          if (r.rid !== undefined) r.id = r.rid; // 예전 형식(id = 레코드 번호)은 그대로 쓴다
+        });
         resolve(rows);
       };
       keysReq.onerror = () => reject(keysReq.error);
@@ -1254,7 +1265,7 @@ const Sync = {
     } else if (code === 'unavailable' || code === 'timeout' || !navigator.onLine) {
       this._error = null; // 일시적 — 재시도
     } else {
-      this._error = (e && e.message) || '동기화 오류';
+      this._error = (e && e.message) || (e && e.name) || (e && e.code) || '동기화 오류';
     }
     this._emit();
   },
