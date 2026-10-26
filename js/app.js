@@ -2650,7 +2650,8 @@ const App = {
       appointment: '[{매장명}] {고객명}님, {날짜} {시간}에 {반려견명} 예약이 확인되었습니다. {담당}문의: {전화번호}',
       reminder: '[{매장명}] {고객명}님, {시점} {날짜} {시간}에 {반려견명} 미용 예약이 있습니다. 변경/취소는 {전화번호}로 연락 부탁드립니다.',
       birthday: '[{매장명}] {고객명}님! {반려견명}의 생일을 축하합니다! 🎂 생일 기념 특별 할인을 준비했어요. 문의: {전화번호}',
-      complete: '[{매장명}] {고객명}님, {반려견명}의 미용이 완료되었습니다! 서비스: {서비스}, 금액: {금액}원. 감사합니다! 💕'
+      complete: '[{매장명}] {고객명}님, {반려견명}의 미용이 완료되었습니다! 서비스: {서비스}, 금액: {금액}원. 감사합니다! 💕',
+      cardSend: '[{매장명}] {고객명}님, 오늘 {반려견명} 미용 사진이에요! 예쁘게 다녀갔어요. 감사합니다 ♥'
     };
     return (templates && templates[type]) || defaults[type] || '';
   },
@@ -2795,16 +2796,20 @@ const App = {
       '전화번호': shopPhone,
       ...vars
     };
-    // 고객명 빈 값 폴백
-    if (!allVars['고객명']) allVars['고객명'] = '보호자';
+    return this.fillSmsTemplate(tpl, allVars);
+  },
 
-    for (const [key, val] of Object.entries(allVars)) {
-      tpl = tpl.replace(new RegExp(`\\{${key}\\}`, 'g'), val || '');
+  // 템플릿 채우기 (설정 화면 미리보기와 실제 발송이 같은 규칙을 쓴다)
+  fillSmsTemplate(tpl, vars) {
+    let out = String(tpl || '');
+    const v = { ...vars };
+    // 고객명 빈 값 폴백
+    if (!v['고객명']) v['고객명'] = '보호자';
+    for (const [key, val] of Object.entries(v)) {
+      out = out.replace(new RegExp(`\\{${key}\\}`, 'g'), val || '');
     }
     // 호출처가 넘기지 않은 변수({시점}, {담당} 등)는 손님에게 그대로 보이면 안 된다 → 제거 후 공백 정리
-    tpl = tpl.replace(/\{[^{}]{1,12}\}/g, '').replace(/[ \t]{2,}/g, ' ').replace(/ ([.,!?])/g, '$1').trim();
-
-    return tpl;
+    return out.replace(/\{[^{}]{1,12}\}/g, '').replace(/[ \t]{2,}/g, ' ').replace(/ ([.,!?])/g, '$1').trim();
   },
 
   // SMS URI 생성 유틸리티

@@ -1251,10 +1251,11 @@ App.pages.records = {
         document.getElementById('post-save-sms')?.addEventListener('click', async () => {
           const svcDisplay = [data.service, data.style].filter(Boolean).join(' / ');
           const msg = await App.buildSms('complete', {
-            '고객명': App.getCustomerLabel(customer),
+            // 이름 없는 손님은 '보호자(1234)님'이 아니라 buildSms 의 '보호자님'으로
+            '고객명': customer?.name || '',
             '반려견명': pet?.name || '',
             '서비스': svcDisplay,
-            '금액': String(finalPrice)
+            '금액': Number(finalPrice || 0).toLocaleString('ko-KR')
           });
           App.openSms(customerPhone, msg);
           // Don't close modal - just update button to show sent
@@ -1785,7 +1786,13 @@ App.pages.records = {
     const layout = designSettings.layout || 'strip2';
     const s = designSettings; // shorthand
 
-    const infoLines = this._buildInfoLines(record, pet, serviceNames, s);
+    // 정보 줄을 쓰는 레이아웃(2컷 등)은 바로 위에 반려견 이름과 날짜를 이미 크게 그린다 — 줄에서는 빼고 견종만 남긴다
+    // (예전엔 '콩이 / 2026-09-23' 아래에 '콩이 | 말티즈 / 2026-09-23'이 또 나왔다)
+    const _dupDate = App.formatDate(record.date);
+    const infoLines = this._buildInfoLines(record, pet, serviceNames, s)
+      .filter(l => l !== _dupDate)
+      .map(l => (pet?.name && l.startsWith(pet.name + ' | ')) ? l.slice(pet.name.length + 3) : l)
+      .filter(l => l && l !== pet?.name);
     // 마이그레이션된 사진은 photos 스토어에서 로드, 아니면 인라인
     const photoBefore = record.photoBefore || (record.photoBeforeId ? await DB.getPhoto(record.photoBeforeId) : null);
     const photoAfter = record.photoAfter || (record.photoAfterId ? await DB.getPhoto(record.photoAfterId) : null);
@@ -1863,7 +1870,6 @@ App.pages.records = {
     if (img4) img4._meta = _photoMetas.photo4 || { offsetX: 0, offsetY: 0, zoom: 1.0 };
 
     // Build photo slots based on available images
-    const photos2 = [imgBefore || imgAfter, imgAfter || imgBefore];
     const photos3 = [imgBefore || imgAfter, imgAfter || imgBefore, img3 || imgBefore || imgAfter];
     const photos4 = [
       imgBefore || imgAfter,
@@ -2054,7 +2060,8 @@ App.pages.records = {
       // 하단 텍스트 (한 줄, 자유 텍스트 우선 — 헤드라인 비어있으면 반려견 이름)
       const remainingY = pad + photoS;
       const textCenterY = remainingY + (H - remainingY) / 2 + 10;
-      const polarText = _hasHeadline ? headline : petName;
+      // 예전엔 다른 레이아웃의 지역 변수(_hasHeadline)를 참조해 폴라로이드가 항상 오류로 멈췄다
+      const polarText = s.headline ? s.headline : petName;
       const polarTextColor = (s.template === 'custom' && s.customTextColor) ? s.customTextColor : '#1A1A1A';
       ctx.fillStyle = polarTextColor;
       ctx.font = 'bold 36px ' + fontFamily;
@@ -2118,6 +2125,8 @@ App.pages.records = {
       canvas.width = W; canvas.height = H;
       ctx = canvas.getContext('2d');
       ctx.fillStyle = bgColor; ctx.fillRect(0, 0, W, H);
+      // 2컷만 프레임(배경 이미지)을 그리지 않아 내 프레임을 골라도 흰 배경으로 나왔다
+      if (_customBgImg) this._drawImageCover(ctx, _customBgImg, 0, 0, W, H);
 
       const pad = 30;
       const photoS = W - pad * 2; // 340
@@ -2128,22 +2137,15 @@ App.pages.records = {
       ctx.fillText(shopName, W / 2, 30);
 
       const topY = 50;
-      // Photo 1 (Before)
-      _drawPhoto(ctx, photos2[0], pad, topY, photoS, photoS, 6);
-      // Before label
-      ctx.fillStyle = 'rgba(0,0,0,0.5)';
-      this._roundRect(ctx, pad + 8, topY + 8, 64, 24, 6); ctx.fill();
-      ctx.fillStyle = '#FFFFFF'; ctx.font = 'bold 11px ' + fontFamily; ctx.textAlign = 'center';
-      ctx.fillText('BEFORE', pad + 40, topY + 24);
-
-      // Photo 2 (After)
+      // 사진 위 BEFORE/AFTER 글씨는 넣지 않는다 (사장님 요청 — 사진을 가리고 꼭 전·후 사진만 쓰는 것도 아님)
+      // 사진이 1장이면 같은 사진을 두 번 넣지 않고 한 칸으로 크게
       const afterY = topY + photoS + gap;
-      _drawPhoto(ctx, photos2[1], pad, afterY, photoS, photoS, 6);
-      // After label
-      ctx.fillStyle = mainColor;
-      this._roundRect(ctx, pad + 8, afterY + 8, 56, 24, 6); ctx.fill();
-      ctx.fillStyle = '#FFFFFF'; ctx.font = 'bold 11px ' + fontFamily; ctx.textAlign = 'center';
-      ctx.fillText('AFTER', pad + 36, afterY + 24);
+      if (imgBefore && imgAfter) {
+        _drawPhoto(ctx, imgBefore, pad, topY, photoS, photoS, 6);
+        _drawPhoto(ctx, imgAfter, pad, afterY, photoS, photoS, 6);
+      } else {
+        _drawPhoto(ctx, imgBefore || imgAfter, pad, topY, photoS, photoS * 2 + gap, 6);
+      }
 
       // Pet name + date
       const bottomY = afterY + photoS + 28;
@@ -2190,20 +2192,6 @@ App.pages.records = {
       // Bottom-right
       _drawPhoto(ctx, photos4[3], pad + cellW + gap, topY + cellH + gap, cellW, cellH, 6);
 
-      // Labels on photos
-      const labelPositions = [
-        { x: pad + 8, y: topY + 8, text: 'BEFORE' },
-        { x: pad + cellW + gap + 8, y: topY + 8, text: 'AFTER' },
-        { x: pad + 8, y: topY + cellH + gap + 8, text: 'BEFORE' },
-        { x: pad + cellW + gap + 8, y: topY + cellH + gap + 8, text: 'AFTER' }
-      ];
-      labelPositions.forEach((lbl, i) => {
-        ctx.fillStyle = i % 2 === 0 ? 'rgba(0,0,0,0.5)' : mainColor;
-        const lw = lbl.text === 'BEFORE' ? 64 : 56;
-        this._roundRect(ctx, lbl.x, lbl.y, lw, 22, 5); ctx.fill();
-        ctx.fillStyle = '#FFFFFF'; ctx.font = 'bold 10px ' + fontFamily; ctx.textAlign = 'center';
-        ctx.fillText(lbl.text, lbl.x + lw / 2, lbl.y + 16);
-      });
 
       // Pet name + date
       const bottomY = topY + cellH * 2 + gap + 32;
@@ -2244,19 +2232,23 @@ App.pages.records = {
         }
       }
 
-      // 4장 사진
-      const allPhotos = [photos4[0], photos4[1], photos4[2], photos4[3]];
-      for (let i = 0; i < 4; i++) {
-        const py = pad + i * (photoH + gap);
+      // 고른 사진만큼 칸을 나눈다 — 2장이면 큰 칸 2개 (예전엔 전·후·전·후로 같은 사진을 반복해 채웠다)
+      const realPhotos = [imgBefore, imgAfter, img3, img4].filter(Boolean);
+      const allPhotos = realPhotos.length ? realPhotos : [null];
+      const nCells = allPhotos.length;
+      const areaH = photoH * 4 + gap * 3;
+      const cellH = Math.round((areaH - gap * (nCells - 1)) / nCells);
+      for (let i = 0; i < nCells; i++) {
+        const py = pad + i * (cellH + gap);
         // 프레임
         if (s.template === 'classic' || s.template === 'film') {
           ctx.strokeStyle = borderColor; ctx.lineWidth = 1;
-          ctx.strokeRect(pad - 1, py - 1, photoW + 2, photoH + 2);
+          ctx.strokeRect(pad - 1, py - 1, photoW + 2, cellH + 2);
         }
         ctx.save();
-        this._roundRect(ctx, pad, py, photoW, photoH, s.template === 'pastel' ? 12 : 4);
+        this._roundRect(ctx, pad, py, photoW, cellH, s.template === 'pastel' ? 12 : 4);
         ctx.clip();
-        _drawPhoto(ctx, allPhotos[i], pad, py, photoW, photoH);
+        _drawPhoto(ctx, allPhotos[i], pad, py, photoW, cellH);
         ctx.restore();
       }
 
@@ -2300,8 +2292,12 @@ App.pages.records = {
       // 메인 사진 (크게)
       const photoPad = 40;
       const photoW = W - photoPad * 2;
-      const photoH = Math.round(photoW * 4 / 3);
       const photoY = topPad + 10;
+      // 아래 글자 자리를 먼저 잡고 남은 높이만 사진에 준다 — 예전엔 사진(1333px)이 카드(1350px) 밖으로 나가
+      // 반려견 이름·날짜·헤드라인이 카드 밖에 그려져 보이지 않았다
+      const _textH = 50 + (s.headline ? 44 : 0) + (s.subline ? 32 : 0) + (s.customShowPet ? 40 : 0)
+        + (serviceNames && s.customShowPet ? 35 : 0) + (s.customShowDate ? 30 : 0);
+      const photoH = Math.min(Math.round(photoW * 4 / 3), H - photoY - _textH - 30);
       ctx.save();
       this._roundRect(ctx, photoPad, photoY, photoW, photoH, 16);
       ctx.clip();
@@ -2505,13 +2501,22 @@ App.pages.records = {
   _renderPhotoSlots(count) {
     const container = document.getElementById('card-photo-slots');
     if (!container) return;
-    this._cardPhotos = new Array(count).fill(null);
+    // 사진 칸: 직접 고른 사진은 레이아웃을 바꿔도 그대로, 나머지 칸은 이 기록의 사진으로 채운다
+    // (예전엔 레이아웃을 바꿀 때마다 전부 지워졌고, 기록에 넣어 둔 사진도 다시 골라야 했다)
+    const prevPhotos = this._cardPhotos || [];
+    const prevMeta = this._cardPhotoMeta || [];
+    const picked = this._cardUserPicked || [];
+    const defaults = this._slotDefaults(count);
+    const blank = () => ({ offsetX: 0, offsetY: 0, zoom: 1.0 });
+    this._cardPhotos = Array.from({ length: 4 }, (_, i) => picked[i] ? prevPhotos[i] : (i < count ? (defaults[i] || null) : null));
     // 메타: offsetX/offsetY = -50~+50 (사진 중심 기준 비율 이동), zoom = 1.0~2.0
-    this._cardPhotoMeta = new Array(count).fill(null).map(() => ({ offsetX: 0, offsetY: 0, zoom: 1.0 }));
+    this._cardPhotoMeta = Array.from({ length: 4 }, (_, i) => (picked[i] && prevMeta[i]) || blank());
     container.innerHTML = Array.from({ length: count }, (_, i) => `
       <div style="flex:1 1 calc(50% - 4px);min-width:140px;max-width:200px">
         <input type="file" id="card-photo-${i}" accept="image/*" style="display:none">
         <div id="card-preview-${i}" style="width:100%;height:120px;border:2px dashed var(--border);border-radius:var(--radius);display:flex;align-items:center;justify-content:center;cursor:pointer;overflow:hidden;font-size:1.4rem;color:var(--text-muted);background:var(--bg)" onclick="document.getElementById('card-photo-${i}').click()">${App.icon('camera')}</div>
+        <!-- 위치·확대 조정은 필요할 때만 펼친다 (사진마다 슬라이더 3개가 늘 펼쳐져 창이 길었다) -->
+        <button type="button" class="card-adjust-btn" id="card-adjust-${i}" data-slot="${i}" hidden>${App.icon('settings')} 위치 조정</button>
         <div id="card-photo-controls-${i}" style="display:none;margin-top:6px;font-size:0.7rem">
           <div class="photo-slider-row" style="display:flex;align-items:center;gap:6px;margin-bottom:3px">
             <span style="color:var(--text-muted);flex-shrink:0;min-width:30px">좌↔우</span>
@@ -2543,10 +2548,12 @@ App.pages.records = {
           App.resizeImage(ev.target.result, (compressed) => {
             this._cardPhotos[i] = compressed;
             this._cardPhotoMeta[i] = { offsetX: 0, offsetY: 0, zoom: 1.0 };
+            if (this._cardUserPicked) this._cardUserPicked[i] = true;
             this._refreshPhotoPreview(i);
             this._resetPhotoSliders(i);
-            const ctrls = document.getElementById(`card-photo-controls-${i}`);
-            if (ctrls) ctrls.style.display = 'block';
+            const adj = document.getElementById(`card-adjust-${i}`);
+            if (adj) adj.hidden = false;
+            this._scheduleCardPreview();
           });
         };
         reader.readAsDataURL(file);
@@ -2601,6 +2608,105 @@ App.pages.records = {
         this._refreshPhotoPreview(slot);
       });
     });
+
+    // 레이아웃을 바꾸기 전에 골라 둔 사진 다시 표시 (위치·확대 값 포함)
+    for (let i = 0; i < count; i++) {
+      if (!this._cardPhotos[i]) continue;
+      const m = this._cardPhotoMeta[i];
+      const set = (sel, v, labelId, txt) => { const el = container.querySelector(sel); if (el) el.value = v; const l = document.getElementById(labelId); if (l) l.textContent = txt; };
+      set(`.card-x-slider[data-slot="${i}"]`, m.offsetX || 0, `card-x-label-${i}`, (m.offsetX || 0) + '%');
+      set(`.card-y-slider[data-slot="${i}"]`, m.offsetY || 0, `card-y-label-${i}`, (m.offsetY || 0) + '%');
+      set(`.card-zoom-slider[data-slot="${i}"]`, Math.round((m.zoom || 1) * 100), `card-zoom-label-${i}`, Math.round((m.zoom || 1) * 100) + '%');
+      this._refreshPhotoPreview(i);
+      const adj = document.getElementById(`card-adjust-${i}`);
+      if (adj) adj.hidden = false;
+    }
+    container.querySelectorAll('.card-adjust-btn').forEach(btn => btn.addEventListener('click', () => {
+      const ctrls = document.getElementById(`card-photo-controls-${btn.dataset.slot}`);
+      if (!ctrls) return;
+      const open = ctrls.style.display === 'none';
+      ctrls.style.display = open ? 'block' : 'none';
+      btn.classList.toggle('open', open);
+    }));
+  },
+
+  // 레이아웃별 기본 사진: 한 장짜리는 미용 후 사진, 여러 장은 전 → 후 → 3 → 4 순서
+  _slotDefaults(count) {
+    if (!this._cardUsePool) return [];
+    const p = this._cardPool || {};
+    if (count === 1) return [p.after || p.before || p.p3 || p.p4 || null];
+    return [p.before, p.after, p.p3, p.p4].filter(Boolean);
+  },
+
+  // 인쇄용 4×6인치(1200×1800, 300dpi) — 네컷은 두 줄을 나란히(가운데 자르는 선), 그 외는 여백을 두고 가운데
+  _makePrintSheet(card, layout) {
+    const W = 1200, H = 1800;
+    const c = document.createElement('canvas');
+    c.width = W; c.height = H;
+    const x = c.getContext('2d');
+    x.fillStyle = '#FFFFFF'; x.fillRect(0, 0, W, H);
+    if (layout === 'photobooth') {
+      const h = H, w = Math.round(card.width * (h / card.height));
+      const gap = Math.max(0, Math.floor((W - w * 2) / 3));
+      x.drawImage(card, gap, 0, w, h);
+      x.drawImage(card, gap * 2 + w, 0, w, h);
+      x.strokeStyle = '#BBBBBB'; x.setLineDash([14, 12]); x.lineWidth = 2;
+      x.beginPath(); x.moveTo(W / 2, 0); x.lineTo(W / 2, H); x.stroke();
+    } else {
+      const m = 60;
+      const r = Math.min((W - m * 2) / card.width, (H - m * 2) / card.height);
+      const w = Math.round(card.width * r), h = Math.round(card.height * r);
+      x.drawImage(card, Math.round((W - w) / 2), Math.round((H - h) / 2), w, h);
+    }
+    return c;
+  },
+
+  // 레이아웃 버튼의 작은 모양 그림 (아이콘만으로는 결과 모양을 알 수 없었다)
+  _layoutThumb(key) {
+    const cells = { photobooth: 4, strip2: 2 }[key] || 1;
+    return `<span class="lay-thumb lay-${key}" aria-hidden="true">${'<i></i>'.repeat(cells)}</span>`;
+  },
+
+  _scheduleCardPreview() {
+    clearTimeout(this._cardPreviewTimer);
+    this._cardPreviewTimer = setTimeout(() => this._renderCardPreview().catch(e => console.warn('카드 미리보기 실패:', e)), 250);
+  },
+
+  async _renderCardPreview() {
+    const img = document.getElementById('card-live-img');
+    const empty = document.getElementById('card-live-empty');
+    if (!img || !this._cardRecordId) return;
+    const token = (this._cardPreviewToken || 0) + 1;
+    this._cardPreviewToken = token;
+    const f = await this._readCardForm(this._cardPetName || '');
+    const count = (this._CARD_LAYOUTS[f.layout] && this._CARD_LAYOUTS[f.layout].photos) || 1;
+    const photos = (this._cardPhotos || []).slice(0, count);
+    if (!photos.some(Boolean)) { img.hidden = true; if (empty) empty.hidden = false; return; }
+    const record = await DB.get('records', this._cardRecordId);
+    if (!record) return;
+    const rec = { ...record, photoBefore: photos[0] || null, photoAfter: photos[1] || null, photo3: photos[2] || null, photo4: photos[3] || null,
+      photoBeforeId: null, photoAfterId: null, photo3Id: null, photo4Id: null };
+    const metas = this._cardPhotoMeta || [];
+    const blank = { offsetX: 0, offsetY: 0, zoom: 1.0 };
+    rec._photoMetas = { photoBefore: metas[0] || blank, photoAfter: metas[1] || blank, photo3: metas[2] || blank, photo4: metas[3] || blank };
+    const [customer, pet] = await Promise.all([DB.get('customers', record.customerId), DB.get('pets', record.petId)]);
+    const shopName = await DB.getSetting('shopName') || '펫살롱';
+    const shopPhone = await DB.getSetting('shopPhone') || '';
+    const serviceNames = record.service ? App.getRecordServiceDisplay(record) : await App.getServiceNames(record.serviceIds);
+    const ds = await this._designFrom(f.settings, f.layout, f.theme, pet?.name || '');
+    const cv = await this._generateCardCanvas(rec, customer, pet, shopName, shopPhone, serviceNames, ds);
+    if (token !== this._cardPreviewToken) return; // 더 최근 미리보기가 진행 중
+    img.src = cv.toDataURL('image/jpeg', 0.72);
+    img.hidden = false;
+    if (empty) empty.hidden = true;
+    img.closest('.card-live')?.setAttribute('data-shape', f.layout);
+    // 칸보다 사진이 적으면 어떻게 나오는지 알려준다 (반복 채우지 않고 칸 수를 줄인다)
+    const note = document.getElementById('card-live-note');
+    if (note) {
+      const n = photos.filter(Boolean).length;
+      note.hidden = !(count > 1 && n < count);
+      if (!note.hidden) note.textContent = `사진 ${n}장으로 만들어요 · 칸이 ${n}개로 커져요` + (f.layout === 'photobooth' && n === 2 ? ' (2컷 레이아웃도 잘 어울려요)' : '');
+    }
   },
 
   _resetPhotoSliders(slot) {
@@ -2630,9 +2736,129 @@ App.pages.records = {
     preview.innerHTML = `<img src="${photo}" style="width:100%;height:100%;object-fit:cover;object-position:${colPct} ${rowPct};transform:scale(${meta.zoom});transform-origin:${colPct} ${rowPct};transition:transform 0.12s,object-position 0.12s">`;
   },
 
-  async generatePhotoCard(recordId) {
+  // 저장된 카드 설정 → 그리기용 설정 (만들기·미리보기 공용)
+  async _designFrom(ds, layout, theme, petName) {
+    const os = await DB.getSetting('cardTemplateSettings') || {};
+    const designSettings = {
+      layout: layout,
+      template: theme,
+      mainColor: ds.mainColor || os.mainColor || '#6366F1',
+      showService: ds.showService !== false,
+      // 금액·담당은 설정 화면에 켜는 곳이 없어 늘 찍히던 값 — SNS·손님에게 나가는 이미지라 직접 켰을 때만
+      showPrice: ds.showPrice === true,
+      showGroomer: ds.showGroomer === true,
+      showNextVisit: ds.showNextVisit !== false,
+      showDate: ds.showDate !== false,
+      showPetInfo: ds.showPetInfo !== false,
+      showShopPhone: ds.showShopPhone !== false,
+      footerMessage: String(ds.footerMessage || os.footerMessage || '감사합니다 ♥').replace(/\{반려견명\}/g, petName),
+      logo: ds.logo || await DB.getSetting('shopLogo') || null,
+      logoPosition: ds.logoPosition || 'top',
+      logoSize: ds.logoSize || 'medium',
+      headline: String(ds.headline || '').replace(/\{반려견명\}/g, petName),
+      subline: String(ds.subline || '').replace(/\{반려견명\}/g, petName),
+      // 커스텀 테마
+      customBgColor: theme === 'custom' ? (ds.customBgColor || '#FFFFFF') : null,
+      customTextColor: theme === 'custom' ? (ds.customTextColor || '#1A1A1A') : null,
+      customAccentColor: theme === 'custom' ? (ds.customAccentColor || '#6366F1') : null,
+      customBgImage: theme === 'custom' ? (ds.customBgImage || null) : null,
+      customShowPet: theme === 'custom' ? (ds.customShowPet !== false) : true,
+      customShowDate: theme === 'custom' ? (ds.customShowDate !== false) : true,
+      customShowShop: theme === 'custom' ? (ds.customShowShop !== false) : true
+    };
+    return designSettings;
+  },
+
+  // 카드 만들기 창의 현재 선택을 읽어 저장용 설정으로 만든다 (만들기·미리보기 공용)
+  async _readCardForm(cardPetName) {
+    const layout = document.querySelector('#card-pick-layout .card-pick-btn.active')?.dataset.key || 'strip2';
+    let theme = document.querySelector('#card-pick-theme .card-pick-btn.active')?.dataset.key || 'classic';
+    // 사용자 프레임 선택 시 (frame:ID) → custom 테마로 자동 적용
+    let appliedFrameId = null;
+    if (theme.startsWith('frame:')) {
+      appliedFrameId = theme.split(':')[1];
+      const frames = (await DB.getSetting('customFrames')) || [];
+      const fr = frames.find(x => x.id === appliedFrameId);
+      this._appliedFrame = fr || null;
+      if (fr) {
+        theme = 'custom';
+        // 프레임 데이터를 settings에 즉시 반영 (렌더링은 기존 custom 코드 그대로 사용)
+      }
+    }
+
+    const settings = await DB.getSetting('cardDesignSettings') || {};
+    settings.layout = layout;
+    settings.template = theme;
+    // 로고 위치 / 크기 (모든 테마 공통)
+    settings.logoPosition = document.getElementById('card-logo-position')?.value || 'top';
+    settings.logoSize = document.getElementById('card-logo-size')?.value || 'medium';
+    // 자유 텍스트 (헤드라인 / 서브 / 하단)
+    // 문구에 들어간 이번 반려견 이름은 {반려견명} 으로 저장 — 다음 손님 카드에 '콩이의 첫 미용'이 남던 문제
+    // 한 글자 이름(예: '콩')은 다른 낱말까지 바꿀 수 있어 두 글자 이상일 때만
+    const toVar = (t) => cardPetName.length >= 2 ? t.split(cardPetName).join('{반려견명}') : t;
+    settings.headline = toVar((document.getElementById('card-headline')?.value || '').trim());
+    settings.subline = toVar((document.getElementById('card-subline')?.value || '').trim());
+    const footerInput = toVar((document.getElementById('card-footer')?.value || '').trim());
+    if (footerInput) settings.footerMessage = footerInput;
+    else settings.footerMessage = settings.footerMessage || '감사합니다 ♥';
+    // 표시 항목 (서비스명·다음 방문일)
+    settings.showService = document.getElementById('card-show-service')?.checked || false;
+    settings.showNextVisit = document.getElementById('card-show-nextvisit')?.checked || false;
+    // 폴라로이드 사진 크기 (모던/미니멀)
+    settings.polaroidSize = document.querySelector('input[name="polaroidSize"]:checked')?.value || 'modern';
+    // 사용자 프레임 선택 시 settings에 프레임 데이터 반영
+    if (appliedFrameId && this._appliedFrame) {
+      settings.customBgImage = this._appliedFrame.image;
+      settings.customAccentColor = this._appliedFrame.accentColor || '#6366F1';
+      settings.customTextColor = this._appliedFrame.textColor || '#1A1A1A';
+      settings.customBgColor = '#FFFFFF';
+      settings.lastUsedFrameId = appliedFrameId;
+    } else {
+      settings.lastUsedFrameId = null;
+    }
+    // 커스텀 테마 설정 저장 — 프레임을 고른 경우는 제외 (예전엔 커스텀 색·배경이 프레임을 덮어썼다)
+    if (theme === 'custom' && !(appliedFrameId && this._appliedFrame)) {
+      settings.customBgColor = document.getElementById('card-custom-bg')?.value || '#FFFFFF';
+      settings.customTextColor = document.getElementById('card-custom-text')?.value || '#1A1A1A';
+      settings.customAccentColor = document.getElementById('card-custom-accent')?.value || '#6366F1';
+      settings.customBgImage = this._customBgImage || settings.customBgImage || null;
+      settings.customShowPet = document.getElementById('card-custom-showPet')?.checked !== false;
+      settings.customShowDate = document.getElementById('card-custom-showDate')?.checked !== false;
+      settings.customShowShop = document.getElementById('card-custom-showShop')?.checked !== false;
+    }
+    return { layout, theme, settings };
+  },
+
+  async generatePhotoCard(recordId, opts = {}) {
     const record = await DB.get('records', recordId);
     if (!record) { App.showToast('기록을 찾을 수 없습니다.', 'error'); return; }
+    // 다른 기록에서 고른 사진이 남지 않게 새 카드마다 비운다 ('다시 꾸미기'는 같은 사진으로 돌아온다)
+    const keep = opts.keepPhotos && this._cardRecordId === recordId;
+    const keptPhotos = keep ? (this._cardPhotos || []) : [];
+    const keptMeta = keep ? (this._cardPhotoMeta || []) : [];
+    this._cardPhotos = [];
+    this._cardPhotoMeta = [];
+    const cardPet = record.petId ? await DB.get('pets', record.petId) : null;
+    const cardPetName = (cardPet && cardPet.name) || '';
+    // 저장해 둔 문구의 {반려견명} 은 이번 반려견 이름으로 보여준다
+    const withPet = (t) => String(t || '').replace(/\{반려견명\}/g, cardPetName);
+    // 이 기록에 넣어 둔 사진 — 기본은 빈 칸, '이 기록 사진 넣기'를 누를 때만 채운다
+    // (기록 사진은 상태 기록용이라 카드에는 사진첩의 다른 사진을 쓰는 경우가 많다 — 사장님 의견)
+    const _ph = async (inline, id) => inline || (id ? await DB.getPhoto(id).catch(() => null) : null);
+    this._cardPool = {
+      before: await _ph(record.photoBefore, record.photoBeforeId), after: await _ph(record.photoAfter, record.photoAfterId),
+      p3: await _ph(record.photo3, record.photo3Id), p4: await _ph(record.photo4, record.photo4Id)
+    };
+    this._cardUserPicked = [false, false, false, false];
+    this._cardUsePool = false;
+    if (keep) {
+      this._cardPhotos = keptPhotos;
+      this._cardPhotoMeta = keptMeta;
+      this._cardUserPicked = keptPhotos.map(Boolean);
+    }
+    this._cardRecordId = recordId;
+    this._cardPetName = cardPetName;
+    const poolCount = Object.values(this._cardPool).filter(Boolean).length;
 
     const saved = await DB.getSetting('cardDesignSettings') || {};
     // 삭제된 레이아웃/테마 자동 마이그레이션
@@ -2653,19 +2879,28 @@ App.pages.records = {
       title: '사진 카드 만들기',
       saveText: '카드 생성',
       content: `
+        <!-- 실시간 미리보기 — 고를 때마다 바로 바뀐다 (예전엔 '카드 생성'을 눌러야 처음 보였다) -->
+        <div class="card-live">
+          <img id="card-live-img" alt="사진 카드 미리보기" hidden>
+          <div id="card-live-empty" class="card-live-empty">${App.icon('image')} 사진을 고르면 여기에 미리 보여요</div>
+          <div id="card-live-note" class="card-live-note" hidden></div>
+        </div>
         <div class="form-group">
           <label class="form-label">레이아웃</label>
           <div id="card-pick-layout" style="display:flex;gap:8px;flex-wrap:wrap">
             ${Object.entries(LAYOUTS).map(([key, l]) => `
               <button type="button" class="card-pick-btn${key === selectedLayout ? ' active' : ''}" data-key="${key}" data-photos="${l.photos}">
-                <span style="font-size:1.3rem">${App.icon(l.icon)}</span>
+                ${this._layoutThumb(key)}
                 <span style="font-size:0.75rem">${l.name}</span>
               </button>
             `).join('')}
           </div>
         </div>
         <div class="form-group">
-          <label class="form-label">사진 선택</label>
+          <div class="card-photo-head">
+            <label class="form-label" style="margin:0">사진 <span style="font-size:0.78rem;color:var(--text-muted);font-weight:400">· 칸을 눌러 사진첩에서 고르세요</span></label>
+            ${poolCount ? `<button type="button" class="btn btn-sm btn-secondary" id="card-use-record-photos">${App.icon('image')} 이 기록 사진 넣기 (${poolCount}장)</button>` : ''}
+          </div>
           <div id="card-photo-slots" style="display:flex;gap:8px;flex-wrap:wrap"></div>
         </div>
         <div class="form-group">
@@ -2690,46 +2925,6 @@ App.pages.records = {
             </button>
           </div>
         </div>
-        <!-- 매장 로고 위치/크기 (모든 테마 공통) -->
-        <div class="form-group" style="padding:12px;background:var(--bg);border-radius:var(--radius);margin-bottom:12px">
-          <label class="form-label" style="font-size:0.82rem;margin-bottom:6px">매장 로고 — 위치 / 크기 <span style="color:var(--text-muted);font-weight:400">(설정에서 로고 업로드 시 적용)</span></label>
-          <div style="display:flex;gap:6px;flex-wrap:wrap">
-            <select id="card-logo-position" style="flex:1;min-width:140px;min-height:40px;font-size:max(16px,0.85rem)">
-              <option value="top" ${(saved.logoPosition || 'top') === 'top' ? 'selected' : ''}>상단</option>
-              <option value="top-safe" ${saved.logoPosition === 'top-safe' ? 'selected' : ''}>상단 (스토리 안전 영역)</option>
-              <option value="center" ${saved.logoPosition === 'center' ? 'selected' : ''}>중앙 (워터마크)</option>
-              <option value="bottom" ${saved.logoPosition === 'bottom' ? 'selected' : ''}>하단</option>
-              <option value="none" ${saved.logoPosition === 'none' ? 'selected' : ''}>표시 안 함</option>
-            </select>
-            <select id="card-logo-size" style="flex:1;min-width:120px;min-height:40px;font-size:max(16px,0.85rem)">
-              <option value="small" ${saved.logoSize === 'small' ? 'selected' : ''}>작게 (70%)</option>
-              <option value="medium" ${(saved.logoSize || 'medium') === 'medium' ? 'selected' : ''}>보통 (100%)</option>
-              <option value="large" ${saved.logoSize === 'large' ? 'selected' : ''}>크게 (140%)</option>
-              <option value="xl" ${saved.logoSize === 'xl' ? 'selected' : ''}>매우 크게 (180%)</option>
-            </select>
-          </div>
-          <div style="font-size:0.75rem;color:var(--text-muted);margin-top:6px">${App.icon('bulb')} 스토리(9:16)는 상단·하단 일부가 인스타 UI(시간/좋아요)에 가려져요. "안전 영역" 권장</div>
-        </div>
-
-        <!-- 자유 텍스트 (헤드라인·서브·하단 메시지) -->
-        <div class="form-group" style="padding:12px;background:var(--bg);border-radius:var(--radius);margin-bottom:12px">
-          <label class="form-label" style="font-size:0.82rem;margin-bottom:6px">자유 텍스트 <span style="color:var(--text-muted);font-weight:400">(빈 칸은 표시 안 됨)</span></label>
-          <input type="text" id="card-headline" placeholder="헤드라인 (예: Bobby의 첫 미용 ✨)" value="${App.escapeHtml(saved.headline || '')}" maxlength="40" style="width:100%;margin-bottom:6px;min-height:40px;font-size:max(16px,0.9rem)">
-          <input type="text" id="card-subline" placeholder="서브타이틀 (예: 행복한 하루)" value="${App.escapeHtml(saved.subline || '')}" maxlength="50" style="width:100%;margin-bottom:6px;min-height:40px;font-size:max(16px,0.9rem)">
-          <input type="text" id="card-footer" placeholder="하단 메시지 (기본: 감사합니다 ♥)" value="${App.escapeHtml(saved.footerMessage || '')}" maxlength="60" style="width:100%;min-height:40px;font-size:max(16px,0.9rem)">
-          <div style="font-size:0.75rem;color:var(--text-muted);margin-top:6px">${App.icon('bulb')} 인스타 피드·스토리 레이아웃에 적용. 이모지 사용 가능</div>
-        </div>
-
-        <!-- 표시 항목 (클래식·필름·파스텔·다크 공통) -->
-        <div class="form-group" style="padding:12px;background:var(--bg);border-radius:var(--radius);margin-bottom:12px">
-          <label class="form-label" style="font-size:0.82rem;margin-bottom:6px">표시 항목 <span style="color:var(--text-muted);font-weight:400">(카드에 자동 표시할 정보)</span></label>
-          <div style="display:flex;gap:12px;flex-wrap:wrap">
-            <label class="checkbox-label" style="font-size:0.82rem;min-height:auto;padding:4px 0"><input type="checkbox" id="card-show-service" ${saved.showService ? 'checked' : ''}> 서비스명</label>
-            <label class="checkbox-label" style="font-size:0.82rem;min-height:auto;padding:4px 0"><input type="checkbox" id="card-show-nextvisit" ${saved.showNextVisit ? 'checked' : ''}> 다음 방문일</label>
-          </div>
-          <div style="font-size:0.75rem;color:var(--text-muted);margin-top:6px">${App.icon('bulb')} 다음 방문일은 손님의 재예약을 자연스럽게 유도</div>
-        </div>
-
         <!-- 폴라로이드 사진 크기 (폴라로이드 레이아웃 선택 시만 표시) -->
         <div id="polaroid-options" class="form-group" style="display:${selectedLayout === 'single' ? 'block' : 'none'};padding:12px;background:var(--bg);border-radius:var(--radius);margin-bottom:12px">
           <label class="form-label" style="font-size:0.82rem;margin-bottom:6px">사진 크기 <span style="color:var(--text-muted);font-weight:400">(폴라로이드)</span></label>
@@ -2796,66 +2991,60 @@ App.pages.records = {
             </div>
           </div>
         </div>
+        <!-- 자주 안 쓰는 옵션은 접어 둔다 — 레이아웃·사진·테마만으로 바로 만들 수 있게 -->
+        <details class="card-more">
+          <summary>더 꾸미기 <span>문구 · 표시 항목 · 로고</span></summary>
+        <!-- 자유 텍스트 (헤드라인·서브·하단 메시지) -->
+        <div class="form-group" style="padding:12px;background:var(--bg);border-radius:var(--radius);margin-bottom:12px">
+          <label class="form-label" style="font-size:0.82rem;margin-bottom:6px">자유 텍스트 <span style="color:var(--text-muted);font-weight:400">(빈 칸은 표시 안 됨)</span></label>
+          <input type="text" id="card-headline" placeholder="헤드라인 (예: {반려견명}의 첫 미용 ✨)" value="${App.escapeHtml(withPet(saved.headline))}" maxlength="40" style="width:100%;margin-bottom:6px;min-height:40px;font-size:max(16px,0.9rem)">
+          <input type="text" id="card-subline" placeholder="서브타이틀 (예: 행복한 하루)" value="${App.escapeHtml(withPet(saved.subline))}" maxlength="50" style="width:100%;margin-bottom:6px;min-height:40px;font-size:max(16px,0.9rem)">
+          <input type="text" id="card-footer" placeholder="하단 메시지 (기본: 감사합니다 ♥)" value="${App.escapeHtml(withPet(saved.footerMessage))}" maxlength="60" style="width:100%;min-height:40px;font-size:max(16px,0.9rem)">
+          <div style="font-size:0.75rem;color:var(--text-muted);margin-top:6px">${App.icon('bulb')} 인스타 피드·스토리 레이아웃에 적용. 이모지 사용 가능</div>
+        </div>
+
+        <!-- 표시 항목 (클래식·필름·파스텔·다크 공통) -->
+        <div class="form-group" style="padding:12px;background:var(--bg);border-radius:var(--radius);margin-bottom:12px">
+          <label class="form-label" style="font-size:0.82rem;margin-bottom:6px">표시 항목 <span style="color:var(--text-muted);font-weight:400">(카드에 자동 표시할 정보)</span></label>
+          <div style="display:flex;gap:12px;flex-wrap:wrap">
+            <label class="checkbox-label" style="font-size:0.82rem;min-height:auto;padding:4px 0"><input type="checkbox" id="card-show-service" ${saved.showService ? 'checked' : ''}> 서비스명</label>
+            <label class="checkbox-label" style="font-size:0.82rem;min-height:auto;padding:4px 0"><input type="checkbox" id="card-show-nextvisit" ${saved.showNextVisit ? 'checked' : ''}> 다음 방문일</label>
+          </div>
+          <div style="font-size:0.75rem;color:var(--text-muted);margin-top:6px">${App.icon('bulb')} 다음 방문일은 손님의 재예약을 자연스럽게 유도</div>
+        </div>
+
+        <!-- 매장 로고 위치/크기 (모든 테마 공통) -->
+        <div class="form-group" style="padding:12px;background:var(--bg);border-radius:var(--radius);margin-bottom:12px">
+          <label class="form-label" style="font-size:0.82rem;margin-bottom:6px">매장 로고 — 위치 / 크기 <span style="color:var(--text-muted);font-weight:400">(설정에서 로고 업로드 시 적용)</span></label>
+          <div style="display:flex;gap:6px;flex-wrap:wrap">
+            <select id="card-logo-position" style="flex:1;min-width:140px;min-height:40px;font-size:max(16px,0.85rem)">
+              <option value="top" ${(saved.logoPosition || 'top') === 'top' ? 'selected' : ''}>상단</option>
+              <option value="top-safe" ${saved.logoPosition === 'top-safe' ? 'selected' : ''}>상단 (스토리 안전 영역)</option>
+              <option value="center" ${saved.logoPosition === 'center' ? 'selected' : ''}>중앙 (워터마크)</option>
+              <option value="bottom" ${saved.logoPosition === 'bottom' ? 'selected' : ''}>하단</option>
+              <option value="none" ${saved.logoPosition === 'none' ? 'selected' : ''}>표시 안 함</option>
+            </select>
+            <select id="card-logo-size" style="flex:1;min-width:120px;min-height:40px;font-size:max(16px,0.85rem)">
+              <option value="small" ${saved.logoSize === 'small' ? 'selected' : ''}>작게 (70%)</option>
+              <option value="medium" ${(saved.logoSize || 'medium') === 'medium' ? 'selected' : ''}>보통 (100%)</option>
+              <option value="large" ${saved.logoSize === 'large' ? 'selected' : ''}>크게 (140%)</option>
+              <option value="xl" ${saved.logoSize === 'xl' ? 'selected' : ''}>매우 크게 (180%)</option>
+            </select>
+          </div>
+          <div style="font-size:0.75rem;color:var(--text-muted);margin-top:6px">${App.icon('bulb')} 스토리(9:16)는 상단·하단 일부가 인스타 UI(시간/좋아요)에 가려져요. "안전 영역" 권장</div>
+        </div>
+
+        </details>
       `,
       onSave: async () => {
-        const layout = document.querySelector('#card-pick-layout .card-pick-btn.active')?.dataset.key || 'strip2';
-        let theme = document.querySelector('#card-pick-theme .card-pick-btn.active')?.dataset.key || 'classic';
-        // 사용자 프레임 선택 시 (frame:ID) → custom 테마로 자동 적용
-        let appliedFrameId = null;
-        if (theme.startsWith('frame:')) {
-          appliedFrameId = theme.split(':')[1];
-          const frames = (await DB.getSetting('customFrames')) || [];
-          const fr = frames.find(x => x.id === appliedFrameId);
-          if (fr) {
-            theme = 'custom';
-            // 프레임 데이터를 settings에 즉시 반영 (렌더링은 기존 custom 코드 그대로 사용)
-            this._appliedFrame = fr;
-          }
-        }
-        if (!this._cardPhotos.some(p => p)) { App.showToast('사진을 최소 1장 선택해주세요.', 'error'); return; }
-
-        const settings = await DB.getSetting('cardDesignSettings') || {};
-        settings.layout = layout;
-        settings.template = theme;
-        // 로고 위치 / 크기 (모든 테마 공통)
-        settings.logoPosition = document.getElementById('card-logo-position')?.value || 'top';
-        settings.logoSize = document.getElementById('card-logo-size')?.value || 'medium';
-        // 자유 텍스트 (헤드라인 / 서브 / 하단)
-        settings.headline = (document.getElementById('card-headline')?.value || '').trim();
-        settings.subline = (document.getElementById('card-subline')?.value || '').trim();
-        const footerInput = (document.getElementById('card-footer')?.value || '').trim();
-        if (footerInput) settings.footerMessage = footerInput;
-        else settings.footerMessage = settings.footerMessage || '감사합니다 ♥';
-        // 표시 항목 (서비스명·다음 방문일)
-        settings.showService = document.getElementById('card-show-service')?.checked || false;
-        settings.showNextVisit = document.getElementById('card-show-nextvisit')?.checked || false;
-        // 폴라로이드 사진 크기 (모던/미니멀)
-        settings.polaroidSize = document.querySelector('input[name="polaroidSize"]:checked')?.value || 'modern';
-        // 사용자 프레임 선택 시 settings에 프레임 데이터 반영
-        if (appliedFrameId && this._appliedFrame) {
-          settings.customBgImage = this._appliedFrame.image;
-          settings.customAccentColor = this._appliedFrame.accentColor || '#6366F1';
-          settings.customTextColor = this._appliedFrame.textColor || '#1A1A1A';
-          settings.customBgColor = '#FFFFFF';
-          settings.lastUsedFrameId = appliedFrameId;
-        } else {
-          settings.lastUsedFrameId = null;
-        }
-        // 커스텀 테마 설정 저장
-        if (theme === 'custom') {
-          settings.customBgColor = document.getElementById('card-custom-bg')?.value || '#FFFFFF';
-          settings.customTextColor = document.getElementById('card-custom-text')?.value || '#1A1A1A';
-          settings.customAccentColor = document.getElementById('card-custom-accent')?.value || '#6366F1';
-          settings.customBgImage = this._customBgImage || settings.customBgImage || null;
-          settings.customShowPet = document.getElementById('card-custom-showPet')?.checked !== false;
-          settings.customShowDate = document.getElementById('card-custom-showDate')?.checked !== false;
-          settings.customShowShop = document.getElementById('card-custom-showShop')?.checked !== false;
-        }
-        await DB.setSetting('cardDesignSettings', settings);
-
+        const f = await this._readCardForm(cardPetName);
+        const count = (LAYOUTS[f.layout] && LAYOUTS[f.layout].photos) || 1;
+        const photos = this._cardPhotos.slice(0, count);
+        if (!photos.some(Boolean)) { App.showToast('사진을 최소 1장 선택해주세요.', 'error'); return; }
+        await DB.setSetting('cardDesignSettings', f.settings);
         App.closeModal();
         setTimeout(() => {
-          this._doGenerateCard(recordId, layout, theme, this._cardPhotos[0] || null, this._cardPhotos[1] || null, this._cardPhotos[2] || null, this._cardPhotos[3] || null, this._cardPhotoMeta || []);
+          this._doGenerateCard(recordId, f.layout, f.theme, photos[0] || null, photos[1] || null, photos[2] || null, photos[3] || null, this._cardPhotoMeta.slice(0, count));
         }, 200);
       }
     });
@@ -2884,6 +3073,25 @@ App.pages.records = {
       // 초기 사진 슬롯 렌더
       const initPhotos = LAYOUTS[selectedLayout]?.photos || 2;
       this._renderPhotoSlots(initPhotos);
+
+      // 무엇을 바꾸든 미리보기를 다시 그린다 (입력·선택·버튼)
+      const mb = document.getElementById('modal-body');
+      if (mb) {
+        ['input', 'change'].forEach(ev => mb.addEventListener(ev, () => this._scheduleCardPreview()));
+        mb.addEventListener('click', (e) => {
+          if (e.target.closest('.card-pick-btn, .card-preset-btn, .card-reset-btn, #card-custom-bgimg-remove')) this._scheduleCardPreview();
+        });
+      }
+      this._scheduleCardPreview();
+      document.getElementById('card-use-record-photos')?.addEventListener('click', (e) => {
+        const btn = e.currentTarget;
+        this._cardUsePool = true;
+        const cur = document.querySelector('#card-pick-layout .card-pick-btn.active');
+        this._renderPhotoSlots(Number(cur?.dataset.photos) || 1);
+        this._scheduleCardPreview();
+        btn.disabled = true;
+        btn.innerHTML = App.icon('check') + ' 기록 사진 넣음';
+      });
 
       // 테마 토글 + 커스텀 패널 표시
       this._customBgImage = saved.customBgImage || null;
@@ -2919,6 +3127,7 @@ App.pages.records = {
         reader.onload = (ev) => {
           App.resizeImage(ev.target.result, (compressed) => {
             this._customBgImage = compressed;
+            this._scheduleCardPreview();
             const nameEl = document.getElementById('card-custom-bgimg-name');
             if (nameEl) nameEl.innerHTML = App.icon('check') + ' 설정됨';
             // 배경색 피커 숨김 (이미지가 대신함)
@@ -2949,6 +3158,8 @@ App.pages.records = {
       record.photoAfter = photo2 || null;
       record.photo3 = photo3 || null;
       record.photo4 = photo4 || null;
+      // 비워 둔 칸에 기록의 저장 사진이 몰래 들어가지 않게 (사진 칸에 보이는 그대로 만든다)
+      record.photoBeforeId = record.photoAfterId = record.photo3Id = record.photo4Id = null;
       // 사진 메타 (9-Point + Zoom) — _generateCardCanvas 에서 img._meta 로 attach
       record._photoMetas = {
         photoBefore: (photoMetas && photoMetas[0]) || { offsetX: 0, offsetY: 0, zoom: 1.0 },
@@ -2964,33 +3175,7 @@ App.pages.records = {
 
       // Merge picker selections with saved detail settings
       const ds = await DB.getSetting('cardDesignSettings') || {};
-      const os = await DB.getSetting('cardTemplateSettings') || {};
-      const designSettings = {
-        layout: layout,
-        template: theme,
-        mainColor: ds.mainColor || os.mainColor || '#6366F1',
-        showService: ds.showService !== false,
-        showPrice: ds.showPrice !== false,
-        showGroomer: ds.showGroomer !== false,
-        showNextVisit: ds.showNextVisit !== false,
-        showDate: ds.showDate !== false,
-        showPetInfo: ds.showPetInfo !== false,
-        showShopPhone: ds.showShopPhone !== false,
-        footerMessage: ds.footerMessage || os.footerMessage || '감사합니다 ♥',
-        logo: ds.logo || await DB.getSetting('shopLogo') || null,
-        logoPosition: ds.logoPosition || 'top',
-        logoSize: ds.logoSize || 'medium',
-        headline: ds.headline || '',
-        subline: ds.subline || '',
-        // 커스텀 테마
-        customBgColor: theme === 'custom' ? (ds.customBgColor || '#FFFFFF') : null,
-        customTextColor: theme === 'custom' ? (ds.customTextColor || '#1A1A1A') : null,
-        customAccentColor: theme === 'custom' ? (ds.customAccentColor || '#6366F1') : null,
-        customBgImage: theme === 'custom' ? (ds.customBgImage || null) : null,
-        customShowPet: theme === 'custom' ? (ds.customShowPet !== false) : true,
-        customShowDate: theme === 'custom' ? (ds.customShowDate !== false) : true,
-        customShowShop: theme === 'custom' ? (ds.customShowShop !== false) : true
-      };
+      const designSettings = await this._designFrom(ds, layout, theme, pet?.name || '');
 
       const canvas = await this._generateCardCanvas(record, customer, pet, shopName, shopPhone, serviceNames, designSettings);
 
@@ -3008,52 +3193,75 @@ App.pages.records = {
         const _origClose = App._modalOnClose;
         App._modalOnClose = () => { if (_origClose) _origClose(); URL.revokeObjectURL(url); App._modalOnClose = null; };
 
-        // 결과 미리보기 모달 + 3버튼
+        // 완성 화면 — 공유가 주 동작, 저장·인쇄용은 나란히, 손님 문자는 보조, 다시 꾸미기로 편집 복귀
+        const isIOS = /iP(hone|ad|od)/.test(navigator.userAgent) || (navigator.maxTouchPoints > 1 && /Macintosh/.test(navigator.userAgent));
+        const file = new File([blob], fileName, { type: mimeType });
+        const canShareFile = !!(navigator.share && navigator.canShare && navigator.canShare({ files: [file] }));
+        const cardMsg = () => App.buildSms('cardSend', { '고객명': customer?.name || '', '반려견명': pet?.name || '' });
+        const download = (href, name) => { const a = document.createElement('a'); a.href = href; a.download = name; document.body.appendChild(a); a.click(); a.remove(); };
         App.showModal({
           title: '사진 카드 완성',
           hideFooter: true,
           content: `
-            <div style="text-align:center">
-              <div style="max-height:70vh;overflow:auto;margin-bottom:16px;border-radius:var(--radius);border:1px solid var(--border-light)">
-                <img src="${url}" style="width:100%;display:block" alt="미용 카드">
-              </div>
-              <div style="display:flex;flex-direction:column;gap:10px;max-width:300px;margin:0 auto">
-                <button class="btn btn-primary" id="card-share" style="min-height:48px">${App.icon('upload')} 공유하기</button>
-                ${customerPhone ? `<button class="btn btn-success" id="card-send-customer" style="min-height:48px">${App.icon('message')} 고객에게 보내기</button>` : ''}
-                <button class="btn btn-secondary" id="card-download" style="min-height:48px">${App.icon('download')} 다운로드</button>
+            <div class="card-done">
+              <div class="card-done-img"><img src="${url}" alt="미용 카드"></div>
+              <div class="card-done-actions">
+                <button class="btn btn-primary card-done-main" id="card-share">${App.icon('send')} 공유하기 <small>카톡 · 문자 · 인스타</small></button>
+                <div class="card-done-row">
+                  <button class="btn btn-secondary" id="card-download">${App.icon('download')} 저장</button>
+                  <button class="btn btn-secondary" id="card-print">${App.icon('print')} 인쇄용 4×6</button>
+                </div>
+                ${customerPhone ? `<button class="btn btn-ghost" id="card-send-customer">${App.icon('message')} ${App.escapeHtml(App.getCustomerLabel(customer))} 번호로 문자 열기</button>` : ''}
+                <button class="btn btn-ghost" id="card-edit">${App.icon('edit')} 다시 꾸미기</button>
+                <p class="card-done-hint">${isIOS ? '아이폰은 <b>공유하기 → 이미지 저장</b>을 누르면 사진첩에 저장돼요. 저장 버튼은 파일 앱에 저장됩니다.' : '공유하기에서 카카오톡을 고르면 사진이 바로 첨부돼요.'}</p>
               </div>
             </div>
           `
         });
 
-        // 공유
-        document.getElementById('card-share')?.addEventListener('click', () => {
-          const file = new File([blob], fileName, { type: mimeType });
-          if (navigator.share && navigator.canShare && navigator.canShare({ files: [file] })) {
-            navigator.share({ files: [file], title: (pet?.name || '') + ' 미용 카드' }).catch(() => {});
-          } else {
-            App.showToast('이 브라우저에서는 공유가 지원되지 않습니다. 다운로드를 이용해주세요.', 'warning');
+        // 공유 — 이미지 + '사진 카드' 문구 (앱에 따라 문구는 빠질 수 있다)
+        document.getElementById('card-share')?.addEventListener('click', async () => {
+          const text = await cardMsg();
+          if (canShareFile) {
+            navigator.share({ files: [file], text, title: (pet?.name || '') + ' 미용 카드' }).catch(() => {});
+            return;
           }
+          // 파일 공유가 안 되는 브라우저(대부분의 PC) — 저장하고 문구는 복사해 둔다
+          download(url, fileName);
+          try { await navigator.clipboard.writeText(text); App.showToast('카드를 저장하고 보낼 문구를 복사했어요. 카톡·문자에 붙여넣기 하세요.'); }
+          catch (_) { App.showToast('카드를 저장했어요. 카톡·문자에 첨부해 보내세요.'); }
         });
 
-        // 고객에게 보내기 (SMS + 카드 다운로드)
-        document.getElementById('card-send-customer')?.addEventListener('click', () => {
-          // 카드 먼저 다운로드
-          const a = document.createElement('a');
-          a.href = url; a.download = fileName; a.click();
-          // SMS 발송
-          setTimeout(() => {
-            const msg = `${App.escapeHtml(pet?.name || '')} 미용이 완료되었습니다! 사진 카드를 확인해주세요 ♥`;
-            App.openSms(customerPhone, msg);
-            App.showToast('카드 저장 + 문자 발송 준비 완료');
-          }, 500);
+        // 손님 번호로 문자 — 문자 앱은 사진을 자동 첨부할 수 없어, 저장 후 문자 창에서 첨부하도록 안내
+        document.getElementById('card-send-customer')?.addEventListener('click', async () => {
+          if (!isIOS) download(url, fileName);
+          const msg = await cardMsg();
+          App.openSms(customerPhone, msg);
+          App.showToast(isIOS ? '문자 창에서 사진첩의 카드를 첨부해 보내세요. (먼저 공유하기 → 이미지 저장)' : '카드를 저장했어요. 문자 창에서 사진을 첨부해 보내세요.', 'info', { duration: 6000 });
         });
 
-        // 다운로드
+        // 저장
         document.getElementById('card-download')?.addEventListener('click', () => {
-          const a = document.createElement('a');
-          a.href = url; a.download = fileName; a.click();
+          download(url, fileName);
           App.showToast('카드가 저장되었습니다.');
+        });
+
+        // 인쇄용 4×6 (일반 사진 용지 1200×1800, 300dpi)
+        document.getElementById('card-print')?.addEventListener('click', () => {
+          const sheet = this._makePrintSheet(canvas, layout);
+          sheet.toBlob(b => {
+            if (!b) { App.showToast('인쇄용 이미지를 만들지 못했습니다.', 'error'); return; }
+            const pu = URL.createObjectURL(b);
+            download(pu, (pet?.name || 'pet') + '_인쇄용4x6_' + record.date + '.jpg');
+            setTimeout(() => URL.revokeObjectURL(pu), 4000);
+            App.showToast(layout === 'photobooth' ? '인쇄용 이미지를 저장했어요. 4×6 용지에 인쇄해 가운데 점선을 자르면 두 장이 나와요.' : '인쇄용 이미지를 저장했어요. 4×6(10×15cm) 사진 용지로 인쇄하세요.', 'info', { duration: 6000 });
+          }, 'image/jpeg', 0.95);
+        });
+
+        // 다시 꾸미기 — 고른 사진·설정을 그대로 들고 편집 창으로
+        document.getElementById('card-edit')?.addEventListener('click', () => {
+          App.closeModal();
+          setTimeout(() => this.generatePhotoCard(recordId, { keepPhotos: true }), 200);
         });
       }, mimeType, isLarge ? 0.92 : undefined);
     } catch (err) {

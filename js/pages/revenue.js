@@ -294,7 +294,12 @@ App.pages.revenue = {
             ${(() => {
               const niceMax = (v) => { if (v <= 0) return 100000; const mag = Math.pow(10, Math.floor(Math.log10(v))); const norm = v / mag; return Math.ceil(norm * 4) / 4 * mag; };
               const gMax = niceMax(weekMax);
-              const weekAvg = weekData.filter(d => d.rev > 0).length > 0 ? Math.round(weekData.reduce((s, d) => s + d.rev, 0) / weekData.filter(d => d.rev > 0).length) : 0;
+              const weekAvgDays = weekData.filter(d => d.date <= today);
+              const weekAvgOpen = weekAvgDays.filter(d => d.rev > 0);
+              const weekAvgSum = weekAvgDays.reduce((s, d) => s + d.rev, 0);
+              // 하루 평균은 지난 날 전체로 나눈다 (예전엔 매출 있는 날만으로 나눠 이틀 영업에 11만원이면 '일평균 11만원'이 됐다)
+              const weekAvg = weekAvgDays.length > 0 && weekAvgSum > 0 ? Math.round(weekAvgSum / weekAvgDays.length) : 0;
+              const weekAvgOpenAvg = weekAvgOpen.length > 0 ? Math.round(weekAvgSum / weekAvgOpen.length) : 0;
               const avgPct = weekAvg > 0 ? Math.round((weekAvg / gMax) * 90) : 0;
               return `<div style="position:relative;height:200px;padding:0 4px;margin-left:32px">
                 <div style="position:absolute;left:0;right:0;bottom:45%;border-bottom:1px dashed var(--border-light)"><span style="position:absolute;left:-34px;top:-8px;font-size:0.72rem;color:var(--text-muted)">${Math.round(gMax * 0.5 / 10000)}만</span></div>
@@ -313,7 +318,7 @@ App.pages.revenue = {
                   }).join('')}
                 </div>
               </div>
-              ${weekAvg > 0 ? `<div style="text-align:center;margin-top:10px;padding-top:8px;border-top:1px solid var(--border-light);font-size:0.85rem;color:var(--text-secondary)">일평균 <strong style="color:var(--warning)">${App.formatCurrency(weekAvg)}</strong></div>` : ''}`;
+              ${weekAvg > 0 ? `<div style="text-align:center;margin-top:10px;padding-top:8px;border-top:1px solid var(--border-light);font-size:0.85rem;color:var(--text-secondary)">하루 평균 <strong style="color:var(--warning)">${App.formatCurrency(weekAvg)}</strong> <span style="color:var(--text-muted)">· 영업한 ${weekAvgOpen.length}일 평균 ${App.formatCurrency(weekAvgOpenAvg)}</span></div>` : ''}`;
             })()}
           </div>
         </div>
@@ -384,7 +389,13 @@ App.pages.revenue = {
             ${(() => {
               const niceMax = (v) => { if (v <= 0) return 100000; const mag = Math.pow(10, Math.floor(Math.log10(v))); const norm = v / mag; return Math.ceil(norm * 4) / 4 * mag; };
               const mMax = niceMax(monthMax);
-              const mAvg = monthData.filter(d => d.rev > 0).length > 0 ? Math.round(monthData.reduce((s, d) => s + d.rev, 0) / monthData.filter(d => d.rev > 0).length) : 0;
+              const mAvgDays = monthData.filter(d => d.date <= today);
+              const mAvgOpen = mAvgDays.filter(d => d.rev > 0);
+              const mAvgSum = mAvgDays.reduce((s, d) => s + d.rev, 0);
+              // 하루 평균은 지난 날 전체로 나눈다 (예전엔 매출 있는 날만으로 나눠 이틀 영업에 11만원이면 '일평균 11만원'이 됐다)
+              const mAvg = mAvgDays.length > 0 && mAvgSum > 0 ? Math.round(mAvgSum / mAvgDays.length) : 0;
+              const mAvgOpenAvg = mAvgOpen.length > 0 ? Math.round(mAvgSum / mAvgOpen.length) : 0;
+              const todayDayNum = (monthData.find(d => d.date === today) || {}).day || 0;
               const mAvgPct = mAvg > 0 ? Math.round((mAvg / mMax) * 90) : 0;
               return `<div style="position:relative;height:200px;padding:0;overflow-x:auto;margin-left:32px">
                 <div style="position:absolute;left:0;right:0;bottom:45%;border-bottom:1px dashed var(--border-light)"><span style="position:absolute;left:-34px;top:-8px;font-size:0.72rem;color:var(--text-muted)">${Math.round(mMax * 0.5 / 10000)}만</span></div>
@@ -394,7 +405,9 @@ App.pages.revenue = {
                     const barH = d.rev > 0 ? Math.max(4, Math.round((d.rev / mMax) * 140)) : 2;
                     const isToday = d.date === today;
                     const isWeekStart = d.day === 8 || d.day === 15 || d.day === 22 || d.day === 29;
-                    const showLabel = isToday || d.day === 1 || isWeekStart;
+                    // 오늘 라벨과 붙어 있는 1·8·15·22·29일 라벨은 생략 (예전엔 '22'와 '23'이 겹쳐 '2223'으로 보였다)
+                    const nearToday = !isToday && todayDayNum && Math.abs(d.day - todayDayNum) <= 2;
+                    const showLabel = isToday || ((d.day === 1 || isWeekStart) && !nearToday);
                     const barBg = d.rev === 0 ? 'var(--border-light)' : isToday ? 'linear-gradient(to top,var(--success),#34D399)' : 'linear-gradient(to top,var(--primary),#818CF8)';
                     return `<div style="flex:1;min-width:10px;position:relative${isWeekStart ? ';border-left:1px dashed var(--border);margin-left:2px;padding-left:2px' : ''}" title="${d.date}: ${App.formatCurrency(d.rev)}">
                       <div style="position:absolute;bottom:16px;left:1px;right:1px;height:${barH}px;background:${barBg};border-radius:3px 3px 0 0"></div>
@@ -403,7 +416,7 @@ App.pages.revenue = {
                   }).join('')}
                 </div>
               </div>
-              ${mAvg > 0 ? `<div style="text-align:center;margin-top:10px;padding-top:8px;border-top:1px solid var(--border-light);font-size:0.85rem;color:var(--text-secondary)">일평균 <strong style="color:var(--warning)">${App.formatCurrency(mAvg)}</strong></div>` : ''}`;
+              ${mAvg > 0 ? `<div style="text-align:center;margin-top:10px;padding-top:8px;border-top:1px solid var(--border-light);font-size:0.85rem;color:var(--text-secondary)">하루 평균 <strong style="color:var(--warning)">${App.formatCurrency(mAvg)}</strong> <span style="color:var(--text-muted)">· 영업한 ${mAvgOpen.length}일 평균 ${App.formatCurrency(mAvgOpenAvg)}</span></div>` : ''}`;
             })()}
           </div>
         </div>

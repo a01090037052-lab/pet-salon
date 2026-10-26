@@ -13,9 +13,6 @@ App.pages.pets = {
     const customers = await DB.getAllLight('customers', ['memo', 'address']);
     const customerMap = {};
     customers.forEach(c => customerMap[c.id] = c);
-    // 이름 없는 보호자를 "초코 보호자"로 표기하기 위한 보호자별 반려견 묶음
-    const petsByCustomer = {};
-    allPets.forEach(p => { (petsByCustomer[p.customerId] = petsByCustomer[p.customerId] || []).push(p); });
 
     // Last visit per pet — 기록 전체를 읽지 않고 반려견에 비정규화된 값을 쓴다 (기록 저장·삭제 시 유지, 시작 시 1회 마이그레이션)
     const petLastVisit = {};
@@ -135,7 +132,7 @@ App.pages.pets = {
                 <strong style="font-size:1.05rem;font-weight:800;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${App.escapeHtml(p.name)}</strong>
                 ${warnIcon}
               </div>
-              <div style="font-size:0.82rem;color:var(--text-secondary);margin-bottom:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${App.escapeHtml(breedWeight)} · ${App.escapeHtml(App.getCustomerLabel(owner, petsByCustomer[p.customerId]))}</div>
+              <div style="font-size:0.82rem;color:var(--text-secondary);margin-bottom:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${App.escapeHtml(breedWeight)} · ${App.escapeHtml(App.getCustomerLabel(owner))}</div>
               <div style="font-size:0.78rem;color:var(--text-muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${lastVisit ? App.getRelativeTime(lastVisit) + ' 방문' : '방문 없음'}</div>
             </div>
             ${rightChip}
@@ -175,11 +172,11 @@ App.pages.pets = {
   async renderDetail(container, petId) {
     const pet = await DB.get('pets', petId);
     if (!pet) {
-      container.innerHTML = '<div class="empty-state"><div class="empty-state-text">반려견을 찾을 수 없습니다.</div></div>';
+      container.innerHTML = `<div class="back-link" onclick="history.length>1?history.back():App.navigate('pets')">${App.icon('arrow-left')} 뒤로가기</div>
+        <div class="empty-state"><div class="empty-state-text">반려견을 찾을 수 없습니다.<br><small style="color:var(--text-muted)">삭제되었거나 아직 다른 기기에서 받아오지 않았을 수 있습니다.</small></div></div>`;
       return;
     }
     const customer = await DB.get('customers', pet.customerId);
-    const ownerPets = pet.customerId ? await DB.getByIndex('pets', 'customerId', pet.customerId) : [];
     const records = (await DB.getByIndex('records', 'petId', petId)).sort((a, b) => (b.date || '').localeCompare(a.date || ''));
 
     const age = pet.birthYear ? (new Date().getFullYear() - pet.birthYear) + '살' : (pet.birthDate ? this.calculateAge(pet.birthDate) : '-');
@@ -199,7 +196,7 @@ App.pages.pets = {
           <div class="detail-meta">
             <span>${App.escapeHtml(pet.breed || '견종 미입력')}</span>
             <span>${pet.weight ? pet.weight + 'kg' : ''}</span>
-            <span>보호자: <a href="#customers/${pet.customerId}" style="color:var(--primary)">${App.escapeHtml(App.getCustomerLabel(customer, ownerPets))}</a></span>
+            <span>보호자: <a href="#customers/${pet.customerId}" style="color:var(--primary)">${App.escapeHtml(App.getCustomerLabel(customer))}</a></span>
             ${customer?.phone ? `<a href="tel:${App.escapeHtml((customer.phone || '').replace(/\D/g, ''))}" style="color:var(--primary)" aria-label="전화" title="전화">${App.icon('phone')}</a> <a href="sms:${App.escapeHtml((customer.phone || '').replace(/\D/g, ''))}" style="color:var(--primary)" aria-label="문자" title="문자">${App.icon('message')}</a>` : ''}
           </div>
         </div>
@@ -207,7 +204,6 @@ App.pages.pets = {
           <button class="btn btn-primary" id="btn-pet-record" data-pet-id="${pet.id}" data-customer-id="${pet.customerId}">+ 미용 기록</button>
           <button class="btn btn-primary" id="btn-pet-appt" data-pet-id="${pet.id}" data-customer-id="${pet.customerId}">예약</button>
           <button class="btn btn-secondary btn-edit-pet" data-id="${pet.id}">수정</button>
-          <button class="btn btn-danger btn-delete-pet" data-id="${pet.id}">삭제</button>
         </div>
       </div>
 
@@ -301,30 +297,6 @@ App.pages.pets = {
       })() : ''}
 
       <div class="detail-section">
-        <h3 class="detail-section-title">기본 정보</h3>
-        <div class="info-grid">
-          <div class="info-item"><label>견종</label><span>${App.escapeHtml(pet.breed || '-')}</span></div>
-          <div class="info-item"><label>몸무게</label><span>${pet.weight ? pet.weight + 'kg' : '-'}</span></div>
-          <div class="info-item"><label>나이</label><span>${age}</span></div>
-          <div class="info-item"><label>성별</label><span>${this.getGenderLabel(pet.gender)} ${pet.neutered ? '(중성화 완료)' : ''}</span></div>
-          <div class="info-item"><label>사이즈</label><span>${this.getSizeLabel(pet.size, pet.weight)}</span></div>
-        </div>
-      </div>
-
-
-      <div class="detail-section">
-        <h3 class="detail-section-title">특이사항</h3>
-        <div class="info-grid">
-          <div class="info-item"><label>성격/행동</label><span>${App.escapeHtml(pet.temperament || '기록 없음')}</span></div>
-          <div class="info-item"><label>건강 특이사항</label><span>${App.escapeHtml(pet.healthNotes || '기록 없음')}</span></div>
-          <div class="info-item"><label>알러지</label><span>${App.escapeHtml(pet.allergies || '기록 없음')}</span></div>
-          <div class="info-item"><label>선호 미용 스타일</label><span>${App.escapeHtml(pet.preferredStyle || '기록 없음')}</span></div>
-          <div class="info-item"><label>권장 미용 주기</label><span>${pet.groomingCycle ? pet.groomingCycle + '일' : '미설정'}</span></div>
-          <div class="info-item"><label>메모</label><span>${App.escapeHtml(pet.memo || '기록 없음')}</span></div>
-        </div>
-      </div>
-
-      <div class="detail-section">
         <h3 class="detail-section-title">미용 기록 (${records.length}건)</h3>
         ${await (async () => {
           if (records.length === 0) return '<p style="color:var(--text-muted)">미용 기록이 없습니다.</p>';
@@ -370,6 +342,31 @@ App.pages.pets = {
             </table>
           </div>`;
         })()}
+      </div>
+      ${(() => {
+        // 반려견 정보 — 비어 있는 항목은 숨기고, 짧은 값은 두 칸씩 (예전엔 '기록 없음'·'-' 줄이 열 개 가까이 이어졌다)
+        const short = [
+          ['견종', pet.breed], ['몸무게', pet.weight ? pet.weight + 'kg' : ''], ['나이', age !== '-' ? age : ''],
+          ['성별', [this.getGenderLabel(pet.gender) === '-' ? '' : this.getGenderLabel(pet.gender), pet.neutered ? '중성화' : ''].filter(Boolean).join(' · ')],
+          ['사이즈', this.getSizeLabel(pet.size, pet.weight)], ['권장 주기', pet.groomingCycle ? pet.groomingCycle + '일' : '']
+        ].filter(([, v]) => v && v !== '-');
+        const long = [
+          ['선호 스타일', pet.preferredStyle], ['성격/행동', pet.temperament], ['건강 특이사항', pet.healthNotes],
+          ['알러지', pet.allergies], ['메모', pet.memo]
+        ].filter(([, v]) => v && String(v).trim());
+        return `
+      <div class="detail-section">
+        <h3 class="detail-section-title">반려견 정보</h3>
+        <div class="pet-info-grid">
+          ${short.map(([k, v]) => `<div class="info-item"><label>${k}</label><span>${App.escapeHtml(String(v))}</span></div>`).join('')}
+          ${long.map(([k, v]) => `<div class="info-item wide"><label>${k}</label><span>${App.escapeHtml(String(v))}</span></div>`).join('')}
+        </div>
+        ${long.length === 0 ? `<button type="button" class="btn btn-sm btn-ghost btn-edit-pet" data-id="${pet.id}" style="margin-top:6px">${App.icon('edit')} 성격·선호 스타일·특이사항 입력</button>` : ''}
+      </div>`;
+      })()}
+
+      <div style="display:flex;justify-content:flex-end;margin:24px 0 8px">
+        <button class="btn btn-ghost btn-delete-pet" data-id="${pet.id}" style="min-height:44px;color:var(--danger)">반려견 삭제</button>
       </div>
     `;
   },

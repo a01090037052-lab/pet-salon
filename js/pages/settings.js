@@ -6,8 +6,23 @@ const DEFAULT_SMS_TEMPLATES = {
   appointment: '[{매장명}] {고객명}님, {날짜} {시간}에 {반려견명} 예약이 확인되었습니다. {담당}문의: {전화번호}',
   reminder: '[{매장명}] {고객명}님, {시점} {날짜} {시간}에 {반려견명} 미용 예약이 있습니다. 변경/취소는 {전화번호}로 연락 부탁드립니다.',
   birthday: '[{매장명}] {고객명}님! {반려견명}의 생일을 축하합니다! 🎂 생일 기념 특별 할인을 준비했어요. 문의: {전화번호}',
-  complete: '[{매장명}] {고객명}님, {반려견명}의 미용이 완료되었습니다! 서비스: {서비스}, 금액: {금액}원. 감사합니다! 💕'
+  complete: '[{매장명}] {고객명}님, {반려견명}의 미용이 완료되었습니다! 서비스: {서비스}, 금액: {금액}원. 감사합니다! 💕',
+  cardSend: '[{매장명}] {고객명}님, 오늘 {반려견명} 미용 사진이에요! 예쁘게 다녀갔어요. 감사합니다 ♥'
 };
+
+// 템플릿별 설명·쓸 수 있는 변수 — 화면에서 변수 버튼과 미리보기를 만든다.
+// (예전엔 모든 변수를 한 줄로 안내해서, 재방문 문자에 {금액}을 넣으면 조용히 빠졌다)
+const SMS_DATE_VARS = ['시점', '날짜', '시간', '담당'];
+const SMS_TEMPLATE_META = [
+  { key: 'reminder', label: '예약 재확인', when: '예약 전날 · 예약 카드의 재확인 문자', vars: ['고객명', '반려견명', ...SMS_DATE_VARS, '매장명', '전화번호'] },
+  { key: 'appointment', label: '예약 확인', when: '예약을 저장한 직후', vars: ['고객명', '반려견명', ...SMS_DATE_VARS, '매장명', '전화번호'] },
+  { key: 'complete', label: '미용 완료', when: '미용 기록을 저장한 직후', vars: ['고객명', '반려견명', '서비스', '금액', '매장명', '전화번호'] },
+  { key: 'cardSend', label: '사진 카드', when: '사진 카드를 손님에게 보낼 때', vars: ['고객명', '반려견명', '매장명', '전화번호'] },
+  { key: 'revisit', label: '재방문 알림', when: '홈 · 고객 화면의 재방문 알림', vars: ['고객명', '반려견명', '경과일수', '마지막방문일', '매장명', '전화번호'] },
+  { key: 'atRisk', label: '이탈 위험', when: '방문 주기가 많이 지난 손님', vars: ['고객명', '반려견명', '경과일수', '마지막방문일', '매장명', '전화번호'] },
+  { key: 'churned', label: '이탈 고객', when: '오래 안 온 손님', vars: ['고객명', '반려견명', '경과일수', '마지막방문일', '매장명', '전화번호'] },
+  { key: 'birthday', label: '생일 축하', when: '홈의 생일 알림', vars: ['고객명', '반려견명', '매장명', '전화번호'] }
+];
 
 App.pages.settings = {
   async render(container) {
@@ -23,13 +38,6 @@ App.pages.settings = {
     const themeColor = await DB.getSetting('themeColor') || '#6366F1';
 
     const savedTemplates = await DB.getSetting('messageTemplates') || {};
-    const revisitTpl = savedTemplates.revisit || DEFAULT_SMS_TEMPLATES.revisit;
-    const atRiskTpl = savedTemplates.atRisk || DEFAULT_SMS_TEMPLATES.atRisk;
-    const churnedTpl = savedTemplates.churned || DEFAULT_SMS_TEMPLATES.churned;
-    const appointmentTpl = savedTemplates.appointment || DEFAULT_SMS_TEMPLATES.appointment;
-    const reminderTpl = savedTemplates.reminder || DEFAULT_SMS_TEMPLATES.reminder;
-    const birthdayTpl = savedTemplates.birthday || DEFAULT_SMS_TEMPLATES.birthday;
-    const completeTpl = savedTemplates.complete || DEFAULT_SMS_TEMPLATES.complete;
     // 사용자가 템플릿 수정했는지 (기본 펼침 판단)
     const hasCustomTemplate = Object.keys(savedTemplates).length > 0;
 
@@ -261,38 +269,21 @@ App.pages.settings = {
             <span class="card-title">${App.icon('message')} 메시지 템플릿 <span class="toggle-icon" style="font-size:0.75rem;display:inline-block;transition:transform .15s${hasCustomTemplate ? '' : ';transform:rotate(-90deg)'}">${App.icon('chevron-down')}</span></span>
           </div>
           <div class="card-body${hasCustomTemplate ? '' : ' hidden'}">
-            <p style="color:var(--text-secondary);font-size:0.85rem;margin-bottom:16px">
-              문자 발송 시 사용되는 메시지를 수정할 수 있습니다.<br>
-              사용 가능한 변수: <code>{매장명}</code> <code>{고객명}</code> <code>{반려견명}</code> <code>{경과일수}</code> <code>{날짜}</code> <code>{시간}</code> <code>{서비스}</code> <code>{금액}</code> <code>{미용사}</code> <code>{담당}</code> <code>{시점}</code> <code>{전화번호}</code>
+            <p style="color:var(--text-secondary);font-size:0.85rem;margin-bottom:12px">
+              문자를 보낼 때 쓰는 문구입니다. 아래 버튼을 누르면 손님마다 바뀌는 값(반려견 이름 등)이 커서 자리에 들어갑니다. 고치면 바로 저장됩니다.
             </p>
-            <div class="form-group">
-              <label class="form-label">재방문 알림 문자</label>
-              <textarea id="tpl-revisit" rows="3">${App.escapeHtml(revisitTpl)}</textarea>
+            <div class="tpl-tabs" role="tablist">
+              ${SMS_TEMPLATE_META.map((m, i) => `<button type="button" class="tpl-tab${i === 0 ? ' active' : ''}" data-key="${m.key}" role="tab">${m.label}</button>`).join('')}
             </div>
-            <div class="form-group">
-              <label class="form-label">이탈위험 고객 문자</label>
-              <textarea id="tpl-atRisk" rows="3">${App.escapeHtml(atRiskTpl)}</textarea>
-            </div>
-            <div class="form-group">
-              <label class="form-label">이탈 고객 문자</label>
-              <textarea id="tpl-churned" rows="3">${App.escapeHtml(churnedTpl)}</textarea>
-            </div>
-            <div class="form-group">
-              <label class="form-label">예약 확인 문자</label>
-              <textarea id="tpl-appointment" rows="3">${App.escapeHtml(appointmentTpl)}</textarea>
-            </div>
-            <div class="form-group">
-              <label class="form-label">예약 재확인 문자 (전날 발송용)</label>
-              <textarea id="tpl-reminder" rows="3">${App.escapeHtml(reminderTpl)}</textarea>
-            </div>
-            <div class="form-group">
-              <label class="form-label">생일 축하 문자</label>
-              <textarea id="tpl-birthday" rows="3">${App.escapeHtml(birthdayTpl)}</textarea>
-            </div>
-            <div class="form-group">
-              <label class="form-label">미용 완료 안내 문자</label>
-              <textarea id="tpl-complete" rows="3">${App.escapeHtml(completeTpl)}</textarea>
-            </div>
+            ${SMS_TEMPLATE_META.map((m, i) => `
+            <div class="tpl-panel" data-key="${m.key}"${i === 0 ? '' : ' hidden'}>
+              <div class="tpl-when">${App.icon('info')} ${m.when}</div>
+              <div class="tpl-vars">${m.vars.map(v => `<button type="button" class="tpl-var" data-key="${m.key}" data-var="${v}">${v}</button>`).join('')}</div>
+              <textarea id="tpl-${m.key}" class="tpl-input" data-key="${m.key}" rows="4">${App.escapeHtml(savedTemplates[m.key] || DEFAULT_SMS_TEMPLATES[m.key])}</textarea>
+              <div class="tpl-preview-label">손님에게 보이는 모양 (예시)</div>
+              <div class="tpl-preview" id="tpl-prev-${m.key}"></div>
+            </div>`).join('')}
+            <div id="tpl-saved-note" class="form-hint" style="min-height:1.2em;margin:4px 0 8px"></div>
             <button class="btn btn-secondary" id="btn-reset-templates" style="margin-bottom:8px">기본값 복원</button>
           </div>
         </div>
@@ -751,25 +742,8 @@ App.pages.settings = {
         }
       }
       App.setupNotificationChecker();
-      // 메시지 템플릿
-      const tplRevisit = document.getElementById('tpl-revisit');
-      const tplAtRisk = document.getElementById('tpl-atRisk');
-      const tplChurned = document.getElementById('tpl-churned');
-      const tplAppointment = document.getElementById('tpl-appointment');
-      const tplReminder = document.getElementById('tpl-reminder');
-      const tplBirthday = document.getElementById('tpl-birthday');
-      const tplComplete = document.getElementById('tpl-complete');
-      if (tplRevisit && tplAtRisk && tplChurned && tplAppointment && tplReminder && tplBirthday && tplComplete) {
-        await DB.setSetting('messageTemplates', {
-          revisit: tplRevisit.value,
-          atRisk: tplAtRisk.value,
-          churned: tplChurned.value,
-          appointment: tplAppointment.value,
-          reminder: tplReminder.value,
-          birthday: tplBirthday.value,
-          complete: tplComplete.value
-        });
-      }
+      // 메시지 템플릿 (입력하면 자동 저장되지만, 이 버튼으로도 한 번 더 저장)
+      await this._saveSmsTemplates();
       // 매출 목표
       const goal = Number(document.getElementById('s-monthlyGoal').value) || 0;
       await DB.setSetting('monthlyGoal', goal);
@@ -792,13 +766,17 @@ App.pages.settings = {
 
     // Reset templates to defaults
     document.getElementById('btn-reset-templates')?.addEventListener('click', async () => {
+      const ok = await App.confirm('메시지 문구를 모두 처음 상태로 되돌릴까요?<br><small style="color:var(--text-muted)">직접 고친 문구는 사라집니다.</small>', { okLabel: '기본값 복원' });
+      if (!ok) return;
       await DB.setSetting('messageTemplates', { ...DEFAULT_SMS_TEMPLATES });
       Object.entries(DEFAULT_SMS_TEMPLATES).forEach(([key, val]) => {
         const el = document.getElementById('tpl-' + key);
         if (el) el.value = val;
       });
+      this._refreshSmsPreviews();
       App.showToast('기본값으로 복원되었습니다.');
     });
+    this._bindSmsTemplateEditor();
 
     // 저장 공간 최적화
     document.getElementById('btn-optimize-storage')?.addEventListener('click', async () => {
@@ -960,6 +938,68 @@ App.pages.settings = {
     // ========== 프레임 라이브러리 ==========
     await this._renderFrameLibrary();
     document.getElementById('btn-add-frame')?.addEventListener('click', () => this._showFrameEditor());
+  },
+
+  // ========== 메시지 템플릿 편집 ==========
+  async _saveSmsTemplates() {
+    const out = {};
+    let any = false;
+    SMS_TEMPLATE_META.forEach(m => {
+      const el = document.getElementById('tpl-' + m.key);
+      if (el) { out[m.key] = el.value; any = true; }
+    });
+    if (!any) return;
+    const prev = (await DB.getSetting('messageTemplates')) || {};
+    await DB.setSetting('messageTemplates', { ...prev, ...out });
+  },
+
+  async _refreshSmsPreviews() {
+    const shopName = (await DB.getSetting('shopName')) || '펫살롱';
+    const shopPhone = (await DB.getSetting('shopPhone')) || '010-1234-5678';
+    const sample = {
+      '매장명': shopName, '전화번호': shopPhone, '고객명': '김민지', '반려견명': '콩이',
+      '경과일수': '35', '마지막방문일': '9월 18일', '시점': '내일', '날짜': '10월 24일(금)', '시간': '14:00',
+      '담당': '담당: 원장. ', '미용사': '원장', '서비스': '전체미용', '금액': '55,000'
+    };
+    SMS_TEMPLATE_META.forEach(m => {
+      const el = document.getElementById('tpl-' + m.key);
+      const prev = document.getElementById('tpl-prev-' + m.key);
+      if (!el || !prev) return;
+      // 이 템플릿에서 쓸 수 없는 변수는 실제 발송처럼 빠진다 — 미리보기에서 바로 보이게
+      const vars = {};
+      m.vars.forEach(v => { vars[v] = sample[v]; });
+      prev.textContent = App.fillSmsTemplate(el.value, vars);
+      const unknown = [...el.value.matchAll(/\{([^{}]{1,12})\}/g)].map(x => x[1]).filter(v => !m.vars.includes(v) && !(v === '미용사' && m.vars.includes('담당')));
+      prev.dataset.warn = unknown.length ? `이 문자에서는 {${[...new Set(unknown)].join('}, {')}}를 쓸 수 없어 빠집니다.` : '';
+    });
+  },
+
+  _bindSmsTemplateEditor() {
+    const tabs = document.querySelectorAll('.tpl-tab');
+    tabs.forEach(tab => tab.addEventListener('click', () => {
+      tabs.forEach(t => t.classList.toggle('active', t === tab));
+      document.querySelectorAll('.tpl-panel').forEach(p => { p.hidden = p.dataset.key !== tab.dataset.key; });
+    }));
+    document.querySelectorAll('.tpl-var').forEach(btn => btn.addEventListener('click', () => {
+      const ta = document.getElementById('tpl-' + btn.dataset.key);
+      if (!ta) return;
+      const start = ta.selectionStart ?? ta.value.length;
+      const end = ta.selectionEnd ?? ta.value.length;
+      ta.setRangeText('{' + btn.dataset.var + '}', start, end, 'end');
+      ta.focus();
+      ta.dispatchEvent(new Event('input', { bubbles: true }));
+    }));
+    let timer = null;
+    document.querySelectorAll('.tpl-input').forEach(ta => ta.addEventListener('input', () => {
+      this._refreshSmsPreviews();
+      clearTimeout(timer);
+      timer = setTimeout(async () => {
+        await this._saveSmsTemplates();
+        const note = document.getElementById('tpl-saved-note');
+        if (note) note.textContent = '저장됨 · ' + new Date().toTimeString().slice(0, 5);
+      }, 700);
+    }));
+    this._refreshSmsPreviews();
   },
 
   // 프레임 라이브러리 렌더링
