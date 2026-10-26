@@ -2661,6 +2661,41 @@ App.pages.records = {
     return c;
   },
 
+  // 인스타용(피드 4:5 / 스토리 9:16) — 배경은 내 프레임 이미지(있으면) 또는 테마 배경색, 카드는 그림자와 함께 가운데
+  async _makeInstaSheet(card, size, ds) {
+    const { w: W, h: H } = size;
+    const c = document.createElement('canvas');
+    c.width = W; c.height = H;
+    const x = c.getContext('2d');
+    const preset = this.CARD_TEMPLATES[ds.template] || this.CARD_TEMPLATES.classic;
+    x.fillStyle = ds.customBgColor || preset.bgColor || '#FFFFFF';
+    x.fillRect(0, 0, W, H);
+    const frameImg = ds.customBgImage ? await this._loadImg(ds.customBgImage) : null;
+    if (frameImg) this._drawImageCover(x, frameImg, 0, 0, W, H);
+    else {
+      // 단색 배경은 살짝 어둡게 번지는 그라데이션으로 밋밋함을 줄인다
+      const g = x.createLinearGradient(0, 0, 0, H);
+      g.addColorStop(0, 'rgba(0,0,0,0)'); g.addColorStop(1, 'rgba(0,0,0,0.06)');
+      x.fillStyle = g; x.fillRect(0, 0, W, H);
+    }
+    // 프레임이 있으면 위아래 여백을 더 둬서 프레임의 제목·문구가 보이게 한다
+    const m = Math.round(H * (frameImg ? 0.13 : 0.05));
+    const r = Math.min((W - m * 2) / card.width, (H - m * 2) / card.height);
+    const cw = Math.round(card.width * r), ch = Math.round(card.height * r);
+    const cx = Math.round((W - cw) / 2), cy = Math.round((H - ch) / 2);
+    x.save();
+    x.shadowColor = 'rgba(0,0,0,0.3)'; x.shadowBlur = 44; x.shadowOffsetY = 16;
+    x.fillStyle = '#fff'; x.fillRect(cx, cy, cw, ch);
+    x.restore();
+    x.drawImage(card, cx, cy, cw, ch);
+    // 어두운 배경(다크 테마)에서는 카드가 배경에 묻혀 경계가 안 보여 얇은 테두리를 넣는다
+    const hex = (ds.customBgColor || preset.bgColor || '#FFFFFF').replace('#', '');
+    const lum = hex.length >= 6 ? (0.299 * parseInt(hex.slice(0, 2), 16) + 0.587 * parseInt(hex.slice(2, 4), 16) + 0.114 * parseInt(hex.slice(4, 6), 16)) / 255 : 1;
+    x.strokeStyle = lum < 0.5 && !frameImg ? 'rgba(255,255,255,0.22)' : 'rgba(0,0,0,0.08)';
+    x.lineWidth = 2; x.strokeRect(cx + 1, cy + 1, cw - 2, ch - 2);
+    return c;
+  },
+
   // 레이아웃 버튼의 작은 모양 그림 (아이콘만으로는 결과 모양을 알 수 없었다)
   _layoutThumb(key) {
     const cells = { photobooth: 4, strip2: 2 }[key] || 1;
@@ -3195,6 +3230,8 @@ App.pages.records = {
 
         // 완성 화면 — 공유가 주 동작, 저장·인쇄용은 나란히, 손님 문자는 보조, 다시 꾸미기로 편집 복귀
         const isIOS = /iP(hone|ad|od)/.test(navigator.userAgent) || (navigator.maxTouchPoints > 1 && /Macintosh/.test(navigator.userAgent));
+        // 네컷·2컷은 1:3 띠라 인스타 피드(최대 4:5)·스토리(9:16)에 그대로 올리면 잘린다 → 배경 위에 가운데 놓은 버전을 따로 만든다
+        const isTall = canvas.height / canvas.width > 1.9;
         const file = new File([blob], fileName, { type: mimeType });
         const canShareFile = !!(navigator.share && navigator.canShare && navigator.canShare({ files: [file] }));
         const cardMsg = () => App.buildSms('cardSend', { '고객명': customer?.name || '', '반려견명': pet?.name || '' });
@@ -3211,6 +3248,11 @@ App.pages.records = {
                   <button class="btn btn-secondary" id="card-download">${App.icon('download')} 저장</button>
                   <button class="btn btn-secondary" id="card-print">${App.icon('print')} 인쇄용 4×6</button>
                 </div>
+                ${isTall ? `<div class="card-done-row">
+                  <button class="btn btn-secondary" id="card-insta-feed">${App.icon('image')} 인스타 피드 4:5</button>
+                  <button class="btn btn-secondary" id="card-insta-story">${App.icon('camera')} 인스타 스토리</button>
+                </div>
+                <p class="card-done-hint" style="margin-top:-2px">세로로 긴 카드는 인스타에서 잘려요. 피드·스토리용은 배경 위에 카드를 가운데 놓은 버전이에요.</p>` : ''}
                 ${customerPhone ? `<button class="btn btn-ghost" id="card-send-customer">${App.icon('message')} ${App.escapeHtml(App.getCustomerLabel(customer))} 번호로 문자 열기</button>` : ''}
                 <button class="btn btn-ghost" id="card-edit">${App.icon('edit')} 다시 꾸미기</button>
                 <p class="card-done-hint">${isIOS ? '아이폰은 <b>공유하기 → 이미지 저장</b>을 누르면 사진첩에 저장돼요. 저장 버튼은 파일 앱에 저장됩니다.' : '공유하기에서 카카오톡을 고르면 사진이 바로 첨부돼요.'}</p>
@@ -3257,6 +3299,24 @@ App.pages.records = {
             App.showToast(layout === 'photobooth' ? '인쇄용 이미지를 저장했어요. 4×6 용지에 인쇄해 가운데 점선을 자르면 두 장이 나와요.' : '인쇄용 이미지를 저장했어요. 4×6(10×15cm) 사진 용지로 인쇄하세요.', 'info', { duration: 6000 });
           }, 'image/jpeg', 0.95);
         });
+
+        // 인스타 피드 4:5 / 스토리 9:16 — 테마 배경색 또는 내 프레임 이미지를 배경으로 깔고 카드를 가운데에
+        const saveInsta = async (kind) => {
+          const size = kind === 'story' ? { w: 1080, h: 1920 } : { w: 1080, h: 1350 };
+          // 내 프레임을 썼으면 프레임은 배경에만 깔고, 카드 자체는 흰 배경으로 다시 그린다 (프레임 글자가 두 번 겹치지 않게)
+          const inner = designSettings.customBgImage
+            ? await this._generateCardCanvas(record, customer, pet, shopName, shopPhone, serviceNames, { ...designSettings, customBgImage: null, customBgColor: '#FFFFFF' })
+            : canvas;
+          this._makeInstaSheet(inner, size, designSettings).then(sheet => sheet.toBlob(b => {
+            if (!b) { App.showToast('이미지를 만들지 못했습니다.', 'error'); return; }
+            const pu = URL.createObjectURL(b);
+            download(pu, (pet?.name || 'pet') + (kind === 'story' ? '_인스타스토리_' : '_인스타피드_') + record.date + '.jpg');
+            setTimeout(() => URL.revokeObjectURL(pu), 4000);
+            App.showToast(kind === 'story' ? '스토리용(9:16)을 저장했어요.' : '피드용(4:5)을 저장했어요.');
+          }, 'image/jpeg', 0.92));
+        };
+        document.getElementById('card-insta-feed')?.addEventListener('click', () => saveInsta('feed'));
+        document.getElementById('card-insta-story')?.addEventListener('click', () => saveInsta('story'));
 
         // 다시 꾸미기 — 고른 사진·설정을 그대로 들고 편집 창으로
         document.getElementById('card-edit')?.addEventListener('click', () => {
