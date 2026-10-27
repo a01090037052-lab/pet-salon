@@ -3523,3 +3523,15 @@ a.stat-card { display: flex; }
 }
 .rec-photo-item figcaption { font-size: 0.75rem; color: var(--text-secondary); margin-top: 4px; text-align: center; }
 .rec-photo-item figcaption b { color: var(--text-primary); margin-left: 2px; }
+
+/* 사진 카드 페이지 (더보기) */
+.pc-body { display: flex; flex-direction: column; gap: 4px; max-width: 640px; }
+.pc-opt { font-size: 0.78rem; color: var(--text-muted); font-weight: 400; }
+.pc-start { width: 100%; min-height: 52px; font-size: 1rem; margin-top: 4px; }
+.pc-note { font-size: 0.8rem; color: var(--text-muted); line-height: 1.55; margin: 12px 0 0; }
+
+/* 사진 카드 — 카드에 넣을 글자 토글 */
+.card-text-toggles { display: flex; flex-wrap: wrap; gap: 8px; }
+.card-toggle { display: inline-flex; align-items: center; gap: 6px; min-height: 40px; padding: 0 12px; white-space: nowrap; flex: 0 0 auto; border: 1.5px solid var(--border); border-radius: 20px; font-size: 0.85rem; cursor: pointer; background: var(--bg-white); }
+.card-toggle:has(input:checked) { border-color: var(--primary); background: var(--primary-light); color: var(--primary); font-weight: 600; }
+.card-toggle input { margin: 0; accent-color: var(--primary); }

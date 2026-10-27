@@ -189,7 +189,6 @@ App.pages.records = {
                         ${App.escapeHtml(r.memo || '-')}
                       </td>
                       <td class="table-actions">
-                        <button class="btn-icon btn-photo-card" data-id="${r.id}" title="사진 카드 생성" aria-label="사진 카드 생성" style="color:var(--info)">${App.icon('camera')}</button>
                         <button class="btn-icon btn-receipt-record" data-id="${r.id}" title="영수증" aria-label="영수증" style="color:var(--success)">${App.icon('receipt')}</button>
                         <button class="btn-icon btn-edit-record" data-id="${r.id}" title="수정" aria-label="수정">${App.icon('edit')}</button>
                       </td>
@@ -239,7 +238,6 @@ App.pages.records = {
                 </div>
                 <!-- 카드를 누르면 수정. 삭제는 수정 화면 안에서만 (목록에서 잘못 눌러 지우는 일 방지) -->
                 <div class="mobile-card-actions record-card-actions">
-                  <button class="btn btn-sm btn-ghost btn-photo-card" data-id="${r.id}">${App.icon('camera')} 사진 카드</button>
                   <button class="btn btn-sm btn-ghost btn-receipt-record" data-id="${r.id}">${App.icon('receipt')} 영수증</button>
                 </div>
               </div>`;
@@ -376,10 +374,6 @@ App.pages.records = {
       }, 250);
       window.addEventListener('resize', onResize);
     }
-
-    document.querySelectorAll('.btn-photo-card').forEach(btn => {
-      btn.addEventListener('click', () => this.generatePhotoCard(Number(btn.dataset.id)));
-    });
 
     document.querySelectorAll('.btn-receipt-record').forEach(btn => {
       btn.addEventListener('click', () => this.showReceipt(Number(btn.dataset.id)));
@@ -1996,6 +1990,28 @@ App.pages.records = {
       ctx.restore();
     };
 
+    // 사진 수에 따라 한 영역을 나눠 그린다 — 1장: 그대로, 2장: 나란히(전·후), 3장: 위 1 + 아래 2, 4장: 2×2
+    // (인스타 피드·스토리에서 4분할 요청. 빈 칸을 만들지 않고 고른 장수만큼만 나눈다)
+    const _drawSplit = (ctx, imgs, x, y, w, h, gap, radius) => {
+      const list = imgs.filter(Boolean);
+      const n = Math.min(list.length, 4);
+      if (n <= 1) { _drawPhoto(ctx, list[0] || null, x, y, w, h, radius); return; }
+      const cw = (w - gap) / 2, ch = (h - gap) / 2;
+      if (n === 2) {
+        _drawPhoto(ctx, list[0], x, y, cw, h, radius);
+        _drawPhoto(ctx, list[1], x + cw + gap, y, cw, h, radius);
+      } else if (n === 3) {
+        _drawPhoto(ctx, list[0], x, y, w, ch, radius);
+        _drawPhoto(ctx, list[1], x, y + ch + gap, cw, ch, radius);
+        _drawPhoto(ctx, list[2], x + cw + gap, y + ch + gap, cw, ch, radius);
+      } else {
+        _drawPhoto(ctx, list[0], x, y, cw, ch, radius);
+        _drawPhoto(ctx, list[1], x + cw + gap, y, cw, ch, radius);
+        _drawPhoto(ctx, list[2], x, y + ch + gap, cw, ch, radius);
+        _drawPhoto(ctx, list[3], x + cw + gap, y + ch + gap, cw, ch, radius);
+      }
+    };
+
     const canvas = document.createElement('canvas');
     let ctx;
 
@@ -2155,12 +2171,13 @@ App.pages.records = {
       const remainingY = pad + photoS;
       const textCenterY = remainingY + (H - remainingY) / 2 + 10;
       // 예전엔 다른 레이아웃의 지역 변수(_hasHeadline)를 참조해 폴라로이드가 항상 오류로 멈췄다
-      const polarText = s.headline ? s.headline : petName;
+      const polarText = s.headline ? s.headline : (s.customShowPet ? petName : '');
       const polarTextColor = (s.template === 'custom' && s.customTextColor) ? s.customTextColor : '#1A1A1A';
       ctx.fillStyle = polarTextColor;
       ctx.font = 'bold 36px ' + fontFamily;
       ctx.textAlign = 'center';
-      ctx.fillText(polarText, W / 2, textCenterY);
+      if (polarText) ctx.fillText(polarText, W / 2, textCenterY);
+      if (s.customShowDate) { ctx.fillStyle = s.customTextColor ? textSub : '#64748B'; ctx.font = '20px ' + fontFamily; ctx.fillText(dateStr, W / 2, textCenterY + (polarText ? 34 : 0)); }
     }
 
     // ===== Layout E: polaroid (폴라로이드) =====
@@ -2226,9 +2243,9 @@ App.pages.records = {
       const photoS = W - pad * 2; // 340
       const gap = 12;
 
-      // Shop name
-      ctx.fillStyle = textSub; ctx.font = '14px ' + fontFamily; ctx.textAlign = 'center';
-      ctx.fillText(shopName, W / 2, 30);
+      // Shop name (토글)
+      ctx.textAlign = 'center';
+      if (s.customShowShop) { ctx.fillStyle = textSub; ctx.font = '14px ' + fontFamily; ctx.fillText(shopName, W / 2, 30); }
 
       const topY = 50;
       // 사진 위 BEFORE/AFTER 글씨는 넣지 않는다 (사장님 요청 — 사진을 가리고 꼭 전·후 사진만 쓰는 것도 아님)
@@ -2241,15 +2258,15 @@ App.pages.records = {
         _drawPhoto(ctx, imgBefore || imgAfter, pad, topY, photoS, photoS * 2 + gap, 6);
       }
 
-      // Pet name + date
+      // Pet name + date (토글 — 끈 줄은 자리도 비운다)
       const bottomY = afterY + photoS + 28;
-      ctx.fillStyle = textColor; ctx.font = 'bold 18px ' + fontFamily; ctx.textAlign = 'center';
-      ctx.fillText(petName, W / 2, bottomY);
-      ctx.fillStyle = textSub; ctx.font = '13px ' + fontFamily;
-      ctx.fillText(dateStr, W / 2, bottomY + 22);
+      let iy = bottomY;
+      ctx.textAlign = 'center';
+      if (s.customShowPet) { ctx.fillStyle = textColor; ctx.font = 'bold 18px ' + fontFamily; ctx.fillText(petName, W / 2, iy); iy += 22; }
+      if (s.customShowDate) { ctx.fillStyle = textSub; ctx.font = '13px ' + fontFamily; ctx.fillText(dateStr, W / 2, iy); iy += 22; }
 
       // Info lines
-      let iy = bottomY + 46;
+      iy += 2;
       ctx.font = '12px ' + fontFamily; ctx.fillStyle = textSub;
       infoLines.slice(0, 3).forEach(line => {
         ctx.fillText(this._truncText(ctx, line, photoS), W / 2, iy); iy += 18;
@@ -2395,7 +2412,7 @@ App.pages.records = {
       ctx.save();
       this._roundRect(ctx, photoPad, photoY, photoW, photoH, 16);
       ctx.clip();
-      _drawPhoto(ctx, imgBefore || imgAfter, photoPad, photoY, photoW, photoH);
+      _drawSplit(ctx, [imgBefore, imgAfter, img3, img4], photoPad, photoY, photoW, photoH, 12, 0);
       ctx.restore();
 
       // 하단 정보 (헤드라인·서브 + 기존 정보)
@@ -2441,7 +2458,7 @@ App.pages.records = {
       ctx.save();
       this._roundRect(ctx, photoPad, photoY, photoW, photoH, 24);
       ctx.clip();
-      _drawPhoto(ctx, imgBefore || imgAfter, photoPad, photoY, photoW, photoH);
+      _drawSplit(ctx, [imgBefore, imgAfter, img3, img4], photoPad, photoY, photoW, photoH, 14, 0);
       ctx.restore();
 
       // 반려견 정보 (헤드라인·서브 + 기존)
@@ -2504,8 +2521,8 @@ App.pages.records = {
   _cardPhotos: [],
   _CARD_LAYOUTS: {
     photobooth: { name: '네컷 세로', icon: 'list', photos: 4 },
-    feed: { name: '피드 4:5', icon: 'image', photos: 1 },
-    story: { name: '스토리', icon: 'camera', photos: 1 },
+    feed: { name: '피드 4:5', icon: 'image', photos: 4 },
+    story: { name: '스토리', icon: 'camera', photos: 4 },
     strip2: { name: '2컷', icon: 'copy', photos: 2 },
     single: { name: '폴라로이드', icon: 'circle', photos: 1 }
   },
@@ -2804,24 +2821,21 @@ App.pages.records = {
   async _renderCardPreview() {
     const img = document.getElementById('card-live-img');
     const empty = document.getElementById('card-live-empty');
-    if (!img || !this._cardRecordId) return;
+    if (!img || !this._cardCtx) return;
     const token = (this._cardPreviewToken || 0) + 1;
     this._cardPreviewToken = token;
     const f = await this._readCardForm(this._cardPetName || '');
     const count = (this._CARD_LAYOUTS[f.layout] && this._CARD_LAYOUTS[f.layout].photos) || 1;
     const photos = (this._cardPhotos || []).slice(0, count);
     if (!photos.some(Boolean)) { img.hidden = true; if (empty) empty.hidden = false; return; }
-    const record = await DB.get('records', this._cardRecordId);
-    if (!record) return;
+    const { record, customer, pet, serviceNames } = this._cardCtx;
     const rec = { ...record, photoBefore: photos[0] || null, photoAfter: photos[1] || null, photo3: photos[2] || null, photo4: photos[3] || null,
       photoBeforeId: null, photoAfterId: null, photo3Id: null, photo4Id: null };
     const metas = this._cardPhotoMeta || [];
     const blank = { offsetX: 0, offsetY: 0, zoom: 1.0 };
     rec._photoMetas = { photoBefore: metas[0] || blank, photoAfter: metas[1] || blank, photo3: metas[2] || blank, photo4: metas[3] || blank };
-    const [customer, pet] = await Promise.all([DB.get('customers', record.customerId), DB.get('pets', record.petId)]);
     const shopName = await DB.getSetting('shopName') || '펫살롱';
     const shopPhone = await DB.getSetting('shopPhone') || '';
-    const serviceNames = record.service ? App.getRecordServiceDisplay(record) : await App.getServiceNames(record.serviceIds);
     const ds = await this._designFrom(f.settings, f.layout, f.theme, pet?.name || '');
     const cv = await this._generateCardCanvas(rec, customer, pet, shopName, shopPhone, serviceNames, ds);
     if (token !== this._cardPreviewToken) return; // 더 최근 미리보기가 진행 중
@@ -2833,8 +2847,12 @@ App.pages.records = {
     const note = document.getElementById('card-live-note');
     if (note) {
       const n = photos.filter(Boolean).length;
-      note.hidden = !(count > 1 && n < count);
-      if (!note.hidden) note.textContent = `사진 ${n}장으로 만들어요 · 칸이 ${n}개로 커져요` + (f.layout === 'photobooth' && n === 2 ? ' (2컷 레이아웃도 잘 어울려요)' : '');
+      // 피드·스토리는 1장이 기본이라 1장일 때는 안내가 필요 없다
+      note.hidden = !(count > 1 && n < count) || ((f.layout === 'feed' || f.layout === 'story') && n <= 1);
+      const splitWord = { 2: '나란히 2칸', 3: '위 1칸 + 아래 2칸', 4: '2×2' }[n] || '';
+      if (!note.hidden) note.textContent = (f.layout === 'feed' || f.layout === 'story')
+        ? `사진 ${n}장 분할로 만들어요` + (splitWord ? ` · ${splitWord}` : '') + ' (4장까지)'
+        : `사진 ${n}장으로 만들어요 · 칸이 ${n}개로 커져요` + (f.layout === 'photobooth' && n === 2 ? ' (2컷 레이아웃도 잘 어울려요)' : '');
     }
   },
 
@@ -2878,7 +2896,7 @@ App.pages.records = {
       showGroomer: ds.showGroomer === true,
       showNextVisit: ds.showNextVisit !== false,
       showDate: ds.showDate !== false,
-      showPetInfo: ds.showPetInfo !== false,
+      showPetInfo: ds.showPetInfo !== false && ds.showPet !== false,
       showShopPhone: ds.showShopPhone !== false,
       footerMessage: String(ds.footerMessage || os.footerMessage || '감사합니다 ♥').replace(/\{반려견명\}/g, petName),
       logo: ds.logo || await DB.getSetting('shopLogo') || null,
@@ -2891,9 +2909,10 @@ App.pages.records = {
       customTextColor: theme === 'custom' ? (ds.customTextColor || '#1A1A1A') : null,
       customAccentColor: theme === 'custom' ? (ds.customAccentColor || '#6366F1') : null,
       customBgImage: theme === 'custom' ? (ds.customBgImage || null) : null,
-      customShowPet: theme === 'custom' ? (ds.customShowPet !== false) : true,
-      customShowDate: theme === 'custom' ? (ds.customShowDate !== false) : true,
-      customShowShop: theme === 'custom' ? (ds.customShowShop !== false) : true
+      // 그리기 코드는 customShow* 이름을 쓰지만 이제 모든 테마에 적용된다 (예전 커스텀 전용 값은 이어받는다)
+      customShowPet: (ds.showPet ?? ds.customShowPet) !== false,
+      customShowDate: (ds.showDate ?? ds.customShowDate) !== false,
+      customShowShop: (ds.showShop ?? ds.customShowShop) !== false
     };
     return designSettings;
   },
@@ -2951,33 +2970,49 @@ App.pages.records = {
       settings.customTextColor = document.getElementById('card-custom-text')?.value || '#1A1A1A';
       settings.customAccentColor = document.getElementById('card-custom-accent')?.value || '#6366F1';
       settings.customBgImage = this._customBgImage || settings.customBgImage || null;
-      settings.customShowPet = document.getElementById('card-custom-showPet')?.checked !== false;
-      settings.customShowDate = document.getElementById('card-custom-showDate')?.checked !== false;
-      settings.customShowShop = document.getElementById('card-custom-showShop')?.checked !== false;
     }
+    // 이름·날짜·매장명 — 모든 테마 공통
+    settings.showPet = document.getElementById('card-show-pet')?.checked !== false;
+    settings.showDate = document.getElementById('card-show-date')?.checked !== false;
+    settings.showShop = document.getElementById('card-show-shop')?.checked !== false;
     return { layout, theme, settings };
   },
 
-  async generatePhotoCard(recordId, opts = {}) {
-    const record = await DB.get('records', recordId);
-    if (!record) { App.showToast('기록을 찾을 수 없습니다.', 'error'); return; }
-    // 다른 기록에서 고른 사진이 남지 않게 새 카드마다 비운다 ('다시 꾸미기'는 같은 사진으로 돌아온다)
-    const keep = opts.keepPhotos && this._cardRecordId === recordId;
+  // 더보기 → 사진 카드. 미용 기록과 상관없이 사진첩 사진으로 만든다 (카드는 앱에 저장하지 않는다).
+  // 반려견을 고르면 이름·보호자 번호가 붙고, 그 반려견의 가장 최근 기록 사진을 가져올 수 있다.
+  async startPhotoCard({ petId, date } = {}) {
+    const pet = petId ? await DB.get('pets', Number(petId)) : null;
+    const customer = pet?.customerId ? await DB.get('customers', pet.customerId) : null;
+    const d = date || App.getToday();
+    let pool = {}, poolLabel = '';
+    if (pet) {
+      const recs = (await DB.getByIndex('records', 'petId', pet.id)).filter(r => App._recordHasPhoto(r))
+        .sort((a, b) => (b.date || '').localeCompare(a.date || '') || (b.id - a.id));
+      const r = recs[0];
+      if (r) {
+        const _ph = async (inline, id) => inline || (id ? await DB.getPhoto(id).catch(() => null) : null);
+        pool = { before: await _ph(r.photoBefore, r.photoBeforeId), after: await _ph(r.photoAfter, r.photoAfterId),
+          p3: await _ph(r.photo3, r.photo3Id), p4: await _ph(r.photo4, r.photo4Id) };
+        poolLabel = App.formatDate(r.date) + ' 기록 사진';
+      }
+    }
+    const record = { id: null, date: d, petId: pet?.id || null, customerId: customer?.id || null, serviceIds: [], nextVisitDate: null };
+    return this.openPhotoCard({ key: `free:${pet?.id || 0}:${d}`, record, customer, pet, serviceNames: '', pool, poolLabel });
+  },
+
+  // ctx: { key, record, customer, pet, serviceNames, pool, poolLabel } — 만들기·미리보기·완성 화면이 같은 문맥을 쓴다
+  async openPhotoCard(ctx, opts = {}) {
+    // 다른 카드에서 고른 사진이 남지 않게 새 카드마다 비운다 ('다시 꾸미기'는 같은 사진으로 돌아온다)
+    const keep = opts.keepPhotos && this._cardCtx && this._cardCtx.key === ctx.key;
     const keptPhotos = keep ? (this._cardPhotos || []) : [];
     const keptMeta = keep ? (this._cardPhotoMeta || []) : [];
     this._cardPhotos = [];
     this._cardPhotoMeta = [];
-    const cardPet = record.petId ? await DB.get('pets', record.petId) : null;
-    const cardPetName = (cardPet && cardPet.name) || '';
+    const cardPetName = (ctx.pet && ctx.pet.name) || '';
     // 저장해 둔 문구의 {반려견명} 은 이번 반려견 이름으로 보여준다
     const withPet = (t) => String(t || '').replace(/\{반려견명\}/g, cardPetName);
-    // 이 기록에 넣어 둔 사진 — 기본은 빈 칸, '이 기록 사진 넣기'를 누를 때만 채운다
-    // (기록 사진은 상태 기록용이라 카드에는 사진첩의 다른 사진을 쓰는 경우가 많다 — 사장님 의견)
-    const _ph = async (inline, id) => inline || (id ? await DB.getPhoto(id).catch(() => null) : null);
-    this._cardPool = {
-      before: await _ph(record.photoBefore, record.photoBeforeId), after: await _ph(record.photoAfter, record.photoAfterId),
-      p3: await _ph(record.photo3, record.photo3Id), p4: await _ph(record.photo4, record.photo4Id)
-    };
+    // 기록 사진은 기본은 빈 칸, '기록 사진 넣기'를 누를 때만 채운다 (카드에는 사진첩의 다른 사진을 쓰는 경우가 많다)
+    this._cardPool = ctx.pool || {};
     this._cardUserPicked = [false, false, false, false];
     this._cardUsePool = false;
     if (keep) {
@@ -2985,7 +3020,7 @@ App.pages.records = {
       this._cardPhotoMeta = keptMeta;
       this._cardUserPicked = keptPhotos.map(Boolean);
     }
-    this._cardRecordId = recordId;
+    this._cardCtx = ctx;
     this._cardPetName = cardPetName;
     const poolCount = Object.values(this._cardPool).filter(Boolean).length;
 
@@ -3028,7 +3063,7 @@ App.pages.records = {
         <div class="form-group">
           <div class="card-photo-head">
             <label class="form-label" style="margin:0">사진 <span style="font-size:0.78rem;color:var(--text-muted);font-weight:400">· 칸을 눌러 사진첩에서 고르세요</span></label>
-            ${poolCount ? `<button type="button" class="btn btn-sm btn-secondary" id="card-use-record-photos">${App.icon('image')} 이 기록 사진 넣기 (${poolCount}장)</button>` : ''}
+            ${poolCount ? `<button type="button" class="btn btn-sm btn-secondary" id="card-use-record-photos">${App.icon('image')} ${App.escapeHtml(ctx.poolLabel || '기록 사진')} 넣기 (${poolCount}장)</button>` : ''}
           </div>
           <div id="card-photo-slots" style="display:flex;gap:8px;flex-wrap:wrap"></div>
         </div>
@@ -3052,6 +3087,15 @@ App.pages.records = {
               <span style="font-size:1.1rem">${App.icon('palette')}</span>
               <span style="font-size:0.7rem;color:#888">커스텀</span>
             </button>
+          </div>
+        </div>
+        <!-- 카드에 넣을 글자 — 이름·날짜·매장명은 테마와 상관없이 켜고 끈다 (늘 들어가면 촌스러울 수 있다 — 사장님 의견) -->
+        <div class="form-group">
+          <label class="form-label">카드에 넣을 글자 <span style="font-size:0.78rem;color:var(--text-muted);font-weight:400">· 끄면 사진만 남아요</span></label>
+          <div class="card-text-toggles">
+            <label class="card-toggle"><input type="checkbox" id="card-show-pet" ${saved.showPet !== false ? 'checked' : ''}> 반려견 이름</label>
+            <label class="card-toggle"><input type="checkbox" id="card-show-date" ${saved.showDate !== false ? 'checked' : ''}> 날짜</label>
+            <label class="card-toggle"><input type="checkbox" id="card-show-shop" ${saved.showShop !== false ? 'checked' : ''}> 매장명·로고</label>
           </div>
         </div>
         <!-- 폴라로이드 사진 크기 (폴라로이드 레이아웃 선택 시만 표시) -->
@@ -3104,11 +3148,6 @@ App.pages.records = {
                 <input type="color" id="card-custom-accent" value="${saved.customAccentColor || '#6366F1'}" style="width:100%;height:36px;border:none;border-radius:6px;cursor:pointer">
               </div>
             </div>
-          </div>
-          <div style="display:flex;gap:12px;margin-bottom:10px;flex-wrap:wrap">
-            <label class="checkbox-label" style="font-size:0.82rem;min-height:auto;padding:4px 0"><input type="checkbox" id="card-custom-showPet" ${(saved.customShowPet !== false) ? 'checked' : ''}> 반려견 이름</label>
-            <label class="checkbox-label" style="font-size:0.82rem;min-height:auto;padding:4px 0"><input type="checkbox" id="card-custom-showDate" ${(saved.customShowDate !== false) ? 'checked' : ''}> 날짜</label>
-            <label class="checkbox-label" style="font-size:0.82rem;min-height:auto;padding:4px 0"><input type="checkbox" id="card-custom-showShop" ${(saved.customShowShop !== false) ? 'checked' : ''}> 매장명</label>
           </div>
           <div class="form-group" style="margin-bottom:0">
             <label class="form-label" style="font-size:0.82rem">배경 이미지 <span style="color:var(--text-muted);font-weight:400">(선택)</span></label>
@@ -3173,7 +3212,7 @@ App.pages.records = {
         await DB.setSetting('cardDesignSettings', f.settings);
         App.closeModal();
         setTimeout(() => {
-          this._doGenerateCard(recordId, f.layout, f.theme, photos[0] || null, photos[1] || null, photos[2] || null, photos[3] || null, this._cardPhotoMeta.slice(0, count));
+          this._doGenerateCard(ctx, f.layout, f.theme, photos[0] || null, photos[1] || null, photos[2] || null, photos[3] || null, this._cardPhotoMeta.slice(0, count));
         }, 200);
       }
     });
@@ -3278,10 +3317,9 @@ App.pages.records = {
     }, 100);
   },
 
-  async _doGenerateCard(recordId, layout, theme, photo1, photo2, photo3, photo4, photoMetas) {
+  async _doGenerateCard(ctx, layout, theme, photo1, photo2, photo3, photo4, photoMetas) {
     try {
-      const record = await DB.get('records', recordId);
-      if (!record) { App.showToast('기록을 찾을 수 없습니다.', 'error'); return; }
+      const record = { ...ctx.record };
       // 즉석 사진 (DB에 저장 안 함)
       record.photoBefore = photo1 || null;
       record.photoAfter = photo2 || null;
@@ -3296,11 +3334,9 @@ App.pages.records = {
         photo3: (photoMetas && photoMetas[2]) || { offsetX: 0, offsetY: 0, zoom: 1.0 },
         photo4: (photoMetas && photoMetas[3]) || { offsetX: 0, offsetY: 0, zoom: 1.0 }
       };
-      const customer = await DB.get('customers', record.customerId);
-      const pet = await DB.get('pets', record.petId);
+      const { customer, pet, serviceNames } = ctx;
       const shopName = await DB.getSetting('shopName') || '펫살롱';
       const shopPhone = await DB.getSetting('shopPhone') || '';
-      const serviceNames = record.service ? App.getRecordServiceDisplay(record) : await App.getServiceNames(record.serviceIds);
 
       // Merge picker selections with saved detail settings
       const ds = await DB.getSetting('cardDesignSettings') || {};
@@ -3415,7 +3451,7 @@ App.pages.records = {
         // 다시 꾸미기 — 고른 사진·설정을 그대로 들고 편집 창으로
         document.getElementById('card-edit')?.addEventListener('click', () => {
           App.closeModal();
-          setTimeout(() => this.generatePhotoCard(recordId, { keepPhotos: true }), 200);
+          setTimeout(() => this.openPhotoCard(ctx, { keepPhotos: true }), 200);
         });
       }, mimeType, isLarge ? 0.92 : undefined);
     } catch (err) {
