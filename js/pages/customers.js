@@ -285,30 +285,31 @@ App.pages.customers = {
             return records.slice(0, 10).map(r => {
               const pet = petMap[r.petId];
               const serviceNames = (r.serviceNames && r.serviceNames.length > 0) ? r.serviceNames.join(', ') : (r.serviceIds || []).map(id => serviceMap[id] || '').filter(Boolean).join(', ') || '-';
-              return `<div style="padding:12px 0;border-bottom:1px solid var(--border-light)${r.paymentMethod === 'unpaid' ? ';border-left:4px solid var(--danger);padding-left:12px' : ''}">
+              return `<div class="cust-rec-row" data-id="${r.id}" role="button" tabindex="0" style="padding:12px 0;border-bottom:1px solid var(--border-light);cursor:pointer${r.paymentMethod === 'unpaid' ? ';border-left:4px solid var(--danger);padding-left:12px' : ''}">
                 <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px">
                   <strong style="font-size:0.9rem">${App.formatDate(r.date)}</strong>
                   <strong style="color:var(--primary)">${App.formatCurrency(App.getRecordAmount(r))}</strong>
                 </div>
-                <div style="font-size:0.85rem;color:var(--text-secondary)">${App.escapeHtml(pet?.name || '-')} · ${App.escapeHtml(serviceNames)} · ${App.escapeHtml(r.groomer || '-')} · ${App.pages.records.getPaymentLabel(r.paymentMethod)}</div>
+                <div style="font-size:0.85rem;color:var(--text-secondary);display:flex;align-items:center;gap:8px"><span class="flex-1">${App.escapeHtml(pet?.name || '-')} · ${App.escapeHtml(serviceNames)} · ${App.escapeHtml(r.groomer || '-')} · ${App.pages.records.getPaymentLabel(r.paymentMethod)}</span><button type="button" class="btn btn-sm btn-ghost cust-rec-report" data-id="${r.id}" style="flex-shrink:0">${App.icon('image')} 리포트</button></div>
               </div>`;
             }).join('') + (records.length > 10 ? '<div style="text-align:center;padding:12px;font-size:0.82rem;color:var(--text-muted)">최근 10건 표시</div>' : '');
           }
           return `
           <div class="table-container">
             <table class="data-table">
-              <thead><tr><th>날짜</th><th>반려견</th><th>서비스</th><th>금액</th><th>담당</th><th>결제</th></tr></thead>
+              <thead><tr><th>날짜</th><th>반려견</th><th>서비스</th><th>금액</th><th>담당</th><th>결제</th><th></th></tr></thead>
               <tbody>
                 ${records.slice(0, 10).map(r => {
                   const pet = petMap[r.petId];
                   const serviceNames = (r.serviceNames && r.serviceNames.length > 0) ? r.serviceNames.join(', ') : (r.serviceIds || []).map(id => serviceMap[id] || '').filter(Boolean).join(', ') || '-';
-                  return `<tr${r.paymentMethod === 'unpaid' ? ' style="background:var(--warning-light)"' : ''}>
+                  return `<tr class="cust-rec-row" data-id="${r.id}" style="cursor:pointer${r.paymentMethod === 'unpaid' ? ';background:var(--warning-light)' : ''}">
                     <td>${App.formatDate(r.date)}</td>
                     <td>${App.escapeHtml(pet?.name || '-')}</td>
                     <td>${App.escapeHtml(serviceNames)}</td>
                     <td><strong>${App.formatCurrency(App.getRecordAmount(r))}</strong></td>
                     <td>${App.escapeHtml(r.groomer || '-')}</td>
                     <td>${App.pages.records.getPaymentLabel(r.paymentMethod)}</td>
+                    <td class="table-actions"><button type="button" class="btn-icon cust-rec-report" data-id="${r.id}" title="미용 리포트" aria-label="미용 리포트" style="color:var(--info)">${App.icon('image')}</button><button type="button" class="btn-icon cust-rec-edit" data-id="${r.id}" title="수정" aria-label="수정">${App.icon('edit')}</button></td>
                   </tr>`;
                 }).join('')}
               </tbody>
@@ -468,6 +469,17 @@ App.pages.customers = {
     // 예정된 예약 (detail view) → 예약 수정
     document.querySelectorAll('.cust-upcoming-appt').forEach(row => {
       row.addEventListener('click', () => App.pages.appointments.showForm(Number(row.dataset.apptId)));
+    });
+    // 최근 미용 기록 (detail view) → 줄을 누르면 수정, 리포트 버튼은 리포트 (예전엔 눌리지 않아 기록 화면으로 가야 했다)
+    document.querySelectorAll('.cust-rec-row').forEach(row => {
+      row.addEventListener('click', (e) => {
+        if (e.target.closest('.cust-rec-report')) return;
+        App.pages.records.showForm(Number(row.dataset.id));
+      });
+      row.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); row.click(); } });
+    });
+    document.querySelectorAll('.cust-rec-report').forEach(btn => {
+      btn.addEventListener('click', (e) => { e.stopPropagation(); App.pages.records.showReport(Number(btn.dataset.id)); });
     });
 
     // Send message (detail view)

@@ -1105,10 +1105,12 @@ App.pages.records = {
     App.getRecordPhotoKeep().then(keep => {
       if (note) note.textContent = keep ? `반려견별 최근 ${keep}회 기록의 사진만 보관됩니다 (설정에서 변경).` : '';
     });
-    // 기존 사진 미리보기
+    // 기존 사진 미리보기 — 이전 폼의 느린 로드가 다음 폼의 빈 칸에 들어가지 않게 폼마다 표를 둔다
+    const formToken = (this._formPhotoToken = (this._formPhotoToken || 0) + 1);
     for (const f of App.RECORD_PHOTO_FIELDS) {
       if (record && (record[f + 'Id'] || record[f])) {
         App.getRecordPhoto(record, f).then(src => {
+          if (formToken !== this._formPhotoToken) return;
           if (src && this._formPhotos && !this._formPhotos[f]) { this._formPhotos[f] = { data: src, changed: false }; paint(f); }
         });
       }
@@ -1272,12 +1274,12 @@ App.pages.records = {
         Object.assign(existing, data);
         await DB.update('records', existing);
         await this._persistRecordPhotos(id);
-        await App.pruneRecordPhotos(petId).catch(() => {});
+        await App.pruneRecordPhotos(petId, id).catch(() => {});
         App.showToast('미용 기록이 수정되었습니다.');
       } else {
         newId = await DB.add('records', data);
         await this._persistRecordPhotos(newId);
-        await App.pruneRecordPhotos(petId).catch(() => {});
+        await App.pruneRecordPhotos(petId, newId).catch(() => {});
         // If linked to an appointment, mark it as completed now
         if (appointmentId) {
           try {
@@ -2512,6 +2514,7 @@ App.pages.records = {
       const upCtx = upCanvas.getContext('2d');
       upCtx.imageSmoothingQuality = 'high';
       upCtx.drawImage(canvas, 0, 0, upCanvas.width, upCanvas.height);
+      canvas.width = canvas.height = 0; // 중간 캔버스 즉시 해제
       return upCanvas;
     }
 
@@ -2843,6 +2846,7 @@ App.pages.records = {
     const cv = await this._generateCardCanvas(rec, customer, pet, shopName, shopPhone, serviceNames, ds);
     if (token !== this._cardPreviewToken) return; // 더 최근 미리보기가 진행 중
     img.src = cv.toDataURL('image/jpeg', 0.72);
+    cv.width = cv.height = 0; // iOS 는 캔버스 메모리를 늦게 돌려줘 슬라이더를 오래 끌면 한도를 넘는다
     img.hidden = false;
     if (empty) empty.hidden = true;
     img.closest('.card-live')?.setAttribute('data-shape', f.layout);
@@ -3255,10 +3259,12 @@ App.pages.records = {
       // 무엇을 바꾸든 미리보기를 다시 그린다 (입력·선택·버튼)
       const mb = document.getElementById('modal-body');
       if (mb) {
-        ['input', 'change'].forEach(ev => mb.addEventListener(ev, () => this._scheduleCardPreview()));
-        mb.addEventListener('click', (e) => {
+        // addEventListener 는 창을 열 때마다 쌓여 사진·프레임을 메모리에 붙잡았다 — on* 속성은 덮어써서 하나만 남는다
+        mb.oninput = () => this._scheduleCardPreview();
+        mb.onchange = () => this._scheduleCardPreview();
+        mb.onclick = (e) => {
           if (e.target.closest('.card-pick-btn, .card-preset-btn, .card-reset-btn, #card-custom-bgimg-remove')) this._scheduleCardPreview();
-        });
+        };
       }
       this._scheduleCardPreview();
       document.getElementById('card-use-record-photos')?.addEventListener('click', (e) => {

@@ -200,14 +200,15 @@ App.pages.dashboard = {
       const monthRecords = recentRecords.filter(r => r.date && r.date.startsWith(thisMonth));
 
       // 오늘 요약 한 줄 — 오늘 예약 · 주의 반려견(특이사항이 있거나 직전 기록이 '주의'/'까다로움') · 미결제 (GroomBoard 아침 브리핑 방식)
-      const lastByPet = {};
-      recentRecords.forEach(r => { if (r.petId && (!lastByPet[r.petId] || (r.date || '') > (lastByPet[r.petId].date || ''))) lastByPet[r.petId] = r; });
+      // 오늘 예약 반려견만 직전 기록을 따로 읽는다 (recentRecords 는 두 달치라 6~8주 주기 아이의 '주의'를 놓쳤다)
       const cautionPetIds = new Set();
-      todayAppointments.forEach(a => {
-        const p = petMap[a.petId]; const last = lastByPet[a.petId];
-        if (!p) return;
+      for (const a of [...new Map(todayAppointments.map(x => [x.petId, x])).values()]) {
+        const p = petMap[a.petId];
+        if (!p) continue;
+        let last = null;
+        try { const rs = await DB.getByIndex('records', 'petId', Number(a.petId)); rs.forEach(r => { if (!last || (r.date || '') > (last.date || '')) last = r; }); } catch (_) {}
         if (p.healthNotes || p.allergies || (last && (last.condition === 'caution' || last.cooperativeness === 'difficult'))) cautionPetIds.add(a.petId);
-      });
+      }
       const cautionNames = [...cautionPetIds].map(id => petMap[id]?.name).filter(Boolean);
       const todayBrief = `
         <div class="today-brief">
@@ -389,7 +390,7 @@ App.pages.dashboard = {
             <div style="font-size:0.85rem;margin-top:3px;color:var(--text-secondary)">
               ${safety.days !== null ? `마지막 백업 ${safety.days}일 전.` : '아직 백업하지 않았습니다.'}
               ${_isIOS ? ' iOS는 7일 이상 미사용 시 데이터 자동 삭제 위험.' : ' 폰 분실·고장 대비 데이터 보호 권장.'}
-              <a href="#settings" style="color:var(--primary);font-weight:600;white-space:nowrap">기기 간 동기화를 켜면 자동 보관 &rarr;</a>
+              <a href="#settings" style="color:var(--primary);font-weight:600;white-space:nowrap">기기 간 동기화를 켜면 다른 기기에도 복사돼요 &rarr;</a>
             </div>
           </div>
           <button class="btn btn-sm ${_urgent ? 'btn-danger' : 'btn-warning'}" onclick="App.pages.settings?.directBackup()">지금 백업</button>
@@ -405,11 +406,27 @@ App.pages.dashboard = {
         backupWarning = `
         <div class="safety-note" id="photo-backup-note">
           ${App.icon('image')}
-          <div class="flex-1">고객·예약·기록은 클라우드에 보관 중입니다.<br><small>사진 원본은 이 기기에만 있어요. 한 달에 한 번 백업을 권장합니다.</small></div>
+          <div class="flex-1">고객·예약·기록은 클라우드에 보관 중입니다.<br><small>동기화는 복사본이라 실수로 지운 것은 함께 사라져요. 한 달에 한 번 백업(사진 제외)을 권장합니다.</small></div>
           <button class="btn btn-sm btn-secondary" onclick="App.pages.settings?.directBackup()">백업</button>
           <button class="btn btn-sm btn-ghost" aria-label="한 달 동안 숨기기" onclick="try{localStorage.setItem('photoBackupSnoozeUntil',String(Date.now()+30*864e5))}catch(_){};document.getElementById('photo-backup-note')?.remove()">${App.icon('close')}</button>
         </div>`;
       }
+
+      // 아이폰에서 홈 화면에 추가하지 않고 사파리로만 쓰면 7일 미사용 시 iOS 가 저장 데이터를 지울 수 있다 → 한 번 안내 (닫으면 90일 뒤 다시)
+      let a2hsNote = '';
+      try {
+        const standalone = window.navigator.standalone === true || window.matchMedia('(display-mode: standalone)').matches;
+        const snoozed = Number(localStorage.getItem('a2hsSnoozeUntil') || 0) > Date.now();
+        if (_isIOS && !standalone && !snoozed) {
+          a2hsNote = `
+        <div class="safety-note" id="a2hs-note">
+          ${App.icon('bulb')}
+          <div class="flex-1"><strong>홈 화면에 추가해서 쓰세요</strong><br><small>사파리 탭으로만 쓰면 7일 동안 안 열었을 때 아이폰이 저장 데이터를 지울 수 있어요. 공유 버튼 → "홈 화면에 추가"</small></div>
+          <button class="btn btn-sm btn-ghost" aria-label="닫기" onclick="try{localStorage.setItem('a2hsSnoozeUntil',String(Date.now()+90*864e5))}catch(_){};document.getElementById('a2hs-note')?.remove()">${App.icon('close')}</button>
+        </div>`;
+        }
+      } catch (_) {}
+      backupWarning = a2hsNote + backupWarning;
 
       // Onboarding card for new users (shopName 재사용, services는 기 로드된 배열 길이 사용)
       const shopInfo = shopName;

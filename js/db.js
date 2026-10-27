@@ -1019,7 +1019,10 @@ const DB = {
       }
 
       // 3) photos 스토어에서 어디서도 참조 안 되는 orphan 삭제
+      // 10분 안에 저장된 사진은 건너뛴다 — 동기화가 사진을 먼저 저장하고 기록을 바꾸는 사이에 고아로 오인해 지웠다
+      const recentCut = Date.now() - 10 * 60 * 1000;
       for (const ph of photos) {
+        if (ph.createdAt && new Date(ph.createdAt).getTime() > recentCut) continue;
         if (!referencedPhotoIds.has(ph.id)) {
           report.orphanPhotos++;
           await this.delete('photos', ph.id);

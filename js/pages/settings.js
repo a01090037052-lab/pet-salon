@@ -106,7 +106,7 @@ App.pages.settings = {
                 <div class="form-hint">넣으면 미용 리포트 하단에 "리뷰 남겨주시면 큰 힘이 돼요"가 붙고, 문자 템플릿의 {리뷰링크}에 들어가요. 비우면 둘 다 빠져요.</div>
               </div>
               <div class="form-group">
-                <label class="form-label">매장 로고 <span style="font-size:0.78rem;color:var(--text-muted);font-weight:400">(사진 카드에 표시)</span></label>
+                <label class="form-label">매장 로고 <span style="font-size:0.78rem;color:var(--text-muted);font-weight:400">(사진 카드·미용 리포트에 표시)</span></label>
                 <div style="display:flex;align-items:center;gap:12px">
                   <div id="s-logo-preview" style="width:48px;height:48px;border-radius:8px;border:1.5px solid var(--border);display:flex;align-items:center;justify-content:center;overflow:hidden;flex-shrink:0">${await (async () => { const logo = await DB.getSetting('shopLogo'); return logo ? `<img src="${logo}" style="width:100%;height:100%;object-fit:contain">` : '<span style="color:var(--text-muted);font-size:0.75rem">없음</span>'; })()}</div>
                   <input type="file" id="s-logo-file" accept="image/*" style="display:none">
@@ -399,7 +399,7 @@ App.pages.settings = {
               <div>
                 <h4 style="margin-bottom:8px">복원 (가져오기)</h4>
                 <p style="color:var(--text-secondary);font-size:0.9rem;margin-bottom:12px">
-                  백업 파일에서 데이터를 복원합니다. 기존 데이터는 덮어쓰기됩니다.
+                  백업 파일에서 데이터를 복원합니다. 기존 데이터는 덮어쓰기되고, 동기화가 켜져 있으면 다른 기기에도 그대로 반영됩니다.
                 </p>
                 <input type="file" id="import-file" accept=".json" style="display:none">
                 <button class="btn btn-warning" id="btn-import">${App.icon('upload')} 데이터 복원하기</button>
@@ -570,7 +570,7 @@ App.pages.settings = {
     else actions = btn('btn-sync-now', 'refresh', '지금 동기화', 'btn-primary') + btn('btn-sync-resync', 'copy', '전체 다시 맞추기') + btn('btn-sync-setpw', 'lock', st.hasPassword ? '다른 기기용 비밀번호 변경' : '다른 기기용 비밀번호 설정') + btn('btn-sync-disable', 'close', '동기화 끄기');
     return `
       <p style="color:var(--text-secondary);font-size:0.9rem;margin-bottom:12px">
-        휴대폰과 컴퓨터에서 같은 예약·고객·기록을 봅니다. 미용 사진은 이 기기에만 남습니다.
+        휴대폰과 컴퓨터에서 같은 예약·고객·기록을 봅니다. 기록 사진은 600px 축소본으로 함께 보이고, 원본은 찍은 기기에만 남습니다.
       </p>
       ${st.state === 'off' ? `<p class="sync-owner-note">동기화는 등록된 매장 계정만 사용할 수 있습니다. 동기화 없이도 이 기기에서 모든 기능을 쓸 수 있으며, 데이터는 이 기기에만 저장되니 정기 백업을 해주세요.</p>` : ''}
       <div class="sync-status-line"><span class="sync-dot ${dotCls}"></span>${App.escapeHtml(label)}</div>
@@ -1071,7 +1071,7 @@ App.pages.settings = {
             <span style="display:inline-block;width:14px;height:14px;border-radius:50%;background:${f.accentColor || 'var(--border)'};border:1px solid var(--border-light);flex-shrink:0"></span>
             <span style="font-size:0.75rem;color:var(--text-muted)">${f.accentColor || '-'}</span>
           </div>
-          <label class="frame-toggle-label" data-id="${App.escapeHtml(f.id)}" style="display:inline-flex;align-items:center;gap:5px;font-size:0.75rem;color:${f.enabled === false ? 'var(--text-muted)' : 'var(--success)'};font-weight:700;cursor:pointer">
+          <label class="frame-toggle-label" data-id="${App.escapeHtml(f.id)}" style="display:inline-flex;align-items:center;gap:5px;white-space:nowrap;font-size:0.75rem;color:${f.enabled === false ? 'var(--text-muted)' : 'var(--success)'};font-weight:700;cursor:pointer">
             <input type="checkbox" class="frame-toggle-cb" data-id="${App.escapeHtml(f.id)}" ${f.enabled !== false ? 'checked' : ''} onclick="event.stopPropagation()" style="cursor:pointer">
             ${f.enabled === false ? '비활성' : '활성'}
           </label>

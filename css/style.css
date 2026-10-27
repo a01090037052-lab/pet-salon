@@ -3550,3 +3550,9 @@ a.stat-card { display: flex; }
 .today-brief-item { display: inline-flex; align-items: center; gap: 6px; min-height: 36px; padding: 0 12px; border-radius: 18px; background: rgba(255,255,255,0.18); color: inherit; text-decoration: none; font-size: 0.85rem; }
 .today-brief-item b { font-weight: 800; }
 .today-brief-item.warn { background: rgba(255,255,255,0.32); }
+
+/* 데스크탑 — 검색 버튼은 우하단에 띄운다 (우상단은 '+ 새 예약'·'정보 수정' 같은 페이지 버튼을 가렸다) */
+@media (min-width: 769px) {
+  .global-search-btn { top: auto; bottom: 28px; right: 28px; }
+}
+.cust-rec-row:active { background: var(--bg); }

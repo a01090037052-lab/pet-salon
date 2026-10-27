@@ -43,6 +43,8 @@ const App = {
       this.migratePetSizes();
       // 반려견 방문 통계(firstVisitDate·lastVisitDate·visitCount) 1회 채우기 — 목록 페이지가 기록 전체를 읽지 않게 한다
       this.migratePetVisitStats();
+      // v175 이전에 기록 본문에 박혀 있던 사진을 photos 스토어로 1회 옮긴다 — 그래야 반려견 상세 사진 줄에 보이고 동기화·보관 정리 대상이 된다
+      setTimeout(() => this.migrateInlinePhotos().catch(e => console.warn('인라인 사진 변환 실패 (무시):', e)), 8000);
       // Hide loading screen
       setTimeout(() => {
         document.getElementById('loading-screen')?.classList.add('hidden');
@@ -2781,7 +2783,15 @@ const App = {
     return !!(r.photoBeforeId || r.photoAfterId || r.photo3Id || r.photo4Id);
   },
   // 한 반려견의 사진 있는 기록을 날짜순으로 보고 N회를 넘는 기록의 사진만 지운다 (글 기록은 그대로). 지운 사진 수를 돌려준다.
-  async pruneRecordPhotos(petId) {
+  async migrateInlinePhotos() {
+    if (DB.mode === 'server' || !DB.optimizeStorage) return;
+    if (await DB.getSetting('inlinePhotosMigratedAt')) return;
+    const { migratedCount } = await DB.optimizeStorage();
+    await DB.setSetting('inlinePhotosMigratedAt', Date.now());
+    if (migratedCount > 0) this.showToast(`예전 방식으로 저장된 사진 ${migratedCount}장을 정리했어요. 이제 반려견 상세에서 보입니다.`, 'info', { duration: 6000 });
+  },
+
+  async pruneRecordPhotos(petId, exceptId) {
     if (!petId) return 0;
     const keep = await this.getRecordPhotoKeep();
     if (!keep) return 0;
@@ -2790,6 +2800,7 @@ const App = {
       .sort((a, b) => (b.date || '').localeCompare(a.date || '') || (b.id - a.id));
     let n = 0;
     for (const r of recs.slice(keep)) {
+      if (exceptId != null && Number(r.id) === Number(exceptId)) continue; // 방금 저장한 기록(지난 날짜라도)의 사진은 지우지 않는다
       for (const f of ['photoBeforeId', 'photoAfterId', 'photo3Id', 'photo4Id']) {
         if (!r[f]) continue;
         await DB.deletePhoto(r[f]).catch(() => {});
@@ -2798,7 +2809,9 @@ const App = {
       }
       delete r._photoFromSync;
       r._photoSetAt = { photoBefore: Date.now(), photoAfter: Date.now() }; // 지운 시각 — 늦게 오는 옛 사진이 되살아나지 않게
-      await DB.update('records', r);
+      // 본문은 안 바뀌었으니 수정 시각을 올리지 않는다 (올리면 기록 전체가 다시 전송돼 다른 기기의 편집을 덮을 수 있다)
+      if (typeof Sync !== 'undefined' && Sync._putRaw) { await Sync._putRaw('records', r); Sync.queueRecordPhotoChanges(r); }
+      else await DB.update('records', r);
     }
     return n;
   },
@@ -2856,7 +2869,7 @@ const App = {
     // 고객명 빈 값 폴백
     if (!v['고객명']) v['고객명'] = '보호자';
     for (const [key, val] of Object.entries(v)) {
-      out = out.replace(new RegExp(`\\{${key}\\}`, 'g'), val || '');
+      out = out.replace(new RegExp(`\\{${key}\\}`, 'g'), () => String(val || '')); // 함수로 넣어 값 속 '$' 가 특수문자로 해석되지 않게
     }
     // 호출처가 넘기지 않은 변수({시점}, {담당} 등)는 손님에게 그대로 보이면 안 된다 → 제거 후 공백 정리
     return out.replace(/\{[^{}]{1,12}\}/g, '').replace(/[ \t]{2,}/g, ' ').replace(/ ([.,!?])/g, '$1').trim();
