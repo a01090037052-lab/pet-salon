@@ -5,7 +5,8 @@
 //  - 다른 기기의 변경 → onSnapshot 리스너(마지막으로 받은 시각 이후만) → 로컬에 반영.
 //  - 백엔드를 바꿀 때는 이 파일만 교체하면 된다 (db.js 는 Sync.onLocalWrite / allocId / afterImport 만 안다).
 // Firestore 경로: shops/main/{customers|pets|appointments|records|services|settings|expenses}/{id}
-//                shops/main/petPhotos/{petId}, shops/main/tombstones/{store}_{id}, shops/main/meta/{shop|devices}
+//                shops/main/petPhotos/{petId}, shops/main/recordPhotos/{recordId}_{photoBefore|photoAfter},
+//                shops/main/tombstones/{store}_{id}, shops/main/meta/{shop|devices}
 const Sync = {
   SDK_VER: '10.14.1',
   SHOP_ID: 'main',
@@ -18,8 +19,11 @@ const Sync = {
   // (photoId 는 이 기기 photos 스토어의 번호라 다른 기기에선 엉뚱한 사진을 가리킨다)
   LOCAL_FIELDS: {
     pets: ['photoId', 'photo', '_photoFromSync'],
-    records: ['photoBeforeId', 'photoAfterId', 'photo3Id', 'photo4Id']
+    records: ['photoBeforeId', 'photoAfterId', 'photo3Id', 'photo4Id', '_photoFromSync', '_photoSetAt']
   },
+  // 기록 사진(미용 전·후)은 recordPhotos/{recordId}_{field} 문서로 따로 보낸다 (축소본). 보관 횟수는 App.pruneRecordPhotos 가 맞춘다.
+  RECORD_PHOTO_FIELDS: ['photoBefore', 'photoAfter'],
+  PHOTO_STORES: ['petPhotos', 'recordPhotos'],
   // 동기화하지 않는 설정 키 (기기별 설정). DB._isInternalSetting(_autoBackup*, _sync*, sync) 도 제외된다.
   LOCAL_SETTINGS: new Set(['sync', 'security', 'lastBackupDate', 'petVisitStatsVersion', 'lastIntegrityCheck', 'customFrames']),
 
@@ -43,6 +47,7 @@ const Sync = {
   _idChain: {},
   _lastId: {},
   _pendingPhotos: {},
+  _pendingRecordPhotos: {}, // 기록보다 사진 문서가 먼저 도착한 경우 — 기록이 오면 붙인다
   _photoSig: {},
   _refreshTimer: null,
   _saveTimer: null,
@@ -108,6 +113,7 @@ const Sync = {
         const ph = this._petPhotoItem(op, id, data);
         if (ph) items.push(ph);
       }
+      if (store === 'records') items.push(...this._recordPhotoItems(op, id, data));
       this._enqueue(items).then(() => { this._refreshPending(); this._scheduleFlush(); })
         .catch(e => console.warn('Sync enqueue 실패:', e));
     } catch (e) { console.warn('Sync.onLocalWrite 오류 (무시):', e); }
@@ -351,6 +357,17 @@ const Sync = {
         if (remotePhotos.has(String(p.id))) continue;
         const it = this._petPhotoItem('put', p.id, p, true);
         if (it && it.op === 'put') items.push(it);
+      }
+      // 4) 기록 사진도 같은 방식
+      const rp = await this._col('recordPhotos').get();
+      const rpDocs = rp.docs.map(d => ({ id: d.id, data: d.data() }));
+      received += await this._applyRecordPhotos(rpDocs);
+      this._s.lastPullAt.recordPhotos = Math.max(this._s.lastPullAt.recordPhotos || 0, this._maxServerAt(rpDocs));
+      const remoteRecordPhotos = new Set(rpDocs.map(d => d.id));
+      for (const r of await DB.getAllLight('records', ['photoBefore', 'photoAfter', 'photo3', 'photo4'])) {
+        for (const it of this._recordPhotoItems('put', r.id, r, true)) {
+          if (it.op === 'put' && !remoteRecordPhotos.has(String(it.id))) items.push(it);
+        }
       }
       await this._saveNow();
       this._progressDone();
@@ -656,6 +673,10 @@ const Sync = {
       const phDocs = ph.docs.map(d => ({ id: d.id, data: d.data() }));
       await this._applyPetPhotos(phDocs);
       this._s.lastPullAt.petPhotos = this._maxServerAt(phDocs);
+      const rp = await this._col('recordPhotos').get();
+      const rpDocs = rp.docs.map(d => ({ id: d.id, data: d.data() }));
+      await this._applyRecordPhotos(rpDocs);
+      this._s.lastPullAt.recordPhotos = this._maxServerAt(rpDocs);
       this._s.lastPullAt.tombstones = await this._latestServerAt('tombstones');
       this._lastSyncAt = Date.now();
       if (App.migratePetVisitStats) { try { await App.migratePetVisitStats(true); } catch (_) {} }
@@ -686,13 +707,19 @@ const Sync = {
       const it = this._petPhotoItem('put', p.id, p, true);
       if (it) { items.push(it); localIds.petPhotos.add(String(p.id)); }
     }
+    localIds.recordPhotos = new Set();
+    for (const r of await DB.getAllLight('records', ['photoBefore', 'photoAfter', 'photo3', 'photo4'])) {
+      for (const it of this._recordPhotoItems('put', r.id, r, true)) {
+        if (it.op === 'put') { items.push(it); localIds.recordPhotos.add(String(it.id)); }
+      }
+    }
     if (replace) {
       // 클라우드에만 있는 문서 → 삭제(+tombstone) 로 다른 기기에서도 지워지게 한다
-      for (const store of [...this.STORES, 'petPhotos']) {
+      for (const store of [...this.STORES, ...this.PHOTO_STORES]) {
         const snap = await this._col(store).get();
         snap.docs.forEach(d => {
           if (!localIds[store].has(d.id)) {
-            const id = store === 'settings' ? d.id : Number(d.id);
+            const id = (store === 'settings' || store === 'recordPhotos') ? d.id : Number(d.id);
             items.push({ store, op: 'delete', id, data: null });
           }
         });
@@ -731,6 +758,7 @@ const Sync = {
           if (row.op === 'put') {
             let data = row.data;
             if (row.store === 'petPhotos') data = await this._buildPetPhoto(row.id, row.ts);
+            else if (row.store === 'recordPhotos') data = await this._buildRecordPhoto(row.id, row.ts);
             if (!data) { done.push(row.qid); continue; }
             try {
               batch.set(ref, { ...data, _serverAt: FV.serverTimestamp() });
@@ -792,7 +820,8 @@ const Sync = {
       try {
         const ref = this._col(row.store).doc(String(row.id));
         if (row.op === 'put') {
-          const data = row.store === 'petPhotos' ? await this._buildPetPhoto(row.id, row.ts) : row.data;
+          const data = row.store === 'petPhotos' ? await this._buildPetPhoto(row.id, row.ts)
+            : row.store === 'recordPhotos' ? await this._buildRecordPhoto(row.id, row.ts) : row.data;
           if (data) await this._withTimeout(ref.set({ ...data, _serverAt: FV.serverTimestamp() }), 30000);
         } else {
           const b = this._fs.batch();
@@ -817,7 +846,7 @@ const Sync = {
     this._stopListeners();
     if (!this._fs || !this._user || !this.isEnabled()) return;
     const TS = firebase.firestore.Timestamp;
-    for (const store of [...this.STORES, 'petPhotos', 'tombstones']) {
+    for (const store of [...this.STORES, ...this.PHOTO_STORES, 'tombstones']) {
       let q = this._col(store);
       const since = this._s.lastPullAt && this._s.lastPullAt[store];
       // 마지막으로 받은 서버 시각 이후만 — 앱을 켤 때마다 전체를 다시 읽지 않는다 (무료 읽기 한도 보호)
@@ -855,7 +884,9 @@ const Sync = {
         if (docs.length) {
           if (store === 'tombstones') changed = await this._applyTombstones(docs);
           else if (store === 'petPhotos') changed = await this._applyPetPhotos(docs);
+          else if (store === 'recordPhotos') changed = await this._applyRecordPhotos(docs);
           else changed = await this._applyRemote(store, docs, false);
+          if (store === 'records') await this._afterRemoteRecords(docs);
         }
         this._s.lastPullAt[store] = Math.max(this._s.lastPullAt[store] || 0, maxTs);
         this._lastSyncAt = Date.now();
@@ -909,6 +940,7 @@ const Sync = {
     let total = 0;
     const jobs = Object.keys(byStore).map(store => {
       if (store === 'petPhotos') return this._clearSyncedPetPhotos(byStore[store].map(t => Number(t.id))).then(n => { total += n; });
+      if (store === 'recordPhotos') return this._clearSyncedRecordPhotos(byStore[store]).then(n => { total += n; });
       if (!this.STORES.includes(store)) return Promise.resolve();
       return new Promise((resolve, reject) => {
         const tx = DB.db.transaction(store, 'readwrite');
@@ -1112,8 +1144,140 @@ const Sync = {
       return null;
     }
   },
-  // TODO(sync): SYNC_CONFIG.photo.shareGroomingPhotos 가 true 가 되면 records 의 전·후 사진을
-  //   shops/main/recordPhotos/{recordId}_{field} 로 같은 방식(축소 후 업로드)으로 보낸다. 현재는 기본 꺼짐이라 미구현.
+  // ========== 기록 사진 (미용 전·후) ==========
+  // 문서 하나 = 사진 한 장: recordPhotos/{recordId}_{photoBefore|photoAfter}. 다른 기기에서 받은 사진은
+  // 이 기기 photos 스토어에 넣고 기록에 _photoFromSync[field]=true 로 표시해 둔다 (받은 사본은 다시 올리지 않는다).
+
+  // 기록의 사진 번호가 바뀌었는지 보고, 바뀐 칸만 올리거나 지운다 (반려견 사진과 같은 서명 방식)
+  _recordPhotoItems(op, id, rec, force) {
+    const out = [];
+    for (const f of this.RECORD_PHOTO_FIELDS) {
+      const key = `r${id}_${f}`;
+      const prev = this._photoSig[key];
+      let sig = null;
+      if (op === 'put' && rec) {
+        const pid = rec[f + 'Id'];
+        const fromSync = rec._photoFromSync && rec._photoFromSync[f];
+        if (pid && !fromSync) sig = 'id:' + pid;
+      }
+      if (sig === prev && !force) continue;
+      if (sig) this._photoSig[key] = sig; else delete this._photoSig[key];
+      this._saveSigLater();
+      const docId = `${id}_${f}`;
+      if (sig) out.push({ store: 'recordPhotos', op: 'put', id: docId, data: null });
+      else if (prev) out.push({ store: 'recordPhotos', op: 'delete', id: docId, data: null });
+    }
+    return out;
+  },
+
+  _parseRecordPhotoId(docId) {
+    const s = String(docId);
+    const i = s.indexOf('_');
+    const rid = Number(s.slice(0, i));
+    const field = s.slice(i + 1);
+    if (!Number.isFinite(rid) || !this.RECORD_PHOTO_FIELDS.includes(field)) return null;
+    return { rid, field };
+  },
+
+  // 600px JPEG 로 줄여서 올린다 (보낼 때 만든다)
+  async _buildRecordPhoto(docId, ts) {
+    try {
+      const p = this._parseRecordPhotoId(docId);
+      if (!p) return null;
+      const rec = await DB.get('records', p.rid);
+      if (!rec) return null;
+      const pid = rec[p.field + 'Id'];
+      if (!pid || (rec._photoFromSync && rec._photoFromSync[p.field])) return null;
+      const src = await DB.getPhoto(pid);
+      if (!src) return null;
+      const cfg = (SYNC_CONFIG && SYNC_CONFIG.photo) || {};
+      const data = await DB._createThumb(src, cfg.recordMaxPx || 600, cfg.recordQuality || 0.65);
+      if (!data) return null;
+      return { data, recordId: p.rid, field: p.field, petId: rec.petId || null, _updatedAt: ts || Date.now(), _deviceId: this._s.deviceId };
+    } catch (e) {
+      console.warn('Sync: 기록 사진 준비 실패', e);
+      return null;
+    }
+  },
+
+  // 받은 기록 사진 — 이 기기 원본이 있으면 두고, 받은 사본보다 새것만 바꾼다
+  async _applyRecordPhotos(docs) {
+    if (!docs || !docs.length) return 0;
+    let changed = 0;
+    const pets = new Set();
+    for (const doc of docs) {
+      try {
+        const d = doc.data;
+        const data = d && d.data;
+        const p = this._parseRecordPhotoId(doc.id);
+        if (!p || !data) continue;
+        const rec = await DB.get('records', p.rid);
+        if (!rec) { this._pendingRecordPhotos[doc.id] = doc; continue; }
+        const ts = Number(d._updatedAt) || 0;
+        const idKey = p.field + 'Id';
+        const fs = rec._photoFromSync || {};
+        const setAt = rec._photoSetAt || {};
+        if (rec[idKey] && !fs[p.field]) continue;                      // 이 기기에서 찍은 원본
+        if ((setAt[p.field] || 0) >= ts) continue;                      // 이미 받았거나, 그 뒤에 지운 것(보관 횟수 정리)
+        if (rec[idKey]) await DB.deletePhoto(rec[idKey]);
+        rec[idKey] = await DB.savePhoto(data, { type: 'record-' + p.field + '-sync', ownerId: p.rid, date: rec.date });
+        rec._photoFromSync = { ...fs, [p.field]: true };
+        rec._photoSetAt = { ...setAt, [p.field]: ts };
+        await this._putRaw('records', rec);
+        changed++;
+        if (rec.petId) pets.add(rec.petId);
+      } catch (e) { console.warn('Sync: 기록 사진 적용 실패', doc && doc.id, e); }
+    }
+    for (const petId of pets) { try { await App.pruneRecordPhotos(petId); } catch (_) {} }
+    if (changed && App.notifyTabSync) App.notifyTabSync();
+    return changed;
+  },
+
+  // 기록을 받은 뒤: 먼저 와 있던 사진을 붙이고, 그 반려견의 오래된 사진을 보관 횟수에 맞춘다
+  async _afterRemoteRecords(docs) {
+    const pending = Object.values(this._pendingRecordPhotos);
+    this._pendingRecordPhotos = {};
+    if (pending.length) await this._applyRecordPhotos(pending);
+    const pets = new Set();
+    docs.forEach(doc => { const pid = doc.data && doc.data.petId; if (pid) pets.add(Number(pid)); });
+    for (const petId of pets) { try { await App.pruneRecordPhotos(petId); } catch (_) {} }
+  },
+
+  // 다른 기기에서 지운 기록 사진 — 지운 뒤에 다시 넣은 사진은 살린다
+  async _clearSyncedRecordPhotos(tombs) {
+    let n = 0;
+    for (const t of tombs) {
+      try {
+        const p = this._parseRecordPhotoId(t.id);
+        if (!p) continue;
+        delete this._pendingRecordPhotos[String(t.id)];
+        const rec = await DB.get('records', p.rid);
+        if (!rec) continue;
+        const idKey = p.field + 'Id';
+        if (!rec[idKey]) continue;
+        if (((rec._photoSetAt || {})[p.field] || 0) > (Number(t._updatedAt) || 0)) continue;
+        await DB.deletePhoto(rec[idKey]);
+        rec[idKey] = null;
+        if (rec._photoFromSync) delete rec._photoFromSync[p.field];
+        await this._putRaw('records', rec);
+        delete this._photoSig[`r${p.rid}_${p.field}`];
+        this._saveSigLater();
+        n++;
+      } catch (e) { console.warn('Sync: 기록 사진 삭제 반영 실패', t && t.id, e); }
+    }
+    return n;
+  },
+
+  // 동기화 훅·updatedAt 갱신 없이 그대로 저장 (받은 내용을 다시 올리지 않게)
+  _putRaw(store, rec) {
+    return new Promise((resolve, reject) => {
+      const tx = DB.db.transaction(store, 'readwrite');
+      tx.objectStore(store).put(rec);
+      tx.oncomplete = () => resolve();
+      tx.onerror = () => reject(tx.error);
+      tx.onabort = () => reject(tx.error);
+    });
+  },
 
   // ========== 기기 id 대역 ==========
 
@@ -1228,7 +1392,7 @@ const Sync = {
 
   // 이 기기가 원본으로 올리는 경우 — 이미 있는 클라우드 문서는 다시 받지 않도록 기준 시각을 맞춘다
   async _markPulledToNow() {
-    for (const name of [...this.STORES, 'petPhotos', 'tombstones']) {
+    for (const name of [...this.STORES, ...this.PHOTO_STORES, 'tombstones']) {
       try { this._s.lastPullAt[name] = await this._latestServerAt(name); } catch (_) {}
     }
   },

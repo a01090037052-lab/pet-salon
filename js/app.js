@@ -2768,6 +2768,54 @@ const App = {
     }, 150);
   },
 
+  // ========== 기록 사진 보관 (반려견별 최근 N회) ==========
+  // 기록 사진은 "지난번에 어떻게 깎았나" 확인용이라 반려견마다 최근 몇 회만 남긴다.
+  // 횟수는 설정 recordPhotoKeep (기본 3, 0 = 전부 보관) — 동기화되는 설정이라 폰·데스크탑이 같은 기준으로 정리한다.
+  RECORD_PHOTO_FIELDS: ['photoBefore', 'photoAfter'],
+  RECORD_PHOTO_KEEP_DEFAULT: 3,
+  async getRecordPhotoKeep() {
+    const v = await DB.getSetting('recordPhotoKeep');
+    return (v === null || v === undefined || v === '') ? this.RECORD_PHOTO_KEEP_DEFAULT : (Number(v) || 0);
+  },
+  _recordHasPhoto(r) {
+    return !!(r.photoBeforeId || r.photoAfterId || r.photo3Id || r.photo4Id);
+  },
+  // 한 반려견의 사진 있는 기록을 날짜순으로 보고 N회를 넘는 기록의 사진만 지운다 (글 기록은 그대로). 지운 사진 수를 돌려준다.
+  async pruneRecordPhotos(petId) {
+    if (!petId) return 0;
+    const keep = await this.getRecordPhotoKeep();
+    if (!keep) return 0;
+    const recs = (await DB.getByIndex('records', 'petId', Number(petId)))
+      .filter(r => this._recordHasPhoto(r))
+      .sort((a, b) => (b.date || '').localeCompare(a.date || '') || (b.id - a.id));
+    let n = 0;
+    for (const r of recs.slice(keep)) {
+      for (const f of ['photoBeforeId', 'photoAfterId', 'photo3Id', 'photo4Id']) {
+        if (!r[f]) continue;
+        await DB.deletePhoto(r[f]).catch(() => {});
+        r[f] = null;
+        n++;
+      }
+      delete r._photoFromSync;
+      r._photoSetAt = { photoBefore: Date.now(), photoAfter: Date.now() }; // 지운 시각 — 늦게 오는 옛 사진이 되살아나지 않게
+      await DB.update('records', r);
+    }
+    return n;
+  },
+  async pruneAllRecordPhotos() {
+    const recs = await DB.getAllLight('records', ['photoBefore', 'photoAfter', 'photo3', 'photo4', 'memo']);
+    const pets = new Set(recs.filter(r => this._recordHasPhoto(r)).map(r => r.petId).filter(Boolean));
+    let n = 0;
+    for (const petId of pets) n += await this.pruneRecordPhotos(petId);
+    return n;
+  },
+  // 기록의 사진을 dataURL 로 (photos 스토어 또는 옛 인라인 값)
+  async getRecordPhoto(record, field) {
+    if (!record) return null;
+    if (record[field] && typeof record[field] === 'string' && record[field].startsWith('data:')) return record[field];
+    return record[field + 'Id'] ? await DB.getPhoto(record[field + 'Id']).catch(() => null) : null;
+  },
+
   // ========== Shared Image Resize Utility ==========
   resizeImage(dataUrl, callback, maxSize = 800, quality = 0.7) {
     const img = new Image();

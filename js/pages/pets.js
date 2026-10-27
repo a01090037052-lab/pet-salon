@@ -181,6 +181,29 @@ App.pages.pets = {
 
     const age = pet.birthYear ? (new Date().getFullYear() - pet.birthYear) + '살' : (pet.birthDate ? this.calculateAge(pet.birthDate) : '-');
 
+    // 최근 미용 사진 — 다음 미용 때 "지난번엔 이렇게" 확인용. 날짜·전후 라벨은 사진 위에 얹어 보여준다 (사진에 굽지 않는다)
+    const keep = await App.getRecordPhotoKeep();
+    const photoTiles = [];
+    for (const r of records.filter(x => App._recordHasPhoto(x)).slice(0, keep || 6)) {
+      for (const [f, tag] of [['photoAfter', '후'], ['photoBefore', '전']]) {
+        const src = await App.getRecordPhoto(r, f);
+        if (!src) continue;
+        const svc = r.service ? App.getRecordServiceDisplay(r) : '';
+        photoTiles.push({ src, tag, date: r.date, recordId: r.id, caption: `${App.formatDate(r.date)} 미용 ${tag}${svc ? ' · ' + svc : ''}` });
+      }
+    }
+    const photoStrip = photoTiles.length ? `
+      <div class="rec-photo-strip">
+        <div class="rec-photo-strip-title">최근 미용 사진 <small>${keep ? `최근 ${keep}회 보관` : ''}</small></div>
+        <div class="rec-photo-strip-row">
+          ${photoTiles.map(t => `
+          <figure class="rec-photo-item">
+            <img src="${t.src}" class="photo-viewable" data-group="pet-recent" data-caption="${App.escapeHtml(t.caption)}" alt="${App.escapeHtml(t.caption)}">
+            <figcaption>${App.escapeHtml((t.date || '').slice(5).replace('-', '.'))} <b>${t.tag}</b></figcaption>
+          </figure>`).join('')}
+        </div>
+      </div>` : '';
+
     container.innerHTML = `
       <div class="back-link" onclick="history.length>1?history.back():App.navigate('pets')">${App.icon('arrow-left')} 뒤로가기</div>
       <div class="detail-header">
@@ -221,6 +244,8 @@ App.pages.pets = {
         </div>
       </div>`;
       })()}
+
+      ${photoStrip}
 
       ${records.length > 0 ? (() => {
         const totalSpend = records.reduce((sum, r) => sum + App.getRecordAmount(r), 0);

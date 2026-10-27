@@ -232,6 +232,7 @@ App.pages.records = {
                   <div class="mobile-card-meta">
                     <span>${App.icon('scissors')} ${App.escapeHtml(r.groomer || '-')}</span>
                     <span>${this.getPaymentLabel(r.paymentMethod)}${paidNote(r)}</span>
+                    ${App._recordHasPhoto(r) ? `<span>${App.icon('camera')} 사진</span>` : ''}
                     ${isUnpaid ? '<span class="badge badge-danger">미결제</span>' : ''}
                   </div>
                   ${r.memo ? `<div style="font-size:0.82rem;color:var(--text-secondary);margin-top:6px;padding-top:6px;border-top:1px dashed var(--border-light);white-space:nowrap;overflow:hidden;text-overflow:ellipsis" title="${App.escapeHtml(r.memo)}">${App.icon('note')} ${App.escapeHtml(r.memo.length > 60 ? r.memo.slice(0, 60) + '...' : r.memo)}</div>` : ''}
@@ -639,6 +640,20 @@ App.pages.records = {
           <input type="hidden" id="f-cooperativeness" value="${record.cooperativeness || ''}">
         </div>
 
+        <div class="form-group">
+          <label class="form-label">사진 <span style="color:var(--text-muted);font-size:0.78rem;font-weight:400">(선택 — 다음 미용 때 참고용)</span></label>
+          <div class="rec-photo-row">
+            ${App.RECORD_PHOTO_FIELDS.map(f => `
+            <label class="rec-photo-tile" data-field="${f}" aria-label="${f === 'photoBefore' ? '미용 전' : '미용 후'} 사진 선택">
+              <input type="file" class="rec-photo-input" data-field="${f}" accept="image/*">
+              <img alt="" hidden>
+              <span class="rec-photo-empty">${App.icon('camera')}<span>${f === 'photoBefore' ? '미용 전' : '미용 후'}</span></span>
+              <span class="rec-photo-tag">${f === 'photoBefore' ? '전' : '후'}</span>
+              <button type="button" class="rec-photo-del" aria-label="사진 지우기" hidden>&times;</button>
+            </label>`).join('')}
+            <div class="rec-photo-note" id="f-rec-photo-note"></div>
+          </div>
+        </div>
         <!-- 상세 옵션 토글 (스타일·추가 항목·미용사·할인·메모 등) -->
         <div class="form-detail-divider" onclick="this.closest('.modal-body').querySelector('.form-detail-section').classList.toggle('open');this.classList.toggle('open')">
           <span class="form-detail-divider-line"></span>
@@ -732,6 +747,7 @@ App.pages.records = {
       onSave: () => this.saveRecord(id)
     });
     document.getElementById('btn-delete-record-form')?.addEventListener('click', () => this.deleteRecord(id, { fromForm: true }));
+    this._bindRecordPhotos(record);
 
     // Pet change -> auto-set size and show pet notes + 마지막 기록 가져오기 버튼 표시
     document.getElementById('f-petId')?.addEventListener('change', async (e) => {
@@ -1068,6 +1084,80 @@ App.pages.records = {
     } catch (e) { console.warn('lastVisitDate 재계산 실패:', e); }
   },
 
+  // ===== 기록 사진 (미용 전·후 2장) =====
+  // 폼에서 고른 사진은 this._formPhotos[field] = { data, changed } 에 두고 저장할 때 photos 스토어로 옮긴다.
+  async _bindRecordPhotos(record) {
+    this._formPhotos = {};
+    const note = document.getElementById('f-rec-photo-note');
+    if (!document.querySelector('.rec-photo-tile')) return;
+    const paint = (field) => {
+      const tile = document.querySelector(`.rec-photo-tile[data-field="${field}"]`);
+      if (!tile) return;
+      const st = this._formPhotos[field];
+      const img = tile.querySelector('img');
+      const has = !!(st && st.data);
+      img.hidden = !has;
+      if (has) img.src = st.data;
+      tile.querySelector('.rec-photo-empty').hidden = has;
+      tile.querySelector('.rec-photo-del').hidden = !has;
+      tile.classList.toggle('has-photo', has);
+    };
+    App.getRecordPhotoKeep().then(keep => {
+      if (note) note.textContent = keep ? `반려견별 최근 ${keep}회 기록의 사진만 보관됩니다 (설정에서 변경).` : '';
+    });
+    // 기존 사진 미리보기
+    for (const f of App.RECORD_PHOTO_FIELDS) {
+      if (record && (record[f + 'Id'] || record[f])) {
+        App.getRecordPhoto(record, f).then(src => {
+          if (src && this._formPhotos && !this._formPhotos[f]) { this._formPhotos[f] = { data: src, changed: false }; paint(f); }
+        });
+      }
+    }
+    // 타일이 <label> 이라 파일 창은 브라우저가 직접 연다 (JS 의 input.click() 은 일부 브라우저에서 막힌다)
+    document.querySelectorAll('.rec-photo-tile').forEach(tile => {
+      const field = tile.dataset.field;
+      const input = tile.querySelector('.rec-photo-input');
+      tile.querySelector('.rec-photo-del').addEventListener('click', (e) => {
+        e.preventDefault(); // label 활성화(파일 창) 막기
+        e.stopPropagation();
+        this._formPhotos[field] = { data: null, changed: true };
+        if (input) input.value = '';
+        paint(field);
+      });
+      input.addEventListener('change', () => {
+        const file = input.files && input.files[0];
+        if (!file) return;
+        const reader = new FileReader();
+        reader.onload = () => {
+          App.resizeImage(reader.result, (data) => {
+            if (!data) { App.showToast('사진을 읽지 못했습니다.', 'error'); return; }
+            this._formPhotos[field] = { data, changed: true };
+            paint(field);
+          }, 800, 0.7);
+        };
+        reader.readAsDataURL(file);
+      });
+    });
+  },
+
+  // 저장된 기록에 폼 사진을 붙인다 (바뀐 칸만). 이 기기에서 넣은 사진은 동기화 원본이 된다.
+  async _persistRecordPhotos(recordId) {
+    const photos = this._formPhotos || {};
+    const fields = App.RECORD_PHOTO_FIELDS.filter(f => photos[f] && photos[f].changed);
+    if (!fields.length) return;
+    const rec = await DB.get('records', recordId);
+    if (!rec) return;
+    for (const f of fields) {
+      if (rec[f + 'Id']) { await DB.deletePhoto(rec[f + 'Id']).catch(() => {}); rec[f + 'Id'] = null; }
+      if (rec[f]) delete rec[f]; // 옛 인라인 사진
+      if (photos[f].data) rec[f + 'Id'] = await DB.savePhoto(photos[f].data, { type: 'record-' + f, ownerId: recordId, date: rec.date });
+      if (rec._photoFromSync) delete rec._photoFromSync[f];
+      rec._photoSetAt = { ...(rec._photoSetAt || {}), [f]: Date.now() };
+    }
+    await DB.update('records', rec);
+    this._formPhotos = {};
+  },
+
   async saveRecord(id) {
     try {
       // 서비스 입력 직후 바로 저장을 누르면 가격 조회가 끝나기 전이라 0원으로 저장되던 문제 — 조회를 기다린다
@@ -1180,9 +1270,13 @@ App.pages.records = {
         }
         Object.assign(existing, data);
         await DB.update('records', existing);
+        await this._persistRecordPhotos(id);
+        await App.pruneRecordPhotos(petId).catch(() => {});
         App.showToast('미용 기록이 수정되었습니다.');
       } else {
-        await DB.add('records', data);
+        const newId = await DB.add('records', data);
+        await this._persistRecordPhotos(newId);
+        await App.pruneRecordPhotos(petId).catch(() => {});
         // If linked to an appointment, mark it as completed now
         if (appointmentId) {
           try {

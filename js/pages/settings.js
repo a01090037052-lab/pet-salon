@@ -50,6 +50,7 @@ App.pages.settings = {
     ]);
     // 직전 복원 취소용 메타 (사본 본문은 크므로 메타만 읽는다)
     const undoMeta = await DB.getSetting('_autoBackupBeforeImportMeta');
+    const recordPhotoKeep = await App.getRecordPhotoKeep();
 
     // 보안 설정 로드
     const sec = (typeof Security !== 'undefined') ? await Security._load() : { enabled: false, pinLength: 6, maxAttempts: 5, lockoutSeconds: 30 };
@@ -355,6 +356,18 @@ App.pages.settings = {
             </p>
             <button class="btn btn-primary" id="btn-optimize-storage">${App.icon('sparkle')} 저장 공간 최적화</button>
             <div id="optimize-result" style="margin-top:8px"></div>
+            <div class="form-group" style="margin:16px 0 0;padding-top:14px;border-top:1px dashed var(--border)">
+              <label class="form-label" for="s-record-photo-keep">기록 사진 보관</label>
+              <select id="s-record-photo-keep" class="form-control" style="max-width:220px">
+                ${[[2, '반려견별 최근 2회'], [3, '반려견별 최근 3회 (기본)'], [5, '반려견별 최근 5회'], [0, '전부 보관 (용량 계속 늘어남)']]
+                  .map(([v, t]) => `<option value="${v}" ${Number(recordPhotoKeep) === v ? 'selected' : ''}>${t}</option>`).join('')}
+              </select>
+              <small style="display:block;margin-top:6px;color:var(--text-muted);line-height:1.5">
+                미용 기록의 전·후 사진은 반려견마다 최근 몇 회만 남기고 오래된 사진을 자동으로 지웁니다 (글 기록은 남습니다).
+                폰과 데스크탑이 같은 기준을 쓰고, 사진은 600px 축소본으로 기기 간에 함께 보입니다.
+              </small>
+              <div id="record-photo-keep-result" style="margin-top:6px;font-size:0.85rem"></div>
+            </div>
           </div>
         </div>
 
@@ -779,6 +792,22 @@ App.pages.settings = {
     this._bindSmsTemplateEditor();
 
     // 저장 공간 최적화
+    // 기록 사진 보관 횟수 — 줄이면 바로 정리할지 묻는다 (되돌릴 수 없으므로)
+    document.getElementById('s-record-photo-keep')?.addEventListener('change', async (e) => {
+      const sel = e.target;
+      const prev = await App.getRecordPhotoKeep();
+      const next = Number(sel.value) || 0;
+      const out = document.getElementById('record-photo-keep-result');
+      if (next && (!prev || next < prev)) {
+        const ok = await App.confirm(`반려견별 최근 <strong>${next}회</strong>만 남기고 그보다 오래된 기록의 사진을 지웁니다.<br>글 기록은 남지만 사진은 되돌릴 수 없습니다. 계속할까요?`, { okLabel: '정리하고 저장' });
+        if (!ok) { sel.value = String(prev); return; }
+      }
+      await DB.setSetting('recordPhotoKeep', next);
+      let n = 0;
+      if (next) { try { n = await App.pruneAllRecordPhotos(); } catch (err) { console.warn('prune error:', err); } }
+      if (out) out.innerHTML = `<span style="color:var(--success)">${App.icon('check')} 저장됨${n ? ` · 사진 ${n}장 정리` : ''}</span>`;
+    });
+
     document.getElementById('btn-optimize-storage')?.addEventListener('click', async () => {
       const btn = document.getElementById('btn-optimize-storage');
       const result = document.getElementById('optimize-result');

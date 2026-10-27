@@ -11,6 +11,7 @@ const SYNC_CONFIG = {
     messagingSenderId: "659771520332",
     appId: "1:659771520332:web:ade98da9d103e8d58a4be9"
   },
-  // 사진 공유 정책 (설계안 §2): 반려견 프로필은 400px 공유, 미용 전·후는 기본 끔
-  photo: { profileMaxPx: 400, profileQuality: 0.7, shareGroomingPhotos: false, groomingKeepDays: 730 }
+  // 사진 공유 정책: 반려견 프로필 400px, 기록 사진(미용 전·후) 600px 축소본을 올린다.
+  // 기록 사진은 반려견별 최근 N회(설정 recordPhotoKeep, 기본 3)만 남겨 무료 저장 한도(1GB) 안에서 고정된다.
+  photo: { profileMaxPx: 400, profileQuality: 0.7, recordMaxPx: 600, recordQuality: 0.65 }
 };
