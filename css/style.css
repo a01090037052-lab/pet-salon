@@ -3535,3 +3535,18 @@ a.stat-card { display: flex; }
 .card-toggle { display: inline-flex; align-items: center; gap: 6px; min-height: 40px; padding: 0 12px; white-space: nowrap; flex: 0 0 auto; border: 1.5px solid var(--border); border-radius: 20px; font-size: 0.85rem; cursor: pointer; background: var(--bg-white); }
 .card-toggle:has(input:checked) { border-color: var(--primary); background: var(--primary-light); color: var(--primary); font-weight: 600; }
 .card-toggle input { margin: 0; accent-color: var(--primary); }
+
+/* 사진 카드 — 고른 장수에 맞는 레이아웃 추천 표시 */
+.card-pick-btn { position: relative; }
+.card-pick-btn.rec::after { content: '추천'; position: absolute; top: -7px; right: -4px; font-size: 0.62rem; font-weight: 700; color: #fff; background: var(--primary); border-radius: 8px; padding: 1px 6px; line-height: 1.4; }
+
+/* 반려견 상세 — 최근 미용 사진 전·후 토글 */
+.rec-ba { display: inline-flex; margin-left: 4px; border: 1px solid var(--border); border-radius: 10px; overflow: hidden; vertical-align: middle; }
+.rec-ba button { min-height: 26px; padding: 0 10px; font-size: 0.72rem; font-weight: 700; border: 0; background: var(--bg-white); color: var(--text-muted); cursor: pointer; }
+.rec-ba button.on { background: var(--primary); color: #fff; }
+
+/* 홈 — 오늘 요약 한 줄 */
+.today-brief { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; position: relative; z-index: 1; }
+.today-brief-item { display: inline-flex; align-items: center; gap: 6px; min-height: 36px; padding: 0 12px; border-radius: 18px; background: rgba(255,255,255,0.18); color: inherit; text-decoration: none; font-size: 0.85rem; }
+.today-brief-item b { font-weight: 800; }
+.today-brief-item.warn { background: rgba(255,255,255,0.32); }

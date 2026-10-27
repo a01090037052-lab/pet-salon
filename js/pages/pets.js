@@ -183,26 +183,34 @@ App.pages.pets = {
 
     // 최근 미용 사진 — 다음 미용 때 "지난번엔 이렇게" 확인용. 날짜·전후 라벨은 사진 위에 얹어 보여준다 (사진에 굽지 않는다)
     const keep = await App.getRecordPhotoKeep();
+    // 기록 1건 = 타일 1개. 전·후가 둘 다 있으면 타일 아래 '전 | 후'로 번갈아 본다 (MoeGo 비교 보기 방식, 넘기기 제스처와 안 겹치게 버튼)
     const photoTiles = [];
     for (const r of records.filter(x => App._recordHasPhoto(x)).slice(0, keep || 6)) {
-      for (const [f, tag] of [['photoAfter', '후'], ['photoBefore', '전']]) {
-        const src = await App.getRecordPhoto(r, f);
-        if (!src) continue;
-        const svc = r.service ? App.getRecordServiceDisplay(r) : '';
-        photoTiles.push({ src, tag, date: r.date, recordId: r.id, caption: `${App.formatDate(r.date)} 미용 ${tag}${svc ? ' · ' + svc : ''}` });
-      }
+      const before = await App.getRecordPhoto(r, 'photoBefore');
+      const after = await App.getRecordPhoto(r, 'photoAfter');
+      if (!before && !after) continue;
+      const svc = r.service ? App.getRecordServiceDisplay(r) : '';
+      const cap = (tag) => `${App.formatDate(r.date)} 미용 ${tag}${svc ? ' · ' + svc : ''}`;
+      photoTiles.push({ before, after, date: r.date, recordId: r.id, capBefore: cap('전'), capAfter: cap('후') });
     }
     const photoStrip = photoTiles.length ? `
       <div class="rec-photo-strip">
         <div class="rec-photo-strip-title">최근 미용 사진 <small>${keep ? `최근 ${keep}회 보관` : ''}</small></div>
         <div class="rec-photo-strip-row">
-          ${photoTiles.map(t => `
-          <figure class="rec-photo-item">
-            <img src="${t.src}" class="photo-viewable" data-group="pet-recent" data-caption="${App.escapeHtml(t.caption)}" alt="${App.escapeHtml(t.caption)}">
-            <figcaption>${App.escapeHtml((t.date || '').slice(5).replace('-', '.'))} <b>${t.tag}</b></figcaption>
-          </figure>`).join('')}
+          ${photoTiles.map(t => {
+            const showAfter = !!t.after;
+            return `
+          <figure class="rec-photo-item" data-rid="${t.recordId}">
+            <img src="${showAfter ? t.after : t.before}" class="photo-viewable" data-group="pet-recent" data-caption="${App.escapeHtml(showAfter ? t.capAfter : t.capBefore)}" alt="${App.escapeHtml(showAfter ? t.capAfter : t.capBefore)}">
+            <figcaption>${App.escapeHtml((t.date || '').slice(5).replace('-', '.'))}
+              ${t.before && t.after
+                ? `<span class="rec-ba" role="group" aria-label="전후 보기"><button type="button" data-f="before">전</button><button type="button" class="on" data-f="after">후</button></span>`
+                : `<b>${showAfter ? '후' : '전'}</b>`}
+            </figcaption>
+          </figure>`; }).join('')}
         </div>
       </div>` : '';
+    this._photoTiles = photoTiles;
 
     container.innerHTML = `
       <div class="back-link" onclick="history.length>1?history.back():App.navigate('pets')">${App.icon('arrow-left')} 뒤로가기</div>
@@ -398,6 +406,21 @@ App.pages.pets = {
 
   async init(params) {
     document.getElementById('btn-add-pet')?.addEventListener('click', () => this.showForm());
+    // 최근 미용 사진 전·후 토글
+    document.querySelectorAll('.rec-photo-item .rec-ba button').forEach(btn => {
+      btn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const fig = btn.closest('.rec-photo-item');
+        const t = (this._photoTiles || []).find(x => String(x.recordId) === fig?.dataset.rid);
+        const img = fig?.querySelector('img');
+        if (!t || !img) return;
+        const after = btn.dataset.f === 'after';
+        img.src = after ? t.after : t.before;
+        img.dataset.caption = after ? t.capAfter : t.capBefore;
+        img.alt = img.dataset.caption;
+        fig.querySelectorAll('.rec-ba button').forEach(b => b.classList.toggle('on', b === btn));
+      });
+    });
     // 반려견 상세 → 빠른 예약
     document.getElementById('btn-pet-appt')?.addEventListener('click', (e) => {
       const customerId = Number(e.target.dataset.customerId);

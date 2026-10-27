@@ -2839,9 +2839,11 @@ const App = {
     let tpl = await this.getSmsTemplate(type);
     const shopName = await DB.getSetting('shopName') || '펫살롱';
     const shopPhone = await DB.getSetting('shopPhone') || '';
+    const reviewLink = await DB.getSetting('shopReviewLink') || '';
     const allVars = {
       '매장명': shopName,
       '전화번호': shopPhone,
+      '리뷰링크': reviewLink,
       ...vars
     };
     return this.fillSmsTemplate(tpl, allVars);

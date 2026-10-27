@@ -198,6 +198,23 @@ App.pages.dashboard = {
         .filter(a => a.status !== 'cancelled')
         .sort((a, b) => (a.time || '').localeCompare(b.time || ''));
       const monthRecords = recentRecords.filter(r => r.date && r.date.startsWith(thisMonth));
+
+      // 오늘 요약 한 줄 — 오늘 예약 · 주의 반려견(특이사항이 있거나 직전 기록이 '주의'/'까다로움') · 미결제 (GroomBoard 아침 브리핑 방식)
+      const lastByPet = {};
+      recentRecords.forEach(r => { if (r.petId && (!lastByPet[r.petId] || (r.date || '') > (lastByPet[r.petId].date || ''))) lastByPet[r.petId] = r; });
+      const cautionPetIds = new Set();
+      todayAppointments.forEach(a => {
+        const p = petMap[a.petId]; const last = lastByPet[a.petId];
+        if (!p) return;
+        if (p.healthNotes || p.allergies || (last && (last.condition === 'caution' || last.cooperativeness === 'difficult'))) cautionPetIds.add(a.petId);
+      });
+      const cautionNames = [...cautionPetIds].map(id => petMap[id]?.name).filter(Boolean);
+      const todayBrief = `
+        <div class="today-brief">
+          <a href="#appointments" class="today-brief-item">${App.icon('calendar')} 오늘 예약 <b>${todayAppointments.length}건</b></a>
+          <a href="#appointments" class="today-brief-item${cautionPetIds.size ? ' warn' : ''}" title="${App.escapeHtml(cautionNames.join(', '))}">${App.icon('alert')} 주의 반려견 <b>${cautionPetIds.size}마리</b></a>
+          <a href="#records" class="today-brief-item${unpaidRecords.length ? ' warn' : ''}">${App.icon('coins')} 미결제 <b>${unpaidRecords.length}건</b></a>
+        </div>`;
       const monthRevenue = monthRecords.reduce((sum, r) => sum + App.getRecordAmount(r), 0);
 
       // 전월 동기 대비 (매출 페이지와 같은 정의: 지난달 같은 일차까지와 비교)
@@ -441,6 +458,7 @@ App.pages.dashboard = {
         <div class="welcome-section">
           <div class="welcome-title">${greeting}! ${shopName ? App.escapeHtml(shopName) : '펫살롱'}</div>
           <div class="welcome-subtitle">${(() => { const d = new Date(today + 'T00:00:00'); const wd = ['일','월','화','수','목','금','토'][d.getDay()]; return `${d.getMonth()+1}월 ${d.getDate()}일 (${wd})`; })()} &middot; 등록 고객 ${customerCount}명</div>
+          ${todayBrief}
         </div>
 
         ${onboardingHtml}

@@ -7,7 +7,8 @@ const DEFAULT_SMS_TEMPLATES = {
   reminder: '[{매장명}] {고객명}님, {시점} {날짜} {시간}에 {반려견명} 미용 예약이 있습니다. 변경/취소는 {전화번호}로 연락 부탁드립니다.',
   birthday: '[{매장명}] {고객명}님! {반려견명}의 생일을 축하합니다! 🎂 생일 기념 특별 할인을 준비했어요. 문의: {전화번호}',
   complete: '[{매장명}] {고객명}님, {반려견명}의 미용이 완료되었습니다! 서비스: {서비스}, 금액: {금액}원. 감사합니다! 💕',
-  cardSend: '[{매장명}] {고객명}님, 오늘 {반려견명} 미용 사진이에요! 예쁘게 다녀갔어요. 감사합니다 ♥'
+  cardSend: '[{매장명}] {고객명}님, 오늘 {반려견명} 미용 사진이에요! 예쁘게 다녀갔어요. 감사합니다 ♥',
+  reportSend: '[{매장명}] {고객명}님, 오늘 {반려견명} 미용 리포트예요. 사진과 오늘 상태, 집에서 관리법을 담았어요. 감사합니다 ♥ {리뷰링크}'
 };
 
 // 템플릿별 설명·쓸 수 있는 변수 — 화면에서 변수 버튼과 미리보기를 만든다.
@@ -16,8 +17,9 @@ const SMS_DATE_VARS = ['시점', '날짜', '시간', '담당'];
 const SMS_TEMPLATE_META = [
   { key: 'reminder', label: '예약 재확인', when: '예약 전날 · 예약 카드의 재확인 문자', vars: ['고객명', '반려견명', ...SMS_DATE_VARS, '매장명', '전화번호'] },
   { key: 'appointment', label: '예약 확인', when: '예약을 저장한 직후', vars: ['고객명', '반려견명', ...SMS_DATE_VARS, '매장명', '전화번호'] },
-  { key: 'complete', label: '미용 완료', when: '미용 기록을 저장한 직후', vars: ['고객명', '반려견명', '서비스', '금액', '매장명', '전화번호'] },
-  { key: 'cardSend', label: '사진 카드', when: '사진 카드를 손님에게 보낼 때', vars: ['고객명', '반려견명', '매장명', '전화번호'] },
+  { key: 'complete', label: '미용 완료', when: '미용 기록을 저장한 직후', vars: ['고객명', '반려견명', '서비스', '금액', '매장명', '전화번호', '리뷰링크'] },
+  { key: 'reportSend', label: '리포트 전송', when: '미용 리포트(이미지)를 보호자에게 보낼 때', vars: ['고객명', '반려견명', '다음방문일', '매장명', '전화번호', '리뷰링크'] },
+  { key: 'cardSend', label: '사진 카드', when: '사진 카드를 손님에게 보낼 때', vars: ['고객명', '반려견명', '매장명', '전화번호', '리뷰링크'] },
   { key: 'revisit', label: '재방문 알림', when: '홈 · 고객 화면의 재방문 알림', vars: ['고객명', '반려견명', '경과일수', '마지막방문일', '매장명', '전화번호'] },
   { key: 'atRisk', label: '이탈 위험', when: '방문 주기가 많이 지난 손님', vars: ['고객명', '반려견명', '경과일수', '마지막방문일', '매장명', '전화번호'] },
   { key: 'churned', label: '이탈 고객', when: '오래 안 온 손님', vars: ['고객명', '반려견명', '경과일수', '마지막방문일', '매장명', '전화번호'] },
@@ -29,6 +31,7 @@ App.pages.settings = {
     const shopName = await DB.getSetting('shopName') || '';
     const shopPhone = await DB.getSetting('shopPhone') || '';
     const shopAddress = await DB.getSetting('shopAddress') || '';
+    const shopReviewLink = await DB.getSetting('shopReviewLink') || '';
     const revisitDays = await DB.getSetting('revisitDays') || 30;
     const groomers = await DB.getSetting('groomers') || [];
 
@@ -96,6 +99,11 @@ App.pages.settings = {
               <div class="form-group">
                 <label class="form-label">주소</label>
                 <input type="text" id="s-shopAddress" value="${App.escapeHtml(shopAddress)}" placeholder="매장 주소">
+              </div>
+              <div class="form-group">
+                <label class="form-label">리뷰 링크 <span style="font-size:0.78rem;color:var(--text-muted);font-weight:400">(선택)</span></label>
+                <input type="url" id="s-shopReviewLink" value="${App.escapeHtml(shopReviewLink)}" placeholder="https://naver.me/... (네이버 플레이스·카카오맵 리뷰 주소)" inputmode="url">
+                <div class="form-hint">넣으면 미용 리포트 하단에 "리뷰 남겨주시면 큰 힘이 돼요"가 붙고, 문자 템플릿의 {리뷰링크}에 들어가요. 비우면 둘 다 빠져요.</div>
               </div>
               <div class="form-group">
                 <label class="form-label">매장 로고 <span style="font-size:0.78rem;color:var(--text-muted);font-weight:400">(사진 카드에 표시)</span></label>
@@ -657,6 +665,7 @@ App.pages.settings = {
       await DB.setSetting('shopName', document.getElementById('s-shopName').value.trim());
       await DB.setSetting('shopPhone', document.getElementById('s-shopPhone').value.trim());
       await DB.setSetting('shopAddress', document.getElementById('s-shopAddress').value.trim());
+      await DB.setSetting('shopReviewLink', (document.getElementById('s-shopReviewLink')?.value || '').trim());
       await DB.setSetting('revisitDays', Number(document.getElementById('s-revisitDays').value) || 30);
       await App.applyShopName();
       // 미용사 목록 (삭제된 미용사가 기존 기록에 있으면 경고)
@@ -988,7 +997,8 @@ App.pages.settings = {
     const sample = {
       '매장명': shopName, '전화번호': shopPhone, '고객명': '김민지', '반려견명': '콩이',
       '경과일수': '35', '마지막방문일': '9월 18일', '시점': '내일', '날짜': '10월 24일(금)', '시간': '14:00',
-      '담당': '담당: 원장. ', '미용사': '원장', '서비스': '전체미용', '금액': '55,000'
+      '담당': '담당: 원장. ', '미용사': '원장', '서비스': '전체미용', '금액': '55,000',
+      '다음방문일': '11월 20일', '리뷰링크': (await DB.getSetting('shopReviewLink')) || ''
     };
     SMS_TEMPLATE_META.forEach(m => {
       const el = document.getElementById('tpl-' + m.key);

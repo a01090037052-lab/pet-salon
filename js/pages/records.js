@@ -189,6 +189,7 @@ App.pages.records = {
                         ${App.escapeHtml(r.memo || '-')}
                       </td>
                       <td class="table-actions">
+                        <button class="btn-icon btn-report-record" data-id="${r.id}" title="미용 리포트" aria-label="미용 리포트" style="color:var(--info)">${App.icon('image')}</button>
                         <button class="btn-icon btn-receipt-record" data-id="${r.id}" title="영수증" aria-label="영수증" style="color:var(--success)">${App.icon('receipt')}</button>
                         <button class="btn-icon btn-edit-record" data-id="${r.id}" title="수정" aria-label="수정">${App.icon('edit')}</button>
                       </td>
@@ -238,6 +239,7 @@ App.pages.records = {
                 </div>
                 <!-- 카드를 누르면 수정. 삭제는 수정 화면 안에서만 (목록에서 잘못 눌러 지우는 일 방지) -->
                 <div class="mobile-card-actions record-card-actions">
+                  <button class="btn btn-sm btn-ghost btn-report-record" data-id="${r.id}">${App.icon('image')} 리포트</button>
                   <button class="btn btn-sm btn-ghost btn-receipt-record" data-id="${r.id}">${App.icon('receipt')} 영수증</button>
                 </div>
               </div>`;
@@ -374,6 +376,10 @@ App.pages.records = {
       }, 250);
       window.addEventListener('resize', onResize);
     }
+
+    document.querySelectorAll('.btn-report-record').forEach(btn => {
+      btn.addEventListener('click', () => this.showReport(Number(btn.dataset.id)));
+    });
 
     document.querySelectorAll('.btn-receipt-record').forEach(btn => {
       btn.addEventListener('click', () => this.showReceipt(Number(btn.dataset.id)));
@@ -1241,6 +1247,7 @@ App.pages.records = {
       const cashReceiptNo = document.getElementById('f-cashReceiptNo')?.value?.trim() || '';
 
       const data = { customerId, petId, date, groomer, nextVisitDate, service, serviceId, servicePrice, serviceCategory, addons, addonServiceIds, addonPrice, style, serviceNames, totalPrice, discount, extraCharge, finalPrice, memo, paymentMethod, cashReceiptYn, cashReceiptNo, appointmentId, status, condition, cooperativeness, skinStatus, earStatus, mattingLevel };
+      let newId = null; // 새 기록이면 저장 뒤 리포트 보내기에 쓴다
 
       // 자동완성 이력 업데이트
       if (service) App.addAutoHistory('serviceHistory', service);
@@ -1268,7 +1275,7 @@ App.pages.records = {
         await App.pruneRecordPhotos(petId).catch(() => {});
         App.showToast('미용 기록이 수정되었습니다.');
       } else {
-        const newId = await DB.add('records', data);
+        newId = await DB.add('records', data);
         await this._persistRecordPhotos(newId);
         await App.pruneRecordPhotos(petId).catch(() => {});
         // If linked to an appointment, mark it as completed now
@@ -1314,6 +1321,9 @@ App.pages.records = {
         App.handleRoute();
 
         const hasCondition = condition || skinStatus.length || earStatus || mattingLevel;
+        const savedRec = await DB.get('records', newId);
+        // 사진이나 상태 중 하나라도 있으면 리포트(이미지)가 맨 위 — 저장 직후 보내는 게 가장 자연스럽다 (Gingr 체크아웃 링크 방식)
+        const canReport = !!(hasCondition || (savedRec && App._recordHasPhoto(savedRec)));
 
         App.showModal({
           title: '미용 기록 저장 완료',
@@ -1323,9 +1333,9 @@ App.pages.records = {
               <div style="font-size:2.5rem;margin-bottom:12px;color:var(--success)">${App.icon('check-circle')}</div>
               <div style="font-size:1.1rem;font-weight:700;margin-bottom:20px">미용 기록이 저장되었습니다</div>
               <div style="display:flex;flex-direction:column;gap:10px;max-width:280px;margin:0 auto">
-                ${customerPhone ? `<button class="btn btn-success" id="post-save-sms">${App.icon('message')} 미용 완료 문자 보내기</button>` : ''}
-                ${hasCondition ? `<button class="btn btn-success" id="post-save-report-copy" style="background:var(--info)">${App.icon('copy')} 리포트 복사 (카톡용)</button>` : ''}
-                <button class="btn btn-primary" id="post-save-appt">${App.icon('calendar')} 다음 예약 등록${nextVisitDate ? ' (' + App.formatDate(nextVisitDate) + ')' : ''}</button>
+                ${canReport ? `<button class="btn btn-primary" id="post-save-report">${App.icon('image')} 리포트 보내기 <small style="font-weight:400">사진 · 상태 · 관리법</small></button>` : ''}
+                ${customerPhone ? `<button class="btn ${canReport ? 'btn-secondary' : 'btn-success'}" id="post-save-sms">${App.icon('message')} 미용 완료 문자 보내기</button>` : ''}
+                <button class="btn ${canReport ? 'btn-secondary' : 'btn-primary'}" id="post-save-appt">${App.icon('calendar')} 다음 예약 등록${nextVisitDate ? ' (' + App.formatDate(nextVisitDate) + ')' : ''}</button>
                 <button class="btn btn-secondary" id="post-save-close">완료</button>
               </div>
             </div>
@@ -1350,18 +1360,9 @@ App.pages.records = {
           const btn = document.getElementById('post-save-sms');
           if (btn) { btn.innerHTML = App.icon('check') + ' 발송됨'; btn.disabled = true; btn.style.opacity = '0.6'; }
         });
-        // 리포트 복사 (카톡용) -- 미리 리포트 생성 (iOS clipboard 제스처 타이밍)
-        let _cachedReport = null;
-        App.buildGroomingReport(data).then(r => { _cachedReport = r; });
-        document.getElementById('post-save-report-copy')?.addEventListener('click', async () => {
-          const report = _cachedReport || await App.buildGroomingReport(data);
-          navigator.clipboard.writeText(report).then(() => {
-            App.showToast('리포트가 복사되었습니다. 카톡에 붙여넣기 하세요.');
-            const btn = document.getElementById('post-save-report-copy');
-            if (btn) { btn.innerHTML = App.icon('check') + ' 복사됨'; btn.disabled = true; btn.style.opacity = '0.6'; }
-          }).catch(() => {
-            App.showToast('복사에 실패했습니다.', 'error');
-          });
+        document.getElementById('post-save-report')?.addEventListener('click', () => {
+          App.closeModal();
+          setTimeout(() => this.showReport(newId), 200);
         });
         document.getElementById('post-save-close')?.addEventListener('click', () => {
           App.closeModal();
@@ -2625,7 +2626,7 @@ App.pages.records = {
     container.innerHTML = Array.from({ length: count }, (_, i) => `
       <div style="flex:1 1 calc(50% - 4px);min-width:140px;max-width:200px">
         <input type="file" id="card-photo-${i}" accept="image/*" style="display:none">
-        <div id="card-preview-${i}" style="width:100%;height:120px;border:2px dashed var(--border);border-radius:var(--radius);display:flex;align-items:center;justify-content:center;cursor:pointer;overflow:hidden;font-size:1.4rem;color:var(--text-muted);background:var(--bg)" onclick="document.getElementById('card-photo-${i}').click()">${App.icon('camera')}</div>
+        <div id="card-preview-${i}" style="width:100%;height:76px;border:2px dashed var(--border);border-radius:var(--radius);display:flex;align-items:center;justify-content:center;cursor:pointer;overflow:hidden;font-size:1.4rem;color:var(--text-muted);background:var(--bg)" onclick="document.getElementById('card-photo-${i}').click()">${App.icon('camera')}</div>
         <!-- 위치·확대 조정은 필요할 때만 펼친다 (사진마다 슬라이더 3개가 늘 펼쳐져 창이 길었다) -->
         <button type="button" class="card-adjust-btn" id="card-adjust-${i}" data-slot="${i}" hidden>${App.icon('settings')} 위치 조정</button>
         <div id="card-photo-controls-${i}" style="display:none;margin-top:6px;font-size:0.7rem">
@@ -2826,6 +2827,8 @@ App.pages.records = {
     this._cardPreviewToken = token;
     const f = await this._readCardForm(this._cardPetName || '');
     const count = (this._CARD_LAYOUTS[f.layout] && this._CARD_LAYOUTS[f.layout].photos) || 1;
+    const nAll = (this._cardPhotos || []).filter(Boolean).length;
+    this._markLayoutRecs(nAll);
     const photos = (this._cardPhotos || []).slice(0, count);
     if (!photos.some(Boolean)) { img.hidden = true; if (empty) empty.hidden = false; return; }
     const { record, customer, pet, serviceNames } = this._cardCtx;
@@ -2850,10 +2853,17 @@ App.pages.records = {
       // 피드·스토리는 1장이 기본이라 1장일 때는 안내가 필요 없다
       note.hidden = !(count > 1 && n < count) || ((f.layout === 'feed' || f.layout === 'story') && n <= 1);
       const splitWord = { 2: '나란히 2칸', 3: '위 1칸 + 아래 2칸', 4: '2×2' }[n] || '';
-      if (!note.hidden) note.textContent = (f.layout === 'feed' || f.layout === 'story')
+      if (nAll > count) { note.hidden = false; note.textContent = `이 레이아웃은 앞 ${count}장만 써요 (고른 사진 ${nAll}장)`; }
+      else if (!note.hidden) note.textContent = (f.layout === 'feed' || f.layout === 'story')
         ? `사진 ${n}장 분할로 만들어요` + (splitWord ? ` · ${splitWord}` : '') + ' (4장까지)'
         : `사진 ${n}장으로 만들어요 · 칸이 ${n}개로 커져요` + (f.layout === 'photobooth' && n === 2 ? ' (2컷 레이아웃도 잘 어울려요)' : '');
     }
+  },
+
+  // 고른 장수에 맞는 레이아웃에 '추천' 표시 (사진을 먼저 고르면 틀을 제안하는 Instagram Layout 방식)
+  _markLayoutRecs(n) {
+    const rec = n <= 1 ? ['single', 'feed'] : (n === 2 ? ['strip2', 'feed'] : ['photobooth', 'feed']);
+    document.querySelectorAll('#card-pick-layout .card-pick-btn').forEach(b => b.classList.toggle('rec', n > 0 && rec.includes(b.dataset.key)));
   },
 
   _resetPhotoSliders(slot) {
@@ -2875,6 +2885,8 @@ App.pages.records = {
     const preview = document.getElementById(`card-preview-${slot}`);
     if (!preview) return;
     const photo = this._cardPhotos[slot];
+    // 빈 칸은 낮게, 사진이 들어오면 제 높이로 (1장만 쓸 때 빈 칸 3개가 덜 거슬리게)
+    preview.style.height = photo ? '120px' : '76px';
     if (!photo) { preview.innerHTML = App.icon('camera'); return; }
     const meta = this._cardPhotoMeta[slot] || { offsetX: 0, offsetY: 0, zoom: 1.0 };
     // offsetX/Y = -50~+50 → object-position % = 0~100
@@ -3050,7 +3062,14 @@ App.pages.records = {
           <div id="card-live-note" class="card-live-note" hidden></div>
         </div>
         <div class="form-group">
-          <label class="form-label">레이아웃</label>
+          <div class="card-photo-head">
+            <label class="form-label" style="margin:0">사진 <span style="font-size:0.78rem;color:var(--text-muted);font-weight:400">· 1~4장, 칸을 눌러 사진첩에서 고르세요</span></label>
+            ${poolCount ? `<button type="button" class="btn btn-sm btn-secondary" id="card-use-record-photos">${App.icon('image')} ${App.escapeHtml(ctx.poolLabel || '기록 사진')} 넣기 (${poolCount}장)</button>` : ''}
+          </div>
+          <div id="card-photo-slots" style="display:flex;gap:8px;flex-wrap:wrap"></div>
+        </div>
+        <div class="form-group">
+          <label class="form-label">레이아웃 <span style="font-size:0.78rem;color:var(--text-muted);font-weight:400">· 고른 장수에 맞는 것에 추천 표시</span></label>
           <div id="card-pick-layout" style="display:flex;gap:8px;flex-wrap:wrap">
             ${Object.entries(LAYOUTS).map(([key, l]) => `
               <button type="button" class="card-pick-btn${key === selectedLayout ? ' active' : ''}" data-key="${key}" data-photos="${l.photos}">
@@ -3059,13 +3078,6 @@ App.pages.records = {
               </button>
             `).join('')}
           </div>
-        </div>
-        <div class="form-group">
-          <div class="card-photo-head">
-            <label class="form-label" style="margin:0">사진 <span style="font-size:0.78rem;color:var(--text-muted);font-weight:400">· 칸을 눌러 사진첩에서 고르세요</span></label>
-            ${poolCount ? `<button type="button" class="btn btn-sm btn-secondary" id="card-use-record-photos">${App.icon('image')} ${App.escapeHtml(ctx.poolLabel || '기록 사진')} 넣기 (${poolCount}장)</button>` : ''}
-          </div>
-          <div id="card-photo-slots" style="display:flex;gap:8px;flex-wrap:wrap"></div>
         </div>
         <div class="form-group">
           <label class="form-label">테마 ${userFrames.length > 0 ? `<span style="font-size:0.78rem;color:var(--text-muted);font-weight:400">· 내 프레임 ${userFrames.length}개</span>` : ''}</label>
@@ -3224,7 +3236,6 @@ App.pages.records = {
         btn.addEventListener('click', () => {
           document.querySelectorAll('#card-pick-layout .card-pick-btn').forEach(b => b.classList.remove('active'));
           btn.classList.add('active');
-          this._renderPhotoSlots(Number(btn.dataset.photos));
           // 폴라로이드(single)일 때만 사진 크기 옵션 표시
           const polarOpts = document.getElementById('polaroid-options');
           if (polarOpts) polarOpts.style.display = btn.dataset.key === 'single' ? 'block' : 'none';
@@ -3238,9 +3249,8 @@ App.pages.records = {
           });
         });
       });
-      // 초기 사진 슬롯 렌더
-      const initPhotos = LAYOUTS[selectedLayout]?.photos || 2;
-      this._renderPhotoSlots(initPhotos);
+      // 사진 칸은 늘 4개 — 사진을 먼저 고르고 레이아웃을 고른다 (Instagram Layout 방식)
+      this._renderPhotoSlots(4);
 
       // 무엇을 바꾸든 미리보기를 다시 그린다 (입력·선택·버튼)
       const mb = document.getElementById('modal-body');
@@ -3254,8 +3264,7 @@ App.pages.records = {
       document.getElementById('card-use-record-photos')?.addEventListener('click', (e) => {
         const btn = e.currentTarget;
         this._cardUsePool = true;
-        const cur = document.querySelector('#card-pick-layout .card-pick-btn.active');
-        this._renderPhotoSlots(Number(cur?.dataset.photos) || 1);
+        this._renderPhotoSlots(4);
         this._scheduleCardPreview();
         btn.disabled = true;
         btn.innerHTML = App.icon('check') + ' 기록 사진 넣음';
@@ -3458,6 +3467,219 @@ App.pages.records = {
       console.error('Photo card generation error:', err);
       App.showToast('카드 생성 중 오류가 발생했습니다.', 'error');
     }
+  },
+
+  // ========== 미용 리포트 이미지 (보호자 전송용) ==========
+  // MoeGo 그루밍 리포트·헬로티피 알림장 방식: 전·후 사진 + 오늘 한 것 + 상태 + 미용사 한마디 + 집에서 관리법 + 다음 미용 추천.
+  // 기록에 있는 것만 쓰고(빈 줄은 뺀다), 이미지는 저장하지 않고 즉석에서 만든다.
+  _REPORT_LABELS: {
+    condition: { good: '좋음', normal: '보통', caution: '주의' },
+    cooperativeness: { easy: '잘함', normal: '보통', difficult: '까다로움' },
+    earStatus: { clean: '깨끗', dirty: '경미한 오염', infected: '염증 의심' },
+    mattingLevel: { none: '없음', mild: '경미', severe: '심함' }
+  },
+  _reportTone(field, value) {
+    const good = { condition: ['good'], cooperativeness: ['easy'], earStatus: ['clean'], mattingLevel: ['none'], skin: ['정상'] };
+    const bad = { condition: ['caution'], cooperativeness: ['difficult'], earStatus: ['infected'], mattingLevel: ['severe'], skin: ['습진', '발적'] };
+    if ((good[field] || []).includes(value)) return '#16A34A';
+    if ((bad[field] || []).includes(value)) return '#DC2626';
+    return '#D97706';
+  },
+
+  async buildReportCanvas(record, info) {
+    const { pet, shopName, shopPhone, logo, reviewLink } = info;
+    const W = 1080, pad = 64, accent = info.accent || '#6366F1';
+    const font = '-apple-system, BlinkMacSystemFont, "Apple SD Gothic Neo", "Noto Sans KR", sans-serif';
+    const C = { text: '#1A1A1A', sub: '#64748B', line: '#E5E7EB', box: '#F8FAFC' };
+    const L = this._REPORT_LABELS;
+    const imgs = [];
+    for (const [f, tag] of [['photoBefore', '전'], ['photoAfter', '후']]) {
+      const src = await App.getRecordPhoto(record, f);
+      const im = src ? await this._loadImg(src) : null;
+      if (im) imgs.push({ im, tag });
+    }
+    const logoImg = logo ? await this._loadImg(logo) : null;
+    const svc = record.service ? App.getRecordServiceDisplay(record) : (record.serviceNames || []).join(', ');
+    // 신형 기록은 서비스 표시에 추가 항목이 이미 들어 있다 — 구형(serviceNames)만 따로 붙인다
+    const addons = (!record.service && Array.isArray(record.addons)) ? record.addons.filter(Boolean) : [];
+    const tips = (App.getHomeCareAdvice ? App.getHomeCareAdvice(record) : []).slice(0, 3);
+    const status = [];
+    if (record.condition) status.push(['컨디션', L.condition[record.condition] || record.condition, this._reportTone('condition', record.condition)]);
+    if (record.cooperativeness) status.push(['미용 협조', L.cooperativeness[record.cooperativeness] || record.cooperativeness, this._reportTone('cooperativeness', record.cooperativeness)]);
+    if (Array.isArray(record.skinStatus) && record.skinStatus.length) status.push(['피부', record.skinStatus.join(' · '), this._reportTone('skin', record.skinStatus.find(x => x !== '정상') || '정상')]);
+    if (record.earStatus) status.push(['귀', L.earStatus[record.earStatus] || record.earStatus, this._reportTone('earStatus', record.earStatus)]);
+    if (record.mattingLevel) status.push(['엉킴', L.mattingLevel[record.mattingLevel] || record.mattingLevel, this._reportTone('mattingLevel', record.mattingLevel)]);
+    const memo = String(record.memo || '').trim().replace(/\s+/g, ' ').slice(0, 90);
+
+    // 두 번 그린다: 1차는 높이만 재고, 2차는 그 높이의 캔버스에 실제로 그린다
+    const canvas = document.createElement('canvas');
+    canvas.width = W; canvas.height = 10;
+    let ctx = canvas.getContext('2d');
+    const wrap = (text, maxW) => {
+      const out = []; let line = '';
+      for (const ch of String(text || '')) {
+        const t = line + ch;
+        if (ctx.measureText(t).width > maxW && line) { out.push(line); line = ch; } else line = t;
+      }
+      if (line) out.push(line);
+      return out;
+    };
+    const run = (draw, extra = 0) => {
+      let y = 0;
+      const text = (str, x, yy, f, color, align) => { if (!draw) return; ctx.font = f; ctx.fillStyle = color; ctx.textAlign = align || 'left'; ctx.fillText(str, x, yy); };
+      const section = (title) => { y += 44; text(title, pad, y, 'bold 30px ' + font, accent); y += 18; if (draw) { ctx.fillStyle = C.line; ctx.fillRect(pad, y, W - pad * 2, 2); } y += 40; };
+      // 머리: 로고 또는 매장명
+      y = 72;
+      if (logoImg) {
+        const h = 72, w = Math.min(420, logoImg.width * h / logoImg.height);
+        if (draw) ctx.drawImage(logoImg, (W - w) / 2, y - 36, w, h);
+        y += 72;
+      } else { text(shopName, W / 2, y + 12, 'bold 36px ' + font, accent, 'center'); y += 56; }
+      // 제목
+      y += 40;
+      text(`${pet?.name || ''}의 미용 리포트`, W / 2, y + 20, 'bold 56px ' + font, C.text, 'center'); y += 70;
+      text(App.formatDate(record.date) + (record.groomer ? ' · 담당 ' + record.groomer : ''), W / 2, y + 10, '30px ' + font, C.sub, 'center'); y += 40;
+      // 사진
+      if (imgs.length) {
+        y += 36;
+        const gap = 20, n = imgs.length;
+        const w = n === 2 ? (W - pad * 2 - gap) / 2 : W - pad * 2;
+        const h = n === 2 ? Math.round(w * 1.15) : Math.round(w * 0.78);
+        imgs.forEach((p, i) => {
+          const x = pad + i * (w + gap);
+          if (!draw) return;
+          ctx.save(); this._roundRect(ctx, x, y, w, h, 24); ctx.clip();
+          this._drawImageCover(ctx, p.im, x, y, w, h); ctx.restore();
+          ctx.fillStyle = 'rgba(0,0,0,0.55)'; this._roundRect(ctx, x + 16, y + 16, 72, 48, 12); ctx.fill();
+          text(p.tag, x + 52, y + 50, 'bold 28px ' + font, '#fff', 'center');
+        });
+        y += h;
+      }
+      // 오늘 한 것
+      if (svc || addons.length) {
+        section('오늘 한 것');
+        ctx.font = '34px ' + font;
+        wrap(svc, W - pad * 2).forEach(l => { text(l, pad, y, '34px ' + font, C.text); y += 46; });
+        if (addons.length) { ctx.font = '30px ' + font; wrap('+ ' + addons.join(', '), W - pad * 2).forEach(l => { text(l, pad, y, '30px ' + font, C.sub); y += 40; }); }
+      }
+      // 상태
+      if (status.length) {
+        section('오늘 상태');
+        status.forEach(([k, v, tone]) => {
+          if (draw) { ctx.fillStyle = tone; ctx.beginPath(); ctx.arc(pad + 14, y - 11, 11, 0, Math.PI * 2); ctx.fill(); }
+          text(k, pad + 44, y, '30px ' + font, C.sub);
+          text(v, pad + 230, y, 'bold 32px ' + font, C.text);
+          y += 50;
+        });
+      }
+      // 미용사 한마디
+      if (memo) {
+        section('미용사 한마디');
+        ctx.font = '32px ' + font;
+        const lines = wrap(memo, W - pad * 2 - 56);
+        const bh = lines.length * 44 + 36;
+        if (draw) { ctx.fillStyle = C.box; this._roundRect(ctx, pad, y - 34, W - pad * 2, bh, 18); ctx.fill(); }
+        y += 10;
+        lines.forEach(l => { text(l, pad + 28, y, '32px ' + font, C.text); y += 44; });
+        y += bh - lines.length * 44 - 10;
+      }
+      // 집에서 관리법
+      if (tips.length) {
+        section('집에서 관리법');
+        ctx.font = '30px ' + font;
+        tips.forEach(t => {
+          const lines = wrap(t, W - pad * 2 - 40);
+          lines.forEach((l, i) => { text((i === 0 ? '·  ' : '   ') + l, pad, y, '30px ' + font, C.text); y += 42; });
+          y += 6;
+        });
+      }
+      // 다음 미용 추천
+      if (record.nextVisitDate) {
+        y += 40;
+        if (draw) { ctx.fillStyle = accent; this._roundRect(ctx, pad, y - 10, W - pad * 2, 96, 20); ctx.fill(); }
+        text('다음 미용 추천  ' + App.formatDate(record.nextVisitDate), W / 2, y + 50, 'bold 34px ' + font, '#fff', 'center');
+        y += 96;
+      }
+      // 꼬리 — 내용이 짧으면 남는 높이를 여기서 채워 꼬리가 바닥에 붙게 한다
+      y += 56 + extra;
+      if (draw) { ctx.fillStyle = C.line; ctx.fillRect(pad, y, W - pad * 2, 2); }
+      y += 52;
+      if (reviewLink) { text('리뷰 남겨주시면 큰 힘이 돼요', W / 2, y, '28px ' + font, C.sub, 'center'); y += 42; }
+      text([shopName, shopPhone].filter(Boolean).join(' · '), W / 2, y, 'bold 30px ' + font, accent, 'center');
+      y += 72;
+      return y;
+    };
+    const contentH = run(false);
+    const H = Math.max(1350, contentH);
+    canvas.height = H;
+    ctx = canvas.getContext('2d');
+    ctx.fillStyle = '#FFFFFF'; ctx.fillRect(0, 0, W, H);
+    run(true, H - contentH);
+    return canvas;
+  },
+
+  async showReport(recordId) {
+    const record = await DB.get('records', recordId);
+    if (!record) { App.showToast('기록을 찾을 수 없습니다.', 'error'); return; }
+    const [pet, customer, shopName, shopPhone, logo, reviewLink, ds] = await Promise.all([
+      record.petId ? DB.get('pets', record.petId) : null,
+      record.customerId ? DB.get('customers', record.customerId) : null,
+      DB.getSetting('shopName'), DB.getSetting('shopPhone'), DB.getSetting('shopLogo'), DB.getSetting('shopReviewLink'), DB.getSetting('cardTemplateSettings')
+    ]);
+    App.showToast('리포트를 만드는 중...', 'info', { duration: 1500 });
+    let canvas;
+    try {
+      canvas = await this.buildReportCanvas(record, { pet, shopName: shopName || '펫살롱', shopPhone: shopPhone || '', logo, reviewLink: reviewLink || '', accent: ds?.mainColor || '#6366F1' });
+    } catch (err) { console.error('리포트 생성 실패:', err); App.showToast('리포트를 만들지 못했습니다.', 'error'); return; }
+    canvas.toBlob(async (blob) => {
+      if (!blob) { App.showToast('리포트를 만들지 못했습니다.', 'error'); return; }
+      const url = URL.createObjectURL(blob);
+      const fileName = (pet?.name || 'pet') + '_미용리포트_' + record.date + '.jpg';
+      const file = new File([blob], fileName, { type: 'image/jpeg' });
+      const customerPhone = (customer?.phone || '').replace(/\D/g, '');
+      const isIOS = /iP(hone|ad|od)/.test(navigator.userAgent) || (navigator.maxTouchPoints > 1 && /Macintosh/.test(navigator.userAgent));
+      const canShareFile = !!(navigator.share && navigator.canShare && navigator.canShare({ files: [file] }));
+      const msg = () => App.buildSms('reportSend', { '고객명': customer?.name || '', '반려견명': pet?.name || '', '다음방문일': record.nextVisitDate ? App.formatDate(record.nextVisitDate) : '' });
+      const download = (href, name) => { const a = document.createElement('a'); a.href = href; a.download = name; document.body.appendChild(a); a.click(); a.remove(); };
+      const _origClose = App._modalOnClose;
+      App._modalOnClose = () => { if (_origClose) _origClose(); URL.revokeObjectURL(url); App._modalOnClose = null; };
+      App.showModal({
+        title: '미용 리포트',
+        hideFooter: true,
+        content: `
+          <div class="card-done">
+            <div class="card-done-img"><img src="${url}" alt="미용 리포트"></div>
+            <div class="card-done-actions">
+              <button class="btn btn-primary card-done-main" id="report-share">${App.icon('send')} 보호자에게 보내기 <small>카톡 · 문자</small></button>
+              <div class="card-done-row">
+                <button class="btn btn-secondary" id="report-download">${App.icon('download')} 저장</button>
+                <button class="btn btn-secondary" id="report-copy">${App.icon('copy')} 글자로 복사</button>
+              </div>
+              ${customerPhone ? `<button class="btn btn-ghost" id="report-sms">${App.icon('message')} ${App.escapeHtml(App.getCustomerLabel(customer))} 번호로 문자 열기</button>` : ''}
+              <p class="card-done-hint">${isIOS ? '카톡으로 보내려면 <b>보호자에게 보내기 → 카카오톡</b>을 고르세요. 리포트는 앱에 저장되지 않아요.' : '보내기에서 카카오톡을 고르면 리포트 이미지가 바로 첨부돼요. 리포트는 앱에 저장되지 않아요.'}</p>
+            </div>
+          </div>
+        `
+      });
+      document.getElementById('report-share')?.addEventListener('click', async () => {
+        const text = await msg();
+        if (canShareFile) { navigator.share({ files: [file], text, title: (pet?.name || '') + ' 미용 리포트' }).catch(() => {}); return; }
+        download(url, fileName);
+        try { await navigator.clipboard.writeText(text); App.showToast('리포트를 저장하고 보낼 문구를 복사했어요. 카톡·문자에 붙여넣기 하세요.'); }
+        catch (_) { App.showToast('리포트를 저장했어요. 카톡·문자에 첨부해 보내세요.'); }
+      });
+      document.getElementById('report-download')?.addEventListener('click', () => { download(url, fileName); App.showToast('리포트를 저장했어요.'); });
+      document.getElementById('report-copy')?.addEventListener('click', async () => {
+        const t = await App.buildGroomingReport(record);
+        try { await navigator.clipboard.writeText(t); App.showToast('글자 리포트를 복사했어요. 카톡에 붙여넣기 하세요.'); }
+        catch (_) { App.showToast('복사에 실패했습니다.', 'error'); }
+      });
+      document.getElementById('report-sms')?.addEventListener('click', async () => {
+        if (!isIOS) download(url, fileName);
+        App.openSms(customerPhone, await msg());
+        App.showToast(isIOS ? '문자 창에서 사진첩의 리포트를 첨부해 보내세요. (먼저 보내기 → 이미지 저장)' : '리포트를 저장했어요. 문자 창에서 사진을 첨부해 보내세요.', 'info', { duration: 6000 });
+      });
+    }, 'image/jpeg', 0.9);
   },
 
   // ========== 세무 자료 내보내기 ==========
