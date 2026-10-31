@@ -1872,7 +1872,12 @@ App.pages.records = {
     let mainColor = designSettings.mainColor || tplPreset.color;
     let bgColor = tplPreset.bgColor;
     const emoji = tplPreset.emoji;
-    const fontFamily = '-apple-system, BlinkMacSystemFont, sans-serif';
+    const fontFamily = this._cardFontStack(designSettings.fontKey);
+    if (designSettings.fontKey && designSettings.fontKey !== 'system') {
+      const sample = [shopName, shopPhone, pet?.name, designSettings.headline, designSettings.subline, designSettings.footerMessage,
+        serviceNames, App.formatDate(record.date), '0123456789·♥!?'].filter(Boolean).join('');
+      await this._ensureCardFont(designSettings.fontKey, sample);
+    }
     const footerMessage = designSettings.footerMessage || '감사합니다 \u2665';
     const layout = designSettings.layout || 'strip2';
     const s = designSettings; // shorthand
@@ -1995,6 +2000,16 @@ App.pages.records = {
 
     // 사진 수에 따라 한 영역을 나눠 그린다 — 1장: 그대로, 2장: 나란히(전·후), 3장: 위 1 + 아래 2, 4장: 2×2
     // (인스타 피드·스토리에서 4분할 요청. 빈 칸을 만들지 않고 고른 장수만큼만 나눈다)
+    // 4컷 격자 — 칸마다 둥근 모서리로 띄워 그린다. 4장보다 적으면 _drawSplit 처럼 장수만큼 나눈다
+    const _drawGrid4 = (ctx, imgs, x, y, w, h, gap, radius) => {
+      const list = imgs.filter(Boolean);
+      if (list.length < 4) { _drawSplit(ctx, imgs, x, y, w, h, gap, radius); return; }
+      const cw = (w - gap) / 2, ch = (h - gap) / 2;
+      _drawPhoto(ctx, list[0], x, y, cw, ch, radius);
+      _drawPhoto(ctx, list[1], x + cw + gap, y, cw, ch, radius);
+      _drawPhoto(ctx, list[2], x, y + ch + gap, cw, ch, radius);
+      _drawPhoto(ctx, list[3], x + cw + gap, y + ch + gap, cw, ch, radius);
+    };
     const _drawSplit = (ctx, imgs, x, y, w, h, gap, radius) => {
       const list = imgs.filter(Boolean);
       const n = Math.min(list.length, 4);
@@ -2384,7 +2399,7 @@ App.pages.records = {
     }
 
     // ===== 인스타 피드 (4:5, 1080×1350) =====
-    else if (layout === 'feed') {
+    else if (layout === 'feed' || layout === 'feed4') {
       const W = 1080, H = 1350;
       canvas.width = W; canvas.height = H;
       ctx = canvas.getContext('2d');
@@ -2412,11 +2427,15 @@ App.pages.records = {
       const _textH = 50 + (s.headline ? 44 : 0) + (s.subline ? 32 : 0) + (s.customShowPet ? 40 : 0)
         + (serviceNames && s.customShowPet ? 35 : 0) + (s.customShowDate ? 30 : 0);
       const photoH = Math.min(Math.round(photoW * 4 / 3), H - photoY - _textH - 30);
-      ctx.save();
-      this._roundRect(ctx, photoPad, photoY, photoW, photoH, 16);
-      ctx.clip();
-      _drawSplit(ctx, [imgBefore, imgAfter, img3, img4], photoPad, photoY, photoW, photoH, 12, 0);
-      ctx.restore();
+      if (layout === 'feed4') {
+        _drawGrid4(ctx, [imgBefore, imgAfter, img3, img4], photoPad, photoY, photoW, photoH, 16, 18);
+      } else {
+        ctx.save();
+        this._roundRect(ctx, photoPad, photoY, photoW, photoH, 16);
+        ctx.clip();
+        _drawSplit(ctx, [imgBefore, imgAfter, img3, img4], photoPad, photoY, photoW, photoH, 12, 0);
+        ctx.restore();
+      }
 
       // 하단 정보 (헤드라인·서브 + 기존 정보)
       const ftY = photoY + photoH + 30;
@@ -2436,7 +2455,7 @@ App.pages.records = {
     }
 
     // ===== 인스타 스토리 (9:16) =====
-    else if (layout === 'story') {
+    else if (layout === 'story' || layout === 'story4') {
       const W = 1080, H = 1920;
       canvas.width = W; canvas.height = H;
       ctx = canvas.getContext('2d');
@@ -2456,13 +2475,21 @@ App.pages.records = {
       // 메인 사진 (크게)
       const photoPad = 60;
       const photoW = W - photoPad * 2;
-      const photoH = Math.round(photoW * 4 / 3);
       const photoY = 160;
-      ctx.save();
-      this._roundRect(ctx, photoPad, photoY, photoW, photoH, 24);
-      ctx.clip();
-      _drawSplit(ctx, [imgBefore, imgAfter, img3, img4], photoPad, photoY, photoW, photoH, 14, 0);
-      ctx.restore();
+      let photoH = Math.round(photoW * 4 / 3);
+      if (layout === 'story4') {
+        // 아래 글자·매장명 자리를 빼고 남은 높이를 모두 사진에 (칸 하나가 세로로 긴 2:3 정도)
+        const _sTextH = 60 + (s.headline ? 56 : 0) + (s.subline ? 40 : 0) + (s.customShowPet ? 45 : 0)
+          + (serviceNames && s.customShowPet ? 40 : 0) + (s.customShowDate ? 36 : 0);
+        photoH = H - photoY - _sTextH - (s.customShowShop ? 200 : 80);
+        _drawGrid4(ctx, [imgBefore, imgAfter, img3, img4], photoPad, photoY, photoW, photoH, 18, 22);
+      } else {
+        ctx.save();
+        this._roundRect(ctx, photoPad, photoY, photoW, photoH, 24);
+        ctx.clip();
+        _drawSplit(ctx, [imgBefore, imgAfter, img3, img4], photoPad, photoY, photoW, photoH, 14, 0);
+        ctx.restore();
+      }
 
       // 반려견 정보 (헤드라인·서브 + 기존)
       const infoY = photoY + photoH + 50;
@@ -2506,6 +2533,7 @@ App.pages.records = {
     }
 
     // 인스타그램 최적화: 1080px 미만이면 자동 업스케일 (흐림 방지)
+    let out = canvas;
     if (canvas.width < 1080) {
       const scale = 1080 / canvas.width;
       const upCanvas = document.createElement('canvas');
@@ -2515,10 +2543,16 @@ App.pages.records = {
       upCtx.imageSmoothingQuality = 'high';
       upCtx.drawImage(canvas, 0, 0, upCanvas.width, upCanvas.height);
       canvas.width = canvas.height = 0; // 중간 캔버스 즉시 해제
-      return upCanvas;
+      out = upCanvas;
     }
 
-    return canvas;
+    // 덮는 프레임(사진 칸을 투명하게 뚫은 PNG) — 다 그린 뒤 맨 위에 최종 카드 크기로 덮는다 (업스케일 뒤라 프레임이 흐려지지 않는다)
+    if (s.customOverlayImage) {
+      const _ov = await this._loadImg(s.customOverlayImage);
+      if (_ov) this._drawImageCover(out.getContext('2d'), _ov, 0, 0, out.width, out.height);
+    }
+
+    return out;
   },
 
   // ========== Photo Card System (사진 카드) ==========
@@ -2527,9 +2561,62 @@ App.pages.records = {
     photobooth: { name: '네컷 세로', icon: 'list', photos: 4 },
     feed: { name: '피드 4:5', icon: 'image', photos: 4 },
     story: { name: '스토리', icon: 'camera', photos: 4 },
+    feed4: { name: '피드 4컷', icon: 'image', photos: 4 },
+    story4: { name: '스토리 4컷', icon: 'camera', photos: 4 },
     strip2: { name: '2컷', icon: 'copy', photos: 2 },
     single: { name: '폴라로이드', icon: 'circle', photos: 1 }
   },
+  // 사진 카드 글꼴 — 무료(OFL) 한글 글꼴. 처음 쓸 때 Google Fonts 에서 받고, 서비스워커가 보관해 다음부터는 오프라인에서도 쓴다.
+  // 받지 못하면(오프라인 첫 사용 등) 기본 글꼴로 그린다.
+  _CARD_FONTS: {
+    system: { name: '기본', family: null },
+    gowun: { name: '고운돋움', family: 'Gowun Dodum', css: 'Gowun+Dodum' },
+    jua: { name: '주아', family: 'Jua', css: 'Jua' },
+    dohyeon: { name: '도현', family: 'Do Hyeon', css: 'Do+Hyeon' },
+    gaegu: { name: '개구 손글씨', family: 'Gaegu', css: 'Gaegu:wght@400;700' },
+    nanumpen: { name: '나눔펜', family: 'Nanum Pen Script', css: 'Nanum+Pen+Script' },
+    batang: { name: '고운바탕', family: 'Gowun Batang', css: 'Gowun+Batang:wght@400;700' },
+    // 페이퍼로지 — Google Fonts 에 없어 눈누(jsDelivr) 글꼴 파일을 직접 붙인다
+    paperlogy: { name: '페이퍼로지', family: 'Paperlogy', faces: [
+      { weight: '400', url: 'https://cdn.jsdelivr.net/gh/projectnoonnu/2408-3@1.0/Paperlogy-4Regular.woff2' },
+      { weight: '700', url: 'https://cdn.jsdelivr.net/gh/projectnoonnu/2408-3@1.0/Paperlogy-7Bold.woff2' }
+    ] }
+  },
+  _cardFontStack(key) {
+    const f = this._CARD_FONTS[key];
+    const base = '-apple-system, BlinkMacSystemFont, sans-serif';
+    return f && f.family ? `"${f.family}", ${base}` : base;
+  },
+  // 글꼴 CSS 를 한 번만 붙인다 (글자 범위별로 나뉘어 있어 쓰는 글자 조각만 받는다)
+  _attachCardFontCss(key) {
+    const f = this._CARD_FONTS[key];
+    if (f && f.faces && typeof FontFace !== 'undefined' && document.fonts) {
+      this._fontFacesAdded = this._fontFacesAdded || {};
+      if (this._fontFacesAdded[key]) return;
+      this._fontFacesAdded[key] = true;
+      f.faces.forEach(fc => {
+        try { document.fonts.add(new FontFace(f.family, `url(${fc.url}) format('woff2')`, { weight: fc.weight, display: 'swap' })); } catch (_) {}
+      });
+      return;
+    }
+    if (!f || !f.css) return;
+    const id = 'card-font-' + key;
+    if (document.getElementById(id)) return;
+    const link = document.createElement('link');
+    link.id = id; link.rel = 'stylesheet';
+    link.href = `https://fonts.googleapis.com/css2?family=${f.css}&display=swap`;
+    document.head.appendChild(link);
+  },
+  // 캔버스는 글꼴이 다 받아진 뒤에 그려야 적용된다 — 최대 4초 기다리고, 안 되면 기본 글꼴
+  async _ensureCardFont(key, sample) {
+    const f = this._CARD_FONTS[key];
+    if (!f || !f.family || !document.fonts) return;
+    this._attachCardFontCss(key);
+    const text = sample || '가나다';
+    const wait = Promise.all(['400', 'bold'].map(w => document.fonts.load(`${w} 40px "${f.family}"`, text).catch(() => null)));
+    await Promise.race([wait, new Promise(r => setTimeout(r, 4000))]);
+  },
+
   _CARD_THEMES: {
     classic: { name: '클래식', color: '#1A1A1A' },
     film: { name: '필름', color: '#8B7355' },
@@ -2811,9 +2898,30 @@ App.pages.records = {
     return c;
   },
 
+  // 덮는 프레임을 만들 때 쓰는 '칸 위치 가이드' — 지금 사진 카드 설정(글자 표시 등) 그대로 그리고 사진 칸에 번호를 넣는다.
+  // 이 이미지를 캔바 등에 깔고 디자인한 뒤 번호 칸을 투명하게 지워 PNG 로 저장하면 된다.
+  async makeFrameGuide(layout) {
+    const saved = (await DB.getSetting('cardDesignSettings')) || {};
+    const colors = ['#F87171', '#60A5FA', '#34D399', '#FBBF24'];
+    const block = (i) => {
+      const c = document.createElement('canvas'); c.width = 600; c.height = 600;
+      const x = c.getContext('2d');
+      x.fillStyle = colors[i]; x.fillRect(0, 0, 600, 600);
+      x.fillStyle = 'rgba(255,255,255,0.9)'; x.font = 'bold 260px -apple-system, sans-serif';
+      x.textAlign = 'center'; x.textBaseline = 'middle'; x.fillText(String(i + 1), 300, 310);
+      const u = c.toDataURL('image/png'); c.width = c.height = 0; return u;
+    };
+    const rec = { id: null, date: App.getToday(), petId: null, customerId: null, serviceIds: [],
+      photoBefore: block(0), photoAfter: block(1), photo3: block(2), photo4: block(3) };
+    const shopName = await DB.getSetting('shopName') || '펫살롱';
+    const shopPhone = await DB.getSetting('shopPhone') || '';
+    const ds = await this._designFrom({ ...saved, customBgImage: null, customOverlayImage: null }, layout, saved.template === 'custom' ? 'classic' : (saved.template || 'classic'), '콩이');
+    return this._generateCardCanvas(rec, null, { name: '콩이' }, shopName, shopPhone, '', ds);
+  },
+
   // 레이아웃 버튼의 작은 모양 그림 (아이콘만으로는 결과 모양을 알 수 없었다)
   _layoutThumb(key) {
-    const cells = { photobooth: 4, strip2: 2 }[key] || 1;
+    const cells = { photobooth: 4, strip2: 2, feed4: 4, story4: 4 }[key] || 1;
     return `<span class="lay-thumb lay-${key}" aria-hidden="true">${'<i></i>'.repeat(cells)}</span>`;
   },
 
@@ -2855,10 +2963,11 @@ App.pages.records = {
     if (note) {
       const n = photos.filter(Boolean).length;
       // 피드·스토리는 1장이 기본이라 1장일 때는 안내가 필요 없다
+      const isSplit = ['feed', 'story', 'feed4', 'story4'].includes(f.layout);
       note.hidden = !(count > 1 && n < count) || ((f.layout === 'feed' || f.layout === 'story') && n <= 1);
       const splitWord = { 2: '나란히 2칸', 3: '위 1칸 + 아래 2칸', 4: '2×2' }[n] || '';
       if (nAll > count) { note.hidden = false; note.textContent = `이 레이아웃은 앞 ${count}장만 써요 (고른 사진 ${nAll}장)`; }
-      else if (!note.hidden) note.textContent = (f.layout === 'feed' || f.layout === 'story')
+      else if (!note.hidden) note.textContent = isSplit
         ? `사진 ${n}장 분할로 만들어요` + (splitWord ? ` · ${splitWord}` : '') + ' (4장까지)'
         : `사진 ${n}장으로 만들어요 · 칸이 ${n}개로 커져요` + (f.layout === 'photobooth' && n === 2 ? ' (2컷 레이아웃도 잘 어울려요)' : '');
     }
@@ -2866,7 +2975,7 @@ App.pages.records = {
 
   // 고른 장수에 맞는 레이아웃에 '추천' 표시 (사진을 먼저 고르면 틀을 제안하는 Instagram Layout 방식)
   _markLayoutRecs(n) {
-    const rec = n <= 1 ? ['single', 'feed'] : (n === 2 ? ['strip2', 'feed'] : ['photobooth', 'feed']);
+    const rec = n <= 1 ? ['single', 'feed'] : (n === 2 ? ['strip2', 'feed'] : (n >= 4 ? ['photobooth', 'feed4', 'story4'] : ['photobooth', 'feed']));
     document.querySelectorAll('#card-pick-layout .card-pick-btn').forEach(b => b.classList.toggle('rec', n > 0 && rec.includes(b.dataset.key)));
   },
 
@@ -2925,6 +3034,8 @@ App.pages.records = {
       customTextColor: theme === 'custom' ? (ds.customTextColor || '#1A1A1A') : null,
       customAccentColor: theme === 'custom' ? (ds.customAccentColor || '#6366F1') : null,
       customBgImage: theme === 'custom' ? (ds.customBgImage || null) : null,
+      customOverlayImage: theme === 'custom' ? (ds.customOverlayImage || null) : null,
+      fontKey: this._CARD_FONTS[ds.fontKey] ? ds.fontKey : 'system',
       // 그리기 코드는 customShow* 이름을 쓰지만 이제 모든 테마에 적용된다 (예전 커스텀 전용 값은 이어받는다)
       customShowPet: (ds.showPet ?? ds.customShowPet) !== false,
       customShowDate: (ds.showDate ?? ds.customShowDate) !== false,
@@ -2972,14 +3083,19 @@ App.pages.records = {
     settings.polaroidSize = document.querySelector('input[name="polaroidSize"]:checked')?.value || 'modern';
     // 사용자 프레임 선택 시 settings에 프레임 데이터 반영
     if (appliedFrameId && this._appliedFrame) {
-      settings.customBgImage = this._appliedFrame.image;
+      // 프레임 방식: 'overlay' 는 사진 위에 덮고, 그 밖(예전 프레임 포함)은 사진 뒤 배경
+      const isOverlay = this._appliedFrame.mode === 'overlay';
+      settings.customBgImage = isOverlay ? null : this._appliedFrame.image;
+      settings.customOverlayImage = isOverlay ? this._appliedFrame.image : null;
       settings.customAccentColor = this._appliedFrame.accentColor || '#6366F1';
       settings.customTextColor = this._appliedFrame.textColor || '#1A1A1A';
       settings.customBgColor = '#FFFFFF';
       settings.lastUsedFrameId = appliedFrameId;
     } else {
       settings.lastUsedFrameId = null;
+      settings.customOverlayImage = null;
     }
+    settings.fontKey = document.querySelector('#card-pick-font .card-font-btn.active')?.dataset.key || settings.fontKey || 'system';
     // 커스텀 테마 설정 저장 — 프레임을 고른 경우는 제외 (예전엔 커스텀 색·배경이 프레임을 덮어썼다)
     if (theme === 'custom' && !(appliedFrameId && this._appliedFrame)) {
       settings.customBgColor = document.getElementById('card-custom-bg')?.value || '#FFFFFF';
@@ -3112,6 +3228,10 @@ App.pages.records = {
             <label class="card-toggle"><input type="checkbox" id="card-show-pet" ${saved.showPet !== false ? 'checked' : ''}> 반려견 이름</label>
             <label class="card-toggle"><input type="checkbox" id="card-show-date" ${saved.showDate !== false ? 'checked' : ''}> 날짜</label>
             <label class="card-toggle"><input type="checkbox" id="card-show-shop" ${saved.showShop !== false ? 'checked' : ''}> 매장명·로고</label>
+          </div>
+          <label class="form-label" style="margin-top:12px">글꼴</label>
+          <div id="card-pick-font" class="card-font-row">
+            ${Object.entries(this._CARD_FONTS).map(([k, f]) => `<button type="button" class="card-font-btn${(saved.fontKey || 'system') === k ? ' active' : ''}" data-key="${k}" style="font-family:${App.escapeHtml(this._cardFontStack(k))}">${f.name}</button>`).join('')}
           </div>
         </div>
         <!-- 폴라로이드 사진 크기 (폴라로이드 레이아웃 선택 시만 표시) -->
@@ -3251,6 +3371,14 @@ App.pages.records = {
           document.querySelectorAll('input[name="polaroidSize"]').forEach(r => {
             r.closest('label').style.borderColor = r.checked ? 'var(--primary)' : 'var(--border)';
           });
+        });
+      });
+      // 글꼴: 버튼 글자도 그 글꼴로 보이게 CSS 를 붙여 두고, 고르면 미리보기가 다시 그려진다
+      Object.keys(this._CARD_FONTS).forEach(k => this._attachCardFontCss(k));
+      document.querySelectorAll('#card-pick-font .card-font-btn').forEach(btn => {
+        btn.addEventListener('click', () => {
+          document.querySelectorAll('#card-pick-font .card-font-btn').forEach(b => b.classList.remove('active'));
+          btn.classList.add('active');
         });
       });
       // 사진 칸은 늘 4개 — 사진을 먼저 고르고 레이아웃을 고른다 (Instagram Layout 방식)

@@ -214,9 +214,9 @@ App.pages.dashboard = {
       const cautionNames = [...cautionPetIds].map(id => petMap[id]?.name).filter(Boolean);
       const todayBrief = `
         <div class="today-brief">
-          <a href="#appointments" class="today-brief-item">${App.icon('calendar')} 오늘 예약 <b>${todayAppointments.length}건</b></a>
-          <a href="#appointments" class="today-brief-item${cautionPetIds.size ? ' warn' : ''}" title="${App.escapeHtml(cautionNames.join(', '))}">${App.icon('alert')} 주의 반려견 <b>${cautionPetIds.size}마리</b></a>
-          <a href="#records" class="today-brief-item${unpaidRecords.length ? ' warn' : ''}">${App.icon('coins')} 미결제 <b>${unpaidRecords.length}건</b></a>
+          <a href="#appointments" class="today-brief-item"><span class="tb-label">${App.icon('calendar')} 오늘 예약</span><b>${todayAppointments.length}건</b></a>
+          <a href="#appointments" class="today-brief-item${cautionPetIds.size ? ' warn' : ''}" title="${App.escapeHtml(cautionNames.join(', '))}"><span class="tb-label">${App.icon('alert')} 주의</span><b>${cautionPetIds.size}마리</b></a>
+          <a href="#records" class="today-brief-item${unpaidRecords.length ? ' warn' : ''}"><span class="tb-label">${App.icon('coins')} 미결제</span><b>${unpaidRecords.length}건</b></a>
         </div>`;
       const monthRevenue = monthRecords.reduce((sum, r) => sum + App.getRecordAmount(r), 0);
 

@@ -1,4 +1,5 @@
-const CACHE_NAME = 'petsalon-offline-v180';
+const CACHE_NAME = 'petsalon-offline-v181';
+const FONT_CACHE = 'petsalon-fonts-v1';
 const ASSETS = [
   './',
   './index.html',
@@ -38,7 +39,7 @@ self.addEventListener('install', (e) => {
 self.addEventListener('activate', (e) => {
   e.waitUntil(
     caches.keys().then(keys =>
-      Promise.all(keys.filter(k => k !== CACHE_NAME).map(k => caches.delete(k)))
+      Promise.all(keys.filter(k => k !== CACHE_NAME && k !== FONT_CACHE).map(k => caches.delete(k)))
     ).then(() => self.clients.claim())
   );
 });
@@ -47,6 +48,18 @@ self.addEventListener('fetch', (e) => {
   const url = new URL(e.request.url);
   if (url.pathname.includes('/api/')) return;
   if (e.request.method !== 'GET') return;
+  // 사진 카드 글꼴(Google Fonts): 한 번 받으면 보관해 두고 오프라인에서도 쓴다. 버전이 바뀌어도 지우지 않는다.
+  if (url.hostname === 'fonts.googleapis.com' || url.hostname === 'fonts.gstatic.com' || (url.hostname === 'cdn.jsdelivr.net' && url.pathname.startsWith('/gh/projectnoonnu/'))) {
+    e.respondWith(
+      caches.open(FONT_CACHE).then(cache =>
+        cache.match(e.request).then(cached => cached || fetch(e.request).then(response => {
+          if (response.ok || response.type === 'opaque') cache.put(e.request, response.clone());
+          return response;
+        }))
+      )
+    );
+    return;
+  }
   // 다른 출처(Firebase SDK·Firestore 실시간 채널·Google 로그인)는 건드리지 않는다.
   // 캐시하면 Firestore 의 GET 롱폴링 응답이 재사용되어 동기화가 멈춘다.
   if (url.origin !== self.location.origin) return;

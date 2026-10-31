@@ -1074,7 +1074,7 @@ App.pages.settings = {
           ${f.image ? `<img src="${f.image}" style="max-width:100%;max-height:100%;width:auto;height:auto;object-fit:contain" alt="${App.escapeHtml(f.name)}">` : '<span style="font-size:2rem;opacity:0.5">' + App.icon('image') + '</span>'}
         </div>
         <div style="flex:1;min-width:0">
-          <div style="font-weight:800;font-size:1rem;color:var(--text-primary);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-bottom:4px">${App.escapeHtml(f.name)}</div>
+          <div style="font-weight:800;font-size:1rem;color:var(--text-primary);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-bottom:4px">${App.escapeHtml(f.name)}${f.mode === 'overlay' ? ' <small style="font-weight:600;color:var(--text-muted)">· 덮기</small>' : ''}</div>
           <div style="display:flex;align-items:center;gap:6px;margin-bottom:4px">
             <span style="display:inline-block;width:14px;height:14px;border-radius:50%;background:${f.accentColor || 'var(--border)'};border:1px solid var(--border-light);flex-shrink:0"></span>
             <span style="font-size:0.75rem;color:var(--text-muted)">${f.accentColor || '-'}</span>
@@ -1133,7 +1133,21 @@ App.pages.settings = {
           <label class="form-label">배경 이미지 <span style="color:var(--text-muted);font-weight:400">(피그마·캔바로 만든 PNG/JPG)</span></label>
           <div id="f-frame-preview" style="margin-bottom:8px">${frame.image ? `<img src="${frame.image}" style="max-width:200px;border-radius:8px;border:1px solid var(--border)">` : '<div style="color:var(--text-muted);font-size:0.85rem">이미지 미선택</div>'}</div>
           <input type="file" id="f-frame-image" accept="image/*">
-          <div class="form-hint">권장 1080×1080 (정사각) 또는 1080×1350 (4:5). 1MB 이하 JPG 권장.</div>
+          <div class="form-hint">카드 크기: 피드 1080×1350 · 스토리 1080×1920 · 네컷 1080×3267. 배경은 JPG, 덮기는 투명 PNG.</div>
+        </div>
+        <div class="form-group">
+          <label class="form-label">방식</label>
+          <div class="frame-mode-row">
+            <label class="card-toggle"><input type="radio" name="f-frame-mode" value="bg" ${frame.mode !== 'overlay' ? 'checked' : ''}> 배경 (사진 뒤에 깔기)</label>
+            <label class="card-toggle"><input type="radio" name="f-frame-mode" value="overlay" ${frame.mode === 'overlay' ? 'checked' : ''}> 덮기 (사진 위에 얹기)</label>
+          </div>
+          <div class="form-hint">덮기: 사진이 보일 칸을 투명하게 뚫은 PNG. 아래 가이드를 받아 그 위에 디자인하면 칸 위치가 정확히 맞아요.</div>
+          <div class="frame-guide-row">
+            <select id="f-frame-guide-layout" aria-label="가이드 레이아웃">
+              ${Object.entries(App.pages.records._CARD_LAYOUTS).map(([k, l]) => `<option value="${k}" ${k === (frame.guideLayout || 'feed4') ? 'selected' : ''}>${l.name}</option>`).join('')}
+            </select>
+            <button type="button" class="btn btn-secondary" id="f-frame-guide">${App.icon('download')} 칸 위치 가이드 저장</button>
+          </div>
         </div>
         <div class="form-row">
           <div class="form-group">
@@ -1165,7 +1179,7 @@ App.pages.settings = {
           image = await new Promise(resolve => {
             const img = new Image();
             img.onload = () => {
-              const max = 2400;
+              const max = document.querySelector('input[name="f-frame-mode"]:checked')?.value === 'overlay' ? 3300 : 2400;
               const r = Math.min(1, max / Math.max(img.width, img.height));
               if (r >= 1) { resolve(image); return; }
               const cv = document.createElement('canvas');
@@ -1187,6 +1201,8 @@ App.pages.settings = {
           accentColor: document.getElementById('f-frame-accent').value,
           textColor: document.getElementById('f-frame-text').value,
           enabled: document.getElementById('f-frame-enabled').checked,
+          mode: document.querySelector('input[name="f-frame-mode"]:checked')?.value === 'overlay' ? 'overlay' : 'bg',
+          guideLayout: document.getElementById('f-frame-guide-layout')?.value || frame.guideLayout || 'feed4',
           createdAt: frame.createdAt || new Date().toISOString()
         };
         const all = (await DB.getSetting('customFrames')) || [];
@@ -1201,6 +1217,33 @@ App.pages.settings = {
         App.showToast(frameId ? '프레임이 수정되었습니다.' : '새 프레임이 추가되었습니다.');
         await this._renderFrameLibrary();
       }
+    });
+    // 칸 위치 가이드 저장 — 지금 사진 카드 설정 그대로 그린 이미지 (사진 칸에 1~4 번호)
+    document.getElementById('f-frame-guide')?.addEventListener('click', async (ev) => {
+      const btn = ev.currentTarget;
+      if (btn.disabled) return;
+      btn.disabled = true;
+      try {
+        const layout = document.getElementById('f-frame-guide-layout')?.value || 'feed4';
+        const cv = await App.pages.records.makeFrameGuide(layout);
+        const blob = await new Promise(r => cv.toBlob(r, 'image/png'));
+        const fileName = `프레임가이드_${layout}_${cv.width}x${cv.height}.png`;
+        cv.width = cv.height = 0;
+        if (!blob) throw new Error('이미지를 만들지 못했습니다');
+        const file = new File([blob], fileName, { type: 'image/png' });
+        if (navigator.canShare && navigator.canShare({ files: [file] }) && /iPhone|iPad|iPod/.test(navigator.userAgent)) {
+          await navigator.share({ files: [file], title: '프레임 가이드' }).catch(() => {});
+        } else {
+          const url = URL.createObjectURL(blob);
+          const a = document.createElement('a');
+          a.href = url; a.download = fileName; document.body.appendChild(a); a.click(); a.remove();
+          setTimeout(() => URL.revokeObjectURL(url), 4000);
+        }
+        App.showToast('가이드를 저장했어요. 번호 칸을 투명하게 지운 PNG 로 만들어 올리세요.', 'info', { duration: 6000 });
+      } catch (e) {
+        console.warn('프레임 가이드 실패:', e);
+        App.showToast('가이드를 만들지 못했습니다.', 'error');
+      } finally { btn.disabled = false; }
     });
   },
 

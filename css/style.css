@@ -3448,6 +3448,14 @@ a.stat-card { display: flex; }
 .lay-story { width: 20px; height: 36px; }
 .lay-strip2 { width: 20px; height: 38px; }
 .lay-single { width: 30px; height: 34px; padding-bottom: 8px; }
+.lay-feed4, .lay-story4 { flex-direction: row; flex-wrap: wrap; align-content: stretch; }
+.lay-feed4 i, .lay-story4 i { flex: 0 0 calc(50% - 1px); }
+.lay-feed4 { width: 26px; height: 32px; }
+.lay-story4 { width: 20px; height: 36px; }
+/* 사진 카드 글꼴 고르기 — 가로로 밀어서 고른다 (모바일) */
+.card-font-row { display: flex; gap: 8px; overflow-x: auto; padding-bottom: 4px; -webkit-overflow-scrolling: touch; }
+.card-font-btn { flex: 0 0 auto; min-height: 44px; padding: 8px 14px; border: 1.5px solid var(--border); border-radius: 10px; background: var(--bg-white); color: var(--text); font-size: 1rem; white-space: nowrap; cursor: pointer; }
+.card-font-btn.active { border-color: var(--primary); color: var(--primary); background: var(--primary-lighter, #EEF2FF); }
 /* 더 꾸미기 (접힘) */
 .card-more { border: 1px solid var(--border-light); border-radius: var(--radius); padding: 0 12px; margin-bottom: 8px; }
 .card-more > summary { list-style: none; cursor: pointer; min-height: 48px; display: flex; align-items: center; gap: 8px; font-weight: 700; font-size: 0.9rem; }
@@ -3546,9 +3554,12 @@ a.stat-card { display: flex; }
 .rec-ba button.on { background: var(--primary); color: #fff; }
 
 /* 홈 — 오늘 요약 한 줄 */
-.today-brief { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; position: relative; z-index: 1; }
-.today-brief-item { display: inline-flex; align-items: center; gap: 6px; min-height: 36px; padding: 0 12px; border-radius: 18px; background: rgba(255,255,255,0.18); color: inherit; text-decoration: none; font-size: 0.85rem; }
-.today-brief-item b { font-weight: 800; }
+/* 오늘 요약: 3칸을 한 줄에 같은 너비로 (모바일에서 세 번째가 아래로 떨어지던 문제) — 위에 이름, 아래에 숫자 */
+.today-brief { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; margin-top: 12px; position: relative; z-index: 1; }
+.today-brief-item { display: flex; flex-direction: column; align-items: flex-start; justify-content: center; gap: 2px; min-height: 56px; padding: 8px 12px; border-radius: 14px; background: rgba(255,255,255,0.18); color: inherit; text-decoration: none; font-size: 0.78rem; line-height: 1.25; white-space: nowrap; overflow: hidden; }
+.today-brief-item .ico { width: 14px; height: 14px; }
+.today-brief-item b { font-weight: 800; font-size: 1.15rem; }
+.today-brief-item .tb-label { display: inline-flex; align-items: center; gap: 4px; opacity: .9; max-width: 100%; overflow: hidden; text-overflow: ellipsis; }
 .today-brief-item.warn { background: rgba(255,255,255,0.32); }
 
 /* 데스크탑 — 검색 버튼은 우하단에 띄운다 (우상단은 '+ 새 예약'·'정보 수정' 같은 페이지 버튼을 가렸다) */
@@ -3556,3 +3567,8 @@ a.stat-card { display: flex; }
   .global-search-btn { top: auto; bottom: 28px; right: 28px; }
 }
 .cust-rec-row:active { background: var(--bg); }
+/* 프레임 편집: 방식·가이드 */
+.frame-mode-row { display: flex; gap: 8px; flex-wrap: wrap; }
+.frame-guide-row { display: flex; gap: 8px; margin-top: 8px; flex-wrap: wrap; }
+.frame-guide-row select { flex: 1 1 140px; min-height: 44px; }
+.frame-guide-row .btn { flex: 1 1 160px; min-height: 44px; }
