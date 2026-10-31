@@ -498,7 +498,7 @@ const App = {
       const today = this.getToday();
       // 효율적 쿼리: 오늘 날짜의 예약만 인덱스로 조회 (전체 로드 대신)
       const todayAppointments = await DB.getByIndex('appointments', 'date', today);
-      const todayCount = todayAppointments.filter(a => a.status !== 'cancelled' && a.status !== 'completed').length;
+      const todayCount = todayAppointments.filter(a => !['cancelled', 'completed', 'noshow'].includes(a.status)).length;
       // Sidebar badge
       const badge = document.getElementById('badge-appointments');
       if (badge) {
@@ -1310,6 +1310,12 @@ const App = {
   // 주의: 속성(attribute) 컨텍스트에서도 안전해야 하므로 따옴표까지 이스케이프한다.
   // textContent→innerHTML 방식은 &, <, > 만 변환하고 " ' 를 그대로 통과시켜
   // title="${escapeHtml(memo)}" 같은 지점이 정상 입력('푸들 "티컵"')에도 깨졌다.
+  // 알러지·건강 메모가 실제 내용인지 ('없음', '-' 같은 빈 표시는 제외)
+  hasPetNote(v) {
+    const t = (v == null ? '' : String(v)).trim();
+    return !!t && !['없음', '-', '무', 'x', 'X'].includes(t);
+  },
+
   escapeHtml(str) {
     if (str == null || str === '') return '';
     return String(str)

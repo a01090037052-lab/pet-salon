@@ -6,7 +6,9 @@ App.pages.appointments = {
     const today = App.getToday();
     const isMobile = window.matchMedia('(max-width: 768px)').matches;
     // 최근 3개월 + 미래 예약만 로드 (성능 최적화)
-    const threeMonthsAgo = (() => { const d = new Date(); d.setMonth(d.getMonth() - 3); return App.formatLocalDate(d); })();
+    // 3개월 전 1일부터 (5/31 에 setMonth(-3) 하면 3/3 이 되어 며칠이 빠지던 문제)
+    const threeMonthsAgo = (() => { const d = new Date(); d.setDate(1); d.setMonth(d.getMonth() - 3); return App.formatLocalDate(d); })();
+    this._loadedFrom = threeMonthsAgo;
     const appointments = await DB.getByDateRange('appointments', 'date', threeMonthsAgo, '9999-12-31');
 
     // 다가오는 예약(오늘 포함) 날짜 오름차순 먼저, 지난 예약은 최근순으로 뒤에
@@ -382,6 +384,7 @@ App.pages.appointments = {
             dateInput.value = date;
             this.applyFilters();
           }
+          if (this._loadedFrom && date < this._loadedFrom) App.showToast('3개월보다 지난 예약은 아래 목록에 없고, 달력 요약에만 보여요.');
           // 선택 표시
           grid.querySelectorAll('.calendar-cell').forEach(c => c.classList.remove('selected'));
           cell.classList.add('selected');
@@ -793,11 +796,20 @@ App.pages.appointments = {
     dayAppts.forEach(a => { const g = a.groomer || '미지정'; if (g !== '미지정' && !activeGroomers.includes(g)) activeGroomers.push(g); });
     if (dayAppts.some(a => !a.groomer) || activeGroomers.length === 0) activeGroomers.push('미지정');
 
-    // 시간 슬롯: 8~22시 고정 (영업시간 변동 대응 — 새벽/야간 특별 예약 포함 수용)
+    // 기본 8~22시, 그 밖의 예약이 있으면 그 시간까지 늘린다 (예전엔 조용히 안 보였음)
+    let startH = 8, endH = 22;
+    dayAppts.forEach(a => {
+      if (!a.time) return;
+      const [h, m] = a.time.split(':').map(Number);
+      if (!Number.isFinite(h)) return;
+      startH = Math.min(startH, h);
+      const endMin = h * 60 + (m || 0) + (a.duration || 60);
+      endH = Math.max(endH, Math.min(23, Math.ceil(endMin / 60)));
+    });
     const slots = [];
-    for (let h = 8; h <= 22; h++) {
+    for (let h = startH; h <= endH; h++) {
       slots.push(`${String(h).padStart(2, '0')}:00`);
-      if (h < 22) slots.push(`${String(h).padStart(2, '0')}:30`);
+      if (h < endH) slots.push(`${String(h).padStart(2, '0')}:30`);
     }
 
     // 예약을 시간+미용사로 매핑 (duration-aware)
@@ -848,7 +860,7 @@ App.pages.appointments = {
           const pet = petMap[a.petId];
           const statusColors = { pending: 'var(--warning)', confirmed: 'var(--primary)', in_progress: 'var(--info)', completed: 'var(--success)', noshow: 'var(--danger)' };
           const durLabel = (a.duration || 60) >= 60 ? Math.floor((a.duration || 60) / 60) + '시간' + ((a.duration || 60) % 60 ? ' ' + (a.duration || 60) % 60 + '분' : '') : (a.duration || 60) + '분';
-          html += `<div style="padding:4px 6px;border-bottom:1px solid var(--border);background:${statusColors[a.status] || 'var(--primary)'}15;border-left:3px solid ${statusColors[a.status] || 'var(--primary)'}">
+          html += `<div style="padding:4px 6px;border-bottom:1px solid var(--border);background:color-mix(in srgb, ${statusColors[a.status] || 'var(--primary)'} 12%, transparent);border-left:3px solid ${statusColors[a.status] || 'var(--primary)'}">
             <div style="font-size:0.78rem;font-weight:700">${App.escapeHtml(a.time || '')} ${App.escapeHtml(pet?.name || '-')}</div>
             <div style="font-size:0.7rem;color:var(--text-secondary)">${App.escapeHtml(App.getCustomerLabel(customer))}</div>
             <div style="font-size:0.75rem;color:var(--text-muted)">${durLabel}</div>
@@ -857,7 +869,7 @@ App.pages.appointments = {
         } else if (cell && !cell.isStart) {
           const a = cell.appt;
           const statusColors = { pending: 'var(--warning)', confirmed: 'var(--primary)', in_progress: 'var(--info)', completed: 'var(--success)', noshow: 'var(--danger)' };
-          html += `<div style="padding:0;border-bottom:1px solid var(--border);background:${statusColors[a.status] || 'var(--primary)'}15;border-left:3px solid ${statusColors[a.status] || 'var(--primary)'}"></div>`;
+          html += `<div style="padding:0;border-bottom:1px solid var(--border);background:color-mix(in srgb, ${statusColors[a.status] || 'var(--primary)'} 12%, transparent);border-left:3px solid ${statusColors[a.status] || 'var(--primary)'}"></div>`;
         } else {
           html += `<div style="padding:4px;border-bottom:1px solid var(--border)"></div>`;
         }
@@ -877,6 +889,8 @@ App.pages.appointments = {
   },
 
   applyFilters(special) {
+    // 검색·상태를 바꿔도 '이번주' 빠른 필터는 유지
+    if (!special && document.querySelector('.quick-filter-btn.active')?.dataset.filter === 'week') special = 'week';
     const search = (document.getElementById('appt-search')?.value || '').toLowerCase();
     const status = document.getElementById('filter-status')?.value || '';
     const date = document.getElementById('filter-date')?.value || '';
@@ -1296,7 +1310,7 @@ App.pages.appointments = {
       const toMin = (t) => { const [h, m] = t.split(':').map(Number); return h * 60 + m; };
       const newStart = toMin(time);
       const newEnd = newStart + duration;
-      const others = dayAppts.filter(a => a.id !== id && a.time && a.status !== 'cancelled');
+      const others = dayAppts.filter(a => a.id !== id && a.time && a.status !== 'cancelled' && a.status !== 'noshow');
       // 같은 반려견·같은 날짜·같은 시각 = 진짜 중복 → 저장 불가
       const duplicate = others.find(a => a.petId === petId && a.time === time);
       if (duplicate) {
@@ -1364,7 +1378,7 @@ App.pages.appointments = {
               const newStart = toMin(time);
               const newEnd = newStart + duration;
               const conflict = dayAppts.find(a => {
-                if (!a.time || a.status === 'cancelled') return false;
+                if (!a.time || a.status === 'cancelled' || a.status === 'noshow') return false;
                 const isSameResource = (groomer && a.groomer && a.groomer === groomer) || a.petId === petId;
                 if (!isSameResource) return false;
                 const aStart = toMin(a.time);
@@ -1373,7 +1387,9 @@ App.pages.appointments = {
               });
               if (conflict) { skipped++; continue; }
             }
+            // 첫 예약 저장 때 붙은 id 는 빼고 새로 받는다 (동기화 켜짐 상태에서 2번째부터 저장 오류가 나던 문제)
             const repeatData = { ...data, date: nextDate };
+            delete repeatData.id;
             await DB.add('appointments', repeatData);
             created++;
           }

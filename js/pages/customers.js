@@ -323,8 +323,9 @@ App.pages.customers = {
         const firstVisit = records.length > 0 ? records[records.length - 1].date : null;
         const lastVisitDate = records.length > 0 ? records[0].date : null;
         let avgCycle = '-';
-        if (records.length >= 2) {
-          const dates = records.map(r => new Date(r.date)).sort((a, b) => a - b);
+        if (new Set(records.map(r => r.date).filter(Boolean)).size >= 2) {
+          // 같은 날 여러 마리 미용은 방문 1번으로 센다 (두 마리가 30일마다 오면 0·30·0일로 섞여 10일로 보이던 문제)
+          const dates = [...new Set(records.map(r => r.date).filter(Boolean))].sort().map(d => App.parseLocalDate(d));
           let totalDays = 0;
           for (let i = 1; i < dates.length; i++) {
             totalDays += Math.round((dates[i] - dates[i - 1]) / (1000 * 60 * 60 * 24));

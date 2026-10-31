@@ -383,10 +383,14 @@ App.pages.services = {
     `;
     preview.style.display = 'block';
 
-    document.getElementById('bulk-confirm')?.addEventListener('click', async () => {
+    document.getElementById('bulk-confirm')?.addEventListener('click', async (ev) => {
+      // 두 번 눌러도 한 번만 적용 (+10% 가 두 번 들어가 +21% 가 되던 문제)
+      const btn = ev.currentTarget;
+      if (btn.disabled) return;
+      btn.disabled = true;
       // 적용 시점의 입력값·DB 가격으로 다시 계산 (미리보기 이후 값이 바뀌어도 오래된 결과를 쓰지 않음)
       const cur = this._readBulkInputs();
-      if (!cur) { App.showToast('조정값을 입력하세요.', 'error'); return; }
+      if (!cur) { btn.disabled = false; App.showToast('조정값을 입력하세요.', 'error'); return; }
       const ids = (cur.target === 'all' ? services : services.filter(s => (s.category || 'grooming') === cur.target)).map(s => s.id);
       try {
         const now = new Date().toISOString();
@@ -407,6 +411,7 @@ App.pages.services = {
       } catch (e) {
         console.error('일괄 가격 조정 실패:', e);
         App.showToast('적용 중 오류가 발생했습니다.', 'error');
+        btn.disabled = false;
       }
     });
     document.getElementById('bulk-cancel')?.addEventListener('click', () => {
@@ -692,7 +697,11 @@ App.pages.services = {
     }
 
     App.closeModal();
-    if (renamedFrom) await this._propagateRename(id, renamedFrom, name);
+    if (renamedFrom) {
+      // closeModal()의 history.back() 이 확인창을 바로 닫아 버리지 않게 잠깐 기다린다
+      await new Promise(r => setTimeout(r, 180));
+      await this._propagateRename(id, renamedFrom, name);
+    }
     App.handleRoute();
   },
 

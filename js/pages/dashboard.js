@@ -4,12 +4,14 @@ App.pages.dashboard = {
   // 연락 후 알림을 내려두는 기간 (일)
   _SNOOZE_DAYS: 14,
 
-  _computeRevisitAlerts(pets, customerMap, revisitDays, snoozeDays) {
+  _computeRevisitAlerts(pets, customerMap, revisitDays, snoozeDays, bookedPetIds) {
     // pets의 lastVisitDate를 직접 사용 (records 전체 로드 불필요)
     const snooze = snoozeDays || this._SNOOZE_DAYS;
     const alerts = [];
     pets.forEach(pet => {
       if (!pet.lastVisitDate) return;
+      // 이미 다음 예약이 잡힌 반려견은 연락할 필요가 없다
+      if (bookedPetIds && bookedPetIds.has(Number(pet.id))) return;
       if (pet.petStatus && pet.petStatus !== 'active') return;
       const days = App.getDaysAgo(pet.lastVisitDate);
       if (days === null) return;
@@ -207,7 +209,7 @@ App.pages.dashboard = {
         if (!p) continue;
         let last = null;
         try { const rs = await DB.getByIndex('records', 'petId', Number(a.petId)); rs.forEach(r => { if (!last || (r.date || '') > (last.date || '')) last = r; }); } catch (_) {}
-        if (p.healthNotes || p.allergies || (last && (last.condition === 'caution' || last.cooperativeness === 'difficult'))) cautionPetIds.add(a.petId);
+        if (App.hasPetNote(p.healthNotes) || App.hasPetNote(p.allergies) || (last && (last.condition === 'caution' || last.cooperativeness === 'difficult'))) cautionPetIds.add(a.petId);
       }
       const cautionNames = [...cautionPetIds].map(id => petMap[id]?.name).filter(Boolean);
       const todayBrief = `
@@ -289,7 +291,13 @@ App.pages.dashboard = {
 
       // Revisit alerts (pets의 lastVisitDate 사용, records 전체 로드 불필요)
       const revisitDays = await DB.getSetting('revisitDays') || 30;
-      const allRevisitAlerts = this._computeRevisitAlerts(pets, customerMap, revisitDays);
+      // 오늘부터 앞으로 잡힌 예약(취소·노쇼·완료 제외)이 있는 반려견은 재방문 알림에서 뺀다
+      const bookedPetIds = new Set();
+      try {
+        const future = await DB.getByDateRange('appointments', 'date', today, '9999-12-31');
+        future.forEach(a => { if (a.petId != null && !['cancelled', 'noshow', 'completed'].includes(a.status)) bookedPetIds.add(Number(a.petId)); });
+      } catch (_) {}
+      const allRevisitAlerts = this._computeRevisitAlerts(pets, customerMap, revisitDays, null, bookedPetIds);
       // 이탈(주기 2배 초과)은 매일 보는 카드에서 분리 — 지우는 게 아니라 접어둔다.
       const revisitAlerts = allRevisitAlerts.filter(a => a.visitStatus !== 'churned');
       const longGoneAlerts = allRevisitAlerts.filter(a => a.visitStatus === 'churned');
@@ -330,6 +338,8 @@ App.pages.dashboard = {
       };
       pets.forEach(p => {
         if (!p.birthDate) return;
+        // 나이만 입력하면 생일이 'YYYY-01-01' 로 저장된다 — 진짜 생일이 아니므로 1월 1일에 전부 알림이 뜨지 않게 뺀다
+        if (p.birthYear && p.birthDate === `${p.birthYear}-01-01`) return;
         // 사망/양도 반려견은 생일 알림에서 제외
         if (p.petStatus && p.petStatus !== 'active') return;
         const diffDays = getBirthdayDaysUntil(p.birthDate);
@@ -578,8 +588,8 @@ App.pages.dashboard = {
                     const pet = petMap[a.petId];
                     const phoneClean = (customer?.phone || '').replace(/\D/g, '');
                     const noShowCount = noShowCountByCustomer[a.customerId] || 0;
-                    const allergies = pet?.allergies ? App.escapeHtml(pet.allergies) : '';
-                    const healthNotes = pet?.healthNotes ? App.escapeHtml(pet.healthNotes) : '';
+                    const allergies = App.hasPetNote(pet?.allergies) ? App.escapeHtml(pet.allergies) : '';
+                    const healthNotes = App.hasPetNote(pet?.healthNotes) ? App.escapeHtml(pet.healthNotes) : '';
                     const temperament = pet?.temperament ? App.escapeHtml(pet.temperament) : '';
                     const photoSrc = pet?.photoThumb || pet?.photo;
                     const sent = !!a.reminderSentAt;
@@ -593,7 +603,7 @@ App.pages.dashboard = {
                           <div class="reminder-line-1">
                             <strong class="reminder-time-num">${a.time || '--:--'}</strong>
                             <a href="#pets/${a.petId}" class="reminder-pet-name" onclick="event.stopPropagation()">${App.escapeHtml(pet?.name || '?')}</a>
-                            ${breedSize ? `<span class="reminder-pet-meta">· ${breedSize}</span>` : ''}
+                            ${breedSize ? `<span class="reminder-pet-meta">· ${App.escapeHtml(breedSize)}</span>` : ''}
                           </div>
                           <a href="#customers/${a.customerId}" class="reminder-customer" onclick="event.stopPropagation()">${App.escapeHtml(App.getCustomerLabel(customer))}</a>
                           ${(allergies || healthNotes || temperament || noShowCount > 0) ? `

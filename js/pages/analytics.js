@@ -86,7 +86,7 @@ App.pages.analytics = {
     periodCustomerIds.forEach(cid => {
       const fv = firstVisitOf(cid);
       if (!fv || fv >= periodStart) newCount++;
-      if (hadVisitBefore(cid) || customerRevMap[cid].count >= 2) returnCount++;
+      if (hadVisitBefore(cid) || new Set(custDatesMap[cid] || []).size >= 2) returnCount++; // 같은 날 두 마리는 재방문이 아님
     });
 
     // 평균 방문 주기 — 기간 내 고객의 반려견별 (마지막 방문 - 첫 방문) / (방문 수 - 1) 평균
