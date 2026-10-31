@@ -3635,3 +3635,5 @@ a.stat-card { display: flex; }
   .card-tabs { grid-area: tabs; flex-wrap: wrap; margin-bottom: 12px; }
   .card-panels { grid-area: panels; min-width: 0; }
 }
+.card-sticker-btn[hidden] { display: none; }
+.card-sticker-btn.pet { padding: 3px; }

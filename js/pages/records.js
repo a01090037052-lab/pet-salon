@@ -2599,7 +2599,9 @@ App.pages.records = {
   },
   // 사진 카드 스티커 — Google Noto Emoji(Apache 2.0) 를 256px WebP 로 앱에 넣어 둔다 (기기마다 모양이 같고 오프라인에서도 된다)
   _STICKERS: ['1f43e', '2764', '1f495', '1f496', '1f49d', '1f380', '1f9b4', '2728', '1f451', '1f338', '1f337', '1f33c', '1f490', '2b50', '1f31f', '2702', '1fae7', '1f6c1', '1f436', '1f415', '1f429', '1f431', '1f9f8', '1f389', '1f382', '1f388', '1f308', '2600', '2744', '1f384', '1f340', '1f4af', '1f44d', '1f60d', '1f970'],
-  _stickerSrc(id) { return `assets/stickers/emoji_u${id}.webp`; },
+  // 펫살롱 전용 스티커 (직접 그린 다이컷 스타일 · 파스텔 · 흰 테두리) — 먼저 보여 준다
+  _PET_STICKERS: ['pt_paw', 'pt_heart', 'pt_ribbon', 'pt_bone', 'pt_sparkles', 'pt_crown', 'pt_poodle', 'pt_maltese', 'pt_t_pretty', 'pt_t_first', 'pt_t_goodboy', 'pt_t_goodgirl', 'pt_t_clean', 'pt_t_newlook', 'pt_t_happy', 'pt_t_thanks', 'pt_t_bday', 'pt_scissors', 'pt_comb', 'pt_bubbles', 'pt_shampoo', 'pt_cake', 'pt_balloons', 'pt_rainbow', 'pt_blossom', 'pt_clover', 'pt_maple', 'pt_snow'],
+  _stickerSrc(id) { return String(id).startsWith('pt_') ? `assets/stickers/${id}.webp` : `assets/stickers/emoji_u${id}.webp`; },
   _stickerSrcOf(st) {
     if (st.src) return st.src; // 글자 스티커 (만들어 둔 그림)
     if (st.cid) { const c = (this._customStickers || []).find(x => x.id === st.cid); return c ? c.image : ''; }
@@ -3116,6 +3118,14 @@ App.pages.records = {
     this._renderCustomStickerButtons();
     pick.onclick = async (e) => {
       if (e.target.closest('#card-sticker-add')) { document.getElementById('card-sticker-file')?.click(); return; }
+      // 이모지 스티커는 접어 두고 필요할 때만 펼친다
+      const emo = e.target.closest('#card-sticker-emoji');
+      if (emo) {
+        const open = emo.getAttribute('aria-expanded') !== 'true';
+        emo.setAttribute('aria-expanded', String(open));
+        pick.querySelectorAll('.card-sticker-btn.emoji').forEach(b => { b.hidden = !open; });
+        return;
+      }
       if (e.target.closest('#card-sticker-text')) {
         const tf = document.getElementById('card-sticker-textform');
         if (tf) { tf.hidden = !tf.hidden; if (!tf.hidden) document.getElementById('card-sticker-textinput')?.focus(); }
@@ -3134,7 +3144,8 @@ App.pages.records = {
       }
       if (needPhoto()) return;
       const st = btn.dataset.cid ? { cid: btn.dataset.cid } : { id: btn.dataset.sticker };
-      this._cardStickers.push({ ...st, x: 0.5, y: 0.45, size: btn.dataset.cid ? 0.3 : 0.22, rot: 0 });
+      const isText = String(btn.dataset.sticker || '').startsWith('pt_t_');
+      this._cardStickers.push({ ...st, x: 0.5, y: 0.45, size: btn.dataset.cid ? 0.3 : (isText ? 0.4 : 0.24), rot: 0 });
       this._stickerSel = this._cardStickers.length - 1;
       this._renderStickerLayer();
     };
@@ -3628,7 +3639,9 @@ App.pages.records = {
             <button type="button" class="card-sticker-tool" id="card-sticker-add">${App.icon('plus')}<small>내 스티커</small></button>
             <button type="button" class="card-sticker-tool" id="card-sticker-text"><b>가</b><small>글자</small></button>
             <span id="card-sticker-custom" class="card-sticker-custom"></span>
-            ${this._STICKERS.map(id => `<button type="button" class="card-sticker-btn" data-sticker="${id}" aria-label="스티커 붙이기"><img src="${this._stickerSrc(id)}" alt="" loading="lazy"></button>`).join('')}
+            ${this._PET_STICKERS.map(id => `<button type="button" class="card-sticker-btn pet" data-sticker="${id}" aria-label="스티커 붙이기"><img src="${this._stickerSrc(id)}" alt="" loading="lazy"></button>`).join('')}
+            <button type="button" class="card-sticker-tool" id="card-sticker-emoji" aria-expanded="false"><b>+</b><small>이모지</small></button>
+            ${this._STICKERS.map(id => `<button type="button" class="card-sticker-btn emoji" data-sticker="${id}" aria-label="스티커 붙이기" hidden><img src="${this._stickerSrc(id)}" alt="" loading="lazy"></button>`).join('')}
           </div>
           <div class="card-sticker-sub">
             <input type="file" id="card-sticker-file" accept="image/*" multiple hidden>
