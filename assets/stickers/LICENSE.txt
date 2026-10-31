@@ -4,3 +4,4 @@ https://github.com/googlefonts/noto-emoji
 
 pt_*.webp — 펫살롱 전용으로 직접 그린 스티커 (코드로 생성, 저작권 문제 없음).
 pt_hip_*.webp — 같은 방식으로 직접 그린 힙한 스타일 스티커. 글자 글꼴: Black Han Sans·Bungee(OFL), Paperlogy, Jua(OFL).
+pt_chic_*.webp — 같은 방식으로 직접 그린 세련된 스타일 스티커. 글꼴: DM Serif Display·Bebas Neue·Dancing Script·Gowun Batang(모두 OFL).
