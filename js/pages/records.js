@@ -2745,13 +2745,19 @@ App.pages.records = {
     this._cardPhotos = Array.from({ length: 4 }, (_, i) => picked[i] ? prevPhotos[i] : (i < count ? (defaults[i] || null) : null));
     // 메타: offsetX/offsetY = -50~+50 (사진 중심 기준 비율 이동), zoom = 1.0~2.0
     this._cardPhotoMeta = Array.from({ length: 4 }, (_, i) => (picked[i] && prevMeta[i]) || blank());
+    // 조정 패널은 칸 아래 공용 자리로 옮겨 쓰므로, 다시 그릴 때 함께 비운다
+    const adjHost = document.getElementById('card-photo-adjust');
+    if (adjHost) adjHost.innerHTML = '';
+    // 작은 칸 4개를 한 줄로 (예전 2×2 큰 칸은 사진만으로 화면 하나를 썼다)
     container.innerHTML = Array.from({ length: count }, (_, i) => `
-      <div style="flex:1 1 calc(50% - 4px);min-width:140px;max-width:200px">
+      <div class="card-slot">
         <input type="file" id="card-photo-${i}" accept="image/*" style="display:none">
-        <div id="card-preview-${i}" style="width:100%;height:76px;border:2px dashed var(--border);border-radius:var(--radius);display:flex;align-items:center;justify-content:center;cursor:pointer;overflow:hidden;font-size:1.4rem;color:var(--text-muted);background:var(--bg)" onclick="document.getElementById('card-photo-${i}').click()">${App.icon('camera')}</div>
+        <div id="card-preview-${i}" class="card-slot-tile" role="button" aria-label="${i + 1}번 사진 고르기" onclick="document.getElementById('card-photo-${i}').click()">${App.icon('camera')}</div>
+        <button type="button" class="card-slot-remove" data-slot="${i}" aria-label="${i + 1}번 사진 빼기" hidden>×</button>
         <!-- 위치·확대 조정은 필요할 때만 펼친다 (사진마다 슬라이더 3개가 늘 펼쳐져 창이 길었다) -->
-        <button type="button" class="card-adjust-btn" id="card-adjust-${i}" data-slot="${i}" hidden>${App.icon('settings')} 위치 조정</button>
-        <div id="card-photo-controls-${i}" style="display:none;margin-top:6px;font-size:0.7rem">
+        <button type="button" class="card-adjust-btn" id="card-adjust-${i}" data-slot="${i}" hidden>위치</button>
+        <div id="card-photo-controls-${i}" class="card-photo-controls" data-slot="${i}" style="display:none">
+          <div class="card-photo-controls-title">${i + 1}번 사진 위치·확대</div>
           <div class="photo-slider-row" style="display:flex;align-items:center;gap:6px;margin-bottom:3px">
             <span style="color:var(--text-muted);flex-shrink:0;min-width:30px">좌↔우</span>
             <input type="range" min="-50" max="50" step="2" value="0" class="card-x-slider" data-slot="${i}" style="flex:1;height:36px;min-height:0;cursor:pointer">
@@ -2859,8 +2865,25 @@ App.pages.records = {
       const ctrls = document.getElementById(`card-photo-controls-${btn.dataset.slot}`);
       if (!ctrls) return;
       const open = ctrls.style.display === 'none';
+      // 칸이 좁아 조정 패널은 칸 아래 넓은 자리에 하나만 연다
+      const host = document.getElementById('card-photo-adjust');
+      if (host && ctrls.parentElement !== host) host.appendChild(ctrls);
+      if (host) host.querySelectorAll('.card-photo-controls').forEach(c => { if (c !== ctrls) c.style.display = 'none'; });
+      container.querySelectorAll('.card-adjust-btn').forEach(b => b.classList.remove('open'));
       ctrls.style.display = open ? 'block' : 'none';
       btn.classList.toggle('open', open);
+    }));
+    // 사진 빼기
+    container.querySelectorAll('.card-slot-remove').forEach(btn => btn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const i = Number(btn.dataset.slot);
+      this._cardPhotos[i] = null;
+      this._cardPhotoMeta[i] = { offsetX: 0, offsetY: 0, zoom: 1.0 };
+      if (this._cardUserPicked) this._cardUserPicked[i] = false;
+      const ctrls = document.getElementById(`card-photo-controls-${i}`);
+      if (ctrls) ctrls.style.display = 'none';
+      this._refreshPhotoPreview(i);
+      this._scheduleCardPreview();
     }));
   },
 
@@ -2971,7 +2994,7 @@ App.pages.records = {
     const sel = list[this._stickerSel];
     if (edit) edit.hidden = !sel;
     // 스티커를 고른 동안은 미리보기를 크게 (작은 화면에서 손가락으로 옮기기 쉽게)
-    layer.closest('.card-live')?.classList.toggle('sticker-editing', !!sel);
+    layer.closest('.card-live')?.classList.toggle('sticker-editing', !!sel && this._cardTab === 'sticker');
     if (sel) {
       const sz = document.getElementById('card-sticker-size'); if (sz) sz.value = Math.round(sel.size * 100);
       const rt = document.getElementById('card-sticker-rot'); if (rt) rt.value = sel.rot;
@@ -3279,8 +3302,11 @@ App.pages.records = {
     const preview = document.getElementById(`card-preview-${slot}`);
     if (!preview) return;
     const photo = this._cardPhotos[slot];
-    // 빈 칸은 낮게, 사진이 들어오면 제 높이로 (1장만 쓸 때 빈 칸 3개가 덜 거슬리게)
-    preview.style.height = photo ? '120px' : '76px';
+    preview.classList.toggle('filled', !!photo);
+    const rm = document.querySelector(`.card-slot-remove[data-slot="${slot}"]`);
+    if (rm) rm.hidden = !photo;
+    const adj = document.getElementById(`card-adjust-${slot}`);
+    if (adj && !photo) adj.hidden = true;
     if (!photo) { preview.innerHTML = App.icon('camera'); return; }
     const meta = this._cardPhotoMeta[slot] || { offsetX: 0, offsetY: 0, zoom: 1.0 };
     // offsetX/Y = -50~+50 → object-position % = 0~100
@@ -3458,8 +3484,11 @@ App.pages.records = {
 
     App.showModal({
       title: '사진 카드 만들기',
-      saveText: '카드 생성',
+      saveText: '완성하기',
+      size: 'lg',
       content: `
+        <div class="card-maker">
+        <div class="card-head">
         <!-- 실시간 미리보기 — 고를 때마다 바로 바뀐다 (예전엔 '카드 생성'을 눌러야 처음 보였다) -->
         <div class="card-live">
           <div class="card-live-stage">
@@ -3469,48 +3498,26 @@ App.pages.records = {
           <div id="card-live-empty" class="card-live-empty">${App.icon('image')} 사진을 고르면 여기에 미리 보여요</div>
           <div id="card-live-note" class="card-live-note" hidden></div>
         </div>
+          <div class="card-tabs" role="tablist">
+            <button type="button" class="card-tab active" data-tab="photo" role="tab">사진</button>
+            <button type="button" class="card-tab" data-tab="layout" role="tab">틀</button>
+            <button type="button" class="card-tab" data-tab="deco" role="tab">꾸미기</button>
+            <button type="button" class="card-tab" data-tab="sticker" role="tab">스티커</button>
+            <button type="button" class="card-tab" data-tab="text" role="tab">글자</button>
+          </div>
+        </div>
+        <div class="card-panels">
+        <div class="card-tabpanel" data-panel="photo">
         <div class="form-group">
           <div class="card-photo-head">
             <label class="form-label" style="margin:0">사진 <span style="font-size:0.78rem;color:var(--text-muted);font-weight:400">· 1~4장, 칸을 눌러 사진첩에서 고르세요</span></label>
             ${poolCount ? `<button type="button" class="btn btn-sm btn-secondary" id="card-use-record-photos">${App.icon('image')} ${App.escapeHtml(ctx.poolLabel || '기록 사진')} 넣기 (${poolCount}장)</button>` : ''}
           </div>
-          <div id="card-photo-slots" style="display:flex;gap:8px;flex-wrap:wrap"></div>
+          <div id="card-photo-slots" class="card-slots-row"></div>
+          <div id="card-photo-adjust" class="card-photo-adjust"></div>
         </div>
-        <div class="form-group">
-          <label class="form-label">스티커 <span style="font-size:0.78rem;color:var(--text-muted);font-weight:400">· 누르면 붙어요, 미리보기에서 끌어 옮기세요</span></label>
-          <div id="card-sticker-pick" class="card-sticker-row">
-            <button type="button" class="card-sticker-tool" id="card-sticker-add">${App.icon('plus')}<small>내 스티커</small></button>
-            <button type="button" class="card-sticker-tool" id="card-sticker-text"><b>가</b><small>글자</small></button>
-            <span id="card-sticker-custom" class="card-sticker-custom"></span>
-            ${this._STICKERS.map(id => `<button type="button" class="card-sticker-btn" data-sticker="${id}" aria-label="스티커 붙이기"><img src="${this._stickerSrc(id)}" alt="" loading="lazy"></button>`).join('')}
-          </div>
-          <div class="card-sticker-sub">
-            <input type="file" id="card-sticker-file" accept="image/*" multiple hidden>
-            <button type="button" class="btn btn-sm btn-ghost" id="card-sticker-manage" hidden>내 스티커 정리</button>
-          </div>
-          <div id="card-sticker-textform" class="card-sticker-textform" hidden>
-            <input type="text" id="card-sticker-textinput" maxlength="24" placeholder="예: 오늘도 예뻐요">
-            <div class="card-sticker-styles">
-              ${Object.entries(this._TEXT_STICKER_STYLES).map(([k, v], i) => `<button type="button" class="card-tstyle-btn${i === 0 ? ' active' : ''}" data-tstyle="${k}">${v.name}</button>`).join('')}
-            </div>
-            <button type="button" class="btn btn-sm btn-primary" id="card-sticker-textadd">붙이기</button>
-            <div class="form-hint">글꼴은 위에서 고른 사진 카드 글꼴을 써요.</div>
-          </div>
-          <div id="card-sticker-edit" class="card-sticker-edit" hidden>
-            <div id="card-sticker-textedit" class="card-sticker-textedit" hidden>
-              <input type="text" id="card-sticker-edittext" maxlength="24" aria-label="글자 고치기">
-              <div class="card-sticker-styles">
-                ${Object.entries(this._TEXT_STICKER_STYLES).map(([k, v]) => `<button type="button" class="card-tstyle-btn" data-tstyle="${k}">${v.name}</button>`).join('')}
-              </div>
-            </div>
-            <label class="card-sticker-slider">크기 <input type="range" id="card-sticker-size" min="6" max="70" step="1"></label>
-            <label class="card-sticker-slider">회전 <input type="range" id="card-sticker-rot" min="-180" max="180" step="5"></label>
-            <div class="card-sticker-actions">
-              <button type="button" class="btn btn-sm btn-secondary" id="card-sticker-del">${App.icon('trash')} 이 스티커 삭제</button>
-              <button type="button" class="btn btn-sm btn-ghost" id="card-sticker-clear">모두 지우기</button>
-            </div>
-          </div>
         </div>
+        <div class="card-tabpanel" data-panel="layout" hidden>
         <div class="form-group">
           <label class="form-label">레이아웃 <span style="font-size:0.78rem;color:var(--text-muted);font-weight:400">· 고른 장수에 맞는 것에 추천 표시</span></label>
           <div id="card-pick-layout" style="display:flex;gap:8px;flex-wrap:wrap">
@@ -3520,41 +3527,6 @@ App.pages.records = {
                 <span style="font-size:0.75rem">${l.name}</span>
               </button>
             `).join('')}
-          </div>
-        </div>
-        <div class="form-group">
-          <label class="form-label">테마 ${userFrames.length > 0 ? `<span style="font-size:0.78rem;color:var(--text-muted);font-weight:400">· 내 프레임 ${userFrames.length}개</span>` : ''}</label>
-          <div id="card-pick-theme" style="display:flex;gap:8px;flex-wrap:wrap">
-            ${Object.entries(THEMES).map(([key, t]) => `
-              <button type="button" class="card-pick-btn${key === selectedTheme && !selectedFrameId ? ' active' : ''}" data-key="${key}" style="border-color:${t.color}">
-                <span style="font-size:1.1rem;color:${t.color}">${App.icon('circle-filled')}</span>
-                <span style="font-size:0.7rem;color:${t.color}">${t.name}</span>
-              </button>
-            `).join('')}
-            ${userFrames.map(f => `
-              <button type="button" class="card-pick-btn${selectedFrameId === f.id ? ' active' : ''}" data-key="frame:${f.id}" data-frame-id="${App.escapeHtml(f.id)}" style="border-color:${f.accentColor};position:relative;overflow:hidden">
-                ${f.image ? `<span style="position:absolute;inset:0;background-image:url('${f.image}');background-size:cover;background-position:center;opacity:0.25"></span>` : ''}
-                <span style="font-size:1.1rem;position:relative">${App.icon('image')}</span>
-                <span style="font-size:0.7rem;color:${f.accentColor};position:relative;font-weight:700">${App.escapeHtml(f.name)}</span>
-              </button>
-            `).join('')}
-            <button type="button" class="card-pick-btn${selectedTheme === 'custom' ? ' active' : ''}" data-key="custom" style="border-color:#888">
-              <span style="font-size:1.1rem">${App.icon('palette')}</span>
-              <span style="font-size:0.7rem;color:#888">커스텀</span>
-            </button>
-          </div>
-        </div>
-        <!-- 카드에 넣을 글자 — 이름·날짜·매장명은 테마와 상관없이 켜고 끈다 (늘 들어가면 촌스러울 수 있다 — 사장님 의견) -->
-        <div class="form-group">
-          <label class="form-label">카드에 넣을 글자 <span style="font-size:0.78rem;color:var(--text-muted);font-weight:400">· 끄면 사진만 남아요</span></label>
-          <div class="card-text-toggles">
-            <label class="card-toggle"><input type="checkbox" id="card-show-pet" ${saved.showPet !== false ? 'checked' : ''}> 반려견 이름</label>
-            <label class="card-toggle"><input type="checkbox" id="card-show-date" ${saved.showDate !== false ? 'checked' : ''}> 날짜</label>
-            <label class="card-toggle"><input type="checkbox" id="card-show-shop" ${saved.showShop !== false ? 'checked' : ''}> 매장명·로고</label>
-          </div>
-          <label class="form-label" style="margin-top:12px">글꼴</label>
-          <div id="card-pick-font" class="card-font-row">
-            ${Object.entries(this._CARD_FONTS).map(([k, f]) => `<button type="button" class="card-font-btn${(saved.fontKey || 'system') === k ? ' active' : ''}" data-key="${k}" style="font-family:${App.escapeHtml(this._cardFontStack(k))}">${f.name}</button>`).join('')}
           </div>
         </div>
         <!-- 폴라로이드 사진 크기 (폴라로이드 레이아웃 선택 시만 표시) -->
@@ -3579,6 +3551,30 @@ App.pages.records = {
           <div style="font-size:0.75rem;color:var(--text-muted);margin-top:6px">${App.icon('bulb')} 미니멀은 사진을 더 크게 — 사진 강조</div>
         </div>
 
+        </div>
+        <div class="card-tabpanel" data-panel="deco" hidden>
+        <div class="form-group">
+          <label class="form-label">테마 ${userFrames.length > 0 ? `<span style="font-size:0.78rem;color:var(--text-muted);font-weight:400">· 내 프레임 ${userFrames.length}개</span>` : ''}</label>
+          <div id="card-pick-theme" style="display:flex;gap:8px;flex-wrap:wrap">
+            ${Object.entries(THEMES).map(([key, t]) => `
+              <button type="button" class="card-pick-btn${key === selectedTheme && !selectedFrameId ? ' active' : ''}" data-key="${key}" style="border-color:${t.color}">
+                <span style="font-size:1.1rem;color:${t.color}">${App.icon('circle-filled')}</span>
+                <span style="font-size:0.7rem;color:${t.color}">${t.name}</span>
+              </button>
+            `).join('')}
+            ${userFrames.map(f => `
+              <button type="button" class="card-pick-btn${selectedFrameId === f.id ? ' active' : ''}" data-key="frame:${f.id}" data-frame-id="${App.escapeHtml(f.id)}" style="border-color:${f.accentColor};position:relative;overflow:hidden">
+                ${f.image ? `<span style="position:absolute;inset:0;background-image:url('${f.image}');background-size:cover;background-position:center;opacity:0.25"></span>` : ''}
+                <span style="font-size:1.1rem;position:relative">${App.icon('image')}</span>
+                <span style="font-size:0.7rem;color:${f.accentColor};position:relative;font-weight:700">${App.escapeHtml(f.name)}</span>
+              </button>
+            `).join('')}
+            <button type="button" class="card-pick-btn${selectedTheme === 'custom' ? ' active' : ''}" data-key="custom" style="border-color:#888">
+              <span style="font-size:1.1rem">${App.icon('palette')}</span>
+              <span style="font-size:0.7rem;color:#888">커스텀</span>
+            </button>
+          </div>
+        </div>
         <!-- 커스텀 테마 옵션 (커스텀 선택 시만 표시) -->
         <div id="card-custom-panel" style="display:${selectedTheme === 'custom' ? 'block' : 'none'};padding:12px;background:var(--bg);border-radius:var(--radius);margin-bottom:12px">
           <div style="margin-bottom:10px">
@@ -3618,9 +3614,60 @@ App.pages.records = {
             </div>
           </div>
         </div>
-        <!-- 자주 안 쓰는 옵션은 접어 둔다 — 레이아웃·사진·테마만으로 바로 만들 수 있게 -->
-        <details class="card-more">
-          <summary>더 꾸미기 <span>문구 · 표시 항목 · 로고</span></summary>
+        <div class="form-group">
+          <label class="form-label">글꼴</label>
+          <div id="card-pick-font" class="card-font-row">
+            ${Object.entries(this._CARD_FONTS).map(([k, f]) => `<button type="button" class="card-font-btn${(saved.fontKey || 'system') === k ? ' active' : ''}" data-key="${k}" style="font-family:${App.escapeHtml(this._cardFontStack(k))}">${f.name}</button>`).join('')}
+          </div>
+        </div>
+        </div>
+        <div class="card-tabpanel" data-panel="sticker" hidden>
+        <div class="form-group">
+          <label class="form-label">스티커 <span style="font-size:0.78rem;color:var(--text-muted);font-weight:400">· 누르면 붙어요, 미리보기에서 끌어 옮기세요</span></label>
+          <div id="card-sticker-pick" class="card-sticker-row">
+            <button type="button" class="card-sticker-tool" id="card-sticker-add">${App.icon('plus')}<small>내 스티커</small></button>
+            <button type="button" class="card-sticker-tool" id="card-sticker-text"><b>가</b><small>글자</small></button>
+            <span id="card-sticker-custom" class="card-sticker-custom"></span>
+            ${this._STICKERS.map(id => `<button type="button" class="card-sticker-btn" data-sticker="${id}" aria-label="스티커 붙이기"><img src="${this._stickerSrc(id)}" alt="" loading="lazy"></button>`).join('')}
+          </div>
+          <div class="card-sticker-sub">
+            <input type="file" id="card-sticker-file" accept="image/*" multiple hidden>
+            <button type="button" class="btn btn-sm btn-ghost" id="card-sticker-manage" hidden>내 스티커 정리</button>
+          </div>
+          <div id="card-sticker-textform" class="card-sticker-textform" hidden>
+            <input type="text" id="card-sticker-textinput" maxlength="24" placeholder="예: 오늘도 예뻐요">
+            <div class="card-sticker-styles">
+              ${Object.entries(this._TEXT_STICKER_STYLES).map(([k, v], i) => `<button type="button" class="card-tstyle-btn${i === 0 ? ' active' : ''}" data-tstyle="${k}">${v.name}</button>`).join('')}
+            </div>
+            <button type="button" class="btn btn-sm btn-primary" id="card-sticker-textadd">붙이기</button>
+            <div class="form-hint">글꼴은 '꾸미기' 탭에서 고른 사진 카드 글꼴을 써요.</div>
+          </div>
+          <div id="card-sticker-edit" class="card-sticker-edit" hidden>
+            <div id="card-sticker-textedit" class="card-sticker-textedit" hidden>
+              <input type="text" id="card-sticker-edittext" maxlength="24" aria-label="글자 고치기">
+              <div class="card-sticker-styles">
+                ${Object.entries(this._TEXT_STICKER_STYLES).map(([k, v]) => `<button type="button" class="card-tstyle-btn" data-tstyle="${k}">${v.name}</button>`).join('')}
+              </div>
+            </div>
+            <label class="card-sticker-slider">크기 <input type="range" id="card-sticker-size" min="6" max="70" step="1"></label>
+            <label class="card-sticker-slider">회전 <input type="range" id="card-sticker-rot" min="-180" max="180" step="5"></label>
+            <div class="card-sticker-actions">
+              <button type="button" class="btn btn-sm btn-secondary" id="card-sticker-del">${App.icon('trash')} 이 스티커 삭제</button>
+              <button type="button" class="btn btn-sm btn-ghost" id="card-sticker-clear">모두 지우기</button>
+            </div>
+          </div>
+        </div>
+        </div>
+        <div class="card-tabpanel" data-panel="text" hidden>
+        <!-- 카드에 넣을 글자 — 이름·날짜·매장명은 테마와 상관없이 켜고 끈다 (늘 들어가면 촌스러울 수 있다 — 사장님 의견) -->
+        <div class="form-group">
+          <label class="form-label">카드에 넣을 글자 <span style="font-size:0.78rem;color:var(--text-muted);font-weight:400">· 끄면 사진만 남아요</span></label>
+          <div class="card-text-toggles">
+            <label class="card-toggle"><input type="checkbox" id="card-show-pet" ${saved.showPet !== false ? 'checked' : ''}> 반려견 이름</label>
+            <label class="card-toggle"><input type="checkbox" id="card-show-date" ${saved.showDate !== false ? 'checked' : ''}> 날짜</label>
+            <label class="card-toggle"><input type="checkbox" id="card-show-shop" ${saved.showShop !== false ? 'checked' : ''}> 매장명·로고</label>
+          </div>
+        </div>
         <!-- 자유 텍스트 (헤드라인·서브·하단 메시지) -->
         <div class="form-group" style="padding:12px;background:var(--bg);border-radius:var(--radius);margin-bottom:12px">
           <label class="form-label" style="font-size:0.82rem;margin-bottom:6px">자유 텍스트 <span style="color:var(--text-muted);font-weight:400">(빈 칸은 표시 안 됨)</span></label>
@@ -3661,7 +3708,9 @@ App.pages.records = {
           <div style="font-size:0.75rem;color:var(--text-muted);margin-top:6px">${App.icon('bulb')} 스토리(9:16)는 상단·하단 일부가 인스타 UI(시간/좋아요)에 가려져요. "안전 영역" 권장</div>
         </div>
 
-        </details>
+        </div>
+        </div>
+        </div>
       `,
       onSave: async () => {
         const f = await this._readCardForm(cardPetName);
@@ -3704,6 +3753,21 @@ App.pages.records = {
           btn.classList.add('active');
         });
       });
+      // 탭: 한 번에 한 묶음만 보여 창이 길어지지 않게
+      const tabsEl = document.querySelector('.card-tabs');
+      if (tabsEl) tabsEl.onclick = (e) => {
+        const t = e.target.closest('.card-tab');
+        if (!t) return;
+        this._cardTab = t.dataset.tab;
+        tabsEl.querySelectorAll('.card-tab').forEach(b => b.classList.toggle('active', b === t));
+        document.querySelectorAll('.card-tabpanel').forEach(p => { p.hidden = p.dataset.panel !== t.dataset.tab; });
+        document.querySelector('.card-maker')?.setAttribute('data-tab', t.dataset.tab);
+        this._renderStickerLayer();
+        const panels = document.querySelector('.card-panels');
+        if (panels && window.matchMedia('(max-width: 768px)').matches) document.getElementById('modal-body')?.scrollTo({ top: 0 });
+      };
+      this._cardTab = 'photo';
+      document.querySelector('.card-maker')?.setAttribute('data-tab', 'photo');
       this._bindStickers();
       // 사진 칸은 늘 4개 — 사진을 먼저 고르고 레이아웃을 고른다 (Instagram Layout 방식)
       this._renderPhotoSlots(4);

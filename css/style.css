@@ -3602,3 +3602,36 @@ a.stat-card { display: flex; }
 .card-sticker-styles { display: flex; gap: 6px; flex-wrap: wrap; }
 .card-tstyle-btn { min-height: 36px; padding: 6px 12px; border: 1.5px solid var(--border); border-radius: 18px; background: var(--bg-white); color: var(--text); font-size: 0.82rem; cursor: pointer; }
 .card-tstyle-btn.active { border-color: var(--primary); color: var(--primary); }
+/* ===== 사진 카드 만들기: 탭 구성 ===== */
+.card-head { position: sticky; top: -16px; z-index: 6; background: var(--bg-white); margin: -16px -16px 12px; padding: 12px 16px 0; }
+.card-head .card-live { position: static; margin: 0; }
+.card-tabs { display: flex; gap: 6px; overflow-x: auto; padding: 10px 0; scrollbar-width: none; border-bottom: 1px solid var(--border-light); }
+.card-tabs::-webkit-scrollbar { display: none; }
+.card-tab { flex: 1 0 auto; min-height: 40px; padding: 0 14px; border: none; border-radius: 20px; background: var(--bg); color: var(--text-secondary); font: inherit; font-size: 0.88rem; font-weight: 700; cursor: pointer; }
+.card-tab.active { background: var(--primary); color: #fff; }
+.card-tabpanel[hidden] { display: none; }
+.card-tabpanel > .form-group:last-child { margin-bottom: 4px; }
+/* 사진 칸: 한 줄 4칸 */
+.card-slots-row { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; }
+.card-slot { position: relative; min-width: 0; }
+.card-slot-tile { aspect-ratio: 1; border: 2px dashed var(--border); border-radius: 12px; display: flex; align-items: center; justify-content: center; overflow: hidden; color: var(--text-muted); background: var(--bg); cursor: pointer; font-size: 1.3rem; }
+.card-slot-tile.filled { border-style: solid; border-color: var(--border-light); }
+.card-slot-remove { position: absolute; top: -6px; right: -6px; width: 24px; height: 24px; border-radius: 50%; border: 2px solid var(--bg-white); background: rgba(15,23,42,.75); color: #fff; font-size: 15px; line-height: 18px; padding: 0; cursor: pointer; }
+.card-slot-remove[hidden] { display: none; }
+.card-slot .card-adjust-btn { min-height: 30px; margin-top: 4px; font-size: 0.74rem; }
+.card-photo-adjust:empty { display: none; }
+.card-photo-adjust { margin-top: 10px; }
+.card-photo-controls { padding: 10px 12px; border-radius: var(--radius); background: var(--bg); font-size: 0.78rem; }
+.card-photo-controls-title { font-weight: 700; margin-bottom: 6px; color: var(--text-secondary); }
+/* 미리보기는 작게, 스티커 탭에서 고른 동안만 크게 */
+@media (max-width: 768px) { .card-head .card-live img#card-live-img { max-height: 30vh; } }
+.card-head .card-live.sticker-editing img#card-live-img { max-height: min(44vh, 380px); }
+/* 컴퓨터: 왼쪽 큰 미리보기, 오른쪽 탭 */
+@media (min-width: 769px) {
+  .card-maker { display: grid; grid-template-columns: minmax(0, 300px) minmax(0, 1fr); grid-template-areas: "live tabs" "live panels"; grid-template-rows: auto 1fr; column-gap: 20px; align-items: start; }
+  .card-head { display: contents; }
+  .card-head .card-live { grid-area: live; position: sticky; top: 0; }
+  .card-head .card-live img#card-live-img, .card-head .card-live.sticker-editing img#card-live-img { max-height: 60vh; }
+  .card-tabs { grid-area: tabs; flex-wrap: wrap; margin-bottom: 12px; }
+  .card-panels { grid-area: panels; min-width: 0; }
+}
