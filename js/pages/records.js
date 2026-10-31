@@ -3025,6 +3025,68 @@ App.pages.records = {
     if (mg) mg.hidden = !(this._customStickers || []).length;
   },
 
+  // 테두리 만들기: 그림을 r 만큼 사방으로 번지게 해 한 색으로 칠한다 (다이컷 흰 테두리)
+  _dilateCanvas(src, r, color) {
+    const d = document.createElement('canvas'); d.width = src.width; d.height = src.height;
+    const x = d.getContext('2d');
+    for (let a = 0; a < 360; a += 12) x.drawImage(src, Math.cos(a * Math.PI / 180) * r, Math.sin(a * Math.PI / 180) * r);
+    x.drawImage(src, 0, 0);
+    x.globalCompositeOperation = 'source-in'; x.fillStyle = color; x.fillRect(0, 0, d.width, d.height);
+    return d;
+  },
+  _dieCut(src, r = 16) {
+    const out = document.createElement('canvas'); out.width = src.width; out.height = src.height;
+    const o = out.getContext('2d');
+    o.save(); o.shadowColor = 'rgba(40,30,20,0.22)'; o.shadowBlur = 12; o.shadowOffsetY = 5;
+    o.drawImage(this._dilateCanvas(src, r, '#FFFFFF'), 0, 0); o.restore();
+    o.drawImage(src, 0, 0);
+    const url = out.toDataURL('image/png'); out.width = out.height = 0;
+    return url;
+  },
+
+  // 매장 로고로 스티커 만들기 — plain: 로고 모양 그대로 흰 테두리 / badge: 원형 배지 + 둘레에 매장명 / label: 로고 + 매장명 라벨
+  async _makeLogoSticker(style) {
+    const logo = await DB.getSetting('shopLogo');
+    if (!logo) return null;
+    const img = await this._loadImg(logo);
+    if (!img) return null;
+    const shop = (await DB.getSetting('shopName')) || '';
+    const accent = (getComputedStyle(document.documentElement).getPropertyValue('--primary') || '').trim() || '#22304E';
+    await this._ensureCardFont('paperlogy', shop + 'GROOMING·');
+    const font = (w, px) => `${w} ${px}px ${this._cardFontStack('paperlogy')}`;
+    const fit = (x, cx, cy, box) => { const k = Math.min(box / img.width, box / img.height); const w = img.width * k, h = img.height * k; x.drawImage(img, cx - w / 2, cy - h / 2, w, h); };
+    let c;
+    if (style === 'label') {
+      c = document.createElement('canvas'); c.width = 800; c.height = 320;
+      const x = c.getContext('2d');
+      x.fillStyle = '#FBF4E6'; this._roundRect(x, 40, 40, 720, 240, 120); x.fill();
+      x.strokeStyle = accent; x.lineWidth = 4; this._roundRect(x, 56, 56, 688, 208, 104); x.stroke();
+      fit(x, 170, 160, 170);
+      x.fillStyle = accent; x.textAlign = 'left'; x.textBaseline = 'middle';
+      let fs = 72; x.font = font(800, fs); const name = shop || 'PET SALON';
+      while (x.measureText(name).width > 440 && fs > 28) { fs -= 4; x.font = font(800, fs); }
+      x.fillText(name, 280, 166);
+    } else if (style === 'badge') {
+      c = document.createElement('canvas'); c.width = 640; c.height = 640;
+      const x = c.getContext('2d');
+      x.fillStyle = accent; x.beginPath(); x.arc(320, 320, 280, 0, Math.PI * 2); x.fill();
+      x.fillStyle = '#FFFFFF'; x.beginPath(); x.arc(320, 320, 190, 0, Math.PI * 2); x.fill();
+      fit(x, 320, 320, 250);
+      // 둘레 글자: 매장명 · GROOMING · 를 한 바퀴에 고르게
+      const ring = `${(shop || 'PET SALON').toUpperCase()} · GROOMING · `;
+      x.font = font(700, 34); x.fillStyle = '#FFFFFF'; x.textAlign = 'center'; x.textBaseline = 'middle';
+      const chars = [...ring]; const raw = chars.map(ch => x.measureText(ch).width); const sum = raw.reduce((a, b) => a + b, 0);
+      const R = 236, scale = (2 * Math.PI * R) / sum; let ang = -Math.PI / 2;
+      chars.forEach((ch, i) => { const w = raw[i] * scale; const a = ang + w / R / 2; x.save(); x.translate(320 + Math.cos(a) * R, 320 + Math.sin(a) * R); x.rotate(a + Math.PI / 2); x.fillText(ch, 0, 0); x.restore(); ang += w / R; });
+    } else {
+      c = document.createElement('canvas'); c.width = 640; c.height = 640;
+      fit(c.getContext('2d'), 320, 320, 520);
+    }
+    const url = this._dieCut(c, style === 'plain' ? 18 : 14);
+    c.width = c.height = 0;
+    return url;
+  },
+
   // 글자 스티커 그림 만들기 — 고른 글꼴로 그리고, 모양(말풍선·라벨·글자만)을 입힌다
   async _makeTextSticker(text, style, fontKey) {
     const t = String(text || '').trim() || '안녕';
@@ -3123,6 +3185,13 @@ App.pages.records = {
     pick.onclick = async (e) => {
       if (e.target.closest('#card-sticker-add')) { document.getElementById('card-sticker-file')?.click(); return; }
 
+      if (e.target.closest('#card-sticker-logo')) {
+        const logo = await DB.getSetting('shopLogo');
+        if (!logo) { App.showToast('설정 > 매장 정보에서 매장 로고를 먼저 올려주세요.', 'info', { duration: 5000 }); return; }
+        const lf = document.getElementById('card-sticker-logoform');
+        if (lf) lf.hidden = !lf.hidden;
+        return;
+      }
       if (e.target.closest('#card-sticker-text')) {
         const tf = document.getElementById('card-sticker-textform');
         if (tf) { tf.hidden = !tf.hidden; if (!tf.hidden) document.getElementById('card-sticker-textinput')?.focus(); }
@@ -3180,6 +3249,20 @@ App.pages.records = {
       if (added) App.showToast(`내 스티커 ${added}개를 추가했어요` + (removed ? ` · ${removed}개는 배경을 지웠어요` : ''));
       else App.showToast('스티커로 쓸 수 있는 그림이 없었어요.', 'error');
     };
+    // 내 로고 스티커 (설정의 매장 로고 → 그대로·원형 배지·라벨)
+    document.querySelectorAll('#card-sticker-logoform [data-logo]').forEach(b => {
+      b.onclick = async () => {
+        if (needPhoto()) return;
+        try {
+          const src = await this._makeLogoSticker(b.dataset.logo);
+          if (!src) { App.showToast('로고를 불러오지 못했어요.', 'error'); return; }
+          this._cardStickers.push({ logo: b.dataset.logo, src, x: 0.5, y: 0.5, size: b.dataset.logo === 'label' ? 0.42 : 0.28, rot: 0 });
+          this._stickerSel = this._cardStickers.length - 1;
+          document.getElementById('card-sticker-logoform').hidden = true;
+          this._renderStickerLayer();
+        } catch (err) { console.warn('로고 스티커 실패:', err); App.showToast('로고 스티커를 만들지 못했어요.', 'error'); }
+      };
+    });
     // 글자 스티커 붙이기
     const tAdd = document.getElementById('card-sticker-textadd');
     if (tAdd) tAdd.onclick = async () => {
@@ -3650,6 +3733,7 @@ App.pages.records = {
           <div id="card-sticker-pick" class="card-sticker-row">
             <button type="button" class="card-sticker-tool" id="card-sticker-add">${App.icon('plus')}<small>내 스티커</small></button>
             <button type="button" class="card-sticker-tool" id="card-sticker-text"><b>가</b><small>글자</small></button>
+            <button type="button" class="card-sticker-tool" id="card-sticker-logo"><b>◎</b><small>내 로고</small></button>
             <span id="card-sticker-custom" class="card-sticker-custom"></span>
             ${this._CHIC_STICKERS.map(id => `<button type="button" class="card-sticker-btn" data-set="chic" data-sticker="${id}" aria-label="스티커 붙이기"><img src="${this._stickerSrc(id)}" alt="" loading="lazy"></button>`).join('')}
             ${this._PET_STICKERS.map(id => `<button type="button" class="card-sticker-btn" data-set="cute" data-sticker="${id}" aria-label="스티커 붙이기" hidden><img src="${this._stickerSrc(id)}" alt="" loading="lazy"></button>`).join('')}
@@ -3659,6 +3743,14 @@ App.pages.records = {
           <div class="card-sticker-sub">
             <input type="file" id="card-sticker-file" accept="image/*" multiple hidden>
             <button type="button" class="btn btn-sm btn-ghost" id="card-sticker-manage" hidden>내 스티커 정리</button>
+          </div>
+          <div id="card-sticker-logoform" class="card-sticker-textform" hidden>
+            <div class="form-hint" style="margin:0">설정에 올린 매장 로고로 스티커를 만들어요. 모양을 고르세요.</div>
+            <div class="card-sticker-styles">
+              <button type="button" class="card-tstyle-btn" data-logo="plain">그대로</button>
+              <button type="button" class="card-tstyle-btn" data-logo="badge">원형 배지</button>
+              <button type="button" class="card-tstyle-btn" data-logo="label">라벨</button>
+            </div>
           </div>
           <div id="card-sticker-textform" class="card-sticker-textform" hidden>
             <input type="text" id="card-sticker-textinput" maxlength="24" placeholder="예: 오늘도 예뻐요">
