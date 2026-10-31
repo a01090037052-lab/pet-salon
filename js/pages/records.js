@@ -2552,6 +2552,21 @@ App.pages.records = {
       if (_ov) this._drawImageCover(out.getContext('2d'), _ov, 0, 0, out.width, out.height);
     }
 
+    // 스티커 — 프레임보다도 위에
+    if (Array.isArray(s.stickers) && s.stickers.length) {
+      const octx = out.getContext('2d');
+      for (const st of s.stickers) {
+        const sImg = await this._loadImg(this._stickerSrc(st.id));
+        if (!sImg) continue;
+        const w = st.size * out.width, h = w * (sImg.height / sImg.width);
+        octx.save();
+        octx.translate(st.x * out.width, st.y * out.height);
+        octx.rotate((st.rot || 0) * Math.PI / 180);
+        octx.drawImage(sImg, -w / 2, -h / 2, w, h);
+        octx.restore();
+      }
+    }
+
     return out;
   },
 
@@ -2582,6 +2597,10 @@ App.pages.records = {
       { weight: '700', url: 'https://cdn.jsdelivr.net/gh/projectnoonnu/2408-3@1.0/Paperlogy-7Bold.woff2' }
     ] }
   },
+  // 사진 카드 스티커 — Google Noto Emoji(Apache 2.0) 를 256px WebP 로 앱에 넣어 둔다 (기기마다 모양이 같고 오프라인에서도 된다)
+  _STICKERS: ['1f43e', '2764', '1f495', '1f496', '1f49d', '1f380', '1f9b4', '2728', '1f451', '1f338', '1f337', '1f33c', '1f490', '2b50', '1f31f', '2702', '1fae7', '1f6c1', '1f436', '1f415', '1f429', '1f431', '1f9f8', '1f389', '1f382', '1f388', '1f308', '2600', '2744', '1f384', '1f340', '1f4af', '1f44d', '1f60d', '1f970'],
+  _stickerSrc(id) { return `assets/stickers/emoji_u${id}.webp`; },
+
   _cardFontStack(key) {
     const f = this._CARD_FONTS[key];
     const base = '-apple-system, BlinkMacSystemFont, sans-serif';
@@ -2925,6 +2944,76 @@ App.pages.records = {
     return `<span class="lay-thumb lay-${key}" aria-hidden="true">${'<i></i>'.repeat(cells)}</span>`;
   },
 
+  // ===== 스티커 =====
+  // 위치(x, y)는 카드 가로·세로에 대한 비율(가운데 기준), 크기는 카드 가로에 대한 비율 — 미리보기와 실제 카드에서 같은 자리에 나온다
+  _renderStickerLayer() {
+    const layer = document.getElementById('card-sticker-layer');
+    const img = document.getElementById('card-live-img');
+    if (!layer) return;
+    layer.hidden = !img || img.hidden;
+    const list = this._cardStickers || [];
+    layer.innerHTML = list.map((st, i) => `<img class="card-sticker${i === this._stickerSel ? ' sel' : ''}" data-i="${i}" src="${this._stickerSrc(st.id)}" alt="" draggable="false"
+      style="left:${st.x * 100}%;top:${st.y * 100}%;width:${st.size * 100}%;transform:translate(-50%,-50%) rotate(${st.rot}deg)">`).join('');
+    const edit = document.getElementById('card-sticker-edit');
+    const sel = list[this._stickerSel];
+    if (edit) edit.hidden = !sel;
+    // 스티커를 고른 동안은 미리보기를 크게 (작은 화면에서 손가락으로 옮기기 쉽게)
+    layer.closest('.card-live')?.classList.toggle('sticker-editing', !!sel);
+    if (sel) {
+      const sz = document.getElementById('card-sticker-size'); if (sz) sz.value = Math.round(sel.size * 100);
+      const rt = document.getElementById('card-sticker-rot'); if (rt) rt.value = sel.rot;
+    }
+  },
+
+  _bindStickers() {
+    const pick = document.getElementById('card-sticker-pick');
+    const layer = document.getElementById('card-sticker-layer');
+    if (!pick || !layer) return;
+    pick.onclick = (e) => {
+      const btn = e.target.closest('.card-sticker-btn');
+      if (!btn) return;
+      if (document.getElementById('card-live-img')?.hidden) { App.showToast('사진을 먼저 골라주세요.', 'info'); return; }
+      this._cardStickers.push({ id: btn.dataset.sticker, x: 0.5, y: 0.45, size: 0.22, rot: 0 });
+      this._stickerSel = this._cardStickers.length - 1;
+      this._renderStickerLayer();
+    };
+    // 끌어서 옮기기 — 손가락을 댄 지점과 스티커 가운데의 차이를 유지한다
+    let drag = null;
+    layer.onpointerdown = (e) => {
+      const el = e.target.closest('.card-sticker');
+      if (!el) { if (this._stickerSel !== -1) { this._stickerSel = -1; this._renderStickerLayer(); } return; }
+      e.preventDefault();
+      const i = Number(el.dataset.i);
+      const st = this._cardStickers[i];
+      if (!st) return;
+      if (this._stickerSel !== i) { this._stickerSel = i; this._renderStickerLayer(); }
+      const r = layer.getBoundingClientRect();
+      drag = { i, id: e.pointerId, dx: (e.clientX - r.left) / r.width - st.x, dy: (e.clientY - r.top) / r.height - st.y };
+      try { layer.setPointerCapture(e.pointerId); } catch (_) {}
+    };
+    layer.onpointermove = (e) => {
+      if (!drag || e.pointerId !== drag.id) return;
+      const r = layer.getBoundingClientRect();
+      const st = this._cardStickers[drag.i];
+      if (!st || !r.width) return;
+      st.x = Math.min(1, Math.max(0, (e.clientX - r.left) / r.width - drag.dx));
+      st.y = Math.min(1, Math.max(0, (e.clientY - r.top) / r.height - drag.dy));
+      const el = layer.querySelector(`.card-sticker[data-i="${drag.i}"]`);
+      if (el) { el.style.left = st.x * 100 + '%'; el.style.top = st.y * 100 + '%'; }
+    };
+    layer.onpointerup = layer.onpointercancel = () => { drag = null; };
+    const upd = (fn) => { const st = this._cardStickers[this._stickerSel]; if (st) { fn(st); this._renderStickerLayer(); } };
+    const sz = document.getElementById('card-sticker-size');
+    if (sz) sz.oninput = () => upd(st => { st.size = Number(sz.value) / 100; });
+    const rt = document.getElementById('card-sticker-rot');
+    if (rt) rt.oninput = () => upd(st => { st.rot = Number(rt.value); });
+    const del = document.getElementById('card-sticker-del');
+    if (del) del.onclick = () => { if (this._stickerSel < 0) return; this._cardStickers.splice(this._stickerSel, 1); this._stickerSel = -1; this._renderStickerLayer(); };
+    const clr = document.getElementById('card-sticker-clear');
+    if (clr) clr.onclick = () => { this._cardStickers = []; this._stickerSel = -1; this._renderStickerLayer(); };
+    this._renderStickerLayer();
+  },
+
   _scheduleCardPreview() {
     clearTimeout(this._cardPreviewTimer);
     this._cardPreviewTimer = setTimeout(() => this._renderCardPreview().catch(e => console.warn('카드 미리보기 실패:', e)), 250);
@@ -2941,7 +3030,7 @@ App.pages.records = {
     const nAll = (this._cardPhotos || []).filter(Boolean).length;
     this._markLayoutRecs(nAll);
     const photos = (this._cardPhotos || []).slice(0, count);
-    if (!photos.some(Boolean)) { img.hidden = true; if (empty) empty.hidden = false; return; }
+    if (!photos.some(Boolean)) { img.hidden = true; if (empty) empty.hidden = false; this._renderStickerLayer(); return; }
     const { record, customer, pet, serviceNames } = this._cardCtx;
     const rec = { ...record, photoBefore: photos[0] || null, photoAfter: photos[1] || null, photo3: photos[2] || null, photo4: photos[3] || null,
       photoBeforeId: null, photoAfterId: null, photo3Id: null, photo4Id: null };
@@ -2958,6 +3047,7 @@ App.pages.records = {
     img.hidden = false;
     if (empty) empty.hidden = true;
     img.closest('.card-live')?.setAttribute('data-shape', f.layout);
+    this._renderStickerLayer();
     // 칸보다 사진이 적으면 어떻게 나오는지 알려준다 (반복 채우지 않고 칸 수를 줄인다)
     const note = document.getElementById('card-live-note');
     if (note) {
@@ -3140,6 +3230,9 @@ App.pages.records = {
     const keptMeta = keep ? (this._cardPhotoMeta || []) : [];
     this._cardPhotos = [];
     this._cardPhotoMeta = [];
+    // 스티커: 새 카드는 비우고, '다시 꾸미기'는 붙인 그대로
+    this._cardStickers = keep ? (this._cardStickers || []) : [];
+    this._stickerSel = -1;
     const cardPetName = (ctx.pet && ctx.pet.name) || '';
     // 저장해 둔 문구의 {반려견명} 은 이번 반려견 이름으로 보여준다
     const withPet = (t) => String(t || '').replace(/\{반려견명\}/g, cardPetName);
@@ -3177,7 +3270,10 @@ App.pages.records = {
       content: `
         <!-- 실시간 미리보기 — 고를 때마다 바로 바뀐다 (예전엔 '카드 생성'을 눌러야 처음 보였다) -->
         <div class="card-live">
-          <img id="card-live-img" alt="사진 카드 미리보기" hidden>
+          <div class="card-live-stage">
+            <img id="card-live-img" alt="사진 카드 미리보기" hidden>
+            <div id="card-sticker-layer" class="card-sticker-layer" hidden></div>
+          </div>
           <div id="card-live-empty" class="card-live-empty">${App.icon('image')} 사진을 고르면 여기에 미리 보여요</div>
           <div id="card-live-note" class="card-live-note" hidden></div>
         </div>
@@ -3187,6 +3283,20 @@ App.pages.records = {
             ${poolCount ? `<button type="button" class="btn btn-sm btn-secondary" id="card-use-record-photos">${App.icon('image')} ${App.escapeHtml(ctx.poolLabel || '기록 사진')} 넣기 (${poolCount}장)</button>` : ''}
           </div>
           <div id="card-photo-slots" style="display:flex;gap:8px;flex-wrap:wrap"></div>
+        </div>
+        <div class="form-group">
+          <label class="form-label">스티커 <span style="font-size:0.78rem;color:var(--text-muted);font-weight:400">· 누르면 붙어요, 미리보기에서 끌어 옮기세요</span></label>
+          <div id="card-sticker-pick" class="card-sticker-row">
+            ${this._STICKERS.map(id => `<button type="button" class="card-sticker-btn" data-sticker="${id}" aria-label="스티커 붙이기"><img src="${this._stickerSrc(id)}" alt="" loading="lazy"></button>`).join('')}
+          </div>
+          <div id="card-sticker-edit" class="card-sticker-edit" hidden>
+            <label class="card-sticker-slider">크기 <input type="range" id="card-sticker-size" min="6" max="70" step="1"></label>
+            <label class="card-sticker-slider">회전 <input type="range" id="card-sticker-rot" min="-180" max="180" step="5"></label>
+            <div class="card-sticker-actions">
+              <button type="button" class="btn btn-sm btn-secondary" id="card-sticker-del">${App.icon('trash')} 이 스티커 삭제</button>
+              <button type="button" class="btn btn-sm btn-ghost" id="card-sticker-clear">모두 지우기</button>
+            </div>
+          </div>
         </div>
         <div class="form-group">
           <label class="form-label">레이아웃 <span style="font-size:0.78rem;color:var(--text-muted);font-weight:400">· 고른 장수에 맞는 것에 추천 표시</span></label>
@@ -3381,6 +3491,7 @@ App.pages.records = {
           btn.classList.add('active');
         });
       });
+      this._bindStickers();
       // 사진 칸은 늘 4개 — 사진을 먼저 고르고 레이아웃을 고른다 (Instagram Layout 방식)
       this._renderPhotoSlots(4);
 
@@ -3484,6 +3595,7 @@ App.pages.records = {
       // Merge picker selections with saved detail settings
       const ds = await DB.getSetting('cardDesignSettings') || {};
       const designSettings = await this._designFrom(ds, layout, theme, pet?.name || '');
+      designSettings.stickers = (this._cardStickers || []).map(st => ({ ...st }));
 
       const canvas = await this._generateCardCanvas(record, customer, pet, shopName, shopPhone, serviceNames, designSettings);
 

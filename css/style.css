@@ -3572,3 +3572,18 @@ a.stat-card { display: flex; }
 .frame-guide-row { display: flex; gap: 8px; margin-top: 8px; flex-wrap: wrap; }
 .frame-guide-row select { flex: 1 1 140px; min-height: 44px; }
 .frame-guide-row .btn { flex: 1 1 160px; min-height: 44px; }
+/* 사진 카드 스티커 */
+.card-live-stage { position: relative; display: inline-block; line-height: 0; }
+.card-sticker-layer { position: absolute; inset: 0; touch-action: none; }
+.card-sticker-layer[hidden] { display: none; }
+.card-live .card-sticker { position: absolute; max-height: none; max-width: none; height: auto; border-radius: 0; box-shadow: none; background: transparent; touch-action: none; user-select: none; -webkit-user-select: none; -webkit-user-drag: none; cursor: grab; }
+.card-live .card-sticker.sel { outline: 2px dashed var(--primary); outline-offset: 2px; }
+.card-sticker-row { display: flex; gap: 6px; overflow-x: auto; padding-bottom: 4px; -webkit-overflow-scrolling: touch; }
+.card-sticker-btn { flex: 0 0 auto; width: 48px; height: 48px; padding: 6px; border: 1px solid var(--border); border-radius: 10px; background: var(--bg-white); cursor: pointer; }
+.card-sticker-btn img { width: 100%; height: 100%; object-fit: contain; display: block; }
+.card-sticker-edit { margin-top: 10px; padding: 10px 12px; border-radius: var(--radius); background: var(--bg); display: grid; gap: 8px; }
+.card-sticker-edit[hidden] { display: none; }
+.card-sticker-slider { display: flex; align-items: center; gap: 10px; font-size: 0.85rem; color: var(--text-secondary); white-space: nowrap; }
+.card-sticker-slider input { flex: 1; min-height: 32px; }
+.card-sticker-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+.card-live.sticker-editing img#card-live-img { max-height: min(44vh, 380px); }

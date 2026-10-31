@@ -1,0 +1,3 @@
+Noto Emoji (3D) images — Copyright Google Inc., Apache License 2.0
+https://github.com/googlefonts/noto-emoji
+256px로 줄여 WebP 로 변환해 사진 카드 스티커로 사용.
