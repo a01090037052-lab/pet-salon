@@ -2556,7 +2556,7 @@ App.pages.records = {
     if (Array.isArray(s.stickers) && s.stickers.length) {
       const octx = out.getContext('2d');
       for (const st of s.stickers) {
-        const sImg = await this._loadImg(this._stickerSrc(st.id));
+        const sImg = await this._loadImg(st.src || this._stickerSrc(st.id));
         if (!sImg) continue;
         const w = st.size * out.width, h = w * (sImg.height / sImg.width);
         octx.save();
@@ -2600,6 +2600,19 @@ App.pages.records = {
   // 사진 카드 스티커 — Google Noto Emoji(Apache 2.0) 를 256px WebP 로 앱에 넣어 둔다 (기기마다 모양이 같고 오프라인에서도 된다)
   _STICKERS: ['1f43e', '2764', '1f495', '1f496', '1f49d', '1f380', '1f9b4', '2728', '1f451', '1f338', '1f337', '1f33c', '1f490', '2b50', '1f31f', '2702', '1fae7', '1f6c1', '1f436', '1f415', '1f429', '1f431', '1f9f8', '1f389', '1f382', '1f388', '1f308', '2600', '2744', '1f384', '1f340', '1f4af', '1f44d', '1f60d', '1f970'],
   _stickerSrc(id) { return `assets/stickers/emoji_u${id}.webp`; },
+  _stickerSrcOf(st) {
+    if (st.src) return st.src; // 글자 스티커 (만들어 둔 그림)
+    if (st.cid) { const c = (this._customStickers || []).find(x => x.id === st.cid); return c ? c.image : ''; }
+    return this._stickerSrc(st.id);
+  },
+  MAX_CUSTOM_STICKERS: 24,
+  // 글자 스티커 모양
+  _TEXT_STICKER_STYLES: {
+    bubble: { name: '말풍선' },
+    pink: { name: '분홍 라벨' },
+    dark: { name: '검정 라벨' },
+    outline: { name: '글자만' }
+  },
 
   _cardFontStack(key) {
     const f = this._CARD_FONTS[key];
@@ -2952,7 +2965,7 @@ App.pages.records = {
     if (!layer) return;
     layer.hidden = !img || img.hidden;
     const list = this._cardStickers || [];
-    layer.innerHTML = list.map((st, i) => `<img class="card-sticker${i === this._stickerSel ? ' sel' : ''}" data-i="${i}" src="${this._stickerSrc(st.id)}" alt="" draggable="false"
+    layer.innerHTML = list.map((st, i) => `<img class="card-sticker${i === this._stickerSel ? ' sel' : ''}" data-i="${i}" src="${this._stickerSrcOf(st)}" alt="" draggable="false"
       style="left:${st.x * 100}%;top:${st.y * 100}%;width:${st.size * 100}%;transform:translate(-50%,-50%) rotate(${st.rot}deg)">`).join('');
     const edit = document.getElementById('card-sticker-edit');
     const sel = list[this._stickerSel];
@@ -2963,20 +2976,198 @@ App.pages.records = {
       const sz = document.getElementById('card-sticker-size'); if (sz) sz.value = Math.round(sel.size * 100);
       const rt = document.getElementById('card-sticker-rot'); if (rt) rt.value = sel.rot;
     }
+    // 글자 스티커를 고르면 글자·모양을 바로 고칠 수 있게
+    const tEdit = document.getElementById('card-sticker-textedit');
+    if (tEdit) {
+      tEdit.hidden = !(sel && sel.text != null);
+      if (sel && sel.text != null) {
+        const ti = document.getElementById('card-sticker-edittext');
+        if (ti && document.activeElement !== ti) ti.value = sel.text;
+        tEdit.querySelectorAll('[data-tstyle]').forEach(b => b.classList.toggle('active', b.dataset.tstyle === sel.style));
+      }
+    }
+  },
+
+  _renderCustomStickerButtons() {
+    const box = document.getElementById('card-sticker-custom');
+    if (!box) return;
+    box.innerHTML = (this._customStickers || []).map(c => `<button type="button" class="card-sticker-btn custom" data-cid="${App.escapeHtml(c.id)}" aria-label="내 스티커 붙이기"><img src="${c.image}" alt=""><span class="card-sticker-x" aria-hidden="true">×</span></button>`).join('');
+    const mg = document.getElementById('card-sticker-manage');
+    if (mg) mg.hidden = !(this._customStickers || []).length;
+  },
+
+  // 글자 스티커 그림 만들기 — 고른 글꼴로 그리고, 모양(말풍선·라벨·글자만)을 입힌다
+  async _makeTextSticker(text, style, fontKey) {
+    const t = String(text || '').trim() || '안녕';
+    if (fontKey && fontKey !== 'system') await this._ensureCardFont(fontKey, t);
+    const font = `bold 88px ${this._cardFontStack(fontKey)}`;
+    const m = document.createElement('canvas').getContext('2d');
+    m.font = font;
+    const tw = Math.ceil(m.measureText(t).width);
+    const padX = 56, padY = 40, th = 96, tail = style === 'bubble' ? 34 : 0, edge = 12;
+    const W = tw + padX * 2 + edge * 2, H = th + padY * 2 + tail + edge * 2;
+    const c = document.createElement('canvas'); c.width = W; c.height = H;
+    const x = c.getContext('2d');
+    x.font = font; x.textAlign = 'center'; x.textBaseline = 'middle';
+    const bx = edge, by = edge, bw = W - edge * 2, bh = H - edge * 2 - tail;
+    const cx = W / 2, cy = by + bh / 2 + 4;
+    if (style === 'outline') {
+      x.lineJoin = 'round'; x.lineWidth = 22; x.strokeStyle = '#FFFFFF'; x.strokeText(t, cx, cy);
+      x.fillStyle = '#1F2937'; x.fillText(t, cx, cy);
+    } else {
+      const bg = style === 'pink' ? '#FF6B9A' : style === 'dark' ? '#1F2937' : '#FFFFFF';
+      x.save();
+      x.shadowColor = 'rgba(0,0,0,0.18)'; x.shadowBlur = 10; x.shadowOffsetY = 4;
+      x.fillStyle = bg;
+      this._roundRect(x, bx, by, bw, bh, Math.min(bh / 2, 60)); x.fill();
+      if (style === 'bubble') { // 꼬리
+        x.beginPath(); x.moveTo(bx + bw * 0.22, by + bh - 2); x.lineTo(bx + bw * 0.16, by + bh + tail); x.lineTo(bx + bw * 0.36, by + bh - 2); x.closePath(); x.fill();
+      }
+      x.restore();
+      x.fillStyle = style === 'bubble' ? '#1F2937' : '#FFFFFF';
+      x.fillText(t, cx, cy);
+    }
+    const url = c.toDataURL('image/png');
+    c.width = c.height = 0;
+    return url;
+  },
+
+  // 올린 그림을 스티커로 다듬는다: 테두리가 한 가지 색이면 그 배경을 지우고(ChatGPT 의 흰 배경 등), 빈 여백을 잘라 400px 이하로
+  async _prepareStickerImage(file) {
+    const url = URL.createObjectURL(file);
+    try {
+      const img = await new Promise((res, rej) => { const i = new Image(); i.onload = () => res(i); i.onerror = rej; i.src = url; });
+      const scale = Math.min(1, 640 / Math.max(img.width, img.height));
+      const W = Math.max(1, Math.round(img.width * scale)), H = Math.max(1, Math.round(img.height * scale));
+      const c = document.createElement('canvas'); c.width = W; c.height = H;
+      const x = c.getContext('2d', { willReadFrequently: true });
+      x.drawImage(img, 0, 0, W, H);
+      const data = x.getImageData(0, 0, W, H); const px = data.data;
+      const at = (i) => [px[i * 4], px[i * 4 + 1], px[i * 4 + 2], px[i * 4 + 3]];
+      const corners = [0, W - 1, (H - 1) * W, H * W - 1].map(at);
+      const dist = (a, b) => Math.abs(a[0] - b[0]) + Math.abs(a[1] - b[1]) + Math.abs(a[2] - b[2]);
+      let removedBg = false;
+      const opaque = corners.every(cc => cc[3] > 245);
+      if (opaque && corners.every(cc => dist(cc, corners[0]) < 45)) {
+        // 테두리에서부터 배경색과 비슷한 칸만 지운다 (그림 안쪽의 같은 색은 남는다)
+        const bg = corners[0], tol = 60;
+        const seen = new Uint8Array(W * H); const stack = [];
+        for (let i = 0; i < W; i++) { stack.push(i, (H - 1) * W + i); }
+        for (let j = 0; j < H; j++) { stack.push(j * W, j * W + W - 1); }
+        while (stack.length) {
+          const k = stack.pop();
+          if (seen[k]) continue; seen[k] = 1;
+          if (dist(at(k), bg) > tol) continue;
+          px[k * 4 + 3] = 0;
+          const cxp = k % W, cyp = (k / W) | 0;
+          if (cxp > 0) stack.push(k - 1); if (cxp < W - 1) stack.push(k + 1);
+          if (cyp > 0) stack.push(k - W); if (cyp < H - 1) stack.push(k + W);
+        }
+        x.putImageData(data, 0, 0);
+        removedBg = true;
+      }
+      // 빈 여백 잘라내기
+      const d2 = x.getImageData(0, 0, W, H).data;
+      let minX = W, minY = H, maxX = -1, maxY = -1;
+      for (let yy = 0; yy < H; yy++) for (let xx = 0; xx < W; xx++) {
+        if (d2[(yy * W + xx) * 4 + 3] > 12) { if (xx < minX) minX = xx; if (xx > maxX) maxX = xx; if (yy < minY) minY = yy; if (yy > maxY) maxY = yy; }
+      }
+      if (maxX < 0) return null; // 다 지워짐
+      const m = 4; minX = Math.max(0, minX - m); minY = Math.max(0, minY - m); maxX = Math.min(W - 1, maxX + m); maxY = Math.min(H - 1, maxY + m);
+      const cw = maxX - minX + 1, ch = maxY - minY + 1;
+      const s2 = Math.min(1, 400 / Math.max(cw, ch));
+      const o = document.createElement('canvas'); o.width = Math.round(cw * s2); o.height = Math.round(ch * s2);
+      o.getContext('2d').drawImage(c, minX, minY, cw, ch, 0, 0, o.width, o.height);
+      const out = o.toDataURL('image/png');
+      c.width = c.height = 0; o.width = o.height = 0;
+      return { image: out, removedBg };
+    } finally { URL.revokeObjectURL(url); }
   },
 
   _bindStickers() {
     const pick = document.getElementById('card-sticker-pick');
     const layer = document.getElementById('card-sticker-layer');
     if (!pick || !layer) return;
-    pick.onclick = (e) => {
+    const needPhoto = () => { if (document.getElementById('card-live-img')?.hidden) { App.showToast('사진을 먼저 골라주세요.', 'info'); return true; } return false; };
+    const curFont = () => document.querySelector('#card-pick-font .card-font-btn.active')?.dataset.key || 'system';
+    this._renderCustomStickerButtons();
+    pick.onclick = async (e) => {
+      if (e.target.closest('#card-sticker-add')) { document.getElementById('card-sticker-file')?.click(); return; }
+      if (e.target.closest('#card-sticker-text')) {
+        const tf = document.getElementById('card-sticker-textform');
+        if (tf) { tf.hidden = !tf.hidden; if (!tf.hidden) document.getElementById('card-sticker-textinput')?.focus(); }
+        return;
+      }
       const btn = e.target.closest('.card-sticker-btn');
       if (!btn) return;
-      if (document.getElementById('card-live-img')?.hidden) { App.showToast('사진을 먼저 골라주세요.', 'info'); return; }
-      this._cardStickers.push({ id: btn.dataset.sticker, x: 0.5, y: 0.45, size: 0.22, rot: 0 });
+      // 정리 모드: 내 스티커를 누르면 목록에서 지운다
+      if (btn.dataset.cid && pick.classList.contains('managing')) {
+        this._customStickers = (this._customStickers || []).filter(c => c.id !== btn.dataset.cid);
+        await DB.setSetting('customStickers', this._customStickers);
+        this._renderCustomStickerButtons();
+        if (!this._customStickers.length) pick.classList.remove('managing');
+        App.showToast('내 스티커에서 지웠어요.');
+        return;
+      }
+      if (needPhoto()) return;
+      const st = btn.dataset.cid ? { cid: btn.dataset.cid } : { id: btn.dataset.sticker };
+      this._cardStickers.push({ ...st, x: 0.5, y: 0.45, size: btn.dataset.cid ? 0.3 : 0.22, rot: 0 });
       this._stickerSel = this._cardStickers.length - 1;
       this._renderStickerLayer();
     };
+    const mg = document.getElementById('card-sticker-manage');
+    if (mg) mg.onclick = () => { pick.classList.toggle('managing'); mg.textContent = pick.classList.contains('managing') ? '정리 끝' : '내 스티커 정리'; };
+    // 내 스티커 올리기 (여러 장 가능)
+    const file = document.getElementById('card-sticker-file');
+    if (file) file.onchange = async () => {
+      const files = [...(file.files || [])];
+      file.value = '';
+      if (!files.length) return;
+      const list = this._customStickers || [];
+      let added = 0, removed = 0;
+      for (const f of files) {
+        if (list.length >= this.MAX_CUSTOM_STICKERS) { App.showToast(`내 스티커는 ${this.MAX_CUSTOM_STICKERS}개까지예요. 정리 후 추가해주세요.`, 'error'); break; }
+        try {
+          const r = await this._prepareStickerImage(f);
+          if (!r) continue;
+          list.unshift({ id: 'u' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6), image: r.image, createdAt: new Date().toISOString() });
+          added++; if (r.removedBg) removed++;
+        } catch (err) { console.warn('스티커 처리 실패:', err); }
+      }
+      this._customStickers = list;
+      await DB.setSetting('customStickers', list);
+      this._renderCustomStickerButtons();
+      if (added) App.showToast(`내 스티커 ${added}개를 추가했어요` + (removed ? ` · ${removed}개는 배경을 지웠어요` : ''));
+      else App.showToast('스티커로 쓸 수 있는 그림이 없었어요.', 'error');
+    };
+    // 글자 스티커 붙이기
+    const tAdd = document.getElementById('card-sticker-textadd');
+    if (tAdd) tAdd.onclick = async () => {
+      if (needPhoto()) return;
+      const text = (document.getElementById('card-sticker-textinput')?.value || '').trim();
+      if (!text) { App.showToast('글자를 입력해주세요.', 'error'); return; }
+      const style = document.querySelector('#card-sticker-textform [data-tstyle].active')?.dataset.tstyle || 'bubble';
+      const fontKey = curFont();
+      const src = await this._makeTextSticker(text, style, fontKey);
+      this._cardStickers.push({ text, style, fontKey, src, x: 0.5, y: 0.3, size: 0.5, rot: 0 });
+      this._stickerSel = this._cardStickers.length - 1;
+      document.getElementById('card-sticker-textform').hidden = true;
+      this._renderStickerLayer();
+    };
+    document.querySelectorAll('#card-sticker-textform [data-tstyle]').forEach(b => {
+      b.onclick = () => { document.querySelectorAll('#card-sticker-textform [data-tstyle]').forEach(x => x.classList.remove('active')); b.classList.add('active'); };
+    });
+    // 고른 글자 스티커 고치기 (글자·모양)
+    const reText = async (patch) => {
+      const st = this._cardStickers[this._stickerSel];
+      if (!st || st.text == null) return;
+      Object.assign(st, patch);
+      st.src = await this._makeTextSticker(st.text, st.style, st.fontKey || curFont());
+      this._renderStickerLayer();
+    };
+    const et = document.getElementById('card-sticker-edittext');
+    if (et) et.onchange = () => { if (et.value.trim()) reText({ text: et.value.trim() }); };
+    document.querySelectorAll('#card-sticker-textedit [data-tstyle]').forEach(b => { b.onclick = () => reText({ style: b.dataset.tstyle }); });
     // 끌어서 옮기기 — 손가락을 댄 지점과 스티커 가운데의 차이를 유지한다
     let drag = null;
     layer.onpointerdown = (e) => {
@@ -3233,6 +3424,7 @@ App.pages.records = {
     // 스티커: 새 카드는 비우고, '다시 꾸미기'는 붙인 그대로
     this._cardStickers = keep ? (this._cardStickers || []) : [];
     this._stickerSel = -1;
+    this._customStickers = (await DB.getSetting('customStickers')) || [];
     const cardPetName = (ctx.pet && ctx.pet.name) || '';
     // 저장해 둔 문구의 {반려견명} 은 이번 반려견 이름으로 보여준다
     const withPet = (t) => String(t || '').replace(/\{반려견명\}/g, cardPetName);
@@ -3287,9 +3479,30 @@ App.pages.records = {
         <div class="form-group">
           <label class="form-label">스티커 <span style="font-size:0.78rem;color:var(--text-muted);font-weight:400">· 누르면 붙어요, 미리보기에서 끌어 옮기세요</span></label>
           <div id="card-sticker-pick" class="card-sticker-row">
+            <button type="button" class="card-sticker-tool" id="card-sticker-add">${App.icon('plus')}<small>내 스티커</small></button>
+            <button type="button" class="card-sticker-tool" id="card-sticker-text"><b>가</b><small>글자</small></button>
+            <span id="card-sticker-custom" class="card-sticker-custom"></span>
             ${this._STICKERS.map(id => `<button type="button" class="card-sticker-btn" data-sticker="${id}" aria-label="스티커 붙이기"><img src="${this._stickerSrc(id)}" alt="" loading="lazy"></button>`).join('')}
           </div>
+          <div class="card-sticker-sub">
+            <input type="file" id="card-sticker-file" accept="image/*" multiple hidden>
+            <button type="button" class="btn btn-sm btn-ghost" id="card-sticker-manage" hidden>내 스티커 정리</button>
+          </div>
+          <div id="card-sticker-textform" class="card-sticker-textform" hidden>
+            <input type="text" id="card-sticker-textinput" maxlength="24" placeholder="예: 오늘도 예뻐요">
+            <div class="card-sticker-styles">
+              ${Object.entries(this._TEXT_STICKER_STYLES).map(([k, v], i) => `<button type="button" class="card-tstyle-btn${i === 0 ? ' active' : ''}" data-tstyle="${k}">${v.name}</button>`).join('')}
+            </div>
+            <button type="button" class="btn btn-sm btn-primary" id="card-sticker-textadd">붙이기</button>
+            <div class="form-hint">글꼴은 위에서 고른 사진 카드 글꼴을 써요.</div>
+          </div>
           <div id="card-sticker-edit" class="card-sticker-edit" hidden>
+            <div id="card-sticker-textedit" class="card-sticker-textedit" hidden>
+              <input type="text" id="card-sticker-edittext" maxlength="24" aria-label="글자 고치기">
+              <div class="card-sticker-styles">
+                ${Object.entries(this._TEXT_STICKER_STYLES).map(([k, v]) => `<button type="button" class="card-tstyle-btn" data-tstyle="${k}">${v.name}</button>`).join('')}
+              </div>
+            </div>
             <label class="card-sticker-slider">크기 <input type="range" id="card-sticker-size" min="6" max="70" step="1"></label>
             <label class="card-sticker-slider">회전 <input type="range" id="card-sticker-rot" min="-180" max="180" step="5"></label>
             <div class="card-sticker-actions">
@@ -3595,7 +3808,7 @@ App.pages.records = {
       // Merge picker selections with saved detail settings
       const ds = await DB.getSetting('cardDesignSettings') || {};
       const designSettings = await this._designFrom(ds, layout, theme, pet?.name || '');
-      designSettings.stickers = (this._cardStickers || []).map(st => ({ ...st }));
+      designSettings.stickers = (this._cardStickers || []).map(st => ({ ...st, src: this._stickerSrcOf(st) })).filter(st => st.src);
 
       const canvas = await this._generateCardCanvas(record, customer, pet, shopName, shopPhone, serviceNames, designSettings);
 
