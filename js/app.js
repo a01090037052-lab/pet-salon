@@ -2115,7 +2115,9 @@ const App = {
     if (!selected && registered.length === 1) selected = registered[0];
     let pastGroomers = [];
     try {
-      const recs = await DB.getAllLight('records', ['photoBefore', 'photoAfter', 'memo', 'serviceIds', 'serviceNames', 'nextVisitDate', 'appointmentId']);
+      // 최근 1년 기록만 본다 (몇 년 치 기록 전체를 폼을 열 때마다 읽으면 1~3초씩 멈춘다)
+      const from = (() => { const d = new Date(); d.setFullYear(d.getFullYear() - 1); return this.formatLocalDate(d); })();
+      const recs = await DB.getByDateRange('records', 'date', from, '9999-12-31');
       pastGroomers = [...new Set(recs.map(r => r.groomer).filter(g => g && !registered.includes(g)))];
     } catch (e) { /* ignore */ }
     const suggestions = [...registered, ...pastGroomers];
@@ -2309,12 +2311,13 @@ const App = {
 
     // Preload data for instant search (lightweight - no photo/memo fields)
     try {
-      const [customers, pets, records, services] = await Promise.all([
+      // 기록은 미리 읽지 않는다 — 고객 카드를 열 때 그 고객 기록만 읽는다 (기록 전체를 읽으면 몇 년 뒤 검색이 느려진다)
+      const [customers, pets, services] = await Promise.all([
         DB.getAll('customers'),
         DB.getAllLight('pets', ['photo', 'preferredStyle']),
-        DB.getAllLight('records', ['photoBefore', 'photoAfter', 'memo']),
         DB.getAll('services')
       ]);
+      const records = [];
 
       // Build lookup maps
       const petsByCustomer = {};
@@ -2465,6 +2468,16 @@ const App = {
   },
 
   _renderSearchCard(container, customer) {
+    const sd = this._searchData;
+    if (sd) sd._cardFor = customer.id;
+    if (sd && !(sd._loadedRecords || (sd._loadedRecords = new Set())).has(customer.id)) {
+      sd._loadedRecords.add(customer.id);
+      DB.getByIndex('records', 'customerId', customer.id).then(rs => {
+        if (this._searchData !== sd) return;
+        sd.recordsByCustomer[customer.id] = rs.sort((a, b) => (b.date || '').localeCompare(a.date || ''));
+        if (container.isConnected && sd._cardFor === customer.id) this._renderSearchCard(container, customer);
+      }).catch(() => { sd._loadedRecords.delete(customer.id); });
+    }
     const { petsByCustomer, recordsByCustomer, serviceMap, petMap } = this._searchData;
     const cPets = petsByCustomer[customer.id] || [];
     const cRecords = recordsByCustomer[customer.id] || [];

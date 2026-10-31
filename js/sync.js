@@ -15,11 +15,13 @@ const Sync = {
   ID_RANGE: 1e9, // 기기 번호마다 id 대역을 나눠 두 기기가 같은 번호를 만들지 않게 한다
   MAX_OPS: 450, // writeBatch 한도 500 미만
   MAX_BATCH_BYTES: 8 * 1024 * 1024, // 사진 묶음 상한 (Firestore 배치 10MiB)
+  TOMBSTONE_KEEP_DAYS: 180, // 삭제 표시 보관 기간 — 계속 쌓이면 새 기기 연결·다시 맞추기가 무료 읽기 한도를 넘는다
+  STALE_DAYS: 150,          // 이보다 오래 연결하지 않은 기기는 클라우드에서 새로 받는다 (보관 기간보다 짧게)
   PENDING_ENABLE_KEY: '__petsalon_sync_pending_enable__',
   // 이 기기에만 의미가 있는 필드 — 올리지 않고, 받아올 때는 로컬 값을 유지한다
   // (photoId 는 이 기기 photos 스토어의 번호라 다른 기기에선 엉뚱한 사진을 가리킨다)
   LOCAL_FIELDS: {
-    pets: ['photoId', 'photo', '_photoFromSync'],
+    pets: ['photoId', 'photo', '_photoFromSync', '_syncPhotoSig'],
     records: ['photoBeforeId', 'photoAfterId', 'photo3Id', 'photo4Id', '_photoFromSync', '_photoSetAt']
   },
   // 기록 사진(미용 전·후)은 recordPhotos/{recordId}_{field} 문서로 따로 보낸다 (축소본). 보관 횟수는 App.pruneRecordPhotos 가 맞춘다.
@@ -66,7 +68,12 @@ const Sync = {
       window.addEventListener('online', () => { this._emit(); this._kick(); });
       window.addEventListener('offline', () => this._emit());
       document.addEventListener('visibilitychange', () => {
-        if (document.visibilityState === 'visible') { this._kick(); if (this._refreshWanted) this._scheduleRefresh(); }
+        if (document.visibilityState === 'visible') {
+          this._kick();
+          if (this._refreshWanted) this._scheduleRefresh();
+          // 몇 주씩 켜 둔 창은 다시 연결될 때 '켠 이후 바뀐 것 전부'를 다시 읽었다 → 30분 지났으면 최신 기준으로 새로 시작
+          if (this._unsubs.length && this._listenStartedAt && Date.now() - this._listenStartedAt > 30 * 60000) this._startListeners();
+        }
       });
       this._s = (await DB.getSetting('sync')) || null;
       this._photoSig = (await DB.getSetting('_syncPhotoSig')) || {};
@@ -319,92 +326,129 @@ const Sync = {
   async resync() {
     if (this._busy) return false;
     if (!this.isEnabled() || !this._fs || !this._user) { App.showToast('먼저 동기화에 로그인해주세요.', 'error'); return false; }
+    if (this._s.pull) { App.showToast('처음 받기가 아직 진행 중입니다. 끝난 뒤에 다시 눌러주세요.', 'info'); this._resumePull(); return false; }
     this._busy = true;
     this._fatal = false;
     this._error = null;
     this._emit();
-    let received = 0;
+    // 단계별로 나눠 하고, 끝난 단계를 저장한다 — 몇 년 치 문서는 하루 무료 읽기 한도를 넘을 수 있어
+    // 멈추면 다음에 다시 눌렀을 때 남은 단계부터 이어 한다 (3일 지나면 처음부터).
+    const phases = ['tombstones', ...this.STORES, ...this.PHOTO_STORES];
+    const prog = (this._s.resync && Date.now() - this._s.resync.at < 3 * 86400000) ? this._s.resync : { at: Date.now(), done: [] };
+    this._s.resync = prog;
+    let received = 0, queued = 0;
+    const cloudIds = {};
+    const enqueue = async (items) => {
+      for (let i = 0; i < items.length; i += 1000) await this._enqueue(items.slice(i, i + 1000));
+      queued += items.length;
+    };
     try {
-      this._progressToast('클라우드와 비교하는 중...');
-      // 1) 다른 기기에서 지운 것 먼저 반영 → 아래에서 다시 올리지 않게
-      const tsnap = await this._col('tombstones').get();
-      received += await this._applyTombstones(tsnap.docs.map(d => ({ id: d.id, data: d.data() })));
-      // 2) 레코드: 클라우드가 더 최신이면 받고, 클라우드에 없거나 이 기기가 더 최신이면 올린다
-      const items = [];
-      const cloudIds = {};
-      for (const store of this.STORES) {
-        const snap = await this._col(store).get();
-        const docs = snap.docs.map(d => ({ id: d.id, data: d.data() }));
-        cloudIds[store] = new Set(docs.map(d => String(d.id)));
-        received += await this._applyRemote(store, docs, false);
-        this._s.lastPullAt[store] = Math.max(this._s.lastPullAt[store] || 0, this._maxServerAt(docs));
-        const remoteTs = new Map(docs.map(d => [d.id, Number(d.data._updatedAt) || 0]));
-        let rows = await DB.getAll(store);
-        if (store === 'settings') rows = rows.filter(r => !this.isLocalOnlySetting(r.key));
-        for (const r of rows) {
-          const id = store === 'settings' ? r.key : r.id;
-          if (remoteTs.has(String(id)) && this._localTs(r) <= remoteTs.get(String(id))) continue;
-          const data = this._toRemote(store, r);
-          if (!data) continue;
-          if (store !== 'settings') data.id = id;
-          items.push({ store, op: 'put', id, data });
+      for (const ph of phases) {
+        if (prog.done.includes(ph)) continue;
+        this._progressToast(`클라우드와 비교하는 중... (${prog.done.length + 1}/${phases.length})`);
+        const items = [];
+        if (ph === 'tombstones') {
+          // 1) 다른 기기에서 지운 것 먼저 반영 → 아래에서 다시 올리지 않게
+          await this._readPaged('tombstones', async docs => { received += await this._applyTombstones(docs); });
+        } else if (this.STORES.includes(ph)) {
+          // 2) 레코드: 클라우드가 더 최신이면 받고, 클라우드에 없거나 이 기기가 더 최신이면 올린다
+          const store = ph;
+          const remoteTs = new Map();
+          let maxAt = 0;
+          await this._readPaged(store, async docs => {
+            docs.forEach(d => remoteTs.set(String(d.id), Number(d.data._updatedAt) || 0));
+            received += await this._applyRemote(store, docs, false);
+            maxAt = Math.max(maxAt, this._maxServerAt(docs));
+          });
+          cloudIds[store] = new Set(remoteTs.keys());
+          this._s.lastPullAt[store] = Math.max(this._s.lastPullAt[store] || 0, maxAt);
+          let rows = await DB.getAll(store);
+          if (store === 'settings') rows = rows.filter(r => !this.isLocalOnlySetting(r.key));
+          for (const r of rows) {
+            const id = store === 'settings' ? r.key : r.id;
+            if (remoteTs.has(String(id)) && this._localTs(r) <= remoteTs.get(String(id))) continue;
+            const data = this._toRemote(store, r);
+            if (!data) continue;
+            if (store !== 'settings') data.id = id;
+            items.push({ store, op: 'put', id, data });
+          }
+        } else if (ph === 'petPhotos') {
+          // 3) 반려견 프로필 사진: 받을 것은 받고, 클라우드에 없는 이 기기 사진은 올린다
+          const remote = new Set();
+          let maxAt = 0;
+          await this._readPaged('petPhotos', async docs => {
+            received += await this._applyPetPhotos(docs);
+            docs.forEach(d => remote.add(String(d.id)));
+            maxAt = Math.max(maxAt, this._maxServerAt(docs));
+          }, { pageSize: this._pageSizeFor('petPhotos') });
+          this._s.lastPullAt.petPhotos = Math.max(this._s.lastPullAt.petPhotos || 0, maxAt);
+          const localPets = await DB.getAll('pets');
+          const localPetIds = new Set(localPets.map(p => String(p.id)));
+          for (const p of localPets) {
+            if (remote.has(String(p.id))) continue;
+            const it = this._petPhotoItem('put', p.id, p, true);
+            if (it && it.op === 'put') items.push(it);
+          }
+          // 주인 없는 사진 문서 청소 — 반려견이 클라우드에도 이 기기에도 없으면 지운다 (이번에 반려견 단계를 함께 한 경우만)
+          if (cloudIds.pets) {
+            for (const id of remote) {
+              if (!cloudIds.pets.has(id) && !localPetIds.has(id)) items.push({ store: 'petPhotos', op: 'delete', id: Number(id), data: null });
+            }
+          }
+        } else if (ph === 'recordPhotos') {
+          // 4) 기록 사진도 같은 방식
+          const remote = new Set();
+          let maxAt = 0;
+          await this._readPaged('recordPhotos', async docs => {
+            received += await this._applyRecordPhotos(docs);
+            docs.forEach(d => remote.add(String(d.id)));
+            maxAt = Math.max(maxAt, this._maxServerAt(docs));
+          }, { pageSize: this._pageSizeFor('recordPhotos') });
+          this._s.lastPullAt.recordPhotos = Math.max(this._s.lastPullAt.recordPhotos || 0, maxAt);
+          const localRecs = await DB.getAllLight('records', ['photoBefore', 'photoAfter', 'photo3', 'photo4']);
+          const localRecIds = new Set(localRecs.map(r => String(r.id)));
+          for (const r of localRecs) {
+            for (const it of this._recordPhotoItems('put', r.id, r, true)) {
+              if (it.op === 'put' && !remote.has(String(it.id))) items.push(it);
+            }
+          }
+          if (cloudIds.records) {
+            for (const id of remote) {
+              const p = this._parseRecordPhotoId(id);
+              if (p && !cloudIds.records.has(String(p.rid)) && !localRecIds.has(String(p.rid))) {
+                delete this._pendingRecordPhotos[String(id)];
+                items.push({ store: 'recordPhotos', op: 'delete', id, data: null });
+              }
+            }
+          }
+          this._savePendingIds();
         }
+        if (items.length) await enqueue(items);
+        prog.done.push(ph);
+        await this._saveNow();
       }
-      // 3) 반려견 프로필 사진: 받을 것은 받고, 클라우드에 없는 이 기기 사진은 올린다
-      const ph = await this._col('petPhotos').get();
-      const phDocs = ph.docs.map(d => ({ id: d.id, data: d.data() }));
-      received += await this._applyPetPhotos(phDocs);
-      this._s.lastPullAt.petPhotos = Math.max(this._s.lastPullAt.petPhotos || 0, this._maxServerAt(phDocs));
-      const remotePhotos = new Set(phDocs.map(d => d.id));
-      const localPets = await DB.getAll('pets');
-      const localPetIds = new Set(localPets.map(p => String(p.id)));
-      for (const p of localPets) {
-        if (remotePhotos.has(String(p.id))) continue;
-        const it = this._petPhotoItem('put', p.id, p, true);
-        if (it && it.op === 'put') items.push(it);
-      }
-      // 주인 없는 사진 문서 청소 — 반려견이 클라우드에도 이 기기에도 없으면 지운다 (무료 용량이 조금씩 차는 것을 막는다)
-      for (const d of phDocs) {
-        if (!cloudIds.pets.has(String(d.id)) && !localPetIds.has(String(d.id))) items.push({ store: 'petPhotos', op: 'delete', id: Number(d.id), data: null });
-      }
-      // 4) 기록 사진도 같은 방식
-      const rp = await this._col('recordPhotos').get();
-      const rpDocs = rp.docs.map(d => ({ id: d.id, data: d.data() }));
-      received += await this._applyRecordPhotos(rpDocs);
-      this._s.lastPullAt.recordPhotos = Math.max(this._s.lastPullAt.recordPhotos || 0, this._maxServerAt(rpDocs));
-      const remoteRecordPhotos = new Set(rpDocs.map(d => d.id));
-      const localRecs = await DB.getAllLight('records', ['photoBefore', 'photoAfter', 'photo3', 'photo4']);
-      const localRecIds = new Set(localRecs.map(r => String(r.id)));
-      for (const r of localRecs) {
-        for (const it of this._recordPhotoItems('put', r.id, r, true)) {
-          if (it.op === 'put' && !remoteRecordPhotos.has(String(it.id))) items.push(it);
-        }
-      }
-      for (const d of rpDocs) {
-        const p = this._parseRecordPhotoId(d.id);
-        if (p && !cloudIds.records.has(String(p.rid)) && !localRecIds.has(String(p.rid))) {
-          delete this._pendingRecordPhotos[String(d.id)];
-          items.push({ store: 'recordPhotos', op: 'delete', id: d.id, data: null });
-        }
-      }
-      this._savePendingIds();
+      delete this._s.resync;
       await this._saveNow();
       this._progressDone();
       if (received) { this._settingsChanged = true; this._scheduleRefresh(); }
-      for (let i = 0; i < items.length; i += 1000) await this._enqueue(items.slice(i, i + 1000));
       await this._refreshPending();
-      if (items.length) this._progress = { total: this._pending, done: 0 };
+      if (queued) this._progress = { total: this._pending, done: 0 };
       this._busy = false;
       await this.flush();
       const parts = [];
-      if (items.length) parts.push(`올림 ${items.length}건`);
+      if (queued) parts.push(`올림 ${queued}건`);
       if (received) parts.push(`받음 ${received}건`);
       if (this._error) App.showToast(this._error, 'error');
       else App.showToast(parts.length ? `다시 맞추기 완료 · ${parts.join(' · ')}` : '이미 모두 맞춰져 있습니다.');
       return true;
     } catch (e) {
       this._progressDone();
-      this._fail(e, true);
+      try { await this._saveNow(); } catch (_) {}
+      if (received) this._scheduleRefresh();
+      if (e && e.code === 'resource-exhausted') {
+        this._handleError(e);
+        App.showToast(`오늘 무료 사용량을 다 써서 ${prog.done.length}/${phases.length}단계까지 맞췄습니다. 내일 '전체 다시 맞추기'를 다시 누르면 이어서 합니다.`, 'error', { duration: 8000 });
+      } else this._fail(e, true);
       return false;
     } finally {
       this._busy = false;
@@ -418,6 +462,7 @@ const Sync = {
       if (this._s) {
         this._s.enabled = false;
         this._s.lastPullAt = {};
+        delete this._s.pull; delete this._s.resync;
         await this._saveNow();
       }
       await this._clearQueue();
@@ -564,6 +609,8 @@ const Sync = {
     s.shopId = this.SHOP_ID;
     s.email = user.email;
     s.lastPullAt = {};
+    s.lastOnlineAt = Date.now();
+    delete s.pull; delete s.resync; delete s.staleFix;
     s.enabled = false;
     this._s = s;
     this._user = user;
@@ -614,7 +661,15 @@ const Sync = {
     if (mode === 'pull') {
       if (localHas) await this._backupLocal();
       await this._clearSyncedLocal();
-      await this.pullAll();
+      // 비운 레코드의 옛 사진 서명이 남아 있으면, 그 레코드를 고칠 때 클라우드 사진을 지우는 삭제가 올라간다
+      this._photoSig = {};
+      await DB.setSetting('_syncPhotoSig', {});
+      s.pull = { i: 0, lastId: null, since: {}, got: 0 };
+      // 받기 전에 켜 둔다 — 받다가 무료 한도에 걸려도 다음에 앱을 열면 이어서 받는다
+      s.enabled = true;
+      await this._saveNow();
+      try { await this.pullAll(); }
+      catch (e) { this._resumeLater(e); return; }
     } else {
       await shopRef.set({ createdAt: Date.now(), sourceDeviceId: s.deviceId, email: user.email }, { merge: true });
     }
@@ -634,6 +689,15 @@ const Sync = {
       App.handleRoute();
       if (App.updateBadges) App.updateBadges();
     }
+  },
+
+  _resumeLater(e) {
+    this._handleError(e);
+    const got = ((this._s.pull && this._s.pull.got) || 0).toLocaleString();
+    App.showToast(e && e.code === 'resource-exhausted'
+      ? `오늘 무료 사용량을 다 써서 ${got}건까지 받았습니다. 내일 앱을 열면 이어서 받습니다.`
+      : `받는 중 멈췄습니다 (${got}건). 다음에 앱을 열면 이어서 받습니다.`, 'error', { duration: 8000 });
+    App.handleRoute();
   },
 
   async _allocDeviceNo() {
@@ -678,30 +742,63 @@ const Sync = {
     this._lastId = {};
   },
 
-  // 전체 받기 (처음 연결 시 1회) — 컬렉션 전체를 읽는다
-  async pullAll() {
+  // 전체 받기 (처음 연결 시 1회). 몇 년 치 문서가 하루 무료 읽기 한도(5만 건)를 넘을 수 있어
+  // 나눠 받고, 어디까지 받았는지(this._s.pull)를 저장한다 → 한도에 걸리면 다음 날 이어서 받는다.
+  pullAll() {
+    // 같은 커서로 두 번 돌면 받은 위치가 섞여 문서를 건너뛴다 → 하나만 돌게 한다
+    if (!this._pullPromise) this._pullPromise = this._pullAllInner().finally(() => { this._pullPromise = null; });
+    return this._pullPromise;
+  },
+
+  async _pullAllInner() {
     this._progressToast('클라우드에서 받는 중...');
+    // 매장 설정·서비스 메뉴를 먼저 받는다 (한도에 걸려 며칠 나눠 받는 동안에도 앱을 쓸 수 있게)
+    const first = ['settings', 'services'];
+    const order = [...first, ...this.STORES.filter(st => !first.includes(st)), ...this.PHOTO_STORES];
+    const c = this._s.pull || (this._s.pull = { i: 0, lastId: null, since: {}, got: 0 });
+    await this._saveNow();
     try {
-      for (const store of this.STORES) {
-        const snap = await this._col(store).get();
-        const docs = snap.docs.map(d => ({ id: d.id, data: d.data() }));
-        await this._applyRemote(store, docs, true);
-        this._s.lastPullAt[store] = Math.max(this._s.lastPullAt[store] || 0, this._maxServerAt(docs));
+      if (c.tombSince == null) c.tombSince = await this._latestServerAt('tombstones');
+      for (; c.i < order.length; c.i++, c.lastId = null) {
+        const store = order[c.i];
+        // 받기 시작한 시점의 최신 시각 — 받는 동안 바뀐 문서는 리스너가 이 시각 이후로 다시 받는다
+        if (c.since[store] == null) { c.since[store] = await this._latestServerAt(store); await this._saveNow(); }
+        await this._readPaged(store, async docs => {
+          if (store === 'petPhotos') await this._applyPetPhotos(docs);
+          else if (store === 'recordPhotos') await this._applyRecordPhotos(docs);
+          else await this._applyRemote(store, docs, false); // 이 기기는 비워진 상태라 없는 것은 그대로 들어온다. 이어 받는 사이 이 기기에서 고친 것은 지키도록 최신 우선
+          c.got += docs.length;
+          this._progressToast(`클라우드에서 받는 중... ${c.got.toLocaleString()}건`);
+        }, { pageSize: this._pageSizeFor(store), startAfterId: c.lastId, onCursor: async id => { c.lastId = id; await this._saveNow(); } });
+        this._s.lastPullAt[store] = Math.max(this._s.lastPullAt[store] || 0, c.since[store] || 0);
       }
-      const ph = await this._col('petPhotos').get();
-      const phDocs = ph.docs.map(d => ({ id: d.id, data: d.data() }));
-      await this._applyPetPhotos(phDocs);
-      this._s.lastPullAt.petPhotos = this._maxServerAt(phDocs);
-      const rp = await this._col('recordPhotos').get();
-      const rpDocs = rp.docs.map(d => ({ id: d.id, data: d.data() }));
-      await this._applyRecordPhotos(rpDocs);
-      this._s.lastPullAt.recordPhotos = this._maxServerAt(rpDocs);
-      this._s.lastPullAt.tombstones = await this._latestServerAt('tombstones');
+      this._s.lastPullAt.tombstones = c.tombSince;
+      delete this._s.pull;
       this._lastSyncAt = Date.now();
+      await this._saveNow();
       if (App.migratePetVisitStats) { try { await App.migratePetVisitStats(true); } catch (_) {} }
     } finally {
       this._progressDone();
     }
+  },
+
+  // 받기가 중간에 멈춘 경우(무료 한도 등) 이어 받고, 끝나면 리스너를 시작한다
+  async _resumePull() {
+    if (this._pulling) return;
+    this._pulling = true;
+    try {
+      await this.pullAll();
+      App.showToast('클라우드 데이터를 모두 받았습니다.');
+      App._dashboardDirty = true;
+      try { if (App.applyShopName) await App.applyShopName(); } catch (_) {}
+      App.handleRoute();
+      this._pulling = false;
+      this._startListeners();
+    } catch (e) {
+      this._handleError(e);
+      if (e && e.code === 'resource-exhausted') App.showToast(`오늘 무료 사용량을 다 써서 ${((this._s.pull && this._s.pull.got) || 0).toLocaleString()}건까지 받았습니다. 내일 앱을 열면 이어서 받습니다.`, 'error', { duration: 8000 });
+      else App.showToast('클라우드 데이터를 받는 중 멈췄습니다. 다음에 앱을 열면 이어서 받습니다.', 'error');
+    } finally { this._pulling = false; this._emit(); }
   },
 
   // 전체 올리기 — 보낼 편지함에 모두 넣고 flush (중간에 끊겨도 다음에 이어서 보낸다)
@@ -735,8 +832,7 @@ const Sync = {
     if (replace) {
       // 클라우드에만 있는 문서 → 삭제(+tombstone) 로 다른 기기에서도 지워지게 한다
       for (const store of [...this.STORES, ...this.PHOTO_STORES]) {
-        const snap = await this._col(store).get();
-        snap.docs.forEach(d => {
+        await this._readPaged(store, async docs => docs.forEach(d => {
           if (localIds[store].has(d.id)) return;
           // 사진 문서는 다른 기기가 올린 원본일 수 있다 — 그 레코드가 이 기기에 있으면 지우지 않는다
           // (예전엔 복원 때 사본 문서를 지우면서 삭제 표시가 퍼져 원본 기기의 사진까지 지워졌다)
@@ -744,7 +840,7 @@ const Sync = {
           if (store === 'recordPhotos') { const p = this._parseRecordPhotoId(d.id); if (p && localIds.records.has(String(p.rid))) return; }
           const id = (store === 'settings' || store === 'recordPhotos') ? d.id : Number(d.id);
           items.push({ store, op: 'delete', id, data: null });
-        });
+        }), { pageSize: this._pageSizeFor(store) });
       }
     }
     for (let i = 0; i < items.length; i += 1000) await this._enqueue(items.slice(i, i + 1000));
@@ -877,8 +973,18 @@ const Sync = {
   _startListeners() {
     this._stopListeners();
     if (!this._fs || !this._user || !this.isEnabled()) return;
+    if (this._s.pull) { this._resumePull(); return; } // 처음 받기가 아직 덜 끝났다
+    // 삭제 표시는 180일 뒤 지워진다 → 150일 넘게 연결하지 않은 기기는 놓친 삭제가 있을 수 있어 새로 받는다
+    const lastOn = Math.max(this._s.lastOnlineAt || 0, this._s.lastSyncAt || 0);
+    if (!this._s.staleFix && lastOn && Date.now() - lastOn > this.STALE_DAYS * 86400000) this._s.staleFix = { done: [] };
+    if (this._s.staleFix) { this._runStaleFix(); return; }
+    this._s.lastOnlineAt = Date.now();
+    this._saveLater();
+    this._listenStartedAt = Date.now();
+    this._pruneTombstones().catch(e => console.warn('Sync: 삭제 표시 정리 실패', e));
     const TS = firebase.firestore.Timestamp;
     this._retryPendingRecordPhotos();
+    this._applyChain = this._applyChain.then(() => this._movePetPhotosToStore()).catch(e => console.warn('Sync: 반려견 사진 옮기기 실패', e));
     for (const store of [...this.STORES, ...this.PHOTO_STORES, 'tombstones']) {
       let q = this._col(store);
       const since = this._s.lastPullAt && this._s.lastPullAt[store];
@@ -890,6 +996,85 @@ const Sync = {
       );
       this._unsubs.push(unsub);
     }
+  },
+
+  // 오래된 삭제 표시 정리 (주 1회, 어느 기기든). 지우는 만큼만 읽는다.
+  async _pruneTombstones() {
+    if (!this._s || Date.now() - (this._s.tombPrunedAt || 0) < 7 * 86400000) return;
+    // 기준은 서버 시각 (시계가 앞선 기기가 최근 삭제 표시까지 지우지 않게)
+    const latest = await this._latestServerAt('tombstones');
+    if (!latest) { this._s.tombPrunedAt = Date.now(); this._saveLater(); return; }
+    const cutoff = firebase.firestore.Timestamp.fromMillis(latest - this.TOMBSTONE_KEEP_DAYS * 86400000);
+    for (let round = 0; round < 10; round++) {
+      const snap = await this._col('tombstones').where('_serverAt', '<', cutoff).limit(400).get();
+      if (snap.empty) break;
+      const b = this._fs.batch();
+      snap.docs.forEach(d => b.delete(d.ref));
+      await this._withTimeout(b.commit(), 30000);
+      if (snap.size < 400) break;
+    }
+    this._s.tombPrunedAt = Date.now();
+    this._saveLater();
+  },
+
+  // 오래 연결하지 않은 기기 (삭제 표시가 정리됐을 수 있음): 먼저 이 기기 변경을 모두 보낸 뒤,
+  // 클라우드에 없는 레코드(= 그동안 다른 기기에서 지운 것)만 이 기기에서 지우고 나머지는 최신 우선으로 맞춘다.
+  // 지우고 다시 받지 않으므로 이 기기의 원본 사진 연결(photoId 등)이 그대로 남는다. 멈추면 다음에 남은 단계부터 이어 한다.
+  async _runStaleFix() {
+    if (this._staleRunning) return;
+    this._staleRunning = true;
+    const fix = this._s.staleFix;
+    try {
+      await this.flush();
+      await this._refreshPending();
+      if (this._pending > 0 || this._error) return; // 다 보내지 못했다 — 다음 연결 때 다시 (보내기 전에 지우면 이 기기 변경이 사라진다)
+      // 혹시 모를 경우(전송이 거부돼 클라우드에 없던 레코드 등)를 위해 맞추기 전 상태를 보관 — 설정 > 데이터에서 7일간 되돌릴 수 있다
+      if (!fix.done.length && !fix.backedUp) { await this._backupLocal(); fix.backedUp = true; }
+      await this._saveNow();
+      this._progressToast('오래 쉬었던 기기라 클라우드와 맞추는 중...');
+      for (const store of this.ID_STORES) {
+        if (fix.done.includes(store)) continue;
+        const since = await this._latestServerAt(store);
+        const cloud = new Set();
+        await this._readPaged(store, async docs => {
+          docs.forEach(d => cloud.add(String(d.id)));
+          await this._applyRemote(store, docs, false);
+        });
+        const localKeys = await new Promise((resolve, reject) => {
+          const req = DB.db.transaction(store, 'readonly').objectStore(store).getAllKeys();
+          req.onsuccess = () => resolve(req.result || []);
+          req.onerror = () => reject(req.error);
+        });
+        const gone = localKeys.filter(k => !cloud.has(String(k)));
+        if (gone.length) {
+          await new Promise((resolve, reject) => {
+            const tx = DB.db.transaction(store, 'readwrite');
+            const os = tx.objectStore(store);
+            gone.forEach(k => os.delete(k));
+            tx.oncomplete = () => resolve();
+            tx.onerror = () => reject(tx.error);
+            tx.onabort = () => reject(tx.error);
+          });
+        }
+        this._s.lastPullAt[store] = Math.max(this._s.lastPullAt[store] || 0, since);
+        fix.done.push(store);
+        fix.removed = (fix.removed || 0) + gone.length;
+        await this._saveNow();
+      }
+      delete this._s.staleFix;
+      this._s.lastOnlineAt = Date.now();
+      await this._saveNow();
+      this._progressDone();
+      if (fix.removed && App.notifyTabSync) App.notifyTabSync();
+      App._dashboardDirty = true;
+      App.showToast(fix.removed ? `오래 쉬었던 기기를 맞췄습니다 · 다른 기기에서 지운 ${fix.removed}건 정리` : '오래 쉬었던 기기를 클라우드와 맞췄습니다.');
+      this._staleRunning = false;
+      this._startListeners();
+    } catch (e) {
+      this._progressDone();
+      try { await this._saveNow(); } catch (_) {}
+      this._handleError(e);
+    } finally { this._staleRunning = false; this._emit(); }
   },
 
   _stopListeners() {
@@ -924,6 +1109,7 @@ const Sync = {
         this._s.lastPullAt[store] = Math.max(this._s.lastPullAt[store] || 0, maxTs);
         this._lastSyncAt = Date.now();
         this._s.lastSyncAt = this._lastSyncAt;
+        this._s.lastOnlineAt = this._lastSyncAt;
         this._saveLater();
         if (changed) {
           if (store === 'settings') this._settingsChanged = true;
@@ -957,7 +1143,14 @@ const Sync = {
           changed++;
         };
       }
-      tx.oncomplete = () => { if (changed && App.notifyTabSync) App.notifyTabSync(); resolve(changed); };
+      tx.oncomplete = async () => {
+        if (store === 'pets' && this._latePetPhotos && this._latePetPhotos.length) {
+          const late = this._latePetPhotos.splice(0);
+          try { await this._applyPetPhotos(late); } catch (_) {}
+        }
+        if (changed && App.notifyTabSync) App.notifyTabSync();
+        resolve(changed);
+      };
       tx.onerror = () => reject(tx.error);
       tx.onabort = () => reject(tx.error);
     });
@@ -999,54 +1192,78 @@ const Sync = {
     return Promise.all(photoJobs).then(() => Promise.all(storeJobs())).then(() => { if (total && App.notifyTabSync) App.notifyTabSync(); return total; });
   },
 
-  // 반려견 프로필 사진(400px) — 이 기기에 원본 사진이 없을 때만 넣는다
-  _applyPetPhotos(docs) {
-    if (!docs.length) return Promise.resolve(0);
-    return new Promise((resolve, reject) => {
-      let changed = 0;
-      const tx = DB.db.transaction('pets', 'readwrite');
-      const os = tx.objectStore('pets');
-      for (const doc of docs) {
-        const petId = Number(doc.id);
-        const data = doc.data && doc.data.data;
-        if (!Number.isFinite(petId) || !data) continue;
-        const req = os.get(petId);
-        req.onsuccess = () => {
-          const pet = req.result;
-          if (!pet) { this._pendingPhotos[petId] = data; return; }
-          if (pet.photoId || (pet.photo && !pet._photoFromSync)) return;
-          if (pet.photo === data) return;
-          pet.photo = data;
-          pet._photoFromSync = true;
-          os.put(pet);
-          changed++;
-        };
-      }
-      tx.oncomplete = () => { if (changed && App.notifyTabSync) App.notifyTabSync(); resolve(changed); };
-      tx.onerror = () => reject(tx.error);
-      tx.onabort = () => reject(tx.error);
-    });
+  // 반려견 프로필 사진(400px) — 이 기기에 원본 사진이 없을 때만 넣는다.
+  // 받은 사진은 반려견 기록 안(photo)이 아니라 photos 스토어에 두고 photoId 로 가리킨다 (_photoFromSync=true).
+  // 예전엔 반려견 기록 안에 넣어서, 반려견 목록·홈·폼을 열 때마다 모든 사진을 함께 읽어 몇 년 뒤 느려졌다.
+  async _applyPetPhotos(docs) {
+    let changed = 0;
+    for (const doc of docs || []) {
+      const petId = Number(doc.id);
+      const data = doc.data && doc.data.data;
+      if (!Number.isFinite(petId) || !data || typeof data !== 'string') continue;
+      try {
+        const pet = await DB.get('pets', petId);
+        if (!pet) { this._pendingPhotos[petId] = data; continue; }
+        if (!pet._photoFromSync && (pet.photoId || pet.photo)) continue; // 이 기기에서 찍은 원본
+        const sig = data.length + ':' + data.slice(-24);
+        if (pet._syncPhotoSig === sig && pet.photoId) continue;
+        const newId = await DB.savePhoto(data, { type: 'pet-profile', ownerId: petId });
+        // 읽기와 쓰기를 한 트랜잭션에서 — 그 사이에 들어온 다른 변경(받은 반려견 정보·폼 저장)을 덮지 않게
+        let oldId = null, applied = false;
+        await this._patchPet(petId, p => {
+          if (!p || (!p._photoFromSync && (p.photoId || p.photo))) return null;
+          oldId = p.photoId || null;
+          p.photoId = newId;
+          delete p.photo;
+          p._photoFromSync = true;
+          p._syncPhotoSig = sig;
+          applied = true;
+          return p;
+        });
+        if (!applied) { await DB.deletePhoto(newId); continue; }
+        if (oldId && oldId !== newId) await DB.deletePhoto(oldId);
+        changed++;
+      } catch (e) { console.warn('Sync: 반려견 사진 저장 실패', petId, e); }
+    }
+    if (changed && App.notifyTabSync) App.notifyTabSync();
+    return changed;
   },
 
-  _clearSyncedPetPhotos(petIds) {
-    return new Promise((resolve, reject) => {
-      let changed = 0;
-      const tx = DB.db.transaction('pets', 'readwrite');
-      const os = tx.objectStore('pets');
-      petIds.forEach(id => {
-        if (!Number.isFinite(id)) return;
-        delete this._pendingPhotos[id];
-        const req = os.get(id);
-        req.onsuccess = () => {
-          const pet = req.result;
-          if (pet && pet._photoFromSync) { delete pet.photo; delete pet._photoFromSync; os.put(pet); changed++; }
-        };
-      });
-      tx.oncomplete = () => resolve(changed);
-      tx.onerror = () => reject(tx.error);
-      tx.onabort = () => reject(tx.error);
-    });
+  // 예전 방식(반려견 기록 안)으로 받아 둔 사진을 photos 스토어로 1회 옮긴다
+  async _movePetPhotosToStore() {
+    if (!this._s || this._s.petPhotosInStore) return;
+    const pets = await DB.getAll('pets');
+    const docs = pets.filter(p => p._photoFromSync && typeof p.photo === 'string' && p.photo.length > 100)
+      .map(p => ({ id: p.id, data: { data: p.photo } }));
+    // 저장에 성공한 것만 기록 안 사진이 지워진다 (_applyPetPhotos 가 photoId 를 넣으며 photo 를 뺀다)
+    await this._applyPetPhotos(docs);
+    this._s.petPhotosInStore = true;
+    await this._saveNow();
   },
+
+
+  async _clearSyncedPetPhotos(petIds) {
+    let changed = 0;
+    for (const id of petIds) {
+      if (!Number.isFinite(id)) continue;
+      delete this._pendingPhotos[id];
+      try {
+        let oldId = null, applied = false;
+        await this._patchPet(id, p => {
+          if (!p || !p._photoFromSync) return null;
+          oldId = p.photoId || null;
+          delete p.photo; delete p.photoId; delete p._photoFromSync; delete p._syncPhotoSig;
+          applied = true;
+          return p;
+        });
+        if (!applied) continue;
+        if (oldId) await DB.deletePhoto(oldId);
+        changed++;
+      } catch (e) { console.warn('Sync: 반려견 사진 삭제 반영 실패', id, e); }
+    }
+    return changed;
+  },
+
 
   // 화면 갱신 — 입력 중이거나 모달이 열려 있으면 미룬다 (작성 중인 내용이 사라지지 않게)
   _scheduleRefresh(delay = 400) {
@@ -1123,8 +1340,7 @@ const Sync = {
       }
     }
     if (store === 'pets' && !rec.photoId && !rec.photo && this._pendingPhotos[rec.id]) {
-      rec.photo = this._pendingPhotos[rec.id];
-      rec._photoFromSync = true;
+      (this._latePetPhotos = this._latePetPhotos || []).push({ id: rec.id, data: { data: this._pendingPhotos[rec.id] } });
       delete this._pendingPhotos[rec.id];
     }
     return rec;
@@ -1151,7 +1367,8 @@ const Sync = {
     const prev = this._photoSig[id];
     let sig = null;
     if (op === 'put' && pet) {
-      if (pet.photoId) sig = 'id:' + pet.photoId;
+      if (pet._photoFromSync) sig = null; // 다른 기기에서 받은 사본
+      else if (pet.photoId) sig = 'id:' + pet.photoId;
       else if (pet.photo && !pet._photoFromSync && typeof pet.photo === 'string') sig = 'in:' + pet.photo.length + ':' + pet.photo.slice(-24);
     }
     if (sig === prev && !force) return null;
@@ -1166,7 +1383,7 @@ const Sync = {
   async _buildPetPhoto(petId, ts) {
     try {
       const pet = await DB.get('pets', petId);
-      if (!pet) return null;
+      if (!pet || pet._photoFromSync) return null;
       let src = null;
       if (pet.photoId) src = await DB.getPhoto(pet.photoId);
       if (!src && pet.photo && !pet._photoFromSync) src = pet.photo;
@@ -1343,6 +1560,19 @@ const Sync = {
   },
 
   // 동기화 훅·updatedAt 갱신 없이 그대로 저장 (받은 내용을 다시 올리지 않게)
+  // 반려견 한 마리를 한 트랜잭션 안에서 읽고 고쳐 쓴다 (fn 이 null 을 돌려주면 쓰지 않음)
+  _patchPet(id, fn) {
+    return new Promise((resolve, reject) => {
+      const tx = DB.db.transaction('pets', 'readwrite');
+      const os = tx.objectStore('pets');
+      const req = os.get(id);
+      req.onsuccess = () => { const next = fn(req.result); if (next) os.put(next); };
+      tx.oncomplete = () => resolve();
+      tx.onerror = () => reject(tx.error);
+      tx.onabort = () => reject(tx.error);
+    });
+  },
+
   _putRaw(store, rec) {
     return new Promise((resolve, reject) => {
       const tx = DB.db.transaction(store, 'readwrite');
@@ -1456,6 +1686,29 @@ const Sync = {
     docs.forEach(d => { const t = d.data._serverAt; const ms = t && t.toMillis ? t.toMillis() : 0; if (ms > m) m = ms; });
     return m;
   },
+
+  // 컬렉션을 문서 id 순서로 나눠 읽는다 — 한 번에 다 읽으면 몇 년 뒤 메모리·무료 읽기 한도를 넘는다.
+  // onCursor 로 마지막 id 를 저장해 두면, 한도에 걸려 멈춰도 다음에 그 다음부터 이어 읽는다.
+  async _readPaged(name, onPage, { pageSize = 500, startAfterId = null, onCursor = null } = {}) {
+    const FP = firebase.firestore.FieldPath;
+    let last = startAfterId;
+    let total = 0;
+    for (;;) {
+      let q = this._col(name).orderBy(FP.documentId()).limit(pageSize);
+      if (last != null) q = q.startAfter(String(last));
+      const snap = await q.get();
+      if (snap.empty) break;
+      const docs = snap.docs.map(d => ({ id: d.id, data: d.data() }));
+      await onPage(docs);
+      last = snap.docs[snap.docs.length - 1].id;
+      total += docs.length;
+      if (onCursor) await onCursor(last);
+      if (snap.size < pageSize) break;
+    }
+    return total;
+  },
+
+  _pageSizeFor(name) { return this.PHOTO_STORES.includes(name) ? 100 : 500; },
 
   async _latestServerAt(name) {
     const snap = await this._col(name).orderBy('_serverAt', 'desc').limit(1).get();

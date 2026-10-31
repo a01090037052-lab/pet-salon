@@ -732,6 +732,7 @@ App.pages.pets = {
           data.photo = '';
           data.photoId = null;
           data.photoThumb = null;
+          data._photoFromSync = false; data._syncPhotoSig = null;
         } else if (photoChanged) {
           // 새 사진 업로드됨 → photos 스토어에 저장
           if (existing.photoId) { await DB.deletePhoto(existing.photoId); }
@@ -743,6 +744,8 @@ App.pages.pets = {
           } catch (e) {
             data.photo = photoRaw; // fallback: 인라인 저장
           }
+          // 이 기기에서 새로 넣은 사진 = 원본 (받은 사본 표시를 지워야 다른 기기로 올라간다)
+          data._photoFromSync = false; data._syncPhotoSig = null;
         } else {
           // 사진 변경 없음 → 기존 photoId/photoThumb/photo 유지
           data.photoId = existing.photoId;
