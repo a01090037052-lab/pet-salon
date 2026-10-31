@@ -2599,12 +2599,8 @@ App.pages.records = {
   },
   // 사진 카드 스티커 — Google Noto Emoji(Apache 2.0) 를 256px WebP 로 앱에 넣어 둔다 (기기마다 모양이 같고 오프라인에서도 된다)
   _STICKERS: ['1f43e', '2764', '1f495', '1f496', '1f49d', '1f380', '1f9b4', '2728', '1f451', '1f338', '1f337', '1f33c', '1f490', '2b50', '1f31f', '2702', '1fae7', '1f6c1', '1f436', '1f415', '1f429', '1f431', '1f9f8', '1f389', '1f382', '1f388', '1f308', '2600', '2744', '1f384', '1f340', '1f4af', '1f44d', '1f60d', '1f970'],
-  // 펫살롱 전용 스티커 (직접 그린 다이컷 스타일 · 파스텔 · 흰 테두리) — 먼저 보여 준다
-  _PET_STICKERS: ['pt_paw', 'pt_heart', 'pt_ribbon', 'pt_bone', 'pt_sparkles', 'pt_crown', 'pt_poodle', 'pt_maltese', 'pt_t_pretty', 'pt_t_first', 'pt_t_goodboy', 'pt_t_goodgirl', 'pt_t_clean', 'pt_t_newlook', 'pt_t_happy', 'pt_t_thanks', 'pt_t_bday', 'pt_scissors', 'pt_comb', 'pt_bubbles', 'pt_shampoo', 'pt_cake', 'pt_balloons', 'pt_rainbow', 'pt_blossom', 'pt_clover', 'pt_maple', 'pt_snow'],
   // 세련된 스타일 (차분한 색·글자 중심 배지·라벨·오라 그라데이션) — 기본으로 먼저 보여 준다
   _CHIC_STICKERS: ['pt_chic_goodvibes', 'pt_chic_nobad', 'pt_chic_beyou', 'pt_chic_sofluffy', 'pt_chic_freshcut', 'pt_chic_club', 'pt_chic_gooddog', 'pt_chic_ticket', 'pt_chic_fresh_star', 'pt_chic_tag', 'pt_chic_stamp', 'pt_chic_pretty', 'pt_chic_today_dog', 'pt_chic_bubble_done', 'pt_chic_bubble_bosong', 'pt_chic_groomed', 'pt_chic_withlove', 'pt_chic_green_paw', 'pt_chic_dogline', 'pt_chic_aura_lovely', 'pt_chic_aura_fluffy', 'pt_chic_aura_heart'],
-  // 힙한 스타일 (형광·크롬·홀로그램·굵은 검정 선, 요즘 유행어)
-  _HIP_STICKERS: ['pt_hip_omiwan', 'pt_hip_lucky', 'pt_hip_simkung', 'pt_hip_caution', 'pt_hip_mungmung', 'pt_hip_slay', 'pt_hip_luv', 'pt_hip_newhair', 'pt_hip_main', 'pt_hip_glowup', 'pt_hip_wow', 'pt_hip_chrome_star', 'pt_hip_smiley', 'pt_hip_checker_heart', 'pt_hip_holo_heart', 'pt_hip_pixel_heart', 'pt_hip_flame', 'pt_hip_bolt', 'pt_hip_daisy', 'pt_hip_shades'],
   _stickerSrc(id) { return String(id).startsWith('pt_') ? `assets/stickers/${id}.webp` : `assets/stickers/emoji_u${id}.webp`; },
   _stickerSrcOf(st) {
     if (st.src) return st.src; // 글자 스티커 (만들어 둔 그림)
@@ -3726,8 +3722,6 @@ App.pages.records = {
           <label class="form-label">스티커 <span style="font-size:0.78rem;color:var(--text-muted);font-weight:400">· 누르면 붙어요, 미리보기에서 끌어 옮기세요</span></label>
           <div class="card-sticker-sets" role="tablist" aria-label="스티커 묶음">
             <button type="button" class="card-sticker-set active" data-set="chic">세련된</button>
-            <button type="button" class="card-sticker-set" data-set="cute">귀여운</button>
-            <button type="button" class="card-sticker-set" data-set="hip">힙한</button>
             <button type="button" class="card-sticker-set" data-set="emoji">이모지</button>
           </div>
           <div id="card-sticker-pick" class="card-sticker-row">
@@ -3736,8 +3730,6 @@ App.pages.records = {
             <button type="button" class="card-sticker-tool" id="card-sticker-logo"><b>◎</b><small>내 로고</small></button>
             <span id="card-sticker-custom" class="card-sticker-custom"></span>
             ${this._CHIC_STICKERS.map(id => `<button type="button" class="card-sticker-btn" data-set="chic" data-sticker="${id}" aria-label="스티커 붙이기"><img src="${this._stickerSrc(id)}" alt="" loading="lazy"></button>`).join('')}
-            ${this._PET_STICKERS.map(id => `<button type="button" class="card-sticker-btn" data-set="cute" data-sticker="${id}" aria-label="스티커 붙이기" hidden><img src="${this._stickerSrc(id)}" alt="" loading="lazy"></button>`).join('')}
-            ${this._HIP_STICKERS.map(id => `<button type="button" class="card-sticker-btn" data-set="hip" data-sticker="${id}" aria-label="스티커 붙이기" hidden><img src="${this._stickerSrc(id)}" alt="" loading="lazy"></button>`).join('')}
             ${this._STICKERS.map(id => `<button type="button" class="card-sticker-btn" data-set="emoji" data-sticker="${id}" aria-label="스티커 붙이기" hidden><img src="${this._stickerSrc(id)}" alt="" loading="lazy"></button>`).join('')}
           </div>
           <div class="card-sticker-sub">
