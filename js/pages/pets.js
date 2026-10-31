@@ -113,8 +113,7 @@ App.pages.pets = {
           }
 
           // 알러지/건강 주의 아이콘
-          const hasWarn = (p.allergies && p.allergies.trim() && !['없음','-'].includes(p.allergies.trim())) ||
-                          (p.healthNotes && p.healthNotes.trim() && !['없음','-'].includes(p.healthNotes.trim()));
+          const hasWarn = App.hasPetNote(p.allergies) || App.hasPetNote(p.healthNotes);
           const warnIcon = hasWarn ? `<span style="color:var(--danger);font-size:0.85rem;font-weight:700;line-height:1" title="알러지/건강 주의">${App.icon('alert', 'ico-sm')}</span>` : '';
 
           // 사진
@@ -239,8 +238,8 @@ App.pages.pets = {
       </div>
 
       ${(() => {
-        const hasAllergy = pet.allergies && pet.allergies.trim() && !['없음', '-'].includes(pet.allergies.trim());
-        const hasHealth = pet.healthNotes && pet.healthNotes.trim() && !['없음', '-'].includes(pet.healthNotes.trim());
+        const hasAllergy = App.hasPetNote(pet.allergies);
+        const hasHealth = App.hasPetNote(pet.healthNotes);
         if (!hasAllergy && !hasHealth) return '';
         return `
       <div style="background:var(--danger-bg-soft);border:1.5px solid var(--danger);border-radius:var(--radius);padding:12px 14px;margin-bottom:16px;display:flex;gap:10px;align-items:flex-start">

@@ -410,8 +410,10 @@ App.pages.services = {
         App.handleRoute();
       } catch (e) {
         console.error('일괄 가격 조정 실패:', e);
-        App.showToast('적용 중 오류가 발생했습니다.', 'error');
-        btn.disabled = false;
+        // 일부만 바뀌었을 수 있으니 같은 미리보기로 다시 적용하지 않게 닫고 새로 고친다
+        App.showToast('적용 중 오류가 발생했습니다. 가격을 확인한 뒤 다시 조정해주세요.', 'error');
+        App.closeModal();
+        App.handleRoute();
       }
     });
     document.getElementById('bulk-cancel')?.addEventListener('click', () => {

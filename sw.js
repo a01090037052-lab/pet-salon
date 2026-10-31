@@ -67,3 +67,13 @@ self.addEventListener('fetch', (e) => {
     )
   );
 });
+
+// 알림을 누르면 앱을 연다 (열린 창이 있으면 그 창으로)
+self.addEventListener('notificationclick', (e) => {
+  e.notification.close();
+  e.waitUntil((async () => {
+    const all = await self.clients.matchAll({ type: 'window', includeUncontrolled: true });
+    for (const c of all) { if ('focus' in c) { try { await c.focus(); return; } catch (_) {} } }
+    if (self.clients.openWindow) await self.clients.openWindow('./#appointments');
+  })());
+});

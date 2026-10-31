@@ -804,10 +804,11 @@ App.pages.appointments = {
       if (!Number.isFinite(h)) return;
       startH = Math.min(startH, h);
       const endMin = h * 60 + (m || 0) + (a.duration || 60);
-      endH = Math.max(endH, Math.min(23, Math.ceil(endMin / 60)));
+      endH = Math.max(endH, Math.min(24, Math.ceil(endMin / 60)));
     });
+    // 마지막 칸은 23:30 까지 (23:30 예약도 보이게)
     const slots = [];
-    for (let h = startH; h <= endH; h++) {
+    for (let h = startH; h <= endH && h < 24; h++) {
       slots.push(`${String(h).padStart(2, '0')}:00`);
       if (h < endH) slots.push(`${String(h).padStart(2, '0')}:30`);
     }
@@ -889,8 +890,8 @@ App.pages.appointments = {
   },
 
   applyFilters(special) {
-    // 검색·상태를 바꿔도 '이번주' 빠른 필터는 유지
-    if (!special && document.querySelector('.quick-filter-btn.active')?.dataset.filter === 'week') special = 'week';
+    // 검색·상태를 바꿔도 '이번주' 빠른 필터는 유지 (특정 날짜를 고르면 그 날짜가 우선)
+    if (!special && !document.getElementById('filter-date')?.value && document.querySelector('.quick-filter-btn.active')?.dataset.filter === 'week') special = 'week';
     const search = (document.getElementById('appt-search')?.value || '').toLowerCase();
     const status = document.getElementById('filter-status')?.value || '';
     const date = document.getElementById('filter-date')?.value || '';

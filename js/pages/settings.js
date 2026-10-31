@@ -52,7 +52,12 @@ App.pages.settings = {
       DB.count('services')
     ]);
     // 직전 복원 취소용 메타 (사본 본문은 크므로 메타만 읽는다)
-    const undoMeta = await DB.getSetting('_autoBackupBeforeImportMeta');
+    let undoMeta = await DB.getSetting('_autoBackupBeforeImportMeta');
+    // 되돌리기 사본은 7일만 보관 — 오래된 사본으로 되돌리면 그 뒤에 쌓인 예약·기록이 (동기화 시 모든 기기에서) 사라진다
+    if (undoMeta && undoMeta.date && (Date.now() - Date.parse(undoMeta.date)) > 7 * 86400000) {
+      try { await DB.delete('settings', '_autoBackupBeforeImport'); await DB.delete('settings', '_autoBackupBeforeImportMeta'); } catch (_) {}
+      undoMeta = null;
+    }
     const recordPhotoKeep = await App.getRecordPhotoKeep();
 
     // 보안 설정 로드
@@ -228,7 +233,7 @@ App.pages.settings = {
                   <input type="checkbox" id="s-notifEnabled" ${notifEnabled ? 'checked' : ''}>
                   예약 알림 활성화
                 </label>
-                <div class="form-hint">브라우저 알림을 사용하여 예약 전 알림을 보냅니다</div>
+                <div class="form-hint">예약 전에 알림을 띄웁니다. 앱이 열려 있을 때만 옵니다 (앱을 닫으면 오지 않아요).</div>
               </div>
               <div class="form-group">
                 <label class="form-label">알림 시간</label>
@@ -677,7 +682,7 @@ App.pages.settings = {
         const records = await DB.getAllLight('records', ['photoBefore', 'photoAfter', 'memo']);
         const usedRemoved = removed.filter(g => records.some(r => r.groomer === g));
         if (usedRemoved.length > 0) {
-          const ok = await App.confirm(`"${usedRemoved.join(', ')}" 미용사가 기존 기록에 사용 중입니다.<br>삭제해도 기존 기록에는 이름이 유지됩니다. 계속할까요?`);
+          const ok = await App.confirm(`"${App.escapeHtml(usedRemoved.join(', '))}" 미용사가 기존 기록에 사용 중입니다.<br>삭제해도 기존 기록에는 이름이 유지됩니다. 계속할까요?`);
           if (!ok) return;
         }
       }
@@ -945,7 +950,10 @@ App.pages.settings = {
 
     // 복원 전 상태로 되돌리기 (직전 복원이 잘못된 파일이었을 때)
     document.getElementById('btn-undo-import')?.addEventListener('click', async () => {
-      const ok = await App.confirm('현재 데이터를 지우고 <strong>복원 직전 상태</strong>로 되돌립니다.<br><small style="color:var(--text-muted)">사진 스토어는 건드리지 않습니다. 되돌린 뒤에도 이 사본은 유지됩니다.</small>', { okLabel: '되돌리기' });
+      const meta = await DB.getSetting('_autoBackupBeforeImportMeta');
+      const when = meta && meta.date ? App.formatDateTime(meta.date) : '보관 시점';
+      const syncOn = typeof Sync !== 'undefined' && Sync.isEnabled && Sync.isEnabled();
+      const ok = await App.confirm(`현재 데이터를 지우고 <strong>${App.escapeHtml(when)} 상태</strong>로 되돌립니다.<br><strong style="color:var(--danger)">그 뒤에 추가·수정한 예약과 기록은 사라집니다${syncOn ? ' (동기화 중이라 다른 기기에서도 사라집니다)' : ''}.</strong><br><small style="color:var(--text-muted)">사진 스토어는 건드리지 않습니다.</small>`, { okLabel: '되돌리기' });
       if (!ok) return;
       const autoBackup = await DB.getSetting('_autoBackupBeforeImport');
       if (!autoBackup || !autoBackup.data) { App.showToast('보관된 사본이 없습니다.', 'error'); return; }
@@ -1152,6 +1160,24 @@ App.pages.settings = {
             reader.onload = e => resolve(e.target.result);
             reader.onerror = reject;
             reader.readAsDataURL(fileInput.files[0]);
+          });
+          // 원본(수 MB)을 그대로 두면 백업 파일·복원 사본이 매번 커진다 → 긴 변 2400px 로 줄인다 (투명 PNG 는 PNG 유지)
+          image = await new Promise(resolve => {
+            const img = new Image();
+            img.onload = () => {
+              const max = 2400;
+              const r = Math.min(1, max / Math.max(img.width, img.height));
+              if (r >= 1) { resolve(image); return; }
+              const cv = document.createElement('canvas');
+              cv.width = Math.round(img.width * r); cv.height = Math.round(img.height * r);
+              cv.getContext('2d').drawImage(img, 0, 0, cv.width, cv.height);
+              const isPng = /^data:image\/png/i.test(image);
+              const out = isPng ? cv.toDataURL('image/png') : cv.toDataURL('image/jpeg', 0.9);
+              cv.width = cv.height = 0;
+              resolve(out.length < image.length ? out : image);
+            };
+            img.onerror = () => resolve(image);
+            img.src = image;
           });
         }
         const updated = {

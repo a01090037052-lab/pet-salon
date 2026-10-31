@@ -45,6 +45,14 @@ const App = {
       this.migratePetVisitStats();
       // v175 이전에 기록 본문에 박혀 있던 사진을 photos 스토어로 1회 옮긴다 — 그래야 반려견 상세 사진 줄에 보이고 동기화·보관 정리 대상이 된다
       setTimeout(() => this.migrateInlinePhotos().catch(e => console.warn('인라인 사진 변환 실패 (무시):', e)), 8000);
+      // 복원이 중간에 실패하면 남는 임시 사본(최대 수 MB)이 휴대폰 저장 공간을 계속 차지했다 → 7일 지나면 지운다
+      try {
+        const snap = localStorage.getItem('__petsalon_import_snapshot__');
+        if (snap) {
+          const ts = Number((snap.match(/"ts":(\d+)/) || [])[1]) || 0;
+          if (!ts || Date.now() - ts > 7 * 86400000) localStorage.removeItem('__petsalon_import_snapshot__');
+        }
+      } catch (_) {}
       // Hide loading screen
       setTimeout(() => {
         document.getElementById('loading-screen')?.classList.add('hidden');
@@ -215,6 +223,13 @@ const App = {
       navigator.serviceWorker.register('./sw.js', { updateViaCache: 'none' }).then(reg => {
         // 앱 열 때마다 SW 업데이트 강제 체크 (iOS PWA 대응)
         reg.update().catch(() => {});
+        // 아이폰 홈 화면 앱은 껐다 켜지 않고 돌아오기만 해서 며칠씩 옛 버전으로 돌았다 → 돌아올 때도 확인 (1시간에 한 번)
+        let lastCheck = Date.now();
+        document.addEventListener('visibilitychange', () => {
+          if (document.visibilityState !== 'visible' || Date.now() - lastCheck < 3600000) return;
+          lastCheck = Date.now();
+          reg.update().catch(() => {});
+        });
         // 업데이트 감지 시 알림
         reg.addEventListener('updatefound', () => {
           const newSW = reg.installing;
@@ -454,7 +469,22 @@ const App = {
     this.renderPage(page, params);
   },
 
+  // 느린 폰에서 메뉴를 연달아 누르면 앞 화면의 render 가 늦게 끝나 새 화면을 덮어썼다.
+  // → 그리는 중이면 끝날 때까지 기다렸다가, 마지막으로 누른 화면만 그린다. (서로 기다리다 멈추지 않게 최대 3초)
   async renderPage(page, params) {
+    const seq = this._renderSeq = (this._renderSeq || 0) + 1;
+    if (this._renderBusy) {
+      try { await Promise.race([this._renderBusy, new Promise(r => setTimeout(r, 3000))]); } catch (_) {}
+    }
+    if (seq !== this._renderSeq) return;
+    let done;
+    const busy = new Promise(r => { done = r; });
+    this._renderBusy = busy;
+    try { await this._renderPageNow(page, params); }
+    finally { done(); if (this._renderBusy === busy) this._renderBusy = null; }
+  },
+
+  async _renderPageNow(page, params) {
     window.scrollTo(0, 0);
     document.getElementById('main-content').scrollTop = 0;
     const pageModule = this.pages[page];
@@ -1313,7 +1343,7 @@ const App = {
   // 알러지·건강 메모가 실제 내용인지 ('없음', '-' 같은 빈 표시는 제외)
   hasPetNote(v) {
     const t = (v == null ? '' : String(v)).trim();
-    return !!t && !['없음', '-', '무', 'x', 'X'].includes(t);
+    return !!t && !['없음', '-'].includes(t);
   },
 
   escapeHtml(str) {
@@ -2661,7 +2691,9 @@ const App = {
       complete: '[{매장명}] {고객명}님, {반려견명}의 미용이 완료되었습니다! 서비스: {서비스}, 금액: {금액}원. 감사합니다! 💕',
       cardSend: '[{매장명}] {고객명}님, 오늘 {반려견명} 미용 사진이에요! 예쁘게 다녀갔어요. 감사합니다 ♥'
     };
-    return (templates && templates[type]) || defaults[type] || '';
+    // 기본 문구는 설정 화면의 DEFAULT_SMS_TEMPLATES 를 먼저 쓴다 (여기만 빠져 리포트 문구가 비어 나가던 문제)
+    const shared = typeof DEFAULT_SMS_TEMPLATES !== 'undefined' ? DEFAULT_SMS_TEMPLATES : {};
+    return (templates && templates[type]) || shared[type] || defaults[type] || '';
   },
 
   // ========== Photo Lightbox ==========

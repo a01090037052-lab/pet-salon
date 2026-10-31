@@ -647,9 +647,6 @@ const DB = {
           if (item.key === 'cardDesignSettings' && item.value?.customBgImage) {
             return { ...item, value: { ...item.value, customBgImage: null } };
           }
-          if (item.key === 'shopLogo' && item.value && typeof item.value === 'string' && item.value.length > 500) {
-            return { ...item, value: null };
-          }
           return item;
         });
       }
@@ -664,7 +661,8 @@ const DB = {
   // 백업 파일에 포함하지 않고, 복원 시에도 덮어쓰지 않는 기기 내부 설정 키
   // 'sync'(동기화 연결 정보: 기기 id·기기 번호·마지막 받은 시각) 와 '_sync*' 도 기기 전용이다.
   _isInternalSetting(key) {
-    return typeof key === 'string' && (key.startsWith('_autoBackup') || key.startsWith('_sync') || key === 'sync');
+    // security(잠금 비밀번호): 옛 백업을 복원하면 옛 비밀번호로 바뀌어 잠길 수 있어 백업·복원에서 뺀다
+    return typeof key === 'string' && (key.startsWith('_autoBackup') || key.startsWith('_sync') || key === 'sync' || key === 'security');
   },
 
   validateBackup(data) {
@@ -761,6 +759,19 @@ const DB = {
     } catch (_) {}
     if (Array.isArray(data.settings)) {
       data.settings = data.settings.filter(item => !this._isInternalSetting(item && item.key));
+      // '사진 제외' 백업은 매장 로고(예전 백업)·카드 배경 사진이 비어 있다 → 지금 기기에 있는 것을 유지
+      try {
+        const curLogo = await this.getSetting('shopLogo');
+        const curDesign = await this.getSetting('cardDesignSettings');
+        data.settings = data.settings.map(it => {
+          if (!it) return it;
+          if (it.key === 'shopLogo' && !it.value && curLogo) return { ...it, value: curLogo };
+          if (it.key === 'cardDesignSettings' && it.value && !it.value.customBgImage && curDesign && curDesign.customBgImage) {
+            return { ...it, value: { ...it.value, customBgImage: curDesign.customBgImage } };
+          }
+          return it;
+        });
+      } catch (_) {}
     }
 
     const CHUNK_SIZE = 500; // 사진 5만 장 + 트랜잭션 시간 초과 방지

@@ -293,9 +293,14 @@ App.pages.dashboard = {
       const revisitDays = await DB.getSetting('revisitDays') || 30;
       // 오늘부터 앞으로 잡힌 예약(취소·노쇼·완료 제외)이 있는 반려견은 재방문 알림에서 뺀다
       const bookedPetIds = new Set();
+      const bookedCustomerIds = new Set();
       try {
         const future = await DB.getByDateRange('appointments', 'date', today, '9999-12-31');
-        future.forEach(a => { if (a.petId != null && !['cancelled', 'noshow', 'completed'].includes(a.status)) bookedPetIds.add(Number(a.petId)); });
+        future.forEach(a => {
+          if (['cancelled', 'noshow', 'completed'].includes(a.status)) return;
+          if (a.petId != null) bookedPetIds.add(Number(a.petId));
+          if (a.customerId != null) bookedCustomerIds.add(Number(a.customerId));
+        });
       } catch (_) {}
       const allRevisitAlerts = this._computeRevisitAlerts(pets, customerMap, revisitDays, null, bookedPetIds);
       // 이탈(주기 2배 초과)은 매일 보는 카드에서 분리 — 지우는 게 아니라 접어둔다.
@@ -319,7 +324,9 @@ App.pages.dashboard = {
           customerLastVisitMap[r.customerId] = r.date;
         }
       });
-      const vipUnvisitedAlerts = App.computeVipUnvisited(customers, pets, customerLastVisitMap, revisitDays);
+      // 이미 예약이 잡힌 VIP 는 연락할 필요가 없다
+      const vipUnvisitedAlerts = App.computeVipUnvisited(customers, pets, customerLastVisitMap, revisitDays)
+        .filter(x => !bookedCustomerIds.has(Number(x.customer.id)));
 
       // 생일 알림 (7일 이내)
       const upcomingBirthdays = [];
