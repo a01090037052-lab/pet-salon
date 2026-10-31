@@ -2599,9 +2599,11 @@ App.pages.records = {
   },
   // 사진 카드 스티커 — Google Noto Emoji(Apache 2.0) 를 256px WebP 로 앱에 넣어 둔다 (기기마다 모양이 같고 오프라인에서도 된다)
   _STICKERS: ['1f43e', '2764', '1f495', '1f496', '1f49d', '1f380', '1f9b4', '2728', '1f451', '1f338', '1f337', '1f33c', '1f490', '2b50', '1f31f', '2702', '1fae7', '1f6c1', '1f436', '1f415', '1f429', '1f431', '1f9f8', '1f389', '1f382', '1f388', '1f308', '2600', '2744', '1f384', '1f340', '1f4af', '1f44d', '1f60d', '1f970'],
+  // AI 일러스트 스티커 (사장님 레퍼런스: 레트로 라벨 · 브랜드 버건디 · 모던 미니멀) — 먼저 보여 준다
+  _AI_STICKER_SETS: {'retro': ['ai_rt_01_seriously_fluffy', 'ai_rt_02_lucky_puppy', 'ai_rt_03_fresh_bone', 'ai_rt_04_just_groomed', 'ai_rt_05_totally_fluffy', 'ai_rt_06_blep', 'ai_rt_07_top_dog', 'ai_rt_08_bath_time'], 'brand': ['ai_br_01_keep_it_fluffy', 'ai_br_02_groom_smile', 'ai_br_03_groomed_love', 'ai_br_04_promise', 'ai_br_05_trust_care', 'ai_br_06_feel_difference', 'ai_br_07_best_look', 'ai_br_08_honest_prices'], 'modern': ['ai_md_01_grooming_mode', 'ai_md_02_think_fresh', 'ai_md_03_blue_paw', 'ai_md_04_pixel_puppy', 'ai_md_05_cute_mode', 'ai_md_06_orbit_star', 'ai_md_07_fur_care', 'ai_md_08_groomed_shield']},
   // 세련된 스타일 (차분한 색·글자 중심 배지·라벨·오라 그라데이션) — 기본으로 먼저 보여 준다
   _CHIC_STICKERS: ['pt_chic_goodvibes', 'pt_chic_nobad', 'pt_chic_beyou', 'pt_chic_sofluffy', 'pt_chic_freshcut', 'pt_chic_club', 'pt_chic_gooddog', 'pt_chic_ticket', 'pt_chic_fresh_star', 'pt_chic_tag', 'pt_chic_stamp', 'pt_chic_pretty', 'pt_chic_today_dog', 'pt_chic_bubble_done', 'pt_chic_bubble_bosong', 'pt_chic_groomed', 'pt_chic_withlove', 'pt_chic_green_paw', 'pt_chic_dogline', 'pt_chic_aura_lovely', 'pt_chic_aura_fluffy', 'pt_chic_aura_heart'],
-  _stickerSrc(id) { return String(id).startsWith('pt_') ? `assets/stickers/${id}.webp` : `assets/stickers/emoji_u${id}.webp`; },
+  _stickerSrc(id) { return /^(pt|ai)_/.test(String(id)) ? `assets/stickers/${id}.webp` : `assets/stickers/emoji_u${id}.webp`; },
   _stickerSrcOf(st) {
     if (st.src) return st.src; // 글자 스티커 (만들어 둔 그림)
     if (st.cid) { const c = (this._customStickers || []).find(x => x.id === st.cid); return c ? c.image : ''; }
@@ -3208,7 +3210,7 @@ App.pages.records = {
       const st = btn.dataset.cid ? { cid: btn.dataset.cid } : { id: btn.dataset.sticker };
       const sid = String(btn.dataset.sticker || '');
       const isText = sid.startsWith('pt_t_') || /^pt_chic_(gooddog|ticket|groomed|today_dog|bubble_done|bubble_bosong|stamp|pretty)$/.test(sid) || /^pt_hip_(omiwan|lucky|simkung|mungmung|slay|luv|newhair|main|glowup|caution)$/.test(sid);
-      this._cardStickers.push({ ...st, x: 0.5, y: 0.45, size: btn.dataset.cid ? 0.3 : (isText ? 0.4 : 0.24), rot: 0 });
+      this._cardStickers.push({ ...st, x: 0.5, y: 0.45, size: btn.dataset.cid ? 0.3 : (sid.startsWith('ai_') ? 0.32 : (isText ? 0.4 : 0.24)), rot: 0 });
       this._stickerSel = this._cardStickers.length - 1;
       this._renderStickerLayer();
     };
@@ -3721,7 +3723,10 @@ App.pages.records = {
         <div class="form-group">
           <label class="form-label">스티커 <span style="font-size:0.78rem;color:var(--text-muted);font-weight:400">· 누르면 붙어요, 미리보기에서 끌어 옮기세요</span></label>
           <div class="card-sticker-sets" role="tablist" aria-label="스티커 묶음">
-            <button type="button" class="card-sticker-set active" data-set="chic">세련된</button>
+            <button type="button" class="card-sticker-set active" data-set="retro">레트로</button>
+            <button type="button" class="card-sticker-set" data-set="brand">브랜드</button>
+            <button type="button" class="card-sticker-set" data-set="modern">모던</button>
+            <button type="button" class="card-sticker-set" data-set="chic">세련된</button>
             <button type="button" class="card-sticker-set" data-set="emoji">이모지</button>
           </div>
           <div id="card-sticker-pick" class="card-sticker-row">
@@ -3729,7 +3734,8 @@ App.pages.records = {
             <button type="button" class="card-sticker-tool" id="card-sticker-text"><b>가</b><small>글자</small></button>
             <button type="button" class="card-sticker-tool" id="card-sticker-logo"><b>◎</b><small>내 로고</small></button>
             <span id="card-sticker-custom" class="card-sticker-custom"></span>
-            ${this._CHIC_STICKERS.map(id => `<button type="button" class="card-sticker-btn" data-set="chic" data-sticker="${id}" aria-label="스티커 붙이기"><img src="${this._stickerSrc(id)}" alt="" loading="lazy"></button>`).join('')}
+            ${Object.entries(this._AI_STICKER_SETS).map(([set, ids]) => ids.map(id => `<button type="button" class="card-sticker-btn" data-set="${set}" data-sticker="${id}" aria-label="스티커 붙이기"${set === 'retro' ? '' : ' hidden'}><img src="${this._stickerSrc(id)}" alt="" loading="lazy"></button>`).join('')).join('')}
+            ${this._CHIC_STICKERS.map(id => `<button type="button" class="card-sticker-btn" data-set="chic" data-sticker="${id}" aria-label="스티커 붙이기" hidden><img src="${this._stickerSrc(id)}" alt="" loading="lazy"></button>`).join('')}
             ${this._STICKERS.map(id => `<button type="button" class="card-sticker-btn" data-set="emoji" data-sticker="${id}" aria-label="스티커 붙이기" hidden><img src="${this._stickerSrc(id)}" alt="" loading="lazy"></button>`).join('')}
           </div>
           <div class="card-sticker-sub">

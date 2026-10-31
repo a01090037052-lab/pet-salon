@@ -3637,6 +3637,8 @@ a.stat-card { display: flex; }
 }
 .card-sticker-btn[hidden] { display: none; }
 .card-sticker-btn[data-set] { padding: 3px; }
-.card-sticker-sets { display: flex; gap: 6px; margin-bottom: 8px; }
+.card-sticker-sets { display: flex; gap: 6px; margin-bottom: 8px; overflow-x: auto; scrollbar-width: none; }
+.card-sticker-sets::-webkit-scrollbar { display: none; }
+.card-sticker-set { flex: 0 0 auto; }
 .card-sticker-set { min-height: 34px; padding: 0 14px; border-radius: 17px; border: 1.5px solid var(--border); background: var(--bg-white); color: var(--text-secondary); font: inherit; font-size: 0.82rem; font-weight: 700; cursor: pointer; }
 .card-sticker-set.active { border-color: var(--text-primary, #111); background: var(--text-primary, #111); color: #fff; }
