@@ -30,12 +30,30 @@ const Security = {
     if (stored && stored.enabled) {
       return { ...this.DEFAULTS, ...stored };
     }
+    // 사장이 이 기기에서 잠금을 끈 경우: GitHub(master-config.js)에 잠금이 남아 있어도 이 기기는 꺼진 상태로 둔다
+    if (stored && stored.disabledHere) {
+      return { ...this.DEFAULTS, ...stored };
+    }
     if (typeof MASTER_CONFIG !== 'undefined' && MASTER_CONFIG.enabled) {
       return { ...this.DEFAULTS, ...MASTER_CONFIG };
     }
     return { ...this.DEFAULTS, ...(stored || {}) };
   },
   async _save(s) { await DB.setSetting('security', s); },
+  // GitHub 에 배포된 master-config.js 가 잠금 켜짐인지 (새 기기에 잠금 화면이 뜨는지)
+  masterConfigEnabled() {
+    return typeof MASTER_CONFIG !== 'undefined' && !!MASTER_CONFIG.enabled;
+  },
+  // 잠금을 끌 때 GitHub 에 붙여넣을 master-config.js 내용 (모든 기기 잠금 끄기)
+  getMasterConfigOffSnippet() {
+    return `// ========== 매장 마스터 코드 설정 (사장 직접 편집) ==========
+// 잠금 꺼짐 — 새 기기에도 잠금 화면이 뜨지 않습니다.
+
+const MASTER_CONFIG = {
+  enabled: false
+};
+`;
+  },
 
   // 사장이 GitHub 에 push 할 master-config.js 스니펫 생성
   async getMasterConfigSnippet() {
@@ -130,6 +148,7 @@ const MASTER_CONFIG = {
     s.recoveryHash = await this._hash(recovery, s.recoverySalt);
     s.pinChangedAt = new Date().toISOString();
     s.enabled = true;
+    delete s.disabledHere;
     await this._save(s);
     await this.issueTrust();
     return recovery; // 한 번만 표시
@@ -173,10 +192,22 @@ const MASTER_CONFIG = {
     return newRecovery;
   },
 
+  // 반환값: GitHub(master-config.js)에 잠금이 아직 켜져 있으면 true — 새 기기 잠금은 GitHub 를 고쳐야 꺼진다
   async disable(currentPin) {
     if (!await this.verifyPin(currentPin)) throw new Error('현재 PIN이 올바르지 않습니다.');
+    if (this.masterConfigEnabled()) {
+      // 이 기기는 꺼진 상태로 기억하고, 등록(신뢰)도 GitHub 설정 기준으로 남겨 둔다.
+      // 예전엔 등록을 지워서, GitHub 잠금이 켜진 채면 다음 실행 때 사장 기기가 잠겼다.
+      await this._save({ ...this.DEFAULTS, disabledHere: true });
+      localStorage.setItem(this.TRUST_KEY, JSON.stringify({
+        registeredAt: new Date().toISOString(),
+        issuedAfter: MASTER_CONFIG.pinChangedAt
+      }));
+      return true;
+    }
     await this._save({ ...this.DEFAULTS });
     this.clearTrust();
+    return false;
   },
 
   async updateOptions(opts) {
@@ -246,48 +277,66 @@ const MASTER_CONFIG = {
         $sub.classList.remove('error');
         $sub.textContent = `마스터 코드 ${s.pinLength}자리 입력`;
       };
+      // 틀린 횟수는 localStorage 에 남긴다 (새로고침해도 초기화되지 않게).
+      // 한도만큼 틀리면 기다려야 하고, 다시 한도만큼 틀릴 때마다 대기 시간이 두 배 (최대 1시간)
       const getAttempts = () => {
-        try { return JSON.parse(sessionStorage.getItem(this.ATTEMPT_KEY) || '{}'); }
+        try { return JSON.parse(localStorage.getItem(this.ATTEMPT_KEY) || '{}'); }
         catch (_) { return {}; }
       };
-      const setAttempts = (a) => sessionStorage.setItem(this.ATTEMPT_KEY, JSON.stringify(a));
+      const setAttempts = (a) => { try { localStorage.setItem(this.ATTEMPT_KEY, JSON.stringify(a)); } catch (_) {} };
+      const clearAttempts = () => { try { localStorage.removeItem(this.ATTEMPT_KEY); } catch (_) {} };
+      const startLockTick = (lockUntil) => {
+        const tick = () => {
+          if (!overlay.isConnected) return;
+          const remain = Math.ceil((lockUntil - Date.now()) / 1000);
+          if (remain > 0) {
+            $sub.textContent = `너무 많이 틀렸어요. ${remain}초 뒤 다시 입력`;
+            $sub.classList.add('error');
+            setTimeout(tick, 1000);
+          } else {
+            resetPrompt();
+          }
+        };
+        tick();
+      };
+      // 한 번 틀림 기록. 한도에 닿으면 잠금 시작 후 true
+      const registerFail = (att) => {
+        att.count = (att.count || 0) + 1;
+        let locked = false;
+        if (att.count >= s.maxAttempts) {
+          const wait = Math.min(3600, s.lockoutSeconds * Math.pow(2, att.lockouts || 0));
+          att.lockUntil = Date.now() + wait * 1000;
+          att.lockouts = (att.lockouts || 0) + 1;
+          att.count = 0;
+          locked = true;
+          startLockTick(att.lockUntil);
+        }
+        setAttempts(att);
+        return locked;
+      };
+      const lockedRemain = () => {
+        const att = getAttempts();
+        return (att.lockUntil && Date.now() < att.lockUntil) ? Math.ceil((att.lockUntil - Date.now()) / 1000) : 0;
+      };
 
       const submitPin = async () => {
         if (pinBuf.length < s.pinLength) return;
-        const att = getAttempts();
-        if (att.lockUntil && Date.now() < att.lockUntil) {
-          const remain = Math.ceil((att.lockUntil - Date.now()) / 1000);
+        const remain = lockedRemain();
+        if (remain) {
           showError(`${remain}초 후 다시 시도하세요`);
           pinBuf = ''; renderDots();
           return;
         }
+        const att = getAttempts();
         const ok = await this.verifyPin(pinBuf);
         if (ok) {
           // 마스터 코드 통과 = 이 디바이스 영구 등록
           await this.issueTrust();
-          sessionStorage.removeItem(this.ATTEMPT_KEY);
+          clearAttempts();
           overlay.remove();
           resolve();
         } else {
-          att.count = (att.count || 0) + 1;
-          if (att.count >= s.maxAttempts) {
-            att.lockUntil = Date.now() + s.lockoutSeconds * 1000;
-            att.count = 0;
-            const tick = () => {
-              const remain = Math.ceil((att.lockUntil - Date.now()) / 1000);
-              if (remain > 0) {
-                $sub.textContent = `${s.lockoutSeconds}초 잠금 (${remain}s)`;
-                $sub.classList.add('error');
-                setTimeout(tick, 1000);
-              } else {
-                resetPrompt();
-              }
-            };
-            tick();
-          } else {
-            showError(`PIN 불일치 (${s.maxAttempts - att.count}회 남음)`);
-          }
-          setAttempts(att);
+          if (!registerFail(att)) showError(`코드가 맞지 않아요 (${s.maxAttempts - att.count}회 남음)`);
           pinBuf = ''; renderDots();
         }
       };
@@ -333,13 +382,17 @@ const MASTER_CONFIG = {
           showError(`새 마스터 코드 ${s.pinLength}자리 숫자 입력`);
           return;
         }
+        const remain = lockedRemain();
+        if (remain) { showError(`${remain}초 후 다시 시도하세요`); return; }
         try {
           const newRecovery = await this.resetPinWithRecovery(code, newPin, s.pinLength);
           alert(`마스터 코드 재설정 완료.\n\n새 복구 코드:\n${newRecovery}\n\n반드시 안전한 곳에 보관하세요.\n\n※ 다른 모든 등록 디바이스는 새 코드로 재등록 필요합니다.`);
-          sessionStorage.removeItem(this.ATTEMPT_KEY);
+          clearAttempts();
           overlay.remove();
           resolve();
         } catch (e) {
+          // 복구 코드도 틀린 횟수에 넣는다 (무한 대입 방지)
+          if (!/숫자/.test(e.message || '')) { if (registerFail(getAttempts())) return; }
           showError(e.message);
         }
       });
@@ -369,6 +422,9 @@ const MASTER_CONFIG = {
       };
 
       renderDots();
+      // 새로고침 전에 잠긴 상태였으면 남은 시간부터 보여 준다
+      const att0 = getAttempts();
+      if (att0.lockUntil && Date.now() < att0.lockUntil) startLockTick(att0.lockUntil);
     });
   }
 };

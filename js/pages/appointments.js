@@ -5,11 +5,23 @@ App.pages.appointments = {
     this._closedDays = null;
     const today = App.getToday();
     const isMobile = window.matchMedia('(max-width: 768px)').matches;
-    // 최근 3개월 + 미래 예약만 로드 (성능 최적화)
-    // 3개월 전 1일부터 (5/31 에 setMonth(-3) 하면 3/3 이 되어 며칠이 빠지던 문제)
-    const threeMonthsAgo = (() => { const d = new Date(); d.setDate(1); d.setMonth(d.getMonth() - 3); return App.formatLocalDate(d); })();
-    this._loadedFrom = threeMonthsAgo;
-    const appointments = await DB.getByDateRange('appointments', 'date', threeMonthsAgo, '9999-12-31');
+    // 목록은 기본 오늘 ~ +30일만 로드 (수년치 데이터에서 1,000줄씩 그리던 문제).
+    // 목록 아래 '이전 30일 보기' / '이후 30일 더 보기'로 넓힌다 — 넓힌 범위는 이 탭(session) 동안 유지. 달력은 따로 월 단위 조회.
+    const shiftDate = (base, n) => { const d = new Date(base + 'T00:00:00'); d.setDate(d.getDate() + n); return App.formatLocalDate(d); };
+    const defaultTo = shiftDate(today, 30);
+    let listRange = null;
+    try { listRange = JSON.parse(sessionStorage.getItem('appt-range') || 'null'); } catch (_) {}
+    const listFrom = (listRange && listRange.from && listRange.from <= today) ? listRange.from : today;
+    const listTo = (listRange && listRange.to && listRange.to >= defaultTo) ? listRange.to : defaultTo;
+    this._loadedFrom = listFrom;
+    this._loadedTo = listTo;
+    const [appointments, laterAppts, apptTotal] = await Promise.all([
+      DB.getByDateRange('appointments', 'date', listFrom, listTo),
+      DB.getByDateRange('appointments', 'date', shiftDate(listTo, 1), '9999-12-31'), // 범위 이후 예약 (보통 소수)
+      DB.count('appointments')
+    ]);
+    const laterCount = laterAppts.length;
+    const hasOlder = apptTotal > appointments.length + laterCount; // 범위 이전(또는 날짜 없는) 예약이 있음
 
     // 다가오는 예약(오늘 포함) 날짜 오름차순 먼저, 지난 예약은 최근순으로 뒤에
     const sorted = appointments.sort((a, b) => {
@@ -24,28 +36,33 @@ App.pages.appointments = {
     const statusCounts = { all: appointments.length, pending: 0, confirmed: 0, in_progress: 0, completed: 0, cancelled: 0, noshow: 0 };
     appointments.forEach(a => { if (statusCounts[a.status] !== undefined) statusCounts[a.status]++; });
 
+    // 목록·달력엔 이름·연락처만 쓰므로 사진·메모 같은 큰 필드는 빼고 읽는다 (records 목록과 같은 제외 목록)
     const [customers, pets, services, recentRecords] = await Promise.all([
-      DB.getAll('customers'), DB.getAll('pets'), DB.getAll('services'),
-      DB.getByDateRange('records', 'date', threeMonthsAgo, '9999-12-31')
+      DB.getAllLight('customers', ['memo', 'address']),
+      DB.getAllLight('pets', ['photo', 'temperament', 'healthNotes', 'preferredStyle']),
+      DB.getAll('services'),
+      DB.getByDateRange('records', 'date', listFrom, '9999-12-31')
     ]);
-    // 완료된 예약 카드에 붙일 미용 결과(금액·결제). 기록은 최근 3개월만 읽으므로 그 이전 예약은 '기록 없음'이라 단정하지 않는다
+    // 완료된 예약 카드에 붙일 미용 결과(금액·결제). 기록은 목록 범위만 읽으므로 그 이전 예약은 '기록 없음'이라 단정하지 않는다
     const recByAppt = App.apptRecordMap(recentRecords);
-    const resultOf = (a) => App.apptResultHtml(a, recByAppt[String(a.id)], (a.date || '') >= threeMonthsAgo);
+    const resultOf = (a) => App.apptResultHtml(a, recByAppt[String(a.id)], (a.date || '') >= listFrom);
     const customerMap = {}; customers.forEach(c => customerMap[c.id] = c);
     const petMap = {}; pets.forEach(p => petMap[p.id] = p);
     const serviceMap = {}; services.forEach(s => serviceMap[s.id] = s.name);
     this._customerMap = customerMap;
     this._petMap = petMap;
     this._serviceMap = serviceMap;
+    // 미용사 1명 이하면 미용사별 타임테이블·담당 열을 숨긴다
+    const multiGroomer = await App.isMultiGroomer();
 
     container.innerHTML = `
       <div class="page-header">
         <div>
           <h1 class="page-title">예약 관리</h1>
-          <p class="page-subtitle">총 ${appointments.length}건</p>
+          <p class="page-subtitle">목록 ${App.formatDate(listFrom)} ~ ${App.formatDate(listTo)} · ${appointments.length}건</p>
         </div>
         <div class="page-actions">
-          <button class="btn btn-secondary" id="btn-toggle-timetable">${App.icon('clock')} 타임테이블</button>
+          ${multiGroomer ? `<button class="btn btn-secondary" id="btn-toggle-timetable">${App.icon('clock')} 타임테이블</button>` : ''}
           <button class="btn btn-primary" id="btn-add-appointment">+ 새 예약</button>
         </div>
       </div>
@@ -76,8 +93,8 @@ App.pages.appointments = {
         <button class="btn btn-primary" id="cal-date-add-appt" style="width:100%;min-height:44px">+ 이 날짜에 예약 추가</button>
       </div>
 
-      <!-- 타임테이블 뷰 -->
-      <div id="timetable-container" style="display:none;margin-bottom:20px">
+      <!-- 타임테이블 뷰 (미용사 2명 이상일 때만) -->
+      ${multiGroomer ? `<div id="timetable-container" style="display:none;margin-bottom:20px">
         <div class="card">
           <div class="card-header">
             <div style="display:flex;align-items:center;gap:10px">
@@ -91,7 +108,7 @@ App.pages.appointments = {
             <div id="timetable-grid"></div>
           </div>
         </div>
-      </div>
+      </div>` : ''}
 
       <div class="filter-bar" id="appt-filter-bar">
         <div class="quick-filters">
@@ -127,7 +144,7 @@ App.pages.appointments = {
                   <th>시간</th>
                   <th>반려견 / 보호자</th>
                   <th class="hide-mobile">서비스</th>
-                  <th class="hide-mobile">담당</th>
+                  ${multiGroomer ? '<th class="hide-mobile">담당</th>' : ''}
                   <th class="hide-mobile">메모</th>
                   <th>상태</th>
                   <th>관리</th>
@@ -135,17 +152,17 @@ App.pages.appointments = {
               </thead>
               <tbody id="appt-tbody">
                 ${sorted.length === 0 ? `
-                  <tr><td colspan="8">
+                  <tr><td colspan="${multiGroomer ? 8 : 7}">
                     <div class="empty-state">
                       <div class="empty-state-icon">${App.icon('calendar', 'ico-xl')}</div>
-                      <div class="empty-state-text">등록된 예약이 없습니다</div>
-                      <button class="btn btn-primary" onclick="App.pages.appointments.showForm()">+ 첫 예약 등록하기</button>
+                      <div class="empty-state-text">${apptTotal === 0 ? '등록된 예약이 없습니다' : '이 기간에 예약이 없습니다'}</div>
+                      ${apptTotal === 0 ? '<button class="btn btn-primary" onclick="App.pages.appointments.showForm()">+ 첫 예약 등록하기</button>' : ''}
                     </div>
                   </td></tr>
                 ` : sorted.map(a => {
                   const customer = customerMap[a.customerId];
                   const pet = petMap[a.petId];
-                  const serviceNames = (a.serviceIds || []).map(id => serviceMap[id] || '').filter(Boolean).join(', ');
+                  const serviceNames = App.apptServiceNames(a, serviceMap);
                   const isToday = a.date === today;
                   const isPast = a.date < today;
                   return `
@@ -158,9 +175,9 @@ App.pages.appointments = {
                         ${isPast && a.status !== 'completed' && a.status !== 'cancelled' ? '<span class="badge badge-danger" style="margin-left:4px">지남</span>' : ''}
                       </td>
                       <td>${a.time || '-'}${a.duration && a.duration !== 60 ? `<div style="font-size:0.7rem;color:var(--text-muted)">${a.duration}분</div>` : ''}</td>
-                      <td><a href="#pets/${a.petId}" style="color:var(--primary);font-weight:700" onclick="event.stopPropagation()">${App.escapeHtml(pet?.name || '-')}</a> <span style="color:var(--text-muted);font-size:0.75rem">${App.escapeHtml(App.getCustomerLabel(customer))}</span>${customer?.phone ? ` <a href="sms:${App.escapeHtml((customer.phone || '').replace(/\D/g, ''))}" onclick="event.stopPropagation()" title="문자 보내기" aria-label="문자 보내기" style="color:var(--text-muted);font-size:0.8rem">${App.icon('message')}</a>` : ''}</td>
+                      <td><a href="#pets/${a.petId}" style="color:var(--primary);font-weight:700" onclick="event.stopPropagation()">${App.escapeHtml(pet?.name || '-')}</a> <span style="color:var(--text-muted);font-size:0.75rem">${App.escapeHtml(App.getCustomerLabel(customer))}</span>${customer?.phone ? ` <a href="sms:${App.escapeHtml(App.phoneDigits(customer.phone))}" onclick="event.stopPropagation()" title="문자 보내기" aria-label="문자 보내기" style="color:var(--text-muted);font-size:0.8rem">${App.icon('message')}</a>` : ''}</td>
                       <td class="hide-mobile"><span style="font-size:0.85rem">${App.escapeHtml(serviceNames)}</span></td>
-                      <td class="hide-mobile">${App.escapeHtml(a.groomer || '-')}</td>
+                      ${multiGroomer ? `<td class="hide-mobile">${App.escapeHtml(a.groomer || '-')}</td>` : ''}
                       <td class="hide-mobile" style="max-width:120px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${App.escapeHtml(a.memo || '')}">${App.escapeHtml(a.memo || '-')}</td>
                       <td>
                         <select class="status-select appt-status-sel appt-status-sel-table" data-id="${a.id}" data-st="${a.status || 'pending'}" aria-label="예약 상태">
@@ -176,7 +193,7 @@ App.pages.appointments = {
                       <td class="table-actions">
                         <button class="btn-icon btn-reminder-appt" data-id="${a.id}" title="재확인 문자" aria-label="재확인 문자" style="color:var(--info)">${App.icon('send')}</button>
                         <button class="btn-icon btn-edit-appt" data-id="${a.id}" title="수정" aria-label="수정">${App.icon('edit')}</button>
-                        ${a.status !== 'completed' ? `<button class="btn-icon btn-complete-appt" data-id="${a.id}" title="미용 완료 · 기록 작성" aria-label="미용 완료 · 기록 작성" style="color:var(--success)">${App.icon('check')}</button>` : ''}
+                        ${a.status !== 'completed' ? `<button class="btn-icon btn-complete-appt" data-id="${a.id}" title="미용 완료 · 기록 작성" aria-label="미용 완료 · 기록 작성" style="color:var(--success)${['noshow', 'cancelled'].includes(a.status) ? ';display:none' : ''}">${App.icon('check')}</button>` : ''}
                       </td>
                     </tr>`;
                 }).join('')}
@@ -189,16 +206,16 @@ App.pages.appointments = {
             ${sorted.length === 0 ? `
               <div class="empty-state">
                 <div class="empty-state-icon">${App.icon('calendar', 'ico-xl')}</div>
-                <div class="empty-state-text">등록된 예약이 없습니다</div>
-                <button class="btn btn-primary" onclick="App.pages.appointments.showForm()">+ 첫 예약 등록하기</button>
+                <div class="empty-state-text">${apptTotal === 0 ? '등록된 예약이 없습니다' : '이 기간에 예약이 없습니다'}</div>
+                ${apptTotal === 0 ? '<button class="btn btn-primary" onclick="App.pages.appointments.showForm()">+ 첫 예약 등록하기</button>' : ''}
               </div>
             ` : sorted.map(a => {
               const customer = customerMap[a.customerId];
               const pet = petMap[a.petId];
               const isToday = a.date === today;
               const isPast = a.date < today;
-              const serviceNames = (a.serviceIds || []).map(id => serviceMap[id] || '').filter(Boolean).join(', ');
-              const phoneDigits = (customer?.phone || '').replace(/\D/g, '');
+              const serviceNames = App.apptServiceNames(a, serviceMap);
+              const phoneDigits = App.phoneDigits(customer?.phone);
               return `
               <div class="mobile-card" data-id="${a.id}" data-status="${a.status || 'pending'}" data-date="${a.date}"
                    data-search="${App.escapeHtml(((customer?.name || '') + ' ' + (customer?.phone || '') + ' ' + (pet?.name || '') + ' ' + (a.memo || '') + ' ' + (a.groomer || '')).toLowerCase())}"
@@ -213,7 +230,7 @@ App.pages.appointments = {
                   </div>
                 </div>
                 <div class="mobile-card-body">
-                  <div style="font-size:0.85rem;color:var(--text-secondary);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${[App.getCustomerLabel(customer), serviceNames, a.groomer || ''].filter(Boolean).map(t => App.escapeHtml(t)).join(' &middot; ')}</div>
+                  <div style="font-size:0.85rem;color:var(--text-secondary);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${[App.getCustomerLabel(customer), serviceNames, multiGroomer ? (a.groomer || '') : ''].filter(Boolean).map(t => App.escapeHtml(t)).join(' &middot; ')}</div>
                   ${a.status === 'cancelled' && a.cancelReason ? `<div style="font-size:0.8rem;color:var(--text-muted);margin-top:4px">취소 사유: ${App.escapeHtml(a.cancelReason)}</div>` : ''}
                   ${a.memo ? `<div style="font-size:0.8rem;color:var(--text-secondary);margin-top:4px">${App.icon('note')} ${App.escapeHtml(a.memo.length > 40 ? a.memo.slice(0, 40) + '...' : a.memo)}</div>` : ''}
                 </div>
@@ -245,7 +262,8 @@ App.pages.appointments = {
                       <option value="cancelled" ${a.status === 'cancelled' ? 'selected' : ''}>취소</option>
                       <option value="noshow" ${a.status === 'noshow' ? 'selected' : ''}>노쇼</option>
                     </select>
-                    <button class="btn btn-sm btn-success btn-complete-appt" data-id="${a.id}" style="white-space:nowrap;min-height:44px">${App.icon('scissors')} 미용 완료</button>
+                    <!-- 노쇼·취소 건은 미용 완료 버튼을 숨긴다 (상태를 되돌리면 다시 보인다) -->
+                    <button class="btn btn-sm btn-success btn-complete-appt" data-id="${a.id}" style="white-space:nowrap;min-height:44px${['noshow', 'cancelled'].includes(a.status) ? ';display:none' : ''}">${App.icon('scissors')} 미용 완료</button>
                   </div>
                   <div style="display:flex;gap:6px">
                     ${phoneDigits ? `<a class="btn btn-sm btn-secondary" href="tel:${phoneDigits}" style="flex:0 0 auto;min-width:44px;min-height:44px;display:inline-flex;align-items:center;justify-content:center" title="전화 걸기" aria-label="전화 걸기">${App.icon('phone')}</a>` : ''}
@@ -259,7 +277,22 @@ App.pages.appointments = {
 
         </div>
       </div>
+
+      <!-- 목록 범위 넓히기 (지난 예약은 필요할 때만) -->
+      <div style="margin-top:12px;display:flex;gap:8px;flex-wrap:wrap;justify-content:center">
+        ${hasOlder ? `<button class="btn btn-secondary btn-sm" id="btn-appt-older" style="min-height:44px">${App.icon('chevron-left')} 이전 30일 보기</button>` : ''}
+        ${laterCount > 0 ? `<button class="btn btn-secondary btn-sm" id="btn-appt-later" style="min-height:44px">이후 30일 더 보기 (이후 ${laterCount}건) ${App.icon('chevron-right')}</button>` : ''}
+        ${(listFrom < today || listTo > defaultTo) ? `<button class="btn btn-ghost btn-sm" id="btn-appt-range-reset" style="min-height:44px">기본 범위로 (오늘~30일)</button>` : ''}
+      </div>
     `;
+  },
+
+  // 목록 범위를 바꿔 다시 그린다 (스크롤 위치·선택 날짜·달력 월 유지)
+  _setListRange(from, to) {
+    sessionStorage.setItem('appt-range', JSON.stringify({ from, to }));
+    sessionStorage.setItem('appt-scroll', String(window.scrollY));
+    this._keepCalMonth = true;
+    App.handleRoute();
   },
 
   // 캘린더 관련 상태
@@ -384,7 +417,12 @@ App.pages.appointments = {
             dateInput.value = date;
             this.applyFilters();
           }
-          if (this._loadedFrom && date < this._loadedFrom) App.showToast('3개월보다 지난 예약은 아래 목록에 없고, 달력 요약에만 보여요.');
+          // 목록 범위 밖 날짜면 그 날짜까지 목록을 넓혀 다시 그린다 (선택 날짜·달력 월은 유지됨)
+          if ((this._loadedFrom && date < this._loadedFrom) || (this._loadedTo && date > this._loadedTo)) {
+            this._selectedCalDate = date;
+            this._setListRange(date < this._loadedFrom ? date : this._loadedFrom, date > this._loadedTo ? date : this._loadedTo);
+            return;
+          }
           // 선택 표시
           grid.querySelectorAll('.calendar-cell').forEach(c => c.classList.remove('selected'));
           cell.classList.add('selected');
@@ -427,7 +465,7 @@ App.pages.appointments = {
       const show = dayAppts.slice(0, 5);
       list.innerHTML = show.map(a => {
         const pet = petMap[a.petId];
-        const svcName = (a.serviceIds || []).map(id => serviceMap[id]).filter(Boolean).join(', ') || '';
+        const svcName = App.apptServiceNames(a, serviceMap);
         return `<div style="display:flex;align-items:center;gap:8px;padding:6px 0;border-bottom:1px solid var(--border-light);font-size:0.88rem">
           <strong style="color:var(--primary);min-width:42px">${a.time || '--:--'}</strong>
           <span style="font-weight:600">${App.escapeHtml(pet?.name || '?')}</span>
@@ -462,8 +500,12 @@ App.pages.appointments = {
 
     // 캘린더 항상 표시 - 초기 렌더링 + 오늘 선택
     {
-        this._calYear = new Date().getFullYear();
-        this._calMonth = new Date().getMonth();
+        // 목록 범위만 넓혀 다시 그린 경우엔 보던 달을 유지
+        if (!this._keepCalMonth) {
+          this._calYear = new Date().getFullYear();
+          this._calMonth = new Date().getMonth();
+        }
+        this._keepCalMonth = false;
         this._closedDays = null;
         await this.renderCalendar();
         // 이전 선택 날짜 복원 또는 오늘 자동 선택
@@ -478,6 +520,27 @@ App.pages.appointments = {
         const restoreCell = document.querySelector(`.calendar-cell[data-date="${restoreDate}"]`);
         if (restoreCell) restoreCell.classList.add('selected');
         await this._updateDateSummary(restoreDate);
+    }
+
+    // 목록 범위 넓히기
+    document.getElementById('btn-appt-older')?.addEventListener('click', () => {
+      const d = new Date(this._loadedFrom + 'T00:00:00'); d.setDate(d.getDate() - 30);
+      this._setListRange(App.formatLocalDate(d), this._loadedTo);
+    });
+    document.getElementById('btn-appt-later')?.addEventListener('click', () => {
+      const d = new Date(this._loadedTo + 'T00:00:00'); d.setDate(d.getDate() + 30);
+      this._setListRange(this._loadedFrom, App.formatLocalDate(d));
+    });
+    document.getElementById('btn-appt-range-reset')?.addEventListener('click', () => {
+      sessionStorage.removeItem('appt-range');
+      this._selectedCalDate = null; // 범위 밖 날짜가 남아 있으면 목록이 0건으로 보인다 → 오늘로
+      this._keepCalMonth = false;
+      App.handleRoute();
+    });
+    const apptScroll = sessionStorage.getItem('appt-scroll');
+    if (apptScroll) {
+      sessionStorage.removeItem('appt-scroll');
+      requestAnimationFrame(() => window.scrollTo({ top: Number(apptScroll), behavior: 'instant' }));
     }
 
     // Restore timetable view state
@@ -695,6 +758,9 @@ App.pages.appointments = {
         // Update row data-status for filtering
         const row = e.target.closest('tr');
         if (row) row.dataset.status = newStatus;
+        // 노쇼·취소로 바꾸면 미용 완료 버튼을 숨기고, 다른 상태로 되돌리면 다시 보인다 (표·카드 모두)
+        const hideComplete = newStatus === 'noshow' || newStatus === 'cancelled';
+        document.querySelectorAll(`.btn-complete-appt[data-id="${id}"]`).forEach(b => { b.style.display = hideComplete ? 'none' : ''; });
         // Update corresponding mobile card data-status and badge
         const card = document.querySelector(`#appt-card-list .mobile-card[data-id="${id}"]`);
         e.target.dataset.st = newStatus;
@@ -946,21 +1012,20 @@ App.pages.appointments = {
     const missing = [...new Set(selectedIds.map(Number))].filter(sid => sid && !rendered.has(sid));
     if (missing.length === 0) return;
     const services = await DB.getAll('services');
-    const size = sizeType || 'small';
+    const table = await App.getPriceBands();
     const chips = missing.map(sid => {
       const svc = services.find(x => x.id === sid);
-      // 삭제된 서비스는 이름을 알 수 없어 다시 붙이지 않는다 (예전에도 이름 표시가 안 되던 값)
-      if (!svc) return '';
-      const price = Number(svc['price' + size.charAt(0).toUpperCase() + size.slice(1)]) || 0;
-      return `
+      // 지워진 서비스도 id 를 버리지 않는다 — 예약에 저장된 이름(없으면 '삭제된 서비스')으로 체크된 칩을 붙여 수정 저장 때 유지
+      if (!svc) {
+        const savedName = (this._formSvcNames && this._formSvcNames[sid]) || '삭제된 서비스';
+        return `
           <label class="service-chip checked">
-            <input type="checkbox" name="serviceIds" value="${svc.id}" checked
-              data-price-small="${svc.priceSmall || 0}"
-              data-price-medium="${svc.priceMedium || 0}"
-              data-price-large="${svc.priceLarge || 0}">
-            <span class="service-chip-name">${App.escapeHtml(svc.name)}${svc.isActive === false ? ' (비활성)' : ''}</span>
-            <span class="service-chip-price">${App.formatPriceShort(price)}</span>
+            <input type="checkbox" name="serviceIds" value="${sid}" checked data-price="0">
+            <span class="service-chip-name">${App.escapeHtml(savedName)} (삭제됨)</span>
+            <span class="service-chip-price">-</span>
           </label>`;
+      }
+      return App.serviceChipHtml(svc, sizeType, table, true, svc.isActive === false ? ' (비활성)' : '');
     }).join('');
     if (!chips.trim()) return;
     host.insertAdjacentHTML('beforeend', `<div style="font-size:0.78rem;font-weight:700;color:var(--text-muted);margin:8px 0 4px;padding-bottom:2px;border-bottom:1px solid var(--border)">기존 선택 (메뉴에서 숨김)</div><div class="service-select-grid">${chips}</div>`);
@@ -994,7 +1059,10 @@ App.pages.appointments = {
     }
     const petOptions = await App.getPetOptions(appt.customerId, appt.petId);
     const initialPet = appt.petId ? await DB.get('pets', Number(appt.petId)) : null;
-    const serviceCheckboxes = await App.getServiceCheckboxes(appt.serviceIds || [], App.getPetSizeType(initialPet));
+    // 칩 가격 기준: 예약 때 적은 몸무게 → 반려견 몸무게 → 사이즈
+    const initialWeight = Number(appt.weightAtBooking) > 0 ? Number(appt.weightAtBooking) : (initialPet && Number(initialPet.weight) > 0 ? Number(initialPet.weight) : null);
+    const initialBasis = initialWeight || App.getPetPriceBasis(initialPet);
+    const serviceCheckboxes = await App.getServiceCheckboxes(appt.serviceIds || [], initialBasis);
 
     // ========== Form HTML ==========
     // 반복 예약 묶음: 이 날짜 이후(이 건 포함) 아직 진행되지 않은 같은 묶음의 예약
@@ -1040,9 +1108,14 @@ App.pages.appointments = {
         <!-- 선택사항 -->
         <div style="margin:12px 0 8px;padding-top:10px;border-top:1px dashed var(--border);font-size:0.82rem;color:var(--text-muted)">선택사항</div>
         <div class="form-group">
+          <label class="form-label" for="f-appt-weight">몸무게 (kg) <span style="color:var(--text-muted);font-size:0.78rem;font-weight:400">(서비스 가격 구간 — 반려견 몸무게가 기본)</span></label>
+          <input type="number" id="f-appt-weight" value="${initialWeight ? App.formatKg(initialWeight) : ''}" placeholder="예: 5.2" min="0" max="120" step="0.1" inputmode="decimal" style="max-width:160px">
+        </div>
+        <div class="form-group">
           <div id="f-services">
             ${serviceCheckboxes}
           </div>
+          <div id="f-appt-estimate" style="display:none;margin-top:8px;padding:8px 12px;background:var(--bg);border-radius:var(--radius);font-size:0.85rem"></div>
         </div>
 
         ${!id ? `<div class="form-group">
@@ -1077,7 +1150,8 @@ App.pages.appointments = {
         <!-- 상세 옵션 영역 -->
         <div class="form-detail-section">
           <div class="form-row">
-            <div class="form-group">
+            <!-- 미용사 1명 이하면 숨김 (값은 그대로 저장 — 1명 등록 시 자동 채움, 기존 담당 유지) -->
+            <div class="form-group"${await App.isMultiGroomer() ? '' : ' style="display:none"'}>
               <label class="form-label">담당 미용사</label>
               ${await App.getGroomerFieldHTML(appt.groomer)}
             </div>
@@ -1108,14 +1182,28 @@ App.pages.appointments = {
 
     // ========== Event Handlers ==========
     // 서비스 칩 바인딩 (반려견 변경 시 사이즈별 가격으로 다시 그린 뒤에도 재사용)
+    // 예상 금액 — 고른 서비스의 메뉴 가격 합 (몸무게 구간·초과 요금 반영). 실제 금액은 미용 기록에서 정해진다
+    const updateEstimate = () => {
+      const el = document.getElementById('f-appt-estimate');
+      if (!el) return;
+      const picked = Array.from(document.querySelectorAll('input[name="serviceIds"]:checked'));
+      if (picked.length === 0) { el.style.display = 'none'; return; }
+      const sum = picked.reduce((t, cb) => t + (Number(cb.dataset.price) || 0), 0);
+      const unknown = picked.some(cb => cb.dataset.needsWeight === '1');
+      el.style.display = 'block';
+      el.innerHTML = `<div style="display:flex;justify-content:space-between;align-items:center;gap:8px"><span style="color:var(--text-secondary)">예상 금액</span><strong>${unknown && sum === 0 ? '-' : App.formatCurrency(sum)}</strong></div>`
+        + (unknown ? '<div style="font-size:0.75rem;color:var(--text-muted);margin-top:2px">몸무게를 넣으면 구간 가격으로 계산돼요</div>' : '');
+    };
     const bindServiceChips = () => {
       // 서비스 칩 토글 (checked 클래스)
       document.querySelectorAll('.service-chip input[type="checkbox"]').forEach(cb => {
         cb.addEventListener('change', () => {
           const chip = cb.closest('.service-chip');
           if (chip) chip.classList.toggle('checked', cb.checked);
+          updateEstimate();
         });
       });
+      updateEstimate();
 
       // 전체 선택/해제 토글
       document.getElementById('btn-toggle-services')?.addEventListener('click', (e) => {
@@ -1129,20 +1217,25 @@ App.pages.appointments = {
         });
         const btn = document.getElementById('btn-toggle-services');
         if (btn) btn.textContent = allChecked ? '전체 선택' : '전체 해제';
+        updateEstimate();
       });
     };
-    await this._appendMissingServiceChips(document.getElementById('f-services'), (appt.serviceIds || []).map(Number), App.getPetSizeType(initialPet));
+    // 지워진 서비스 칩에 보여줄 저장 이름 (id → 이름)
+    this._formSvcNames = {};
+    (appt.serviceIds || []).forEach((sid, i) => { const nm = (appt.serviceNames || [])[i]; if (nm) this._formSvcNames[Number(sid)] = nm; });
+    await this._appendMissingServiceChips(document.getElementById('f-services'), (appt.serviceIds || []).map(Number), initialBasis);
     bindServiceChips();
 
-    // 반려견이 바뀌면 그 아이 사이즈 가격으로 칩을 다시 그린다 (선택한 서비스는 유지)
+    // 반려견·몸무게가 바뀌면 그 구간 가격으로 칩을 다시 그린다 (선택한 서비스는 유지)
     let chipRenderSeq = 0;
-    let lastSizeType = App.getPetSizeType(initialPet);
-    document.getElementById('f-petId')?.addEventListener('change', async (e) => {
+    let lastSizeType = initialBasis;
+    let apptPet = initialPet;
+    const weightEl = document.getElementById('f-appt-weight');
+    const rerenderChips = async () => {
       const seq = ++chipRenderSeq;
-      const petId = Number(e.target.value);
-      const pet = petId ? await DB.get('pets', petId) : null;
-      const sizeType = App.getPetSizeType(pet);
-      if (seq !== chipRenderSeq || sizeType === lastSizeType) return;
+      const w = parseFloat(weightEl?.value);
+      const sizeType = w > 0 ? w : App.getPetPriceBasis(apptPet);
+      if (sizeType === lastSizeType) return;
       const checkedIds = Array.from(document.querySelectorAll('input[name="serviceIds"]:checked')).map(cb => Number(cb.value));
       const html = await App.getServiceCheckboxes(checkedIds, sizeType);
       const host = document.getElementById('f-services');
@@ -1152,7 +1245,15 @@ App.pages.appointments = {
       await this._appendMissingServiceChips(host, checkedIds, sizeType);
       if (seq !== chipRenderSeq) return;
       bindServiceChips();
+    };
+    document.getElementById('f-petId')?.addEventListener('change', async (e) => {
+      const petId = Number(e.target.value);
+      apptPet = petId ? await DB.get('pets', petId) : null;
+      // 몸무게 칸을 새 반려견의 몸무게로 (없으면 비움)
+      if (weightEl) weightEl.value = apptPet && Number(apptPet.weight) > 0 ? App.formatKg(apptPet.weight) : '';
+      rerenderChips();
     });
+    weightEl?.addEventListener('input', App.debounce(() => { if (weightEl.isConnected) rerenderChips(); }, 400));
 
     // 빠른 시간 칩
     const timeInput = document.getElementById('f-time');
@@ -1305,6 +1406,20 @@ App.pages.appointments = {
     if (!petId) { App.showToast('반려견을 선택해주세요.', 'error'); App.highlightField('f-petId'); return; }
     if (!date) { App.showToast('날짜를 입력해주세요.', 'error'); App.highlightField('f-date'); return; }
 
+    // 휴무일 예약 — 시간 겹침과 같은 방식으로 한 번 묻는다 (예전엔 빨간 안내만 뜨고 그냥 저장됐다).
+    // 수정 중 날짜를 바꾸지 않았으면 이미 확인한 예약이므로 다시 묻지 않는다.
+    {
+      const closedDays = ((await DB.getSetting('closedDays')) || []).map(Number);
+      const dow = App.parseLocalDate(date).getDay();
+      const prevDate = id ? (await DB.get('appointments', id))?.date : null;
+      if (closedDays.includes(dow) && prevDate !== date) {
+        const ok = await App.confirm(`${App.formatDateKo(date)}은 휴무일입니다.<br>그래도 예약할까요?`, { okLabel: '그래도 저장', danger: false });
+        if (!ok) return;
+        // confirm 이 닫히며 내는 history.back() 이 처리된 뒤에 다음 단계로
+        await new Promise(r => setTimeout(r, 180));
+      }
+    }
+
     // Check time conflict (duration-aware)
     if (time) {
       const dayAppts = await DB.getByIndex('appointments', 'date', date);
@@ -1342,11 +1457,23 @@ App.pages.appointments = {
         if (!existCheck) { App.showToast('예약을 찾을 수 없습니다.', 'error'); return; }
         status = existCheck.status || 'pending';
       }
-      const data = { customerId, petId, date, time, duration, groomer, status, serviceIds, memo };
+      // 서비스 이름도 함께 저장 — 나중에 서비스가 지워져도 예약에 이름이 남도록 (serviceIds 와 같은 순서)
+      const svcNameMap = {}; (await DB.getAll('services')).forEach(s => { svcNameMap[s.id] = s.name; });
+      const serviceNames = serviceIds.map(sid => svcNameMap[sid] || (this._formSvcNames && this._formSvcNames[sid]) || '');
+      const data = { customerId, petId, date, time, duration, groomer, status, serviceIds, serviceNames, memo };
+      // 몸무게: 반려견 프로필과 다르게 적었을 때만 예약에 남긴다 (같으면 완료 때 반려견 최신 몸무게를 쓴다)
+      {
+        const w = parseFloat(document.getElementById('f-appt-weight')?.value);
+        const pet = petId ? await DB.get('pets', petId) : null;
+        const petW = pet ? Number(pet.weight) || 0 : 0;
+        data.weightAtBooking = (w > 0 && Math.abs(w - petW) > 0.001) ? Math.round(w * 10) / 10 : null;
+      }
 
       if (id) {
         const existing = await DB.get('appointments', id);
         if (!existing) { App.showToast('예약을 찾을 수 없습니다.', 'error'); return; }
+        // 날짜·시간이 바뀌면 이전 일정에 대한 리마인더 발송 기록은 무효
+        if (existing.date !== data.date || existing.time !== data.time) delete existing.reminderSentAt;
         Object.assign(existing, data);
         await DB.update('appointments', existing);
         App.showToast('예약이 수정되었습니다.');
@@ -1460,12 +1587,18 @@ App.pages.appointments = {
       const _origClose = App._modalOnClose;
       App._modalOnClose = async () => {
         if (_origClose) _origClose();
+        // 저장이든 취소든 홈 카드(예약 상태·미결제·오늘 매출)를 다시 그리게 한다.
+        // 기록 저장 직후 records.saveRecord 가 handleRoute 를 부르는데, 대시보드의 5초 캐시 때문에
+        // 다시 그리지 않아 '미용중'·이전 매출이 새로고침 전까지 남던 문제.
+        App._dashboardDirty = true;
         // 기록이 저장되지 않았으면 (예약이 아직 in_progress) 원래 상태로
         const current = await DB.get('appointments', id);
         if (current && current.status === 'in_progress') {
           current.status = prevStatus;
           await DB.update('appointments', current);
           if (onCancel) onCancel();
+          // 홈에서 취소했으면 '미용중'이 남지 않게 다시 그린다
+          if (App.currentPage === 'dashboard') { App._dashboardDirty = true; App.handleRoute(); }
         }
         App._modalOnClose = null;
       };

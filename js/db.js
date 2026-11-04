@@ -1029,16 +1029,56 @@ const DB = {
         if (changed) await this.update('records', r);
       }
 
-      // 3) photos 스토어에서 어디서도 참조 안 되는 orphan 삭제
+      // 3) photos 스토어에서 어디서도 참조 안 되는 orphan 정리 — 바로 지우지 않는다.
+      // 처음 발견하면 orphanedAt 을 적어 두고, 30일이 지나도 계속 참조가 없을 때만 지운다 (다시 참조되면 표시를 지운다).
+      // 클라우드로 교체·사진 없는 백업 복원 직후엔 원본 사진의 참조가 잠시 끊겼다가 '되돌리기'로 돌아올 수 있다
+      // (예전엔 다음 날 점검이 그 원본 사진을 영구 삭제했다). 되돌리기 사본이 남아 있는 동안에는 아예 지우지 않는다.
       // 10분 안에 저장된 사진은 건너뛴다 — 동기화가 사진을 먼저 저장하고 기록을 바꾸는 사이에 고아로 오인해 지웠다
-      const recentCut = Date.now() - 10 * 60 * 1000;
-      for (const ph of photos) {
-        if (ph.createdAt && new Date(ph.createdAt).getTime() > recentCut) continue;
-        if (!referencedPhotoIds.has(ph.id)) {
-          report.orphanPhotos++;
-          await this.delete('photos', ph.id);
-          report.repaired++;
+      const now = Date.now();
+      const recentCut = now - 10 * 60 * 1000;
+      const ORPHAN_KEEP_MS = 30 * 86400000;
+      // 사본 본문은 크므로 메타만 읽는다 (설정 화면처럼 7일 지난 사본은 되돌릴 수 없으니 없는 것으로 본다).
+      // 메타가 없으면 본문이 있는지만 센다. 확인에 실패하면 지우지 않는 쪽으로.
+      let hasUndoBackup = true;
+      try {
+        const undoMeta = await this.getSetting('_autoBackupBeforeImportMeta');
+        if (undoMeta) {
+          const at = Date.parse(undoMeta.date);
+          hasUndoBackup = !(at && now - at > 7 * 86400000);
+        } else {
+          hasUndoBackup = await new Promise(resolve => {
+            const req = this._idbStore('settings', 'readonly').count('_autoBackupBeforeImport');
+            req.onsuccess = () => resolve(req.result > 0);
+            req.onerror = () => resolve(true);
+          });
         }
+      } catch (_) { hasUndoBackup = true; }
+      // 읽기와 쓰기를 한 트랜잭션에서 — 그 사이 지워진 사진을 다시 살려 넣지 않게
+      const markOrphan = (id, at) => new Promise((resolve, reject) => {
+        const tx = this.db.transaction('photos', 'readwrite');
+        const os = tx.objectStore('photos');
+        const req = os.get(id);
+        req.onsuccess = () => {
+          const cur = req.result;
+          if (!cur) return;
+          if (at) cur.orphanedAt = at; else delete cur.orphanedAt;
+          os.put(cur);
+        };
+        tx.oncomplete = () => resolve();
+        tx.onerror = () => reject(tx.error);
+        tx.onabort = () => reject(tx.error);
+      });
+      for (const ph of photos) {
+        if (referencedPhotoIds.has(ph.id)) {
+          if (ph.orphanedAt) await markOrphan(ph.id, null);
+          continue;
+        }
+        if (ph.createdAt && new Date(ph.createdAt).getTime() > recentCut) continue;
+        if (!(Number(ph.orphanedAt) > 0)) { await markOrphan(ph.id, now); continue; }
+        if (hasUndoBackup || now - Number(ph.orphanedAt) < ORPHAN_KEEP_MS) continue;
+        report.orphanPhotos++;
+        await this.delete('photos', ph.id);
+        report.repaired++;
       }
 
       // 4) 모순 감지 (자동 보수 안 함 — 사용자 의도 모를 수 있음)

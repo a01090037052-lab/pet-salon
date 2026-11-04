@@ -229,13 +229,30 @@ App.pages.dashboard = {
       const todayRevenue = todayRecords.reduce((sum, r) => sum + App.getRecordAmount(r), 0);
 
       // ===== 내일 예약 리마인더 =====
-      const tomorrowDate = new Date();
-      tomorrowDate.setDate(tomorrowDate.getDate() + 1);
-      const tomorrowStr = App.formatLocalDate(tomorrowDate);
-      const tomorrowApptsRaw = await DB.getByIndex('appointments', 'date', tomorrowStr);
+      // 휴무일이면 내일 예약이 없으므로, 내일부터 '다음 영업일'까지 조회한다
+      const closedDays = ((await DB.getSetting('closedDays')) || []).map(Number);
+      const reminderStart = App.parseLocalDate(today);
+      reminderStart.setDate(reminderStart.getDate() + 1);
+      const reminderEnd = new Date(reminderStart);
+      for (let i = 0; i < 7 && closedDays.includes(reminderEnd.getDay()); i++) {
+        reminderEnd.setDate(reminderEnd.getDate() + 1);
+      }
+      // 카드 제목: 내일이 영업일이면 '내일 예약 리마인더', 휴무로 건너뛰면 여러 날이 섞이므로
+      // '다음 영업일(화)까지 예약 리마인더' + 항목마다 날짜('월 11/10')를 붙인다
+      // (휴무일에 잡힌 예약도 함께 나와, 예전엔 '화요일 예약 리마인더' 아래에 월요일 예약이 섞여 보였다)
+      const reminderMultiDay = App.formatLocalDate(reminderStart) !== App.formatLocalDate(reminderEnd);
+      const reminderTitle = reminderMultiDay
+        ? `다음 영업일(${'일월화수목금토'[reminderEnd.getDay()]})까지 예약 리마인더`
+        : '내일 예약 리마인더';
+      const reminderDateLabel = (dateStr) => {
+        const d = App.parseLocalDate(dateStr);
+        return `${'일월화수목금토'[d.getDay()]} ${d.getMonth() + 1}/${d.getDate()}`;
+      };
+      const tomorrowApptsRaw = await DB.getByDateRange('appointments', 'date',
+        App.formatLocalDate(reminderStart), App.formatLocalDate(reminderEnd));
       const tomorrowAppts = tomorrowApptsRaw
         .filter(a => a.status !== 'cancelled' && a.status !== 'completed')
-        .sort((a, b) => (a.time || '').localeCompare(b.time || ''));
+        .sort((a, b) => (a.date || '').localeCompare(b.date || '') || (a.time || '').localeCompare(b.time || ''));
 
       // 노쇼 카운트 (각 customer별 과거 노쇼 횟수)
       const noShowCountByCustomer = {};
@@ -390,30 +407,40 @@ App.pages.dashboard = {
         b._smsBody = encodeURIComponent(msg);
       }
 
+      // 미수금 안내 문자 본문 — 화면에 그려지는 10건만 (설정 > 메시지 템플릿의 '미수금 안내')
+      unpaidRecords.sort((a, b) => (b.date || '').localeCompare(a.date || ''));
+      for (const r of unpaidRecords.slice(0, 10)) {
+        const customer = customerMap[r.customerId];
+        const msg = await App.buildSms('unpaid', {
+          '고객명': (customer && customer.name) || '',
+          '반려견명': petMap[r.petId]?.name || '',
+          '날짜': r.date ? App.formatDateKo(r.date) : '',
+          '금액': App.getRecordAmount(r).toLocaleString('ko-KR')
+        });
+        r._smsBody = encodeURIComponent(msg);
+      }
+
       // 월 매출 목표
       const monthlyGoal = Number(await DB.getSetting('monthlyGoal')) || 0;
 
       // 데이터 보호 알림 — 동기화 중이면 백업 경고 대신 동기화 상태·사진 백업만 (App.getDataSafetyNotice)
       const safety = await App.getDataSafetyNotice();
       const _isIOS = /iPhone|iPad|iPod/.test(navigator.userAgent);
+      // 안전 안내는 작게 — 급한 것(백업 긴급·동기화 끊김)만 인사말 아래 한 줄, 나머지는 화면 맨 아래.
+      // (예전엔 큰 백업 경고 상자가 맨 위를 차지해 오늘 예약·리마인더가 밀려 내려갔다)
       let backupWarning = '';
+      let safetyTop = '';
       if (safety && safety.kind === 'backup') {
         const _urgent = safety.urgent;
-        backupWarning = `
-        <div style="background:${_urgent ? 'var(--danger-bg-soft)' : 'var(--warning-light)'};border:1.5px solid ${_urgent ? 'var(--danger)' : 'var(--warning)'};border-radius:var(--radius);padding:14px 16px;margin-bottom:16px;display:flex;align-items:center;gap:12px;flex-wrap:wrap">
-          <span style="font-size:1.3rem">${App.icon('alert')}</span>
-          <div class="flex-1" style="min-width:200px">
-            <strong style="color:${_urgent ? 'var(--danger)' : 'var(--warning-text-strong)'}">${_urgent ? '백업 필요 (긴급)' : '백업 알림'}</strong>
-            <div style="font-size:0.85rem;margin-top:3px;color:var(--text-secondary)">
-              ${safety.days !== null ? `마지막 백업 ${safety.days}일 전.` : '아직 백업하지 않았습니다.'}
-              ${_isIOS ? ' iOS는 7일 이상 미사용 시 데이터 자동 삭제 위험.' : ' 폰 분실·고장 대비 데이터 보호 권장.'}
-              <a href="#settings" style="color:var(--primary);font-weight:600;white-space:nowrap">기기 간 동기화를 켜면 다른 기기에도 복사돼요 &rarr;</a>
-            </div>
-          </div>
-          <button class="btn btn-sm ${_urgent ? 'btn-danger' : 'btn-warning'}" onclick="App.pages.settings?.directBackup()">지금 백업</button>
+        const note = `
+        <div class="safety-note${_urgent ? ' warn' : ''}" id="dash-backup-note">
+          ${App.icon('alert')}
+          <div class="flex-1"><strong>${_urgent ? '백업 필요' : '백업 알림'}</strong> · ${safety.days !== null ? `마지막 백업 ${safety.days}일 전` : '아직 백업 안 함'}<br><small>${_isIOS ? '아이폰은 오래 안 쓰면 저장 데이터가 지워질 수 있어요.' : '폰 분실·고장 대비'} <a href="#settings" style="color:var(--primary);font-weight:600;white-space:nowrap">동기화 켜기 &rarr;</a></small></div>
+          <button class="btn btn-sm ${_urgent ? 'btn-warning' : 'btn-secondary'}" onclick="App.pages.settings?.directBackup()">지금 백업</button>
         </div>`;
+        if (_urgent) safetyTop = note; else backupWarning = note;
       } else if (safety && safety.kind === 'sync') {
-        backupWarning = `
+        safetyTop = `
         <div class="safety-note warn">
           ${App.icon('refresh')}
           <div class="flex-1">${safety.days === null ? '아직 클라우드와 동기화되지 않았습니다.' : `${safety.days}일째 클라우드와 동기화되지 않았습니다.`}<br><small>인터넷 연결과 로그인 상태를 확인해주세요.</small></div>
@@ -443,7 +470,8 @@ App.pages.dashboard = {
         </div>`;
         }
       } catch (_) {}
-      backupWarning = a2hsNote + backupWarning;
+      // 홈 화면 추가 안내는 아이폰 데이터 보존에 직결 → 위쪽 한 줄 (닫으면 90일간 안 보임)
+      safetyTop = safetyTop + a2hsNote;
 
       // Onboarding card for new users (shopName 재사용, services는 기 로드된 배열 길이 사용)
       const shopInfo = shopName;
@@ -463,7 +491,7 @@ App.pages.dashboard = {
               </div>
               <div class="onboarding-step" style="display:flex;align-items:center;gap:12px;padding:10px 14px;background:var(--bg-white);border-radius:var(--radius);border:1px solid var(--border-light)">
                 <span style="width:28px;height:28px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:0.8rem;font-weight:700;${groomersSet.length > 0 ? 'background:var(--success);color:#fff' : 'background:var(--bg);color:var(--text-muted);border:1.5px solid var(--border)'}">${groomersSet.length > 0 ? App.icon('check') : '2'}</span>
-                <div class="flex-1"><strong>미용사 등록</strong><div style="font-size:0.8rem;color:var(--text-muted)">담당 미용사 추가</div></div>
+                <div class="flex-1"><strong>미용사 등록</strong><div style="font-size:0.8rem;color:var(--text-muted)">선택 · 혼자면 본인 이름 1명만</div></div>
                 ${groomersSet.length === 0 ? '<a href="#settings" class="btn btn-sm btn-primary">설정</a>' : '<span class="badge badge-success">완료</span>'}
               </div>
               <div class="onboarding-step" style="display:flex;align-items:center;gap:12px;padding:10px 14px;background:var(--bg-white);border-radius:var(--radius);border:1px solid var(--border-light)">
@@ -487,17 +515,18 @@ App.pages.dashboard = {
       container.innerHTML = `
         <div data-page-root="dashboard"></div>
         <div id="storage-quota-banner"></div>
-        ${backupWarning}
-
         <div class="welcome-section">
           <div class="welcome-title">${greeting}! ${shopName ? App.escapeHtml(shopName) : '펫살롱'}</div>
           <div class="welcome-subtitle">${(() => { const d = new Date(today + 'T00:00:00'); const wd = ['일','월','화','수','목','금','토'][d.getDay()]; return `${d.getMonth()+1}월 ${d.getDate()}일 (${wd})`; })()} &middot; 등록 고객 ${customerCount}명</div>
           ${todayBrief}
         </div>
 
+        ${safetyTop}
+
         ${onboardingHtml}
 
-        <!-- 1. 오늘 예약 — 매일 아침 가장 먼저 봐야 할 정보 -->
+        <!-- 1. 오늘 예약 — 매일 아침 가장 먼저 봐야 할 정보.
+             순서: 오늘 예약 → 다음 영업일 리마인더 → 미수금 → 연락할 손님 → 매출 요약·생일 → 안전 안내 -->
         <div class="card" style="margin-bottom:16px">
           <div class="card-header">
             <span class="card-title">${App.icon('calendar')} 오늘 예약 (${todayAppointments.length}건)</span>
@@ -514,7 +543,228 @@ App.pages.dashboard = {
           </div>
         </div>
 
-        <!-- 2. 매출 요약 (매일 자주 확인하는 정보 — 상단으로 이동) -->
+        <!-- 2. 다음 영업일 예약 리마인더 -->
+        ${tomorrowAppts.length > 0 ? `
+        <div class="card dash-accordion" style="margin-bottom:20px">
+          <div class="card-header dash-accordion-toggle" style="cursor:pointer;user-select:none" data-target="dash-tomorrow-reminder">
+            <span class="card-title">${reminderTitle}</span>
+            <div style="display:flex;align-items:center;gap:8px">
+              <span class="badge badge-info">${tomorrowAppts.length}건</span>
+              ${(() => { const sentCount = tomorrowAppts.filter(a => a.reminderSentAt).length; return sentCount > 0 ? `<span class="badge badge-secondary" style="font-size:0.7rem">${sentCount}건 발송됨</span>` : ''; })()}
+              <span class="dash-chevron" style="display:inline-flex;transition:transform 0.2s;font-size:0.8rem">${App.icon('chevron-down')}</span>
+            </div>
+          </div>
+          <div class="card-body" id="dash-tomorrow-reminder" style="padding:0">
+            ${['오전', '오후', '저녁', '미정'].map(group => {
+              const items = tomorrowGrouped[group];
+              if (!items || items.length === 0) return '';
+              return `
+                <div class="reminder-time-section">
+                  <div class="reminder-time-label">${group}</div>
+                  ${items.map(a => {
+                    const customer = customerMap[a.customerId];
+                    const pet = petMap[a.petId];
+                    const phoneClean = App.phoneDigits(customer?.phone);
+                    const noShowCount = noShowCountByCustomer[a.customerId] || 0;
+                    const allergies = App.hasPetNote(pet?.allergies) ? App.escapeHtml(pet.allergies) : '';
+                    const healthNotes = App.hasPetNote(pet?.healthNotes) ? App.escapeHtml(pet.healthNotes) : '';
+                    const temperament = pet?.temperament ? App.escapeHtml(pet.temperament) : '';
+                    const photoSrc = pet?.photoThumb || pet?.photo;
+                    const sent = !!a.reminderSentAt;
+                    const breedSize = [pet?.breed, pet?.weight ? pet.weight + 'kg' : null].filter(Boolean).join(' · ');
+                    return `
+                      <div class="reminder-item" data-id="${a.id}" style="${sent ? 'opacity:0.55' : ''}">
+                        <a href="#pets/${a.petId}" class="reminder-pet-photo" onclick="event.stopPropagation()">
+                          ${photoSrc ? `<img src="${App.escapeHtml(photoSrc)}" alt="${App.escapeHtml(pet?.name || '')}">` : `<div class="reminder-pet-placeholder">${App.escapeHtml((pet?.name || '?').charAt(0))}</div>`}
+                        </a>
+                        <div class="reminder-content">
+                          <div class="reminder-line-1">
+                            <strong class="reminder-time-num">${reminderMultiDay ? `<span style="font-weight:600;color:var(--text-secondary)">${reminderDateLabel(a.date)}</span> ` : ''}${a.time || '--:--'}</strong>
+                            <a href="#pets/${a.petId}" class="reminder-pet-name" onclick="event.stopPropagation()">${App.escapeHtml(pet?.name || '?')}</a>
+                            ${breedSize ? `<span class="reminder-pet-meta">· ${App.escapeHtml(breedSize)}</span>` : ''}
+                          </div>
+                          <a href="#customers/${a.customerId}" class="reminder-customer" onclick="event.stopPropagation()">${App.escapeHtml(App.getCustomerLabel(customer))}</a>
+                          ${(allergies || healthNotes || temperament || noShowCount > 0) ? `
+                            <div class="reminder-warnings">
+                              ${allergies ? `<span class="reminder-warning"><span class="reminder-warning-icon">${App.icon('alert')}</span> 알레르기: ${allergies}</span>` : ''}
+                              ${healthNotes ? `<span class="reminder-warning"><span class="reminder-warning-icon">${App.icon('alert')}</span> ${healthNotes}</span>` : ''}
+                              ${temperament ? `<span class="reminder-warning reminder-warning-soft">${temperament}</span>` : ''}
+                              ${noShowCount > 0 ? `<span class="reminder-warning reminder-warning-danger"><span class="reminder-warning-icon">${App.icon('alert')}</span> 노쇼 ${noShowCount}회</span>` : ''}
+                            </div>
+                          ` : ''}
+                          <div class="reminder-actions">
+                            ${phoneClean ? '' : `<button class="btn btn-sm btn-ghost btn-copy-reminder" data-id="${a.id}" data-sms="${App.escapeHtml(a._smsRaw || '')}" onclick="event.stopPropagation()" title="메시지 복사">복사</button>`}
+                            ${phoneClean ? `<a href="sms:${App.escapeHtml(phoneClean)}${App.getSmsSep()}body=${a._smsBody}" class="btn btn-sm btn-success btn-send-reminder" data-id="${a.id}" onclick="event.stopPropagation()">문자</a>` : ''}
+                            ${phoneClean ? `<a href="tel:${App.escapeHtml(phoneClean)}" class="btn btn-sm btn-secondary" onclick="event.stopPropagation()">전화</a>` : ''}
+                          </div>
+                          ${sent ? `<div class="reminder-sent-badge"><span class="reminder-sent-check">${App.icon('check')}</span> ${App.escapeHtml(a._sentLabel || '발송됨')}</div>` : ''}
+                        </div>
+                      </div>
+                    `;
+                  }).join('')}
+                </div>
+              `;
+            }).join('')}
+          </div>
+        </div>
+        ` : ''}
+
+        <!-- 3. 미수금 (즉시 액션 필요) -->
+        ${unpaidRecords.length > 0 ? `
+        <div class="card dash-accordion" style="margin-bottom:20px;border:1.5px solid var(--danger)">
+          <div class="card-header dash-accordion-toggle" style="background:var(--danger-light);cursor:pointer;user-select:none" data-target="dash-unpaid">
+            <span class="card-title text-danger">${App.icon('cash')} 미수금 현황</span>
+            <div style="display:flex;align-items:center;gap:8px">
+              <span class="badge badge-danger">${unpaidRecords.length}건 / ${App.formatCurrency(unpaidTotal)}</span>
+              <span class="dash-chevron" style="display:inline-flex;transition:transform 0.2s;font-size:0.8rem">${App.icon('chevron-down')}</span>
+            </div>
+          </div>
+          <div class="card-body" id="dash-unpaid" style="display:${unpaidRecords.length > 0 ? 'block' : 'none'}">
+            ${unpaidRecords.length > 10 ? `<div style="font-size:0.82rem;color:var(--text-muted);margin-bottom:8px;text-align:right"><a href="#records" style="color:var(--primary)">미수금 전체 ${unpaidRecords.length}건 보기 &rarr;</a></div>` : ''}
+            ${unpaidRecords.slice(0, 10).map(r => {
+              const customer = customerMap[r.customerId];
+              const pet = petMap[r.petId];
+              return `
+                <!-- 두 줄 배치: 좁은 화면에서 이름·날짜가 4줄로 쪼개지던 문제 -->
+                <div class="alert-item unpaid-item">
+                  <div class="unpaid-top">
+                    <div class="unpaid-who"><strong>${App.escapeHtml(pet?.name || '-')}</strong> <span>${App.escapeHtml(App.getCustomerLabel(customer))}</span></div>
+                    <strong class="unpaid-amount">${App.formatCurrency(App.getRecordAmount(r))}</strong>
+                  </div>
+                  <div class="unpaid-bottom">
+                    <span class="unpaid-date">${App.formatDate(r.date)}</span>
+                    <div style="display:flex;gap:4px;flex-shrink:0">
+                      ${customer?.phone ? `<a href="tel:${App.escapeHtml(App.phoneDigits(customer.phone))}" class="btn btn-sm btn-secondary" onclick="event.stopPropagation()">전화</a><a href="sms:${App.escapeHtml(App.phoneDigits(customer.phone))}${r._smsBody ? smsSep + 'body=' + r._smsBody : ''}" class="btn btn-sm btn-secondary" onclick="event.stopPropagation()">문자</a>` : ''}
+                      <button class="btn btn-sm btn-success btn-pay-unpaid" data-id="${r.id}" onclick="event.stopPropagation()">결제</button>
+                    </div>
+                  </div>
+                </div>`;
+            }).join('')}
+          </div>
+        </div>
+        ` : ''}
+
+        <!-- 4. 연락할 손님 — 재방문 알림·장기 미방문·VIP 미방문·고객 관리 현황을 한 카드에 (각 목록의 계산·제외 규칙은 그대로) -->
+        ${(revisitAlerts.length + longGoneAlerts.length + vipUnvisitedAlerts.length + visitSummary.remind + visitSummary['at-risk'] + visitSummary.churned) > 0 ? (() => {
+          const segs = [
+            // 탭·아래 현황 줄·고객 목록 필터가 같은 말을 쓴다: 올 때 됨 / 많이 늦음 / 오래 안 옴
+            { key: 'due', label: '올 때 됨·늦음', count: revisitAlerts.length },
+            { key: 'gone', label: '오래 안 옴', count: longGoneAlerts.length },
+            { key: 'vip', label: 'VIP', count: vipUnvisitedAlerts.length }
+          ];
+          let saved = '';
+          try { saved = localStorage.getItem('dashContactSeg') || ''; } catch (_) {}
+          const active = (segs.find(x => x.key === saved && x.count > 0) || segs.find(x => x.count > 0) || segs[0]).key;
+          const total = segs.reduce((n, x) => n + x.count, 0);
+          // 전화번호가 있으면 문자·전화, 없으면 메시지 복사(카톡 등에 붙여넣기)
+          const contactBtns = (a) => {
+            const ph = App.phoneDigits(a.customer.phone);
+            return ph
+              ? `<a href="sms:${App.escapeHtml(ph)}${smsSep}body=${a._smsBody}" class="btn btn-sm btn-success btn-mark-contacted" data-customer-id="${a.customer.id}" onclick="event.stopPropagation()" title="문자 보내기">문자</a>
+                  <a href="tel:${App.escapeHtml(ph)}" class="btn btn-sm btn-secondary btn-mark-contacted" data-customer-id="${a.customer.id}" onclick="event.stopPropagation()" title="전화 걸기">전화</a>`
+              : `<button class="btn btn-sm btn-ghost btn-copy-sms btn-mark-contacted" data-customer-id="${a.customer.id}" data-sms="${App.escapeHtml(decodeURIComponent(a._smsBody))}" onclick="event.stopPropagation()" title="메시지 복사 (카톡용)">복사</button>`;
+          };
+          const empty = '<p style="color:var(--text-muted);text-align:center;padding:12px 0">지금 연락할 손님이 없어요</p>';
+          const filterLink = (vs, label, n, color) => `<a href="#customers" onclick="sessionStorage.setItem('customer-filter',JSON.stringify({visitStatus:'${vs}'}))" style="color:${color};text-decoration:none;white-space:nowrap">${label} <strong>${n}</strong></a>`;
+          return `
+        <div class="card dash-accordion" style="margin-bottom:20px">
+          <div class="card-header dash-accordion-toggle" style="cursor:pointer;user-select:none" data-target="dash-contact">
+            <span class="card-title">${App.icon('bell')} 연락할 손님</span>
+            <div style="display:flex;align-items:center;gap:8px">
+              ${total > 0 ? `<span class="badge badge-warning">${total}건</span>` : ''}
+              <span class="dash-chevron" style="display:inline-flex;transition:transform 0.2s;font-size:0.8rem">${App.icon('chevron-down')}</span>
+            </div>
+          </div>
+          <div class="card-body" id="dash-contact">
+            <div class="quick-filters" role="tablist" style="margin-bottom:12px">
+              ${segs.map(x => `<button type="button" class="quick-filter-btn dash-contact-seg${x.key === active ? ' active' : ''}" data-seg="${x.key}" role="tab" aria-selected="${x.key === active}">${x.label} ${x.count}</button>`).join('')}
+            </div>
+
+            <!-- 올 때 됨 (미용 주기 지남 · 이탈 전) -->
+            <div class="dash-contact-panel" data-seg="due" style="display:${active === 'due' ? 'block' : 'none'}">
+              ${revisitAlerts.length === 0 ? empty : revisitAlerts.slice(0, 5).map(a => {
+                const statusLabel = App.getVisitStatusLabel(a.visitStatus);
+                const statusBadge = App.getVisitStatusBadge(a.visitStatus);
+                // 왜 이 고객이 위에 있는지 보이게 한다 — 순서의 근거를 드러냄
+                const churnHint = a.daysUntilChurn <= 14
+                  ? `<span style="color:var(--danger);font-weight:700">이탈까지 ${a.daysUntilChurn}일</span>`
+                  : '';
+                return `
+                <div class="alert-item" data-alert-customer="${a.customer.id}">
+                  <span class="days">${a.days}일</span>
+                  <div class="flex-1">
+                    <strong>${App.escapeHtml(a.pet.name)}</strong>
+                    <span style="color:var(--text-muted);font-size:0.8rem">${App.escapeHtml(App.getCustomerLabel(a.customer))}</span>
+                    <span class="badge ${statusBadge}" style="font-size:0.72rem;margin-left:4px;padding:3px 8px">${statusLabel}</span>
+                    <span class="badge badge-secondary alert-contacted-tag" style="font-size:0.72rem;margin-left:4px;padding:3px 8px;display:none">연락함</span>
+                    <div style="font-size:0.78rem;color:var(--text-secondary);margin-top:2px">
+                      마지막 미용: ${App.formatDate(a.lastDate)}
+                      ${churnHint ? ' | ' + churnHint : ''}
+                      ${a.contactedAgo !== null ? ` | <span style="color:var(--text-muted)">${a.contactedAgo}일 전 연락함</span>` : ''}
+                    </div>
+                  </div>
+                  <div class="alert-item-actions" style="display:flex;gap:4px;flex-shrink:0">
+                    ${contactBtns(a)}
+                    <button class="btn btn-sm btn-primary" onclick="App.pages.appointments.showForm(null, ${a.customer.id}, {petId:${a.pet.id}})" style="flex-shrink:0">예약</button>
+                    <button class="btn btn-sm btn-ghost btn-exclude-pet" data-pet-id="${a.pet.id}" data-pet-name="${App.escapeHtml(a.pet.name || '')}" onclick="event.stopPropagation()" title="관리 제외 (이사·사망 등)" style="flex-shrink:0;color:var(--text-muted)">제외</button>
+                  </div>
+                </div>`;
+              }).join('')}
+              ${revisitAlerts.length > 5 ? `<div style="text-align:center;padding:10px 0 2px;font-size:0.82rem;color:var(--text-muted)">외 ${revisitAlerts.length - 5}건 — 연락하면 다음 고객이 올라옵니다</div>` : ''}
+            </div>
+
+            <!-- 오래 안 옴 (미용 주기 2배 초과 — 매일 보는 목록에서 분리) -->
+            <div class="dash-contact-panel" data-seg="gone" style="display:${active === 'gone' ? 'block' : 'none'}">
+              ${longGoneAlerts.length === 0 ? empty : `
+              <div style="font-size:0.82rem;color:var(--text-muted);margin-bottom:10px;line-height:1.5">
+                미용 주기의 2배가 지난 손님입니다. 다시 안 올 손님은 <strong>제외</strong>로 정리하면 목록이 계속 쌓이지 않습니다.
+              </div>
+              ${longGoneAlerts.slice(0, 10).map(a => `
+                <div class="alert-item" data-alert-customer="${a.customer.id}">
+                  <span class="days">${a.days}일</span>
+                  <div class="flex-1">
+                    <strong>${App.escapeHtml(a.pet.name)}</strong>
+                    <span style="color:var(--text-muted);font-size:0.8rem">${App.escapeHtml(App.getCustomerLabel(a.customer))}</span>
+                    <span class="badge badge-secondary alert-contacted-tag" style="font-size:0.72rem;margin-left:4px;padding:3px 8px;display:none">연락함</span>
+                    <div style="font-size:0.78rem;color:var(--text-secondary);margin-top:2px">
+                      마지막 미용: ${App.formatDate(a.lastDate)}
+                      ${a.contactedAgo !== null ? ` | <span style="color:var(--text-muted)">${a.contactedAgo}일 전 연락함</span>` : ''}
+                    </div>
+                  </div>
+                  <div class="alert-item-actions" style="display:flex;gap:4px;flex-shrink:0">
+                    ${contactBtns(a)}
+                    <button class="btn btn-sm btn-ghost btn-exclude-pet" data-pet-id="${a.pet.id}" data-pet-name="${App.escapeHtml(a.pet.name || '')}" onclick="event.stopPropagation()" title="관리 제외 (이사·사망 등)" style="flex-shrink:0;color:var(--text-muted)">제외</button>
+                  </div>
+                </div>`).join('')}
+              ${longGoneAlerts.length > 10 ? `<div style="text-align:center;padding:10px 0 2px;font-size:0.82rem;color:var(--text-muted)">외 ${longGoneAlerts.length - 10}건</div>` : ''}`}
+            </div>
+
+            <!-- VIP (30일+ 미방문, 예약 잡힌 VIP 제외) -->
+            <div class="dash-contact-panel" data-seg="vip" style="display:${active === 'vip' ? 'block' : 'none'}">
+              ${vipUnvisitedAlerts.length === 0 ? empty : vipUnvisitedAlerts.slice(0, 5).map(x => `
+                <div style="display:flex;align-items:center;gap:10px;padding:10px 0;border-bottom:1px solid var(--border-light)">
+                  <a href="#customers/${x.customer.id}" style="flex:1;min-width:0;text-decoration:none;color:inherit">
+                    <div style="font-weight:700;font-size:0.95rem">${App.icon('crown')} ${App.escapeHtml(App.getCustomerLabel(x.customer, (this._petsByCustomer || {})[x.customer.id]))}</div>
+                    <div style="font-size:0.78rem;color:var(--text-muted);margin-top:2px">${x.days}일 전 방문${x.customer.phone ? ' · ' + App.formatPhoneHtml(x.customer.phone) : ''}</div>
+                  </a>
+                  ${x.customer.phone ? `<a href="tel:${App.escapeHtml(App.phoneDigits(x.customer.phone))}" class="btn btn-sm btn-secondary" onclick="event.stopPropagation()" title="전화 걸기" style="flex-shrink:0">전화</a>` : ''}
+                </div>
+              `).join('')}
+              ${vipUnvisitedAlerts.length > 5 ? `<div style="text-align:center;padding:10px 0 0;font-size:0.85rem;color:var(--text-muted)">총 ${vipUnvisitedAlerts.length}명 중 5명 표시</div>` : ''}
+            </div>
+
+            <!-- 전체 현황 (예전 '고객 관리 현황' 카드) — 누르면 고객 목록을 그 상태로 걸러 연다 -->
+            <div style="display:flex;flex-wrap:wrap;gap:6px 14px;justify-content:center;margin-top:12px;padding-top:10px;border-top:1px solid var(--border-light);font-size:0.8rem">
+              ${filterLink('normal', '정상', visitSummary.normal, 'var(--success)')}
+              ${filterLink('remind', '올 때 됨', visitSummary.remind, 'var(--warning-text-strong)')}
+              ${filterLink('at-risk', '많이 늦음', visitSummary['at-risk'], 'var(--danger)')}
+              ${filterLink('churned', '오래 안 옴', visitSummary.churned, 'var(--text-muted)')}
+            </div>
+          </div>
+        </div>`;
+        })() : ''}
+
+        <!-- 5. 매출 요약 -->
         <div class="stats-grid" style="margin-bottom:20px">
           <div class="stat-card gradient-purple" style="cursor:pointer" onclick="App.pages.records?.showDailyReport()">
             <div class="stat-icon purple">${App.icon('cash')}</div>
@@ -537,243 +787,6 @@ App.pages.dashboard = {
           </a>
         </div>
 
-        <!-- 3. 미수금 (즉시 액션 필요) -->
-        ${unpaidRecords.length > 0 ? `
-        <div class="card dash-accordion" style="margin-bottom:20px;border:1.5px solid var(--danger)">
-          <div class="card-header dash-accordion-toggle" style="background:var(--danger-light);cursor:pointer;user-select:none" data-target="dash-unpaid">
-            <span class="card-title text-danger">${App.icon('cash')} 미수금 현황</span>
-            <div style="display:flex;align-items:center;gap:8px">
-              <span class="badge badge-danger">${unpaidRecords.length}건 / ${App.formatCurrency(unpaidTotal)}</span>
-              <span class="dash-chevron" style="display:inline-flex;transition:transform 0.2s;font-size:0.8rem">${App.icon('chevron-down')}</span>
-            </div>
-          </div>
-          <div class="card-body" id="dash-unpaid" style="display:${unpaidRecords.length > 0 ? 'block' : 'none'}">
-            ${unpaidRecords.length > 10 ? `<div style="font-size:0.82rem;color:var(--text-muted);margin-bottom:8px;text-align:right"><a href="#records" style="color:var(--primary)">미수금 전체 ${unpaidRecords.length}건 보기 &rarr;</a></div>` : ''}
-            ${unpaidRecords.sort((a, b) => (b.date || '').localeCompare(a.date || '')).slice(0, 10).map(r => {
-              const customer = customerMap[r.customerId];
-              const pet = petMap[r.petId];
-              return `
-                <!-- 두 줄 배치: 좁은 화면에서 이름·날짜가 4줄로 쪼개지던 문제 -->
-                <div class="alert-item unpaid-item">
-                  <div class="unpaid-top">
-                    <div class="unpaid-who"><strong>${App.escapeHtml(pet?.name || '-')}</strong> <span>${App.escapeHtml(App.getCustomerLabel(customer))}</span></div>
-                    <strong class="unpaid-amount">${App.formatCurrency(App.getRecordAmount(r))}</strong>
-                  </div>
-                  <div class="unpaid-bottom">
-                    <span class="unpaid-date">${App.formatDate(r.date)}</span>
-                    <div style="display:flex;gap:4px;flex-shrink:0">
-                      ${customer?.phone ? `<a href="tel:${App.escapeHtml((customer.phone || '').replace(/\D/g, ''))}" class="btn btn-sm btn-secondary" onclick="event.stopPropagation()">전화</a><a href="sms:${App.escapeHtml((customer.phone || '').replace(/\D/g, ''))}" class="btn btn-sm btn-secondary" onclick="event.stopPropagation()">문자</a>` : ''}
-                      <button class="btn btn-sm btn-success btn-pay-unpaid" data-id="${r.id}" onclick="event.stopPropagation()">결제</button>
-                    </div>
-                  </div>
-                </div>`;
-            }).join('')}
-          </div>
-        </div>
-        ` : ''}
-
-        <!-- 내일 예약 리마인더 -->
-        ${tomorrowAppts.length > 0 ? `
-        <div class="card dash-accordion" style="margin-bottom:20px">
-          <div class="card-header dash-accordion-toggle" style="cursor:pointer;user-select:none" data-target="dash-tomorrow-reminder">
-            <span class="card-title">내일 예약 리마인더</span>
-            <div style="display:flex;align-items:center;gap:8px">
-              <span class="badge badge-info">${tomorrowAppts.length}건</span>
-              ${(() => { const sentCount = tomorrowAppts.filter(a => a.reminderSentAt).length; return sentCount > 0 ? `<span class="badge badge-secondary" style="font-size:0.7rem">${sentCount}건 발송됨</span>` : ''; })()}
-              <span class="dash-chevron" style="display:inline-flex;transition:transform 0.2s;font-size:0.8rem">${App.icon('chevron-down')}</span>
-            </div>
-          </div>
-          <div class="card-body" id="dash-tomorrow-reminder" style="padding:0">
-            ${['오전', '오후', '저녁', '미정'].map(group => {
-              const items = tomorrowGrouped[group];
-              if (!items || items.length === 0) return '';
-              return `
-                <div class="reminder-time-section">
-                  <div class="reminder-time-label">${group}</div>
-                  ${items.map(a => {
-                    const customer = customerMap[a.customerId];
-                    const pet = petMap[a.petId];
-                    const phoneClean = (customer?.phone || '').replace(/\D/g, '');
-                    const noShowCount = noShowCountByCustomer[a.customerId] || 0;
-                    const allergies = App.hasPetNote(pet?.allergies) ? App.escapeHtml(pet.allergies) : '';
-                    const healthNotes = App.hasPetNote(pet?.healthNotes) ? App.escapeHtml(pet.healthNotes) : '';
-                    const temperament = pet?.temperament ? App.escapeHtml(pet.temperament) : '';
-                    const photoSrc = pet?.photoThumb || pet?.photo;
-                    const sent = !!a.reminderSentAt;
-                    const breedSize = [pet?.breed, pet?.weight ? pet.weight + 'kg' : null].filter(Boolean).join(' · ');
-                    return `
-                      <div class="reminder-item" data-id="${a.id}" style="${sent ? 'opacity:0.55' : ''}">
-                        <a href="#pets/${a.petId}" class="reminder-pet-photo" onclick="event.stopPropagation()">
-                          ${photoSrc ? `<img src="${App.escapeHtml(photoSrc)}" alt="${App.escapeHtml(pet?.name || '')}">` : `<div class="reminder-pet-placeholder">${App.escapeHtml((pet?.name || '?').charAt(0))}</div>`}
-                        </a>
-                        <div class="reminder-content">
-                          <div class="reminder-line-1">
-                            <strong class="reminder-time-num">${a.time || '--:--'}</strong>
-                            <a href="#pets/${a.petId}" class="reminder-pet-name" onclick="event.stopPropagation()">${App.escapeHtml(pet?.name || '?')}</a>
-                            ${breedSize ? `<span class="reminder-pet-meta">· ${App.escapeHtml(breedSize)}</span>` : ''}
-                          </div>
-                          <a href="#customers/${a.customerId}" class="reminder-customer" onclick="event.stopPropagation()">${App.escapeHtml(App.getCustomerLabel(customer))}</a>
-                          ${(allergies || healthNotes || temperament || noShowCount > 0) ? `
-                            <div class="reminder-warnings">
-                              ${allergies ? `<span class="reminder-warning"><span class="reminder-warning-icon">${App.icon('alert')}</span> 알레르기: ${allergies}</span>` : ''}
-                              ${healthNotes ? `<span class="reminder-warning"><span class="reminder-warning-icon">${App.icon('alert')}</span> ${healthNotes}</span>` : ''}
-                              ${temperament ? `<span class="reminder-warning reminder-warning-soft">${temperament}</span>` : ''}
-                              ${noShowCount > 0 ? `<span class="reminder-warning reminder-warning-danger"><span class="reminder-warning-icon">${App.icon('alert')}</span> 노쇼 ${noShowCount}회</span>` : ''}
-                            </div>
-                          ` : ''}
-                          <div class="reminder-actions">
-                            <button class="btn btn-sm btn-ghost btn-copy-reminder" data-id="${a.id}" data-sms="${App.escapeHtml(a._smsRaw || '')}" onclick="event.stopPropagation()" title="메시지 복사">복사</button>
-                            ${phoneClean ? `<a href="sms:${App.escapeHtml(phoneClean)}${App.getSmsSep()}body=${a._smsBody}" class="btn btn-sm btn-success btn-send-reminder" data-id="${a.id}" onclick="event.stopPropagation()">문자</a>` : ''}
-                            ${phoneClean ? `<a href="tel:${App.escapeHtml(phoneClean)}" class="btn btn-sm btn-secondary" onclick="event.stopPropagation()">전화</a>` : ''}
-                          </div>
-                          ${sent ? `<div class="reminder-sent-badge"><span class="reminder-sent-check">${App.icon('check')}</span> ${App.escapeHtml(a._sentLabel || '발송됨')}</div>` : ''}
-                        </div>
-                      </div>
-                    `;
-                  }).join('')}
-                </div>
-              `;
-            }).join('')}
-          </div>
-        </div>
-        ` : ''}
-
-        ${(visitSummary.remind + visitSummary['at-risk'] + visitSummary.churned) > 0 ? `
-        <div class="card" style="margin-bottom:20px">
-          <div class="card-header">
-            <span class="card-title">${App.icon('list')} 고객 관리 현황</span>
-            <a href="#customers" class="btn btn-sm btn-ghost">전체보기 &rarr;</a>
-          </div>
-          <div class="card-body" style="padding:16px">
-            <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:12px">
-              <div style="text-align:center;padding:12px;border-radius:var(--radius);background:var(--success-light);cursor:pointer" onclick="sessionStorage.setItem('customer-filter',JSON.stringify({visitStatus:'normal'}));App.navigate('customers')">
-                <div style="font-size:1.4rem;font-weight:800;color:var(--success)">${visitSummary.normal}</div>
-                <div style="font-size:0.78rem;color:var(--text-secondary);margin-top:2px">정상</div>
-              </div>
-              <div style="text-align:center;padding:12px;border-radius:var(--radius);background:var(--warning-light);cursor:pointer" onclick="sessionStorage.setItem('customer-filter',JSON.stringify({visitStatus:'remind'}));App.navigate('customers')">
-                <div style="font-size:1.4rem;font-weight:800;color:var(--warning)">${visitSummary.remind}</div>
-                <div style="font-size:0.78rem;color:var(--text-secondary);margin-top:2px">리마인드</div>
-              </div>
-              <div style="text-align:center;padding:12px;border-radius:var(--radius);background:${visitSummary['at-risk'] > 0 ? 'var(--danger-bg-soft)' : 'var(--bg)'};cursor:pointer" onclick="sessionStorage.setItem('customer-filter',JSON.stringify({visitStatus:'at-risk'}));App.navigate('customers')">
-                <div style="font-size:1.4rem;font-weight:800;color:var(--danger)">${visitSummary['at-risk']}</div>
-                <div style="font-size:0.78rem;color:var(--text-secondary);margin-top:2px">이탈위험</div>
-              </div>
-              <div style="text-align:center;padding:12px;border-radius:var(--radius);background:var(--bg);cursor:pointer" onclick="sessionStorage.setItem('customer-filter',JSON.stringify({visitStatus:'churned'}));App.navigate('customers')">
-                <div style="font-size:1.4rem;font-weight:800;color:var(--text-muted)">${visitSummary.churned}</div>
-                <div style="font-size:0.78rem;color:var(--text-secondary);margin-top:2px">이탈</div>
-              </div>
-            </div>
-          </div>
-        </div>
-        ` : ''}
-
-        ${revisitAlerts.length > 0 ? `
-        <div class="card dash-accordion" style="margin-bottom:20px">
-          <div class="card-header dash-accordion-toggle" style="cursor:pointer;user-select:none" data-target="dash-revisit">
-            <span class="card-title">${App.icon('bell')} 재방문 알림</span>
-            <div style="display:flex;align-items:center;gap:8px">
-              <span class="badge badge-warning">${revisitAlerts.length}건</span>
-              <span class="dash-chevron" style="display:inline-flex;transition:transform 0.2s;font-size:0.8rem">${App.icon('chevron-down')}</span>
-            </div>
-          </div>
-          <div class="card-body" id="dash-revisit" style="display:${revisitAlerts.length > 0 ? 'block' : 'none'}">
-            ${revisitAlerts.slice(0, 5).map(a => {
-              const statusLabel = App.getVisitStatusLabel(a.visitStatus);
-              const statusBadge = App.getVisitStatusBadge(a.visitStatus);
-              // 왜 이 고객이 위에 있는지 보이게 한다 — 순서의 근거를 드러냄
-              const churnHint = a.daysUntilChurn <= 14
-                ? `<span style="color:var(--danger);font-weight:700">이탈까지 ${a.daysUntilChurn}일</span>`
-                : '';
-              const smsType = a.visitStatus === 'churned' ? 'churned' : a.visitStatus === 'at-risk' ? 'atRisk' : 'revisit';
-              return `
-              <div class="alert-item" data-alert-customer="${a.customer.id}">
-                <span class="days">${a.days}일</span>
-                <div class="flex-1">
-                  <strong>${App.escapeHtml(a.pet.name)}</strong>
-                  <span style="color:var(--text-muted);font-size:0.8rem">${App.escapeHtml(App.getCustomerLabel(a.customer))}</span>
-                  <span class="badge ${statusBadge}" style="font-size:0.72rem;margin-left:4px;padding:3px 8px">${statusLabel}</span>
-                  <span class="badge badge-secondary alert-contacted-tag" style="font-size:0.72rem;margin-left:4px;padding:3px 8px;display:none">연락함</span>
-                  <div style="font-size:0.78rem;color:var(--text-secondary);margin-top:2px">
-                    마지막 미용: ${App.formatDate(a.lastDate)}
-                    ${churnHint ? ' | ' + churnHint : ''}
-                    ${a.contactedAgo !== null ? ` | <span style="color:var(--text-muted)">${a.contactedAgo}일 전 연락함</span>` : ''}
-                  </div>
-                </div>
-                <div class="alert-item-actions" style="display:flex;gap:4px;flex-shrink:0">
-                  <button class="btn btn-sm btn-ghost btn-copy-sms btn-mark-contacted" data-customer-id="${a.customer.id}" data-sms="${App.escapeHtml(decodeURIComponent(a._smsBody))}" onclick="event.stopPropagation()" title="메시지 복사 (카톡용)">복사</button>
-                  <a href="sms:${App.escapeHtml((a.customer.phone || '').replace(/\D/g, ''))}${smsSep}body=${a._smsBody}" class="btn btn-sm btn-success btn-mark-contacted" data-customer-id="${a.customer.id}" onclick="event.stopPropagation()" title="문자 보내기">문자</a>
-                  <a href="tel:${App.escapeHtml((a.customer.phone || '').replace(/\D/g, ''))}" class="btn btn-sm btn-secondary btn-mark-contacted" data-customer-id="${a.customer.id}" onclick="event.stopPropagation()" title="전화 걸기">전화</a>
-                  <button class="btn btn-sm btn-primary" onclick="App.pages.appointments.showForm(null, ${a.customer.id}, {petId:${a.pet.id}})" style="flex-shrink:0">예약</button>
-                  <button class="btn btn-sm btn-ghost btn-exclude-pet" data-pet-id="${a.pet.id}" data-pet-name="${App.escapeHtml(a.pet.name || '')}" onclick="event.stopPropagation()" title="관리 제외 (이사·사망 등)" style="flex-shrink:0;color:var(--text-muted)">제외</button>
-                </div>
-              </div>`;
-            }).join('')}
-            ${revisitAlerts.length > 5 ? `<div style="text-align:center;padding:10px 0 2px;font-size:0.82rem;color:var(--text-muted)">외 ${revisitAlerts.length - 5}건 — 연락하면 다음 고객이 올라옵니다</div>` : ''}
-          </div>
-        </div>
-        ` : ''}
-
-        ${longGoneAlerts.length > 0 ? `
-        <div class="card dash-accordion" style="margin-bottom:20px">
-          <div class="card-header dash-accordion-toggle" style="cursor:pointer;user-select:none" data-target="dash-longgone">
-            <span class="card-title" style="color:var(--text-secondary)">${App.icon('moon')} 장기 미방문</span>
-            <div style="display:flex;align-items:center;gap:8px">
-              <span class="badge badge-secondary">${longGoneAlerts.length}건</span>
-              <span class="dash-chevron" style="display:inline-flex;transition:transform 0.2s;font-size:0.8rem">${App.icon('chevron-down')}</span>
-            </div>
-          </div>
-          <div class="card-body" id="dash-longgone" style="display:none">
-            <div style="font-size:0.82rem;color:var(--text-muted);margin-bottom:10px;line-height:1.5">
-              미용 주기의 2배가 지난 고객입니다. 매일 보는 목록에서 분리해 두었습니다.<br>
-              다시 안 올 고객은 <strong>제외</strong>로 정리하시면 목록이 계속 쌓이지 않습니다.
-            </div>
-            ${longGoneAlerts.slice(0, 10).map(a => `
-              <div class="alert-item" data-alert-customer="${a.customer.id}">
-                <span class="days">${a.days}일</span>
-                <div class="flex-1">
-                  <strong>${App.escapeHtml(a.pet.name)}</strong>
-                  <span style="color:var(--text-muted);font-size:0.8rem">${App.escapeHtml(App.getCustomerLabel(a.customer))}</span>
-                  <span class="badge badge-secondary alert-contacted-tag" style="font-size:0.72rem;margin-left:4px;padding:3px 8px;display:none">연락함</span>
-                  <div style="font-size:0.78rem;color:var(--text-secondary);margin-top:2px">
-                    마지막 미용: ${App.formatDate(a.lastDate)}
-                    ${a.contactedAgo !== null ? ` | <span style="color:var(--text-muted)">${a.contactedAgo}일 전 연락함</span>` : ''}
-                  </div>
-                </div>
-                <div class="alert-item-actions" style="display:flex;gap:4px;flex-shrink:0">
-                  <button class="btn btn-sm btn-ghost btn-copy-sms btn-mark-contacted" data-customer-id="${a.customer.id}" data-sms="${App.escapeHtml(decodeURIComponent(a._smsBody))}" onclick="event.stopPropagation()" title="메시지 복사 (카톡용)">복사</button>
-                  <a href="sms:${App.escapeHtml((a.customer.phone || '').replace(/\D/g, ''))}${smsSep}body=${a._smsBody}" class="btn btn-sm btn-success btn-mark-contacted" data-customer-id="${a.customer.id}" onclick="event.stopPropagation()" title="문자 보내기">문자</a>
-                  <button class="btn btn-sm btn-ghost btn-exclude-pet" data-pet-id="${a.pet.id}" data-pet-name="${App.escapeHtml(a.pet.name || '')}" onclick="event.stopPropagation()" title="관리 제외 (이사·사망 등)" style="flex-shrink:0;color:var(--text-muted)">제외</button>
-                </div>
-              </div>`).join('')}
-            ${longGoneAlerts.length > 10 ? `<div style="text-align:center;padding:10px 0 2px;font-size:0.82rem;color:var(--text-muted)">외 ${longGoneAlerts.length - 10}건</div>` : ''}
-          </div>
-        </div>
-        ` : ''}
-
-        ${vipUnvisitedAlerts.length > 0 ? `
-        <div class="card dash-accordion" style="margin-bottom:20px;border:1.5px solid var(--warning)">
-          <div class="card-header dash-accordion-toggle" style="background:var(--warning-light);cursor:pointer;user-select:none" data-target="dash-vip-unvisited">
-            <span class="card-title">${App.icon('crown')} VIP 미방문 (30일+)</span>
-            <div style="display:flex;align-items:center;gap:8px">
-              <span class="badge badge-warning">${vipUnvisitedAlerts.length}명</span>
-              <span class="dash-chevron" style="display:inline-flex;transition:transform 0.2s;font-size:0.8rem">${App.icon('chevron-down')}</span>
-            </div>
-          </div>
-          <div class="card-body" id="dash-vip-unvisited" style="display:block">
-            ${vipUnvisitedAlerts.slice(0, 5).map(x => `
-              <div style="display:flex;align-items:center;gap:10px;padding:10px 0;border-bottom:1px solid var(--border-light)">
-                <a href="#customers/${x.customer.id}" style="flex:1;min-width:0;text-decoration:none;color:inherit">
-                  <div style="font-weight:700;font-size:0.95rem">${App.escapeHtml(App.getCustomerLabel(x.customer, (this._petsByCustomer || {})[x.customer.id]))}</div>
-                  <div style="font-size:0.78rem;color:var(--text-muted);margin-top:2px">${x.days}일 전 방문${x.customer.phone ? ' · ' + App.formatPhoneHtml(x.customer.phone) : ''}</div>
-                </a>
-                ${x.customer.phone ? `<a href="tel:${App.escapeHtml((x.customer.phone || '').replace(/\D/g, ''))}" class="btn btn-sm btn-secondary" onclick="event.stopPropagation()" title="전화 걸기" style="flex-shrink:0">전화</a>` : ''}
-              </div>
-            `).join('')}
-            ${vipUnvisitedAlerts.length > 5 ? `<div style="text-align:center;padding:10px 0 0;font-size:0.85rem;color:var(--text-muted)">총 ${vipUnvisitedAlerts.length}명 중 5명 표시</div>` : ''}
-          </div>
-        </div>
-        ` : ''}
-
         ${upcomingBirthdays.length > 0 ? `
         <div class="card dash-accordion" style="margin-bottom:20px">
           <div class="card-header dash-accordion-toggle" style="cursor:pointer;user-select:none" data-target="dash-birthday">
@@ -785,7 +798,7 @@ App.pages.dashboard = {
           </div>
           <div class="card-body" id="dash-birthday" style="display:${upcomingBirthdays.length > 0 ? 'block' : 'none'}">
             ${upcomingBirthdays.map(b => {
-              const phoneClean = (b.phone || '').replace(/\D/g, '');
+              const phoneClean = App.phoneDigits(b.phone);
               const daysLabel = b.daysUntil === 0 ? '오늘!' : b.daysUntil + '일 후';
               const icon = b.type === 'pet' ? App.icon('paw') : App.icon('user');
               return `
@@ -807,6 +820,7 @@ App.pages.dashboard = {
         </div>
         ` : ''}
 
+        ${backupWarning}
       `;
 
       // Storage quota monitoring (async, non-blocking)
@@ -844,7 +858,7 @@ App.pages.dashboard = {
     return appointments.map(appt => {
       const customer = customerMap[appt.customerId];
       const pet = petMap[appt.petId];
-      const serviceNames = (appt.serviceIds || []).map(id => serviceMap[id] || '').filter(Boolean).join(', ');
+      const serviceNames = App.apptServiceNames(appt, serviceMap);
       const dateLabel = appt.date === App.getToday() ? '' : `<span style="color:var(--text-muted);font-size:0.78rem">${App.formatDate(appt.date)}</span> `;
       return `
         <div class="appointment-item" style="cursor:pointer" onclick="App.navigate('appointments')">
@@ -855,11 +869,11 @@ App.pages.dashboard = {
             ${(() => { const w = [pet?.temperament, pet?.healthNotes, pet?.allergies].filter(Boolean); if (!w.length) return ''; const s = w.join(', '); return '<div style="font-size:0.75rem;color:var(--danger);margin-top:2px">' + App.icon('alert') + ' ' + App.escapeHtml(s.length > 50 ? s.slice(0, 50) + '...' : s) + '</div>'; })()}
           </div>
           <div style="flex-shrink:0;display:flex;align-items:center;gap:4px">
-            ${customer?.phone ? `<a href="tel:${App.escapeHtml((customer.phone || '').replace(/\D/g, ''))}" class="btn btn-sm btn-secondary" onclick="event.stopPropagation()" style="min-width:36px" aria-label="전화">${App.icon('phone')}</a>` : ''}
+            ${customer?.phone ? `<a href="tel:${App.escapeHtml(App.phoneDigits(customer.phone))}" class="btn btn-sm btn-secondary" onclick="event.stopPropagation()" style="min-width:36px" aria-label="전화">${App.icon('phone')}</a>` : ''}
             <span class="badge badge-${this.getStatusBadge(appt.status)}">${this.getStatusLabel(appt.status)}</span>
           </div>
         </div>
-        ${appt.status !== 'completed' ? `<div style="margin-top:8px;display:flex;gap:6px">
+        ${appt.status === 'noshow' || appt.status === 'cancelled' ? '' : appt.status !== 'completed' ? `<div style="margin-top:8px;display:flex;gap:6px">
           <button class="btn btn-sm btn-success" onclick="event.stopPropagation();App.pages.appointments.completeToRecord(${appt.id})" style="flex:1;min-height:40px;font-size:0.88rem">${App.icon('scissors')} 미용 완료</button>
         </div>` : App.apptResultHtml(appt, (this._apptRecMap || {})[String(appt.id)])}
       `;
@@ -896,6 +910,20 @@ App.pages.dashboard = {
         body.style.display = isOpen ? 'none' : 'block';
         if (chevron) chevron.style.transform = isOpen ? '' : 'rotate(180deg)';
         localStorage.setItem('dashAccordion-' + targetId, isOpen ? 'closed' : 'open');
+      });
+    });
+
+    // 연락할 손님 — 탭(올 때 됨 / 오래 안 옴 / VIP) 전환, 마지막으로 본 탭 기억
+    document.querySelectorAll('.dash-contact-seg').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const seg = btn.dataset.seg;
+        document.querySelectorAll('.dash-contact-seg').forEach(b => {
+          const on = b === btn;
+          b.classList.toggle('active', on);
+          b.setAttribute('aria-selected', String(on));
+        });
+        document.querySelectorAll('.dash-contact-panel').forEach(p => { p.style.display = p.dataset.seg === seg ? 'block' : 'none'; });
+        try { localStorage.setItem('dashContactSeg', seg); } catch (_) {}
       });
     });
 

@@ -75,10 +75,11 @@ App.pages.customers = {
       <div class="page-header">
         <div>
           <h1 class="page-title">고객 관리</h1>
-          <p class="page-subtitle">총 ${customers.length}명의 고객</p>
+          <p class="page-subtitle" id="customer-total-label" data-total="${customers.length}">총 ${customers.length}명의 고객</p>
         </div>
         <div class="page-actions">
-          <button class="btn btn-primary" id="btn-add-customer">+ 새 고객</button>
+          <a href="#pets" class="btn btn-secondary">${App.icon('paw')} 반려견 목록</a>
+          <button class="btn btn-primary" id="btn-add-customer">+ 새 고객(반려견)</button>
         </div>
       </div>
       <div class="filter-bar">
@@ -91,9 +92,9 @@ App.pages.customers = {
           <select id="customer-visit-filter" style="flex:1;min-height:44px;font-size:max(16px,0.88rem)">
             <option value="" ${curVisit === '' ? 'selected' : ''}>방문 상태</option>
             <option value="normal" ${curVisit === 'normal' ? 'selected' : ''}>정상</option>
-            <option value="remind" ${curVisit === 'remind' ? 'selected' : ''}>리마인드</option>
-            <option value="at-risk" ${curVisit === 'at-risk' ? 'selected' : ''}>이탈위험</option>
-            <option value="churned" ${curVisit === 'churned' ? 'selected' : ''}>이탈</option>
+            <option value="remind" ${curVisit === 'remind' ? 'selected' : ''}>올 때 됨</option>
+            <option value="at-risk" ${curVisit === 'at-risk' ? 'selected' : ''}>많이 늦음</option>
+            <option value="churned" ${curVisit === 'churned' ? 'selected' : ''}>오래 안 옴</option>
             <option value="new" ${curVisit === 'new' ? 'selected' : ''}>방문 전</option>
           </select>
           <select id="customer-tag-filter" style="flex:1;min-height:44px;font-size:max(16px,0.88rem)">
@@ -155,11 +156,11 @@ App.pages.customers = {
                 (groups[s] || groups['normal']).push(c);
               });
               const groupMeta = {
-                'at-risk': { label: '이탈위험', color: 'var(--danger)' },
-                'remind': { label: '리마인드 필요', color: 'var(--warning)' },
+                'at-risk': { label: '많이 늦음', color: 'var(--danger)' },
+                'remind': { label: '올 때 됨', color: 'var(--warning)' },
                 'normal': { label: '정상', color: 'var(--success)' },
                 'new': { label: '방문 전', color: 'var(--info)' },
-                'churned': { label: '이탈', color: 'var(--text-muted)' }
+                'churned': { label: '오래 안 옴', color: 'var(--text-muted)' }
               };
               return Object.entries(groups).filter(([, gp]) => gp.length > 0).map(([gs, gp]) => {
                 const meta = groupMeta[gs];
@@ -171,6 +172,12 @@ App.pages.customers = {
               }).join('');
             })() : sorted.map(c => this._renderCustomerCard(c, petCount, lastVisit, petsByCustomer)).join(''))}
           </div>`}
+          <!-- 검색·필터 결과 0건 안내 (applyFilters 가 켜고 끈다) -->
+          <div class="empty-state" id="customer-filter-empty" style="display:none">
+            <div class="empty-state-icon">${App.icon('search', 'ico-xl')}</div>
+            <div class="empty-state-text">검색 결과가 없어요</div>
+            <div style="font-size:0.85rem;color:var(--text-muted);margin-top:4px;line-height:1.5">이름 일부나 전화번호 뒷자리로 다시 찾아보세요.<br>방문 상태·분류 필터가 켜져 있으면 풀어 보세요.</div>
+          </div>
         </div>
       </div>
     `;
@@ -193,7 +200,8 @@ App.pages.customers = {
       .sort((a, b) => (b.date || '').localeCompare(a.date || ''));
 
     const totalSpend = records.reduce((sum, r) => sum + App.getRecordAmount(r), 0);
-    const visitCount = records.length;
+    // 같은 날 여러 마리 미용은 방문 1번으로 센다
+    const visitCount = new Set(records.map(r => r.date).filter(Boolean)).size;
     const unpaidRecords = records.filter(r => r.paymentMethod === 'unpaid');
     const unpaidBalance = unpaidRecords.reduce((sum, r) => sum + App.getRecordAmount(r), 0);
     const noshowCount = appointments.filter(a => a.status === 'noshow').length;
@@ -216,7 +224,7 @@ App.pages.customers = {
           </div>
         </div>
         <div style="margin-left:auto;display:flex;gap:8px;flex-wrap:wrap">
-          ${(customer.phone || '').replace(/\D/g, '') ? `<a class="btn btn-secondary" href="tel:${App.escapeHtml(customer.phone.replace(/\D/g, ''))}" style="min-height:44px;flex:1 1 auto;text-decoration:none">${App.icon('phone')} 전화</a>` : ''}
+          ${App.phoneDigits(customer.phone) ? `<a class="btn btn-secondary" href="tel:${App.escapeHtml(App.phoneDigits(customer.phone))}" style="min-height:44px;flex:1 1 auto;text-decoration:none">${App.icon('phone')} 전화</a>` : ''}
           <button class="btn btn-success" id="btn-send-message" data-customer-id="${customer.id}" style="min-height:44px;flex:1 1 auto">메시지</button>
           <button class="btn btn-primary" id="btn-new-appt-for-customer" data-customer-id="${customer.id}" style="min-height:44px;flex:1 1 auto">+ 예약</button>
           <button class="btn btn-primary" id="btn-new-record-for-customer" data-customer-id="${customer.id}" style="min-height:44px;flex:1 1 auto">+ 미용 기록</button>
@@ -499,8 +507,8 @@ App.pages.customers = {
 
     const types = [
       { key: 'revisit', label: '재방문 안내' },
-      { key: 'atRisk', label: '이탈위험 안내' },
-      { key: 'churned', label: '이탈 고객 안내' },
+      { key: 'atRisk', label: '많이 늦은 손님 안내' },
+      { key: 'churned', label: '오래 안 온 손님 안내' },
       { key: 'birthday', label: '생일 축하' },
       { key: 'complete', label: '미용 완료' },
       { key: 'appointment', label: '예약 확인' },
@@ -578,7 +586,7 @@ App.pages.customers = {
     this._afterSaveCallback = afterSaveCallback || null;
 
     App.showModal({
-      title: id ? '고객 정보 수정' : '새 반려견 · 보호자 등록',
+      title: id ? '고객 정보 수정' : '새 고객(반려견) 등록',
       content: id ? `
         <div class="form-group">
           <label class="form-label">보호자 이름 <span style="font-size:0.85em;color:var(--text-muted);font-weight:normal">(선택)</span></label>
@@ -814,7 +822,7 @@ App.pages.customers = {
     const searchText = ((c.name || '') + ' ' + (c.phone || '') + ' ' + (c.phone || '').replace(/\D/g, '') + ' ' + (c.memo || '') + ' ' + tagText + ' ' + cPets.map(p => (p.name || '') + ' ' + (p.breed || '')).join(' ')).toLowerCase();
     return `<tr data-id="${c.id}" data-tags="${(c.tags || []).join(',')}" data-visit-status="${vs}" data-search="${App.escapeHtml(searchText)}" class="clickable-row" style="cursor:pointer">
       <td><div style="display:flex;align-items:center;gap:10px"><div style="width:34px;height:34px;border-radius:10px;background:linear-gradient(135deg,var(--primary-light),var(--primary-lighter));display:flex;align-items:center;justify-content:center;font-weight:800;color:var(--primary);font-size:0.85rem;flex-shrink:0">${initial}</div><strong>${App.escapeHtml(displayName)}</strong>${this.getTagBadges(c.tags)}${visitBadge}</div></td>
-      <td><a href="tel:${App.escapeHtml((c.phone || '').replace(/\D/g, ''))}" style="color:var(--primary)" onclick="event.stopPropagation()">${App.formatPhoneHtml(c.phone)}</a></td>
+      <td><a href="tel:${App.escapeHtml(App.phoneDigits(c.phone))}" style="color:var(--primary)" onclick="event.stopPropagation()">${App.formatPhoneHtml(c.phone)}</a></td>
       <td><span class="badge badge-info">${petCount[c.id] || 0}마리</span></td>
       <td>${lastVisit[c.id] ? App.getRelativeTime(lastVisit[c.id]) : '-'}</td>
       <td>${App.formatDate(c.createdAt)}</td>
@@ -838,11 +846,11 @@ App.pages.customers = {
     if (vs === 'new') {
       rightChip = `<span style="font-size:0.7rem;padding:3px 9px;background:var(--bg);color:var(--text-muted);border:1px solid var(--border);border-radius:11px;font-weight:600;flex-shrink:0;white-space:nowrap">방문 전</span>`;
     } else if (vs === 'at-risk') {
-      rightChip = `<span style="font-size:0.7rem;padding:3px 9px;background:var(--danger);color:#fff;border-radius:11px;font-weight:700;flex-shrink:0;white-space:nowrap">이탈위험</span>`;
+      rightChip = `<span style="font-size:0.7rem;padding:3px 9px;background:var(--danger);color:#fff;border-radius:11px;font-weight:700;flex-shrink:0;white-space:nowrap">많이 늦음</span>`;
     } else if (vs === 'remind') {
-      rightChip = `<span style="font-size:0.7rem;padding:3px 9px;background:var(--warning);color:#fff;border-radius:11px;font-weight:700;flex-shrink:0;white-space:nowrap">리마인드</span>`;
+      rightChip = `<span style="font-size:0.7rem;padding:3px 9px;background:var(--warning);color:#fff;border-radius:11px;font-weight:700;flex-shrink:0;white-space:nowrap">올 때 됨</span>`;
     } else if (vs === 'churned') {
-      rightChip = `<span style="font-size:0.7rem;padding:3px 9px;background:var(--text-muted);color:#fff;border-radius:11px;font-weight:600;flex-shrink:0;white-space:nowrap">이탈</span>`;
+      rightChip = `<span style="font-size:0.7rem;padding:3px 9px;background:var(--text-muted);color:#fff;border-radius:11px;font-weight:600;flex-shrink:0;white-space:nowrap">오래 안 옴</span>`;
     }
 
     // 태그 뱃지 (작게)
@@ -864,7 +872,7 @@ App.pages.customers = {
         ${rightChip}
       </div>
       <div style="font-size:0.82rem;color:var(--text-secondary);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">
-        ${c.phone ? `<a href="tel:${App.escapeHtml(c.phone.replace(/\D/g, ''))}" style="color:var(--primary);font-weight:600" onclick="event.stopPropagation()">${phoneText}</a>` : '<span style="color:var(--text-muted)">전화 없음</span>'}
+        ${c.phone ? `<a href="tel:${App.escapeHtml(App.phoneDigits(c.phone))}" style="color:var(--primary);font-weight:600" onclick="event.stopPropagation()">${phoneText}</a>` : '<span style="color:var(--text-muted)">전화 없음</span>'}
         <span style="color:var(--border)">·</span>
         <span style="color:var(--text-muted)">${lastVisitText}</span>
       </div>
@@ -884,7 +892,9 @@ App.pages.customers = {
   _visitFilter: '',
 
   applyFilters() {
-    const q = (this._searchQuery || '').toLowerCase();
+    const q = (this._searchQuery || '').trim().toLowerCase();
+    // 전화번호처럼 생긴 검색어는 숫자만 비교한다 ('010 1111'·'0101111'·'010-1111' 모두 같은 결과 — 예약 화면 고객 검색과 같은 규칙)
+    const qDigits = /^[\d\s\-+().]+$/.test(q) ? q.replace(/\D/g, '') : '';
     const tag = this._tagFilter || '';
     const visit = this._visitFilter || '';
 
@@ -897,7 +907,7 @@ App.pages.customers = {
     }));
 
     const matchesFilter = (el) => {
-      const textMatch = !q || (el.dataset.search || '').includes(q);
+      const textMatch = !q || (qDigits ? (el.dataset.search || '').replace(/[^\d ]/g, '').includes(qDigits) : (el.dataset.search || '').includes(q));
       const tagMatch = !tag || (el.dataset.tags || '').split(',').includes(tag);
       const visitMatch = !visit || (el.dataset.visitStatus || '') === visit;
       return textMatch && tagMatch && visitMatch;
@@ -924,6 +934,14 @@ App.pages.customers = {
       const isFiltering = !!(q || tag || visit);
       countEl.style.display = isFiltering ? '' : 'none';
       countEl.textContent = isFiltering ? `${total}명` : '';
+      // 위 제목도 걸러진 수를 보여준다 (예전엔 검색해도 '총 N명'만 보여 헷갈렸다)
+      const totalEl = document.getElementById('customer-total-label');
+      if (totalEl) {
+        const all = Number(totalEl.dataset.total) || 0;
+        totalEl.textContent = isFiltering ? `검색 결과 ${total}명 / 전체 ${all}명` : `총 ${all}명의 고객`;
+      }
+      const emptyEl = document.getElementById('customer-filter-empty');
+      if (emptyEl) emptyEl.style.display = isFiltering && total === 0 && (Number(totalEl?.dataset.total) || 0) > 0 ? '' : 'none';
     }
   },
 

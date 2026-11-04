@@ -688,6 +688,8 @@ a.stat-card { display: flex; }
   background: transparent;
 }
 .search-box input:focus { box-shadow: none !important; }
+/* 바깥 상자(:focus-within)가 이미 테두리를 그리므로 입력칸 자체의 포커스 외곽선은 끈다 (이중 포커스 링) */
+.search-box input:focus-visible { outline: none; }
 .search-icon { color: var(--text-muted); font-size: 1rem; }
 
 /* ========== Badges ========== */
@@ -1488,6 +1490,25 @@ a.stat-card { display: flex; }
   font-size: max(11px, 0.75rem);
   opacity: 0.8;
 }
+.service-chip-band {
+  display: block;
+  font-size: max(10px, 0.68rem);
+  opacity: 0.85;
+  line-height: 1.2;
+}
+.service-chip-price:has(.service-chip-band) { text-align: right; }
+
+/* 기록 폼: 무료(서비스로 제공) 토글 */
+.free-toggle {
+  display: inline-flex; align-items: center; justify-content: center;
+  min-height: 28px; padding: 2px 8px; margin-left: 4px;
+  border: 1px solid var(--border); border-radius: 999px;
+  background: var(--bg-white); color: var(--text-secondary);
+  font-size: 0.72rem; font-weight: 700; cursor: pointer; vertical-align: middle;
+}
+.free-toggle.on { background: var(--success-light, #e7f7ee); border-color: var(--success, #16a34a); color: var(--success, #16a34a); }
+.addon-tag.is-free .addon-tag-name { text-decoration: line-through; opacity: 0.75; }
+#f-servicePrice.is-free { text-decoration: line-through; color: var(--text-muted); }
 
 /* ========== Settings Tabs ========== */
 .settings-tabs {
@@ -1610,7 +1631,7 @@ a.stat-card { display: flex; }
   .btn { padding: 10px 16px; min-height: 44px; }
   .btn-sm { min-height: 44px; padding: 8px 14px; }
   .stat-card { padding: 16px; min-width: 0; overflow: hidden; }
-  .stat-value { font-size: 1.2rem; word-break: break-all; }
+  .stat-value { font-size: 1.2rem; overflow-wrap: normal; word-break: keep-all; }
   /* Hide less important columns on mobile */
   .hide-mobile { display: none !important; }
   /* Better table on mobile */
@@ -3483,7 +3504,15 @@ a.stat-card { display: flex; }
 .card-done-main { flex-direction: column; gap: 2px; min-height: 56px !important; font-size: 1rem; }
 .card-done-main small { font-size: 0.75rem; font-weight: 500; opacity: .85; }
 .card-done-row { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.card-done-row.card-done-row-3 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.card-done-row-3 .btn { padding-left: 6px; padding-right: 6px; font-size: 0.85rem; white-space: nowrap; }
 .card-done-hint { font-size: 0.78rem; color: var(--text-muted); text-align: center; line-height: 1.5; margin: 2px 0 0; }
+/* 완성 화면 '더보기' (문자·인스타용·인쇄) — 접힌 상태에서는 한 줄 */
+.card-done-more { margin-bottom: 0; }
+.card-done-more > summary { justify-content: flex-start; }
+.card-done-more-body { display: flex; flex-direction: column; gap: 8px; padding-bottom: 8px; }
+/* 리포트 화면의 작은 '영수증 보기' */
+.card-done-actions .card-done-sub { min-height: 40px; align-self: center; color: var(--text-muted); font-size: 0.82rem; }
 .card-live { flex-direction: column; gap: 6px; }
 .card-live-note { font-size: 0.75rem; color: var(--text-secondary); text-align: center; }
 .card-live-note[hidden] { display: none; }
@@ -3574,17 +3603,24 @@ a.stat-card { display: flex; }
 .frame-guide-row .btn { flex: 1 1 160px; min-height: 44px; }
 /* 사진 카드 스티커 */
 .card-live-stage { position: relative; display: inline-block; line-height: 0; }
-.card-sticker-layer { position: absolute; inset: 0; touch-action: none; }
+.card-sticker-layer { position: absolute; inset: 0; } /* touch-action:none 은 스티커에만 — 레이어 전체에 두면 미리보기 위에서 창이 스크롤되지 않았다 */
 .card-sticker-layer[hidden] { display: none; }
 .card-live .card-sticker { position: absolute; max-height: none; max-width: none; height: auto; border-radius: 0; box-shadow: none; background: transparent; touch-action: none; user-select: none; -webkit-user-select: none; -webkit-user-drag: none; cursor: grab; }
 .card-live .card-sticker.sel { outline: 2px dashed var(--primary); outline-offset: 2px; }
 .card-sticker-row { display: flex; gap: 6px; overflow-x: auto; padding-bottom: 4px; -webkit-overflow-scrolling: touch; }
 .card-sticker-btn { flex: 0 0 auto; width: 48px; height: 48px; padding: 6px; border: 1px solid var(--border); border-radius: 10px; background: var(--bg-white); cursor: pointer; }
 .card-sticker-btn img { width: 100%; height: 100%; object-fit: contain; display: block; }
-.card-sticker-edit { margin-top: 10px; padding: 10px 12px; border-radius: var(--radius); background: var(--bg); display: grid; gap: 8px; }
+/* 편집 막대는 미리보기(.card-live) 바로 아래 — 스티커를 고르면 바로 보인다 */
+.card-sticker-edit { align-self: stretch; padding: 8px 10px; border-radius: var(--radius); background: var(--bg-white); border: 1px solid var(--border-light); display: grid; grid-template-columns: 1fr 1fr; gap: 6px 12px; line-height: normal; }
 .card-sticker-edit[hidden] { display: none; }
-.card-sticker-slider { display: flex; align-items: center; gap: 10px; font-size: 0.85rem; color: var(--text-secondary); white-space: nowrap; }
-.card-sticker-slider input { flex: 1; min-height: 32px; }
+.card-sticker-edit .card-sticker-textedit, .card-sticker-edit .card-sticker-actions { grid-column: 1 / -1; }
+.card-sticker-slider { display: flex; align-items: center; gap: 8px; font-size: 0.82rem; color: var(--text-secondary); white-space: nowrap; min-width: 0; }
+.card-sticker-slider input { flex: 1; min-width: 0; min-height: 32px; }
+.card-sticker-actions .btn { flex: 1 1 auto; }
+.card-sticker-hint { font-size: 0.78rem; color: var(--text-secondary); text-align: center; }
+.card-sticker-hint[hidden] { display: none; }
+/* 사진 카드 안의 슬라이더·체크·라디오는 앱 보라색으로 */
+.card-maker input[type="range"], .card-maker input[type="checkbox"], .card-maker input[type="radio"] { accent-color: var(--primary); }
 .card-sticker-actions { display: flex; gap: 8px; flex-wrap: wrap; }
 .card-live.sticker-editing img#card-live-img { max-height: min(44vh, 380px); }
 .card-sticker-tool { flex: 0 0 auto; width: 56px; height: 48px; border: 1.5px dashed var(--primary); border-radius: 10px; background: var(--bg-white); color: var(--primary); display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 0; cursor: pointer; font-size: 1rem; line-height: 1.1; }
@@ -3626,6 +3662,13 @@ a.stat-card { display: flex; }
 /* 미리보기는 작게, 스티커 탭에서 고른 동안만 크게 */
 @media (max-width: 768px) { .card-head .card-live img#card-live-img { max-height: 30vh; } }
 .card-head .card-live.sticker-editing img#card-live-img { max-height: min(44vh, 380px); }
+/* 휴대폰: 편집 막대가 미리보기 아래에 붙으니 미리보기를 조금 줄여 아래 패널이 남게 */
+@media (max-width: 768px) { .card-head .card-live.sticker-editing img#card-live-img { max-height: min(34vh, 320px); } }
+/* 세로로 긴 틀(2컷·네컷)은 높이 제한 때문에 폭이 85px 남짓으로 쪼그라들었다 — 높이를 더 허용해 폭을 확보 */
+@media (max-width: 768px) {
+  .card-head .card-live[data-shape="strip2"] img#card-live-img { max-height: max(40vh, 340px); }
+  .card-head .card-live[data-shape="photobooth"] img#card-live-img { max-height: max(40vh, 340px); }
+}
 /* 컴퓨터: 왼쪽 큰 미리보기, 오른쪽 탭 */
 @media (min-width: 769px) {
   .card-maker { display: grid; grid-template-columns: minmax(0, 300px) minmax(0, 1fr); grid-template-areas: "live tabs" "live panels"; grid-template-rows: auto 1fr; column-gap: 20px; align-items: start; }
@@ -3642,3 +3685,10 @@ a.stat-card { display: flex; }
 .card-sticker-set { flex: 0 0 auto; }
 .card-sticker-set { min-height: 34px; padding: 0 14px; border-radius: 17px; border: 1.5px solid var(--border); background: var(--bg-white); color: var(--text-secondary); font: inherit; font-size: 0.82rem; font-weight: 700; cursor: pointer; }
 .card-sticker-set.active { border-color: var(--text-primary, #111); background: var(--text-primary, #111); color: #fff; }
+
+/* 서비스 폼: 더 보기 / 추가 요금 라디오 */
+.svc-more > summary::-webkit-details-marker { display: none; }
+.svc-more > summary .ico { transition: transform 0.2s; transform: rotate(-90deg); }
+.svc-more[open] > summary .ico { transform: none; }
+.svc-radio { display: flex; align-items: center; gap: 8px; min-height: 40px; font-size: 0.88rem; cursor: pointer; }
+.svc-radio input { width: 18px; height: 18px; flex-shrink: 0; }

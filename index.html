@@ -8,12 +8,12 @@
   <meta name="description" content="애견 미용 샵 고객 관리 시스템">
   <meta name="theme-color" media="(prefers-color-scheme: light)" content="#6366F1">
   <meta name="theme-color" media="(prefers-color-scheme: dark)" content="#0F1115">
+  <meta name="mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <meta name="apple-mobile-web-app-title" content="펫살롱">
   <meta name="format-detection" content="telephone=no">
   <link rel="apple-touch-icon" href="icon-192.png">
-  <link rel="apple-touch-icon" sizes="180x180" href="icon-192.png">
   <link rel="apple-touch-icon" sizes="192x192" href="icon-192.png">
   <link rel="icon" type="image/svg+xml" href="icon.svg">
   <link rel="manifest" href="manifest.json">
@@ -140,7 +140,7 @@
         <span class="nav-icon"><svg class="ico" aria-hidden="true"><use href="#i-settings"/></svg></span><span class="nav-text">설정</span>
       </a></li>
     </ul>
-    <div class="sidebar-footer"><span id="app-version">…</span><span id="sync-dot" class="sync-dot" hidden></span> &middot; 오프라인 전용 &middot; <a href="./guide.html" target="_blank" style="color:var(--primary)">사용 가이드</a></div>
+    <div class="sidebar-footer"><span id="app-version">…</span><span id="sync-dot" class="sync-dot" hidden></span> &middot; 기기 저장 · 동기화 선택 &middot; <a href="./guide.html" target="_blank" style="color:var(--primary)">사용 가이드</a></div>
   </nav>
 
   <!-- Main Content -->
@@ -202,7 +202,7 @@
 
   <!-- Mobile Bottom Navigation -->
   <nav id="bottom-nav" class="bottom-nav">
-    <!-- 5칸 — [+]가 정중앙. 오늘 일은 예약 화면(결과 줄)에서 끝나므로 기록 목록은 더보기 맨 위로 -->
+    <!-- 5칸 — [+]가 정중앙(좌2·우2). 미용 기록 작성은 [+]와 예약 화면에서 바로 되므로 목록은 더보기 맨 위. 반려견 목록은 고객 화면 상단 버튼으로 (하단 "고객" 탭이 #pets도 활성 표시) -->
     <a href="#dashboard" class="bottom-nav-item active" data-page="dashboard">
       <span class="bottom-nav-icon"><svg class="ico" aria-hidden="true"><use href="#i-home"/></svg></span><span class="bottom-nav-label">홈</span>
     </a>
@@ -228,7 +228,6 @@
       <div class="bottom-more-menu" id="bottom-more-menu">
         <a href="#records" class="bottom-more-item"><svg class="ico" aria-hidden="true"><use href="#i-scissors"/></svg> 미용 기록</a>
         <a href="#revenue" class="bottom-more-item"><svg class="ico" aria-hidden="true"><use href="#i-coins"/></svg> 매출</a>
-        <a href="#pets" class="bottom-more-item"><svg class="ico" aria-hidden="true"><use href="#i-paw"/></svg> 반려견 목록</a>
         <a href="#photocard" class="bottom-more-item"><svg class="ico" aria-hidden="true"><use href="#i-camera"/></svg> 사진 카드</a>
         <a href="#analytics" class="bottom-more-item"><svg class="ico" aria-hidden="true"><use href="#i-chart"/></svg> 분석</a>
         <a href="#services" class="bottom-more-item"><svg class="ico" aria-hidden="true"><use href="#i-list"/></svg> 서비스 메뉴</a>

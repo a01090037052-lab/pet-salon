@@ -37,9 +37,18 @@ App.pages.photocard = {
       </div>
     `;
     await this._bindPetSearch();
-    document.getElementById('pc-start')?.addEventListener('click', () => {
-      const date = document.getElementById('pc-date')?.value || App.getToday();
-      App.pages.records.startPhotoCard({ petId: this._petId, date });
+    document.getElementById('pc-start')?.addEventListener('click', async () => {
+      if (this._starting) return; // 두 번 눌러 카드 창이 두 번 열리던 문제
+      this._starting = true;
+      try {
+        const date = document.getElementById('pc-date')?.value || App.getToday();
+        await App.pages.records.startPhotoCard({ petId: this._petId, date });
+      } catch (err) {
+        console.error('사진 카드 열기 실패:', err);
+        App.showToast('사진 카드를 열지 못했습니다.', 'error');
+      } finally {
+        this._starting = false;
+      }
     });
   },
 

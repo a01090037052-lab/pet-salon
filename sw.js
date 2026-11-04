@@ -1,4 +1,4 @@
-const CACHE_NAME = 'petsalon-offline-v182';
+const CACHE_NAME = 'petsalon-offline-v184';
 const FONT_CACHE = 'petsalon-fonts-v1';
 const ASSETS = [
   './',
@@ -109,18 +109,30 @@ const ASSETS = [
   './icon-512.png'
 ];
 
+// 스티커 이미지는 버전과 상관없는 따로 보관함에 둔다 — 앱을 업데이트할 때마다 1.6MB 를 다시 받지 않도록.
+// 파일 이름이 같으면 내용도 같다고 본다: 스티커 그림을 바꿀 때는 파일 이름을 새로 지을 것.
+const STICKER_CACHE = 'petsalon-stickers-v1';
+const isSticker = (u) => u.includes('/assets/stickers/');
+const CORE_ASSETS = ASSETS.filter(u => !isSticker(u));
+const STICKER_ASSETS = ASSETS.filter(isSticker);
+
 self.addEventListener('install', (e) => {
   e.waitUntil(
     // GitHub Pages 는 max-age=600 을 주므로, 새 CACHE_NAME 으로 설치하면서도 HTTP 캐시의 구버전 파일을
     // 담을 수 있다 → cache:'reload' 로 네트워크에서 새로 받아 저장
-    caches.open(CACHE_NAME).then(cache => cache.addAll(ASSETS.map(u => new Request(u, { cache: 'reload' })))).then(() => self.skipWaiting())
+    caches.open(CACHE_NAME).then(cache => cache.addAll(CORE_ASSETS.map(u => new Request(u, { cache: 'reload' }))))
+      // 스티커는 보관함에 없는 것만 받는다. 실패해도 설치는 막지 않는다(처음 쓸 때 받아 둔다).
+      .then(() => caches.open(STICKER_CACHE).then(sc => Promise.all(STICKER_ASSETS.map(u =>
+        sc.match(u).then(hit => hit || sc.add(u)).catch(() => {})
+      ))))
+      .then(() => self.skipWaiting())
   );
 });
 
 self.addEventListener('activate', (e) => {
   e.waitUntil(
     caches.keys().then(keys =>
-      Promise.all(keys.filter(k => k !== CACHE_NAME && k !== FONT_CACHE).map(k => caches.delete(k)))
+      Promise.all(keys.filter(k => k !== CACHE_NAME && k !== FONT_CACHE && k !== STICKER_CACHE).map(k => caches.delete(k)))
     ).then(() => self.clients.claim())
   );
 });
@@ -147,6 +159,19 @@ self.addEventListener('fetch', (e) => {
   // sw.js 는 캐시하지 않는다 — 버전 표시용으로 './sw.js?v=<timestamp>' 를 매번
   // 새 URL로 요청하기 때문에, 캐시하면 앱을 열 때마다 항목이 영구 누적된다.
   if (url.pathname.endsWith('/sw.js')) return;
+
+  // 스티커: 보관함에 있으면 그대로 쓰고, 없을 때만 받아서 보관한다.
+  if (isSticker(url.pathname)) {
+    e.respondWith(
+      caches.open(STICKER_CACHE).then(sc =>
+        sc.match(e.request, { ignoreSearch: true }).then(hit => hit || fetch(e.request).then(response => {
+          if (response.ok) sc.put(e.request, response.clone());
+          return response;
+        }))
+      )
+    );
+    return;
+  }
 
   // Stale-while-revalidate: 캐시 즉시 반환 + 백그라운드 업데이트
   e.respondWith(

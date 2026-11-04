@@ -41,6 +41,8 @@ const App = {
       this.setupIntegrityCheck();
       // 인라인 등록 폼이 한글 사이즈를 저장하던 시기의 데이터 정정 (1회)
       this.migratePetSizes();
+      // v184 몸무게 구간 가격: 구간표 만들기 + 사이즈 가격 → 구간 가격 변환 (매번 확인, 안내는 처음 1회)
+      this.migratePriceBands();
       // 반려견 방문 통계(firstVisitDate·lastVisitDate·visitCount) 1회 채우기 — 목록 페이지가 기록 전체를 읽지 않게 한다
       this.migratePetVisitStats();
       // v175 이전에 기록 본문에 박혀 있던 사진을 photos 스토어로 1회 옮긴다 — 그래야 반려견 상세 사진 줄에 보이고 동기화·보관 정리 대상이 된다
@@ -93,7 +95,16 @@ const App = {
     document.getElementById('modal-close').addEventListener('click', () => this.closeModal());
     document.getElementById('modal-cancel').addEventListener('click', () => this.closeModal());
     document.getElementById('modal-overlay').addEventListener('click', (e) => {
-      if (e.target === e.currentTarget) this.closeModal();
+      if (e.target === e.currentTarget) this.requestCloseModal();
+    });
+    // 작성 중 표시: 모달을 연 뒤 사장님이 직접 입력·선택하면 '작성 중' (자동 채움 같은 코드 이벤트는 제외)
+    const mb = document.getElementById('modal-body');
+    const markDirty = (e) => { if (e.isTrusted) this._modalDirty = true; };
+    mb.addEventListener('input', markDirty);
+    mb.addEventListener('change', markDirty);
+    // 값을 바꾸는 칩·토글을 누른 것도 작성으로 본다 (접기·펼치기 같은 버튼은 제외)
+    mb.addEventListener('click', (e) => {
+      if (e.isTrusted && e.target.closest('.payment-chip, .condition-chip, .free-toggle, .addon-tag, .service-chip, .custom-included-tag, #btn-copy-last-record, .rec-photo-del')) this._modalDirty = true;
     });
     // confirm 모달은 외부 클릭으로 닫지 않음 (실수 방지 — 데이터 삭제 등 위험 작업)
     document.getElementById('confirm-cancel').addEventListener('click', () => this.closeConfirm(false));
@@ -134,8 +145,11 @@ const App = {
         }
         if (!document.getElementById('confirm-overlay').classList.contains('hidden')) {
           this.closeConfirm(false);
+        } else if (Array.from(document.querySelectorAll('#modal-body .search-select-dropdown')).some(d => d.style.display !== 'none' && d.offsetParent !== null)) {
+          // 자동완성 목록이 열려 있으면 목록만 닫는다 (창을 닫거나 '작성 중' 확인을 띄우지 않는다)
+          document.querySelectorAll('#modal-body .search-select-dropdown').forEach(d => { d.style.display = 'none'; });
         } else if (!document.getElementById('modal-overlay').classList.contains('hidden')) {
-          this.closeModal();
+          this.requestCloseModal();
         }
       }
       // "/" shortcut to open search (when not in input/textarea/select)
@@ -549,7 +563,8 @@ const App = {
     // 이전 confirm 이 남긴 억제 플래그가 새 모달의 첫 뒤로가기를 삼키지 않도록 초기화
     this._suppressModalPop = false;
     this._lastFocusedElement = document.activeElement;
-    const { title, content, onSave, size, hideFooter, saveText } = options;
+    const { title, content, onSave, size, hideFooter, saveText, noAutoFocus } = options;
+    this._modalDirty = false;
     document.getElementById('modal-title').textContent = title;
     document.getElementById('modal-body').innerHTML = content;
 
@@ -558,10 +573,12 @@ const App = {
 
     const footer = document.getElementById('modal-footer');
     footer.style.display = hideFooter ? 'none' : 'flex';
+    footer.querySelectorAll('.modal-extra-btn').forEach(b => b.remove()); // 이전 모달이 붙인 보조 버튼 (예: 저장하고 이어서 등록)
 
     const saveBtn = document.getElementById('modal-save');
     saveBtn.textContent = saveText || '저장';
     saveBtn.disabled = false;
+    delete saveBtn.dataset.label; // 저장 버튼 글자를 화면이 바꿔 둔 경우(예: 미리보기 → 'N개 적용') 저장 뒤 그 글자로 돌린다
     saveBtn.onclick = onSave ? async () => {
       // 중복 탭/Enter 연타로 같은 레코드가 두 번 저장되는 것을 막는다.
       if (saveBtn.disabled) return;
@@ -576,7 +593,7 @@ const App = {
       } finally {
         saveBtn.disabled = false;
         saveBtn.classList.remove('loading');
-        saveBtn.textContent = saveText || '저장';
+        saveBtn.textContent = saveBtn.dataset.label || saveText || '저장';
       }
     } : null;
 
@@ -606,7 +623,7 @@ const App = {
       let startY = 0, dy = 0;
       const onStart = (e) => { startY = e.touches[0].clientY; modal.style.transition = 'none'; };
       const onMove = (e) => { dy = e.touches[0].clientY - startY; if (dy > 0) modal.style.transform = `translateY(${dy}px)`; };
-      const onEnd = () => { modal.style.transition = ''; if (dy > 100) { this.closeModal(); } modal.style.transform = ''; dy = 0; };
+      const onEnd = () => { modal.style.transition = ''; if (dy > 100) { this.requestCloseModal(); } modal.style.transform = ''; dy = 0; };
       header.addEventListener('touchstart', onStart, { passive: true });
       header.addEventListener('touchmove', onMove, { passive: true });
       header.addEventListener('touchend', onEnd);
@@ -620,8 +637,8 @@ const App = {
     // Auto-format phone inputs inside modal
     setTimeout(() => this.setupPhoneInputs(), 50);
 
-    // Focus first input
-    setTimeout(() => {
+    // Focus first input (noAutoFocus: 숫자 칸이 많은 모달은 아이폰 키패드가 화면을 가리지 않게 열 때 포커스하지 않는다)
+    if (!noAutoFocus) setTimeout(() => {
       const firstInput = document.querySelector('#modal-body input:not([type="hidden"]):not([type="checkbox"]), #modal-body select');
       firstInput?.focus();
     }, 100);
@@ -640,6 +657,19 @@ const App = {
     };
   },
 
+  // 바깥 누름·Esc·끌어내리기로 닫을 때: 저장 버튼이 있는 입력 창에서 작성 중이면 한 번 묻는다
+  async requestCloseModal() {
+    const overlay = document.getElementById('modal-overlay');
+    if (overlay.classList.contains('hidden')) return;
+    const saveBtn = document.getElementById('modal-save');
+    const isForm = saveBtn && saveBtn.onclick && document.getElementById('modal-footer').style.display !== 'none';
+    if (this._modalDirty && isForm) {
+      const ok = await this.confirm('작성 중인 내용이 있어요. 닫을까요?', { okLabel: '닫기', cancelLabel: '계속 작성' });
+      if (!ok) return;
+    }
+    this.closeModal();
+  },
+
   closeModal(fromPopstate) {
     const overlay = document.getElementById('modal-overlay');
     if (overlay.classList.contains('hidden')) return;
@@ -648,8 +678,15 @@ const App = {
     this._unlockBody();
     const modalBody = document.getElementById('modal-body');
     modalBody.onkeydown = null;
+    // records.js 사진 카드가 심은 핸들러 정리 (다른 모달에 새지 않게)
+    modalBody.oninput = null;
+    modalBody.onchange = null;
+    modalBody.onclick = null;
+    // 사진 카드용으로 풀어 둔 그림도 놓아 준다 (iOS 메모리)
+    if (this.pages?.records?._imgCache) this.pages.records._imgCache.clear();
     modalBody.innerHTML = '';
     document.getElementById('modal-save').onclick = null;
+    document.querySelectorAll('#modal-footer .modal-extra-btn').forEach(b => b.remove());
     if (this._modalDragCleanup) { this._modalDragCleanup(); this._modalDragCleanup = null; }
     // 모달 닫힘 콜백 (예: 미용완료 취소 시 예약 상태 복원)
     if (this._modalOnClose) { const cb = this._modalOnClose; this._modalOnClose = null; cb(); }
@@ -663,8 +700,15 @@ const App = {
       this._modalPopHandler = null;
     }
     this._suppressModalPop = false;
-    if (!fromPopstate && history.state && history.state.modalOpen) {
-      history.back();
+    this._modalDirty = false;
+    if (!fromPopstate) {
+      // 확인창이 막 닫히며 낸 history.back() 이 아직 처리 전이면 겹쳐 두 번 뒤로 가거나 항목이 남는다 — 잠깐 뒤에 정리
+      const since = Date.now() - (this._lastConfirmCloseAt || 0);
+      const doBack = () => {
+        if (!document.getElementById('modal-overlay').classList.contains('hidden')) return; // 그새 다른 모달이 열렸으면 건드리지 않는다
+        if (history.state && history.state.modalOpen) history.back();
+      };
+      if (since < 200) setTimeout(doBack, 200 - since); else doBack();
     }
   },
 
@@ -694,13 +738,42 @@ const App = {
       okBtn.classList.toggle('btn-danger', options.danger !== false);
       okBtn.classList.toggle('btn-primary', options.danger === false);
       okBtn.disabled = false;
+      okBtn.style.display = '';
       okBtn.onclick = () => { okBtn.disabled = true; this.closeConfirm(true); };
+      if (options.onOpen) { try { options.onOpen(body, okBtn); } catch (_) {} }
       // Android 뒤로가기 처리
       history.pushState({ confirmOpen: true }, '');
       this._confirmPopHandler = () => { this.closeConfirm(false, true); };
       window.addEventListener('popstate', this._confirmPopHandler, { once: true });
       // Focus confirm button
       setTimeout(() => document.getElementById('confirm-ok')?.focus(), 100);
+    });
+  },
+
+  // 여러 갈래 중 하나 고르기. choices: [{ value, label(html) }]. 반환: 고른 value, 취소면 null
+  choose(message, choices, opts = {}) {
+    let picked = null;
+    return this.confirm(message, {
+      cancelLabel: opts.cancelLabel || '취소', danger: false,
+      onOpen: (body, okBtn) => {
+        okBtn.style.display = 'none';
+        const wrap = document.createElement('div');
+        wrap.style.cssText = 'display:flex;flex-direction:column;gap:8px;margin-top:14px';
+        choices.forEach((c, i) => {
+          const b = document.createElement('button');
+          b.type = 'button';
+          b.className = 'btn ' + (i === 0 ? 'btn-primary' : 'btn-secondary');
+          b.style.cssText = 'width:100%;min-height:48px;white-space:normal;line-height:1.35;justify-content:center';
+          b.innerHTML = c.label;
+          b.onclick = () => { picked = c.value; this.closeConfirm(true); };
+          wrap.appendChild(b);
+        });
+        body.appendChild(wrap);
+      }
+    }).then(ok => {
+      const okBtn = document.getElementById('confirm-ok');
+      if (okBtn) okBtn.style.display = '';
+      return ok ? picked : null;
     });
   },
 
@@ -981,6 +1054,16 @@ const App = {
     return Number(amount).toLocaleString('ko-KR') + '원';
   },
 
+  // 전화·문자 링크용 숫자만. +82 로 저장된 번호는 국내 형식(0으로 시작)으로 바꾼다 (+82 10… → 010…)
+  phoneDigits(phone) {
+    let d = String(phone || '').replace(/\D/g, '');
+    if (d.length >= 10 && d.startsWith('82')) {
+      d = d.slice(2);
+      if (!d.startsWith('0')) d = '0' + d;
+    }
+    return d;
+  },
+
   formatPhone(phone) {
     if (!phone) return '-';
     let cleaned = String(phone).replace(/\D/g, '');
@@ -992,6 +1075,10 @@ const App = {
     if (cleaned.startsWith('02') && (cleaned.length === 9 || cleaned.length === 10)) {
       const mid = cleaned.length === 9 ? 3 : 4;
       return `02-${cleaned.slice(2, 2 + mid)}-${cleaned.slice(2 + mid)}`;
+    }
+    // 050X 안심번호: 0505-123-4567 (11자리) / 0505-1234-5678 (12자리)
+    if (cleaned.startsWith('050') && (cleaned.length === 11 || cleaned.length === 12)) {
+      return `${cleaned.slice(0, 4)}-${cleaned.slice(4, cleaned.length - 4)}-${cleaned.slice(-4)}`;
     }
     if (cleaned.length === 11) {
       return `${cleaned.slice(0, 3)}-${cleaned.slice(3, 7)}-${cleaned.slice(7)}`;
@@ -1070,7 +1157,8 @@ const App = {
   },
 
   getVisitStatusLabel(status) {
-    const labels = { normal: '정상', new: '방문 전', remind: '리마인드', 'at-risk': '이탈위험', churned: '이탈' };
+    // 화면에 보이는 말은 쉬운 말로 통일 (홈 '연락할 손님'·고객 목록 필터와 같은 단어)
+    const labels = { normal: '정상', new: '방문 전', remind: '올 때 됨', 'at-risk': '많이 늦음', churned: '오래 안 옴' };
     return labels[status] || status;
   },
 
@@ -1247,38 +1335,552 @@ const App = {
     return null;
   },
 
-  // 메뉴(services)에서 이름으로 서비스 + 해당 사이즈 가격을 찾는다.
-  // 반환: { service, price, hasSizePrices } 또는 null (메뉴에 없음). price 는 사이즈 미지정 시 소형가.
-  async getMenuPrice(serviceName, sizeType, servicesCache) {
+  // ========== 몸무게 구간 가격 (v184) ==========
+  // 가게 공통 구간표 1개 (settings 'priceBands', 기기 간 동기화). 경계는 "이하" 규칙: 5kg 은 3~5kg 구간.
+  // 가격은 구간 id(b1…)에 붙어 있어 경계를 고쳐도 가격이 따라간다.
+  // 서비스: pricing = { mode:'flat'|'weight', flat, prices:{ [bandId]: 원 }, legacySig, fromPrice }
+  // 구버전 기기 호환: priceSmall/Medium/Large 에 대표 체중 5/10/20kg 가격을 계속 적고, 그 값의 서명(legacySig)을 남긴다.
+  //   서명이 다르면 구버전 기기에서 가격을 고친 것 → 그 값을 다시 구간 가격으로 받아들인다.
+  DEFAULT_PRICE_BANDS: {
+    version: 1,
+    bands: [{ id: 'b1', upTo: 3 }, { id: 'b2', upTo: 5 }, { id: 'b3', upTo: 7 }, { id: 'b4', upTo: 10 }, { id: 'b5', upTo: null }],
+    overKg: { from: 10, perKg: 5000, ceil: true },
+    rounding: 1000
+  },
+  PRICE_BAND_PRESETS: {
+    three: { bands: [{ upTo: 7 }, { upTo: 15 }, { upTo: null }], overKg: null },
+    five: { bands: [{ upTo: 3 }, { upTo: 5 }, { upTo: 7 }, { upTo: 10 }, { upTo: null }], overKg: { from: 10, perKg: 5000, ceil: true } }
+  },
+  LEGACY_REP_WEIGHTS: { small: 5, medium: 10, large: 20 }, // 구버전 priceSmall/Medium/Large 에 적는 대표 체중
+  SIZE_REP_WEIGHTS: { small: 4, medium: 9 },               // 몸무게 없이 사이즈만 있는 반려견 (large = 마지막 구간)
+
+  // 저장된 값이 깨졌거나 없으면 기본 5단계로
+  normalizePriceBands(v) {
+    const def = this.DEFAULT_PRICE_BANDS;
+    if (!v || !Array.isArray(v.bands) || v.bands.length === 0) return JSON.parse(JSON.stringify(def));
+    const seen = new Set();
+    const bands = [];
+    v.bands.forEach(b => {
+      if (!b || !b.id || seen.has(b.id)) return;
+      seen.add(b.id);
+      const up = b.upTo == null || b.upTo === '' ? null : Number(b.upTo);
+      bands.push({ id: String(b.id), upTo: (up != null && up > 0) ? up : null });
+    });
+    if (bands.length === 0) return JSON.parse(JSON.stringify(def));
+    // 경계 오름차순, 경계 없는(=마지막) 구간은 하나만 맨 끝에
+    const bounded = bands.filter(b => b.upTo != null).sort((a, b) => a.upTo - b.upTo);
+    const open = bands.filter(b => b.upTo == null);
+    const out = bounded.filter((b, i) => i === 0 || b.upTo !== bounded[i - 1].upTo);
+    out.push(open[0] || { id: this._newBandId({ bands: out, nextId: v.nextId }), upTo: null });
+    const ok = v.overKg && Number(v.overKg.perKg) > 0 && Number(v.overKg.from) > 0;
+    // 구간 id 는 다시 쓰지 않는다 — 지운 구간 id 를 새 구간이 받으면 다른 기기의 옛 가격이 엉뚱한 구간에 붙는다
+    const maxNum = out.reduce((m, b) => Math.max(m, Number(String(b.id).replace(/^b/, '')) || 0), 0);
+    return {
+      version: 1,
+      nextId: Math.max(Number(v.nextId) || 0, maxNum + 1),
+      bands: out,
+      overKg: ok ? { from: Number(v.overKg.from), perKg: Number(v.overKg.perKg), ceil: v.overKg.ceil !== false } : null,
+      rounding: [100, 500, 1000, 5000, 10000].includes(Number(v.rounding)) ? Number(v.rounding) : 1000,
+      // 몸무게 구간 사용 안 함 (가게 전체 단일가). 구간 가격은 지우지 않고 쓰지만 않는다
+      bandsOff: v.bandsOff === true
+    };
+  },
+
+  // 새 구간 id. tableOrState.nextId(증가 카운터)를 쓰고 올린다 — 한 번 쓴 id 는 다시 나오지 않는다
+  _newBandId(tableOrState) {
+    const st = tableOrState || {};
+    const bands = st.bands || [];
+    const maxNum = bands.reduce((m, b) => Math.max(m, Number(String(b.id).replace(/^b/, '')) || 0), 0);
+    const n = Math.max(Number(st.nextId) || 0, maxNum + 1);
+    st.nextId = n + 1;
+    return 'b' + n;
+  },
+
+  // 구간표 읽기 (짧게 캐시 — 목록에서 서비스마다 IDB 를 다시 읽지 않게)
+  async getPriceBands() {
+    const now = Date.now();
+    if (this._priceBandsCache && now - this._priceBandsCache.at < 1500) return this._priceBandsCache.table;
+    let raw = null;
+    try { raw = await DB.getSetting('priceBands'); } catch (_) {}
+    const table = this.normalizePriceBands(raw);
+    this._priceBandsCache = { at: now, table };
+    return table;
+  },
+
+  async savePriceBands(table) {
+    const t = this.normalizePriceBands(table);
+    await DB.setSetting('priceBands', t);
+    this._priceBandsCache = null;
+    return t;
+  },
+
+  formatKg(n) {
+    const v = Number(n);
+    if (!Number.isFinite(v)) return '';
+    return String(Math.round(v * 10) / 10);
+  },
+
+  // 구간 이름: '~3kg', '3~5kg', '10kg~'
+  getBandLabel(table, idx) {
+    const bands = table.bands;
+    const b = bands[idx];
+    if (!b) return '';
+    const lower = idx > 0 ? bands[idx - 1].upTo : null;
+    if (b.upTo == null) return lower != null ? this.formatKg(lower) + 'kg~' : '전체';
+    if (lower == null) return '~' + this.formatKg(b.upTo) + 'kg';
+    return this.formatKg(lower) + '~' + this.formatKg(b.upTo) + 'kg';
+  },
+
+  // 초과 kg 요금이 실제로 시작되는 몸무게 = max(설정값, 마지막 구간 시작).
+  // 마지막 구간보다 가벼운 구간 안에서는 절대 붙지 않는다.
+  overKgFrom(table) {
+    if (!table || !table.overKg) return null;
+    const bands = table.bands || [];
+    const lastLower = bands.length > 1 ? Number(bands[bands.length - 2].upTo) || 0 : 0;
+    return Math.max(Number(table.overKg.from) || 0, lastLower);
+  },
+
+  // 몸무게 → 구간 ("이하" 규칙: upTo 이하면 그 구간)
+  resolveBand(table, weight) {
+    const w = Number(weight);
+    if (!(w > 0)) return null;
+    const bands = table.bands;
+    let idx = bands.findIndex(b => b.upTo != null && w <= b.upTo);
+    if (idx < 0) idx = bands.length - 1;
+    return { band: bands[idx], index: idx, label: this.getBandLabel(table, idx) };
+  },
+
+  // 몸무게 또는 사이즈 문자열을 해석. 숫자(또는 숫자 문자열) → 몸무게, 'small'… → 사이즈
+  _parseWeightOrSize(v) {
+    if (v == null || v === '') return {};
+    if (typeof v === 'number') return v > 0 ? { weight: v } : {};
+    if (['small', 'medium', 'large'].includes(v)) return { size: v };
+    const n = parseFloat(v);
+    return n > 0 ? { weight: n } : {};
+  },
+
+  // 반려견 가격 기준: 몸무게가 있으면 몸무게(숫자), 없으면 사이즈 문자열, 둘 다 없으면 null
+  getPetPriceBasis(pet) {
+    if (!pet) return null;
+    const w = Number(pet.weight);
+    if (w > 0) return w;
+    return this.getPetSizeType(pet);
+  },
+
+  // 구버전 priceSmall/Medium/Large → 구간 가격.
+  // 기본 5단계: ~3·3~5·5~7 = 소형가, 7~10 = 중형가, 10kg~ = 중형가(초과 kg 규칙이 위에 더함).
+  // 초과 규칙이 꺼져 있으면 15kg 이상 구간은 대형가. 0원 칸은 소형→중형→대형 순으로 있는 값을 쓴다(예전 동작과 같음).
+  // 큰 아이 추가 요금이 붙지 않는 서비스('없음')는 무거운 구간이 대형가를 받는다 — 15kg 이상 구간, 그리고
+  // 마지막 구간(10kg 이상부터 시작). 추가 요금이 붙는 서비스(가게 기본·따로)는 그 구간 = 중형가 + kg당 요금.
+  legacyToPricing(svc, table) {
+    const s = Number(svc.priceSmall) || 0, m = Number(svc.priceMedium) || 0, l = Number(svc.priceLarge) || 0;
+    const pick = (k) => ({ small: s, medium: m, large: l })[k] || s || m || l;
+    const overKgMode = (svc.pricing && ['inherit', 'off', 'custom'].includes(svc.pricing.overKgMode)) ? svc.pricing.overKgMode : this.defaultOverKgMode(svc);
+    const overOn = overKgMode === 'custom' || (overKgMode === 'inherit' && !!table.overKg && !table.bandsOff);
+    const prices = {};
+    const last = table.bands.length - 1;
+    table.bands.forEach((b, i) => {
+      const lower = i > 0 ? table.bands[i - 1].upTo : 0;
+      const heavy = !overOn && (lower >= 15 || (i === last && lower >= 10));
+      const key = lower < 7 ? 'small' : (heavy ? 'large' : 'medium');
+      prices[b.id] = pick(key);
+    });
+    const vals = Object.values(prices);
+    if (vals.every(v => v === vals[0])) return { mode: 'flat', flat: vals[0] || 0, prices: {}, overKgMode };
+    return { mode: 'weight', flat: 0, prices, overKgMode };
+  },
+
+  // ===== 서비스별 큰 아이(초과 kg) 추가 요금 (v184) =====
+  // pricing.overKgMode: 'inherit'(가게 기본) | 'off'(추가 요금 없음) | 'custom'(이 서비스만 overKgCustom {from, perKg})
+  // 값이 없는 서비스(v184 이전)는 기본값: 미용 코스 = 가게 기본, 추가 옵션·단독 케어·이름에 목욕/스파/약욕 = 없음
+  defaultOverKgMode(svc) {
+    const s = svc || {};
+    if ((s.category || 'grooming') !== 'grooming') return 'off';
+    return /목욕|스파|약욕/.test(String(s.name || '')) ? 'off' : 'inherit';
+  },
+
+  getOverKgMode(svc, p) {
+    const m = p && p.overKgMode;
+    return (m === 'inherit' || m === 'off' || m === 'custom') ? m : this.defaultOverKgMode(svc);
+  },
+
+  // 이 서비스에 실제로 붙는 규칙 { from, perKg, ceil, source:'shop'|'custom' } 또는 null.
+  //  - 구간 가격: 가게 기본 또는 이 서비스만. 시작 kg 은 마지막 구간 시작보다 낮아지지 않는다 (가벼운 구간 안에서는 안 붙음)
+  //  - 단일가(또는 '구간 사용 안 함'): '이 서비스만'을 고른 경우에만 (예전 단일가 가격이 바뀌지 않게)
+  getOverKgRule(svc, table, pIn) {
+    const p = pIn || this.getServicePricing(svc, table);
+    if (p.free) return null;
+    const mode = this.getOverKgMode(svc, p);
+    if (mode === 'off') return null;
+    const byBand = p.mode === 'weight' && !table.bandsOff;
+    const bands = table.bands || [];
+    const lastLower = byBand && bands.length > 1 ? Number(bands[bands.length - 2].upTo) || 0 : 0;
+    if (mode === 'custom') {
+      const c = p.overKgCustom || {};
+      const from = Number(c.from) || 0, perKg = Number(c.perKg) || 0;
+      if (!(from > 0) || !(perKg > 0)) return null;
+      return { from: Math.max(from, lastLower), perKg, ceil: true, source: 'custom' };
+    }
+    if (!byBand || !table.overKg) return null;
+    return { from: this.overKgFrom(table), perKg: Number(table.overKg.perKg), ceil: table.overKg.ceil !== false, source: 'shop' };
+  },
+
+  // 규칙 짧은 글: '10kg 초과 1kg당 +7,000원' / '추가 요금 없음'
+  describeOverKgRule(rule) {
+    if (!rule) return '추가 요금 없음';
+    return `${this.formatKg(rule.from)}kg 넘으면 1kg당 +${this.formatCurrency(rule.perKg)}`;
+  },
+
+  _overCharge(rule, weight, base, table) {
+    if (!rule || !(weight > rule.from) || !(base > 0)) return null;
+    const kg = rule.ceil === false ? Math.round((weight - rule.from) * 10) / 10 : Math.ceil(Math.round((weight - rule.from) * 1000) / 1000);
+    const unit = table.rounding || 1000;
+    const extra = Math.round((kg * rule.perKg) / unit) * unit;
+    return extra > 0 ? { kg, perKg: rule.perKg, extra, from: rule.from, source: rule.source } : null;
+  },
+
+  // 구간 가격 서비스의 대표 단일가 ('구간 사용 안 함'일 때): 단일가가 적혀 있으면 그 값, 없으면 첫(가장 가벼운) 구간 가격
+  _firstBandPrice(p, table) {
+    const prices = (p && p.prices) || {};
+    for (const b of table.bands) { const v = Number(prices[b.id]) || 0; if (v > 0) return v; }
+    const vals = Object.values(prices).map(Number).filter(v => v > 0);
+    return vals.length ? Math.min(...vals) : 0;
+  },
+
+  // 서비스의 가격 설정 (아직 변환 안 된 서비스는 그 자리에서 변환해 쓴다 — 저장은 migratePriceBands 가)
+  getServicePricing(svc, table) {
+    const p = svc && svc.pricing;
+    if (p && (p.mode === 'flat' || p.mode === 'weight')) return p;
+    return this.legacyToPricing(svc || {}, table);
+  },
+
+  // 서비스 1개의 가격 계산.
+  // 반환: { price, mode, bandId, bandLabel, needsWeight, bySize, weight, base, over:{kg,perKg,extra}|null, fromPrice }
+  // 서비스 가격이 붙어 있는 구간표. 지금 구간표에 이 서비스의 구간 id 가 하나도 없으면
+  // (다른 기기가 구간표를 바꾸고 아직 서비스만/구간표만 받은 경우 등) 서비스에 저장된 구간 경계(bandsAt)로 계산한다.
+  _pricingTable(p, table) {
+    const prices = (p && p.prices) || {};
+    const known = table.bands.some(b => Number(prices[b.id]) > 0);
+    if (known || !Array.isArray(p.bandsAt) || p.bandsAt.length === 0) return table;
+    const own = this.normalizePriceBands({ bands: p.bandsAt, overKg: table.overKg, rounding: table.rounding });
+    return own.bands.some(b => Number(prices[b.id]) > 0) ? own : table;
+  },
+
+  calcServicePrice(svc, weightOrSize, tableIn) {
+    const p = this.getServicePricing(svc, tableIn);
+    const fromPrice = !!(p.fromPrice || (svc && svc.fromPrice));
+    const { weight, size } = this._parseWeightOrSize(weightOrSize);
+    // 무료 서비스 (일부러 0원으로 등록한 메뉴)
+    if (p.free) return { price: 0, mode: 'flat', free: true, bandId: null, bandLabel: '', needsWeight: false, bySize: false, weight: weight || null, base: 0, over: null, fromPrice: false };
+    if (p.mode !== 'weight' || tableIn.bandsOff) {
+      // 단일가 — '구간 사용 안 함'이면 구간 가격 서비스도 단일가(없으면 첫 구간 가격)로
+      const base = p.mode === 'weight' ? (Number(p.flat) || this._firstBandPrice(p, this._pricingTable(p, tableIn))) : (Number(p.flat) || 0);
+      const over = weight ? this._overCharge(this.getOverKgRule(svc, tableIn, p), weight, base, tableIn) : null;
+      return { price: base + (over ? over.extra : 0), mode: 'flat', bandId: null, bandLabel: '', needsWeight: false, bySize: false, weight: weight || null, base, over, fromPrice };
+    }
+    const table = this._pricingTable(p, tableIn);
+    let r = null, bySize = false;
+    if (weight) r = this.resolveBand(table, weight);
+    else if (size) {
+      bySize = true;
+      r = size === 'large'
+        ? { band: table.bands[table.bands.length - 1], index: table.bands.length - 1, label: this.getBandLabel(table, table.bands.length - 1) }
+        : this.resolveBand(table, this.SIZE_REP_WEIGHTS[size]);
+    }
+    if (!r) return { price: 0, mode: 'weight', bandId: null, bandLabel: '', needsWeight: true, bySize: false, over: null, fromPrice };
+    // 그 구간 칸이 비었으면 가까운 아래 구간 → 위 구간 가격 (0원으로 떨어지지 않게). 어느 칸 값을 썼는지 fallback 에 남겨 화면에 솔직히 적는다
+    let base = Number(p.prices && p.prices[r.band.id]) || 0;
+    let fallback = null;
+    if (!base) {
+      const ids = table.bands.map(b => b.id);
+      for (let i = r.index - 1; i >= 0 && !base; i--) { base = Number(p.prices[ids[i]]) || 0; if (base) fallback = 'prev'; }
+      for (let i = r.index + 1; i < ids.length && !base; i++) { base = Number(p.prices[ids[i]]) || 0; if (base) fallback = 'next'; }
+    }
+    // 그래도 0 이면(구간 id 가 전혀 안 맞음) 가격이 있는 칸 중 최저가 — 가격이 있는 서비스를 0원으로 내지 않는다
+    if (!base) {
+      const vals = Object.values(p.prices || {}).map(Number).filter(v => v > 0);
+      if (vals.length) { base = Math.min(...vals); fallback = 'min'; }
+    }
+    // 초과 kg 요금은 서비스별 규칙 (가게 기본 / 없음 / 이 서비스만) — 기준은 마지막 구간 시작 이상
+    const over = weight ? this._overCharge(this.getOverKgRule(svc, table, p), weight, base, table) : null;
+    return {
+      price: base + (over ? over.extra : 0), mode: 'weight', bandId: r.band.id, bandLabel: r.label,
+      needsWeight: false, bySize, weight: weight || null, base, over, fromPrice, fallback
+    };
+  },
+
+  // 가격 설명 한 줄: '5.2kg → 5~7kg 구간 50,000원' (+ 초과분). 빈 칸이라 다른 구간 값을 쓴 경우 '(앞 구간 가격)'
+  // 단일가 + 이 서비스만 초과 요금: '12.3kg → 기본 50,000원 + 초과 3kg × 7,000원 = 71,000원'
+  describeBandPrice(res, weight) {
+    if (!res) return '';
+    let s;
+    if (res.mode === 'weight' && res.bandLabel) {
+      const head = res.bySize ? '사이즈 기준' : this.formatKg(weight) + 'kg';
+      const fb = res.fallback === 'prev' ? ' (앞 구간 가격)' : res.fallback === 'next' ? ' (뒤 구간 가격)' : res.fallback === 'min' ? ' (가장 낮은 구간 가격)' : '';
+      s = `${head} → ${res.bandLabel} 구간${fb} ${this.formatCurrency(res.base)}`;
+    } else if (res.mode === 'flat' && res.over) {
+      s = `${this.formatKg(weight)}kg → 기본 ${this.formatCurrency(res.base)}`;
+    } else return '';
+    if (res.over) s += ` + 초과 ${res.over.kg}kg × ${this.formatCurrency(res.over.perKg)} = ${this.formatCurrency(res.price)}`;
+    return s;
+  },
+
+  // 목록·칩용 가격 글자. 몸무게를 모르는 구간 가격 서비스는 '3.5만~5.5만' 범위로.
+  // 끝의 '~'는 사장님이 '~부터'로 표시를 고른 경우에만 붙는다.
+  formatServicePrice(svc, table, weightOrSize) {
+    const fmt = (v) => this.formatPriceShort(v) || '무료';
+    const r = this.calcServicePrice(svc, weightOrSize, table);
+    if (r.free) return '무료';
+    const tail = r.fromPrice ? '~' : '';
+    if (!r.needsWeight) return fmt(r.price) + (r.price > 0 ? tail : '');
+    const vals = this.getServiceBandRows(svc, table).map(x => x.price).filter(v => v > 0);
+    if (vals.length === 0) return '가격 미입력';
+    const lo = Math.min(...vals), hi = Math.max(...vals);
+    return (lo === hi ? this.formatManwon(lo) : this.formatManwon(lo) + '~' + this.formatManwon(hi)) + tail;
+  },
+
+  // 구간별 가격 목록 [{ id, label, price }] — 지금 구간표 기준(서비스 id 가 안 맞으면 대표 몸무게로 계산)
+  getServiceBandRows(svc, table) {
+    const p = this.getServicePricing(svc, table);
+    return table.bands.map((b, i) => {
+      let price = Number(p.prices && p.prices[b.id]) || 0;
+      if (!price && p.mode === 'weight' && this._pricingTable(p, table) !== table) {
+        const lower = i > 0 ? table.bands[i - 1].upTo : 0;
+        price = this.calcServicePrice({ ...svc, category: 'addon' }, b.upTo != null ? b.upTo : lower + 0.1, { ...table, bandsOff: false }).base || 0;
+      }
+      return { id: b.id, label: this.getBandLabel(table, i), price };
+    });
+  },
+
+  // 짧은 가격: 1만 원 이상이고 1,000원 단위면 '4.5만', 아니면 '6,000원'·'12,345원' (소수점 긴 '1.2345만'·'0.6만' 방지)
+  formatManwon(v) {
+    const n = Number(v) || 0;
+    if (!n) return '-';
+    return n >= 10000 && n % 1000 === 0 ? (n / 10000) + '만' : n.toLocaleString('ko-KR') + '원';
+  },
+
+  // 구버전 기기 호환 필드(priceSmall/Medium/Large) + 서명 갱신. svc.pricing 이 있어야 한다.
+  applyLegacyPrices(svc, table) {
+    const rep = this.LEGACY_REP_WEIGHTS;
+    ['small', 'medium', 'large'].forEach(k => {
+      const key = 'price' + k.charAt(0).toUpperCase() + k.slice(1);
+      svc[key] = this.calcServicePrice(svc, rep[k], table).price;
+    });
+    svc.pricing.legacySig = this._legacySig(svc);
+    // 가격을 적을 때의 구간 경계 — 구간표가 늦게 오거나 바뀌어도 이 서비스 가격을 계산할 수 있게
+    if (svc.pricing.mode === 'weight' && this._pricingTable(svc.pricing, table) === table) svc.pricing.bandsAt = table.bands.map(b => ({ id: b.id, upTo: b.upTo }));
+    else if (svc.pricing.mode !== 'weight') delete svc.pricing.bandsAt;
+    return svc;
+  },
+
+  _legacySig(svc) {
+    return [svc.priceSmall, svc.priceMedium, svc.priceLarge].map(v => Number(v) || 0).join('|');
+  },
+
+  // 구버전 기기가 고친 priceSmall/Medium/Large 를 구간 가격에 반영한다 — 바뀐 칸만, 차이(새 값 − 저장된 서명 값)만큼 더한다.
+  //  소형 = 시작이 7kg 미만인 구간, 중형 = 그 밖의 구간(초과 kg 요금이 꺼져 있으면 15kg 이상 구간은 대형),
+  //  대형 = 마지막 구간(20kg 대표 가격이 그 차이만큼 움직이게). 마지막 구간은 대형이 바뀌었으면 대형 차이만 쓴다.
+  //  결과가 0원 이하가 되는 칸은 그대로 둔다. 바꾸기 전 가격은 pricing.prevBeforeLegacy 에 남긴다.
+  adoptLegacyEdit(svc, table) {
+    const p = this.getServicePricing(svc, table);
+    const old = String(p.legacySig || '').split('|').map(Number);
+    const cur = [svc.priceSmall, svc.priceMedium, svc.priceLarge].map(v => Number(v) || 0);
+    const [dS, dM, dL] = cur.map((v, i) => v - (old[i] || 0));
+    const prev = JSON.parse(JSON.stringify(p)); delete prev.prevBeforeLegacy;
+    const tb = this._pricingTable(p, table);
+    // legacyToPricing 과 같은 규칙: 큰 아이 추가 요금이 붙지 않는 서비스는 무거운 구간(15kg~ 또는 10kg 이상에서 시작하는 마지막 구간) = 대형
+    const om = this.getOverKgMode(svc, p);
+    const overOn = om === 'custom' || (om === 'inherit' && !!tb.overKg && !tb.bandsOff);
+    const keyOf = (i) => {
+      const lower = i > 0 ? tb.bands[i - 1].upTo : 0;
+      const heavy = !overOn && (lower >= 15 || (i === tb.bands.length - 1 && lower >= 10));
+      return lower < 7 ? 'S' : (heavy ? 'L' : 'M');
+    };
+    const deltaOf = { S: dS, M: dM, L: dL };
+    const next = { ...prev, prices: { ...(prev.prices || {}) } };
+    if (prev.mode !== 'weight') {
+      if (dS === dM && dM === dL) {
+        if ((Number(prev.flat) || 0) + dS > 0) next.flat = (Number(prev.flat) || 0) + dS;
+      } else {
+        // 크기마다 다르게 고쳤으면 구간 가격으로 바꾼다 (모든 칸 = 원래 단일가에서 시작)
+        next.mode = 'weight';
+        tb.bands.forEach(b => { next.prices[b.id] = Number(prev.flat) || 0; });
+      }
+    }
+    if (next.mode === 'weight') {
+      tb.bands.forEach((b, i) => {
+        const before = Number(next.prices[b.id]) || 0;
+        if (!before) return; // 비어 있는 칸은 그대로
+        const isLast = i === tb.bands.length - 1;
+        const d = isLast && dL !== 0 ? dL : deltaOf[keyOf(i)];
+        let after = before + d;
+        // 대형가를 내려도 마지막 구간이 바로 앞 구간보다 싸지지는 않게 (10kg 바로 위가 7~10kg보다 싸지는 역전 방지)
+        if (isLast && dL !== 0 && i > 0) after = Math.max(after, Number(next.prices[tb.bands[i - 1].id]) || 0);
+        if (after > 0) next.prices[b.id] = after;
+      });
+    }
+    next.prevBeforeLegacy = prev;
+    svc.pricing = next;
+    this.applyLegacyPrices(svc, table);
+    return svc;
+  },
+
+  // 새 서비스(템플릿·즉석 등록)에 pricing 을 붙인다
+  withPricing(svc, table) {
+    if (!svc.pricing) svc.pricing = this.legacyToPricing(svc, table);
+    return this.applyLegacyPrices(svc, table);
+  },
+
+  // 구간표·서비스 가격 변환. 매 실행 시:
+  //  - 구간표가 없으면 기본 5단계를 만든다
+  //  - pricing 이 없는 서비스(구버전 데이터·구버전 기기에서 새로 만든 메뉴)는 변환
+  //  - 구버전 기기가 priceSmall 등을 고친 서비스(서명 불일치)는 그 값을 다시 받아들이고 알린다
+  // 첫 변환(또는 복원 후 force) 때만 "구간표 확인" 안내를 띄운다. 완료 표시는 이 기기 IDB 설정(동기화 안 함).
+  async migratePriceBands(force = false) {
+    if (DB.mode === 'server') return;
+    if (this._priceMigrating) return this._priceMigrating;
+    this._priceMigrating = (async () => {
+      try {
+        const done = (await DB.getSetting('priceBandsMigrated')) === 1;
+        let raw = await DB.getSetting('priceBands');
+        if (!raw || !Array.isArray(raw.bands)) raw = await this.savePriceBands(this.DEFAULT_PRICE_BANDS);
+        const table = this.normalizePriceBands(raw);
+        const services = await DB.getAll('services');
+        let migrated = 0;
+        const adopted = [];
+        const overOff = []; // 이번에 '초과 kg 요금 없음'으로 정해진 미용 코스 (목욕·스파·약욕) — 큰 아이는 대형가
+        const addonOff = []; // 같은 이유로 '없음'인 추가 옵션·단독 케어 (구간 가격 서비스만 알림)
+        for (const svc of services) {
+          // v184: 서비스별 초과 kg 규칙을 아직 안 적은 서비스 → 기본값을 적는다 (한 번만 — 값이 있으면 건드리지 않는다).
+          // 계산은 값이 없어도 같은 기본값을 쓰므로 미용 코스 가격은 그대로다. 구버전 호환 가격은 아래에서 함께 다시 적는다.
+          if (svc.pricing && (svc.pricing.mode === 'flat' || svc.pricing.mode === 'weight') && svc.pricing.overKgMode == null) {
+            const mode = this.defaultOverKgMode(svc);
+            svc.pricing.overKgMode = mode;
+            if (mode === 'off' && svc.pricing.mode === 'weight' && table.overKg) ((svc.category || 'grooming') === 'grooming' ? overOff : addonOff).push(svc.name);
+            const sigBefore = svc.pricing.legacySig;
+            const changedOld = sigBefore && sigBefore !== this._legacySig(svc); // 구버전 기기 수정분은 아래 분기에서 먼저 받아들인다
+            if (!changedOld) {
+              this.applyLegacyPrices(svc, table);
+              await DB.update('services', svc);
+              continue;
+            }
+          }
+          const p = svc.pricing;
+          if (!p || (p.mode !== 'flat' && p.mode !== 'weight')) {
+            const hadPrice = (Number(svc.priceSmall) || 0) + (Number(svc.priceMedium) || 0) + (Number(svc.priceLarge) || 0) > 0;
+            svc.pricing = this.legacyToPricing(svc, table);
+            if (svc.pricing.overKgMode === 'off' && svc.pricing.mode === 'weight' && table.overKg) ((svc.category || 'grooming') === 'grooming' ? overOff : addonOff).push(svc.name);
+            svc.pricing.migratedFrom = { small: Number(svc.priceSmall) || 0, medium: Number(svc.priceMedium) || 0, large: Number(svc.priceLarge) || 0 };
+            this.applyLegacyPrices(svc, table);
+            // 가격이 있던 서비스가 0원이 되면 안 된다 (안전 확인)
+            if (hadPrice && !(Number(svc.priceSmall) || Number(svc.priceMedium) || Number(svc.priceLarge))) {
+              console.warn('[migrate] 0원 변환 감지 — 건너뜀', svc.name);
+              delete svc.pricing;
+              continue;
+            }
+            await DB.update('services', svc);
+            migrated++;
+          } else if (p.legacySig && p.legacySig !== this._legacySig(svc)) {
+            this.adoptLegacyEdit(svc, table);
+            svc.priceChangedAt = new Date().toISOString();
+            await DB.update('services', svc);
+            adopted.push(svc.name);
+          } else if (p.mode === 'weight' && this._pricingTable(p, table) !== table) {
+            // 구간표가 바뀐 뒤 아직 옛 구간 id 로 남은 서비스 → 지금 구간표로 옮긴다 (각 구간 대표 몸무게의 가격)
+            const before = JSON.stringify(p.prices);
+            const rows = this.getServiceBandRows(svc, table);
+            const prices = {};
+            rows.forEach(r => { if (r.price > 0) prices[r.id] = r.price; });
+            if (Object.keys(prices).length > 0 && JSON.stringify(prices) !== before) {
+              svc.pricing = { ...p, prices };
+              this.applyLegacyPrices(svc, table);
+              await DB.update('services', svc);
+            }
+          } else if (!p.legacySig) {
+            this.applyLegacyPrices(svc, table);
+            await DB.update('services', svc);
+          }
+        }
+        if (overOff.length + addonOff.length > 0) {
+          const names = (arr) => arr.slice(0, 3).join(', ') + (arr.length > 3 ? ' 외 ' + (arr.length - 3) + '개' : '');
+          const parts = [];
+          if (overOff.length) parts.push(`${names(overOff)}(목욕·스파·약욕)`);
+          if (addonOff.length) parts.push(`${names(addonOff)}(추가 옵션·케어)`);
+          this.showToast(`${parts.join(', ')}에는 큰 아이 kg당 추가 요금이 붙지 않고 구간 가격(무거운 구간은 대형가)을 받아요. 서비스 메뉴 › 더 보기에서 바꿀 수 있어요.`, 'info', { duration: 10000 });
+        }
+        if (adopted.length > 0) {
+          this.showToast(`다른 기기(이전 버전)에서 바뀐 가격을 반영했어요: ${adopted.slice(0, 3).join(', ')}${adopted.length > 3 ? ' 외 ' + (adopted.length - 3) + '개' : ''}. 구간 가격을 확인하세요.`, 'info', { duration: 8000 });
+        }
+        if (!done || force) {
+          await DB.setSetting('priceBandsMigrated', 1);
+          if (migrated > 0) {
+            console.info(`[migrate] 서비스 ${migrated}개 몸무게 구간 가격으로 변환`);
+            this.showToast('가격 구간이 5단계로 바뀌었어요. 10kg 넘는 아이는 이제 1kg당 추가 요금으로 계산돼 예전 대형가와 달라질 수 있어요. 설정에서 구간과 가격을 확인하세요. <a href="#settings" onclick="try{sessionStorage.setItem(\'settings-open-tab\',\'operation\')}catch(e){}" style="font-weight:700;text-decoration:underline">설정 열기</a>', 'info', { html: true, duration: 15000 });
+          }
+        }
+        if (migrated > 0 || adopted.length > 0 || overOff.length + addonOff.length > 0) this._priceBandsCache = null;
+        return { migrated, adopted: adopted.length };
+      } catch (e) {
+        console.warn('price band migration failed', e);
+        return null;
+      } finally {
+        this._priceMigrating = null;
+      }
+    })();
+    return this._priceMigrating;
+  },
+
+  // 구간표를 바꾼 뒤: 모든 서비스의 구버전 호환 가격을 새 구간표 기준으로 다시 적는다
+  async refreshLegacyPrices(table) {
+    const services = await DB.getAll('services');
+    for (const svc of services) {
+      if (!svc.pricing) svc.pricing = this.legacyToPricing(svc, table);
+      const prevSig = svc.pricing.legacySig;
+      this.applyLegacyPrices(svc, table);
+      if (prevSig !== svc.pricing.legacySig) await DB.update('services', svc);
+    }
+  },
+
+  // 메뉴(services)에서 이름으로 서비스 + 가격을 찾는다.
+  // sizeOrWeight: 몸무게(숫자 kg) → 구간 계산, 'small'/'medium'/'large' → 사이즈 대표 구간, 없으면 needsWeight(구간 가격 서비스).
+  // 반환: { service, price, hasSizePrices, bandId, bandLabel, needsWeight, bySize, base, over, fromPrice } 또는 null (메뉴에 없음)
+  async getMenuPrice(serviceName, sizeOrWeight, servicesCache) {
     const name = this.normalizeServiceName(serviceName);
     if (!name) return null;
     const services = servicesCache || await DB.getAll('services');
     const svc = services.find(s => s.isActive !== false && this.normalizeServiceName(s.name) === name)
       || services.find(s => this.normalizeServiceName(s.name) === name);
     if (!svc) return null;
-    const small = Number(svc.priceSmall) || 0, medium = Number(svc.priceMedium) || 0, large = Number(svc.priceLarge) || 0;
-    const hasSizePrices = !!(medium || large) && !(small === medium && medium === large);
-    const key = sizeType === 'medium' ? medium : sizeType === 'large' ? large : small;
-    return { service: svc, price: key || small || 0, hasSizePrices };
+    const table = await this.getPriceBands();
+    const r = this.calcServicePrice(svc, sizeOrWeight, table);
+    return {
+      service: svc, price: r.price || 0, hasSizePrices: r.mode === 'weight',
+      bandId: r.bandId, bandLabel: r.bandLabel, needsWeight: r.needsWeight, bySize: r.bySize,
+      base: r.base, over: r.over, fromPrice: r.fromPrice, mode: r.mode, free: !!r.free, fallback: r.fallback || null
+    };
   },
 
   // 기록 폼 가격 자동 채움.
   // 원칙: 메뉴에 있는 서비스는 **메뉴의 현재 가격**이 기준이다. 예전엔 같은 반려견의 과거 기록 가격을
   // 먼저 써서, 가격을 올려도 단골은 계속 옛 가격이 들어갔고 일괄 인상이 기록엔 반영되지 않았다.
-  // 예외: 그 반려견에게 메뉴 가격 변경(priceChangedAt) 이후에 다른 가격을 받은 기록이 있으면
-  //       (개별 협의가) 그 가격을 따른다.
+  // 예외: 그 반려견에게 메뉴 가격 변경(priceChangedAt) 이후에 다른 가격을 받은 기록이 있고,
+  //       그 기록이 **같은 몸무게 구간**이면 (개별 협의가) 그 가격을 따른다. 구간이 바뀌었으면 메뉴 가격.
   // 메뉴에 없는 서비스(자유 입력)만 과거 기록에서 추정한다.
-  async getRecentServicePrice(petId, serviceName, sizeType) {
+  async getRecentServicePrice(petId, serviceName, sizeOrWeight) {
     const name = this.normalizeServiceName(serviceName);
     if (!name) return null;
-    const menu = await this.getMenuPrice(name, sizeType);
+    const menu = await this.getMenuPrice(name, sizeOrWeight);
     const petRecords = petId ? (await DB.getByIndex('records', 'petId', Number(petId)))
       .filter(r => this.normalizeServiceName(r.service) === name && Number(r.servicePrice) > 0)
       .sort((a, b) => (b.date || '').localeCompare(a.date || '')) : [];
     if (menu) {
+      if (menu.needsWeight) return null; // 몸무게를 알아야 가격이 정해진다
       const changedAt = menu.service.priceChangedAt ? String(menu.service.priceChangedAt).slice(0, 10) : null;
       const latest = petRecords.find(r => !r.addons || r.addons.length === 0) || petRecords[0];
-      if (latest && changedAt && latest.date && latest.date >= changedAt && Number(latest.servicePrice) !== menu.price) {
+      const sameBand = !menu.bandId || (latest && latest.priceBandId === menu.bandId);
+      // 그날 메뉴 가격 그대로 받은 기록은 협의가가 아니다 (같은 구간이라도 초과 kg 요금만 달랐던 경우 등)
+      const negotiated = latest && (latest.menuPriceAtVisit == null || Number(latest.servicePrice) !== Number(latest.menuPriceAtVisit));
+      if (latest && changedAt && latest.date && latest.date >= changedAt && sameBand && negotiated && Number(latest.servicePrice) !== menu.price) {
         return Number(latest.servicePrice);
       }
       return menu.price || null;
@@ -1288,10 +1890,21 @@ const App = {
     const records = await DB.getAllLight('records', ['photoBefore', 'photoAfter', 'photo3', 'photo4', 'memo', 'condition', 'skinStatus', 'earStatus', 'mattingLevel']);
     const same = records.filter(r => this.normalizeServiceName(r.service) === name && Number(r.servicePrice) > 0);
     if (same.length === 0) return null;
-    if (sizeType) {
+    const { weight, size } = this._parseWeightOrSize(sizeOrWeight);
+    if (weight || size) {
       const pets = await DB.getAllLight('pets', ['photo', 'photoThumb', 'memo', 'healthNotes', 'temperament']);
-      const sameSize = new Set(pets.filter(p => this.getPetSizeType(p) === sizeType).map(p => p.id));
-      const sized = same.filter(r => sameSize.has(r.petId)).sort((a, b) => (b.date || '').localeCompare(a.date || ''));
+      let match;
+      if (weight) {
+        // 같은 몸무게 구간이었던 기록 (기록 당시 몸무게 → 없으면 반려견 현재 몸무게)
+        const table = await this.getPriceBands();
+        const target = this.resolveBand(table, weight).band.id;
+        const petW = {}; pets.forEach(p => { petW[p.id] = Number(p.weight) || 0; });
+        match = (r) => { const w = Number(r.weightAtVisit) || petW[r.petId]; return w > 0 && this.resolveBand(table, w).band.id === target; };
+      } else {
+        const sameSize = new Set(pets.filter(p => this.getPetSizeType(p) === size).map(p => p.id));
+        match = (r) => sameSize.has(r.petId);
+      }
+      const sized = same.filter(match).sort((a, b) => (b.date || '').localeCompare(a.date || ''));
       if (sized[0]) return Number(sized[0].servicePrice);
     }
     return Number(same.sort((a, b) => (b.date || '').localeCompare(a.date || ''))[0].servicePrice);
@@ -1719,10 +2332,21 @@ const App = {
         (petsByCustomer[c.id] || []).forEach(p => consider((p.name || '').normalize('NFC').toLowerCase()));
       }
       if (qDigits) {
-        const i = (c.phone || '').replace(/\D/g, '').indexOf(qDigits);
+        // 전화번호는 숫자만 비교한다 — '0101111'처럼 하이픈 자리를 건너뛰는 입력도 고객 화면 검색과 똑같이 찾는다
+        const i = String(c.phone || '').replace(/\D/g, '').indexOf(qDigits);
         if (i !== -1 && (best === -1 || i < best)) best = i;
       }
       return best;
+    };
+    // 전화번호처럼 생긴 입력(숫자·하이픈·공백·+)일 때만 번호로 찾는다.
+    // '콩이2'의 '2'로 번호에 2가 들어간 고객이 전부 걸리던 문제
+    const phoneLike = (q) => /^[\d\s\-+().]+$/.test(q);
+    // 검색어와 이름이 맞는 반려견 (정확히 같은 이름 우선) — 고객을 고르면 그 아이를 바로 선택한다
+    const matchedPetOf = (cid, q) => {
+      if (!q || phoneLike(q)) return null;
+      const cp = petsByCustomer[cid] || [];
+      const norm = (p) => (p.name || '').normalize('NFC').toLowerCase();
+      return cp.find(p => norm(p) === q) || cp.find(p => norm(p).includes(q)) || null;
     };
 
     const newCustomerRow = (label, id) =>
@@ -1740,7 +2364,7 @@ const App = {
       // (검색창을 다시 터치하면 focus 이벤트로 폼이 통째로 지워지던 경로)
       if (App._quickCustFormOpen) return;
       const q = (query || '').trim().normalize('NFC').toLowerCase();
-      const qDigits = q.replace(/\D/g, '');
+      const qDigits = phoneLike(q) ? q.replace(/\D/g, '') : '';
 
       if (!q) {
         dropdown.innerHTML =
@@ -1818,8 +2442,12 @@ const App = {
       const opt = e.target.closest('.search-select-option');
       if (opt && opt.dataset.id) {
         const picked = sorted.find(c => c.id === Number(opt.dataset.id));
+        // 반려견 이름으로 찾았으면 그 아이를 바로 선택 (lockSelection 이 검색어를 지우기 전에 읽는다).
+        // 반려견 폼(pet-customer-select)은 두 번째 인자를 '방금 새로 만든 반려견'으로 쓰므로 넘기지 않는다.
+        const hitPet = containerId !== 'pet-customer-select'
+          ? matchedPetOf(Number(opt.dataset.id), (input.value || '').trim().normalize('NFC').toLowerCase()) : null;
         lockSelection(opt.dataset.id, picked ? labelOf(picked) : '');
-        if (onChange) onChange(Number(opt.dataset.id));
+        if (onChange) onChange(Number(opt.dataset.id), hitPet ? hitPet.id : undefined);
       }
     });
 
@@ -2032,29 +2660,28 @@ const App = {
   },
 
   calculatePetAge(birthDate) {
-    const birth = new Date(birthDate);
+    const birth = this.parseLocalDate(String(birthDate).slice(0, 10)) || new Date(birthDate);
     const now = new Date();
     let years = now.getFullYear() - birth.getFullYear();
-    if (now.getMonth() < birth.getMonth()) years--;
+    // 올해 생일(월·일)이 아직 안 지났으면 한 살 덜
+    if (now.getMonth() < birth.getMonth() || (now.getMonth() === birth.getMonth() && now.getDate() < birth.getDate())) years--;
     return years > 0 ? years + '살' : '1살 미만';
   },
 
   // 가격을 축약 표시 (예: 50000 -> "5만", 15000 -> "1.5만")
+  // 서비스 칩 가격 — 다른 화면과 같은 '30,000원' 형식 (예전엔 '3만'과 '5,000원'이 섞여 보였다)
   formatPriceShort(price) {
     const p = Number(price) || 0;
     if (p === 0) return '';
-    if (p >= 10000) {
-      const man = p / 10000;
-      return (man % 1 === 0 ? man : man.toFixed(1)) + '만';
-    }
-    return p.toLocaleString() + '원';
+    return p.toLocaleString('ko-KR') + '원';
   },
 
-  async getServiceCheckboxes(selectedIds = [], sizeType) {
+  // sizeOrWeight: 반려견 몸무게(kg) 또는 사이즈. 모르면 구간 가격 서비스는 '최저가~'로 보인다.
+  async getServiceCheckboxes(selectedIds = [], sizeOrWeight) {
     const services = await DB.getAll('services');
     const active = services.filter(s => s.isActive !== false);
     if (active.length === 0) return '<p style="color:var(--text-muted)">등록된 서비스가 없습니다. 서비스 메뉴에서 먼저 등록해주세요.</p>';
-    const size = sizeType || 'small';
+    const table = await this.getPriceBands();
     const catLabels = { grooming: '미용 코스', addon: '추가 옵션', care: '단독 케어' };
     const catOrder = ['grooming', 'addon', 'care'];
 
@@ -2081,21 +2708,27 @@ const App = {
       html += '<div class="service-select-grid">';
       html += grouped[cat].map(s => {
         const checked = selectedIds.includes(s.id);
-        const price = Number(s['price' + size.charAt(0).toUpperCase() + size.slice(1)]) || 0;
-        return `
-          <label class="service-chip${checked ? ' checked' : ''}">
-            <input type="checkbox" name="serviceIds" value="${s.id}"
-              ${checked ? 'checked' : ''}
-              data-price-small="${s.priceSmall || 0}"
-              data-price-medium="${s.priceMedium || 0}"
-              data-price-large="${s.priceLarge || 0}">
-            <span class="service-chip-name">${this.escapeHtml(s.name)}</span>
-            <span class="service-chip-price">${this.formatPriceShort(price)}</span>
-          </label>`;
+        return this.serviceChipHtml(s, sizeOrWeight, table, checked);
       }).join('');
       html += '</div>';
     }
     return html;
+  },
+
+  // 예약 서비스 칩 1개. 몸무게를 알면 구간(·초과 요금)을 작은 글씨로 보이게 적는다
+  serviceChipHtml(s, sizeOrWeight, table, checked, nameSuffix = '') {
+    const r = this.calcServicePrice(s, sizeOrWeight, table);
+    const priceTxt = r.free ? '무료' : (r.price > 0 || r.needsWeight ? this.formatServicePrice(s, table, sizeOrWeight) : '');
+    const fb = r.fallback === 'prev' ? ' (앞 구간 가격)' : r.fallback === 'next' ? ' (뒤 구간 가격)' : r.fallback === 'min' ? ' (가장 낮은 구간 가격)' : '';
+    const sub = [r.bandLabel ? r.bandLabel + fb : '', r.over ? '초과 ' + r.over.kg + 'kg 포함' : ''].filter(Boolean).join(' · ');
+    return `
+          <label class="service-chip${checked ? ' checked' : ''}">
+            <input type="checkbox" name="serviceIds" value="${s.id}"
+              ${checked ? 'checked' : ''}
+              data-price="${r.price || 0}" data-needs-weight="${r.needsWeight ? 1 : 0}" data-category="${this.escapeHtml(s.category || 'grooming')}">
+            <span class="service-chip-name">${this.escapeHtml(s.name)}${nameSuffix}</span>
+            <span class="service-chip-price">${priceTxt}${sub ? `<small class="service-chip-band">${this.escapeHtml(sub)}</small>` : ''}</span>
+          </label>`;
   },
 
   async getServiceNames(serviceIds) {
@@ -2104,6 +2737,13 @@ const App = {
     const map = {};
     services.forEach(s => map[s.id] = s.name);
     return serviceIds.map(id => map[id] || '알 수 없음').join(', ');
+  },
+
+  // 예약의 서비스 이름 (id→이름 맵 기준). 지워진 서비스는 예약에 저장해 둔 이름, 그것도 없으면 '삭제된 서비스'
+  apptServiceNames(appt, serviceMap) {
+    const ids = (appt && appt.serviceIds) || [];
+    const saved = (appt && Array.isArray(appt.serviceNames)) ? appt.serviceNames : [];
+    return ids.map((id, i) => serviceMap[id] || serviceMap[Number(id)] || saved[i] || '삭제된 서비스').join(', ');
   },
 
   // Get groomer dropdown options
@@ -2126,6 +2766,13 @@ const App = {
       <datalist id="groomer-suggestions">
         ${suggestions.map(g => `<option value="${this.escapeHtml(g)}">`).join('')}
       </datalist>`;
+  },
+
+  // 미용사가 2명 이상 등록됐을 때만 담당 미용사 입력·미용사별 타임테이블/매출/성과를 보여준다
+  // (1인 살롱에선 화면만 복잡해진다. 1명 등록 시 담당자는 getGroomerFieldHTML이 자동 채움)
+  async isMultiGroomer() {
+    const registered = (await DB.getSetting('groomers')) || [];
+    return registered.length >= 2;
   },
 
   // Apply shop name throughout the app
@@ -2243,19 +2890,16 @@ const App = {
         if (diffMin > 0 && diffMin <= minutes) {
           this._notifiedAppts.add(key);
 
-          // 고객/반려견 이름 조회
-          let customerName = '고객';
+          // 반려견 이름만 조회 — 잠금 화면 알림에 고객 이름(개인정보)이 보이지 않게 한다
           let petName = '반려견';
           try {
-            const customer = await DB.get('customers', appt.customerId);
             const pet = await DB.get('pets', appt.petId);
-            if (customer) customerName = App.getCustomerLabel(customer);
             if (pet) petName = pet.name;
           } catch (e) { /* ignore */ }
 
           const minLeft = Math.round(diffMin);
           const notifOpts = {
-            body: `${minLeft}분 후 예약: ${customerName}님의 ${petName} (${appt.time})`,
+            body: `${minLeft}분 후 예약: ${petName} (${appt.time})`,
             icon: './icon-192.png',
             tag: key
           };
@@ -2397,7 +3041,7 @@ const App = {
       if ((c.name || '').toLowerCase().includes(q)) return true;
       // Match by phone (including partial - last digits)
       const phoneDigits = (c.phone || '').replace(/\D/g, '');
-      if (qDigits && phoneDigits.includes(qDigits)) return true;
+      if (qDigits.length >= 3 && phoneDigits.includes(qDigits)) return true;
       // Match by pet name
       const cPets = petsByCustomer[c.id] || [];
       if (cPets.some(p => (p.name || '').toLowerCase().includes(q))) return true;
@@ -2487,7 +3131,7 @@ const App = {
     const unpaidRecords = cRecords.filter(r => r.paymentMethod === 'unpaid');
     const unpaidBalance = unpaidRecords.reduce((sum, r) => sum + App.getRecordAmount(r), 0);
 
-    const phoneClean = (customer.phone || '').replace(/\D/g, '');
+    const phoneClean = this.phoneDigits(customer.phone);
 
     // Build pets HTML
     let petsHtml = '';
@@ -2702,7 +3346,8 @@ const App = {
       reminder: '[{매장명}] {고객명}님, {시점} {날짜} {시간}에 {반려견명} 미용 예약이 있습니다. 변경/취소는 {전화번호}로 연락 부탁드립니다.',
       birthday: '[{매장명}] {고객명}님! {반려견명}의 생일을 축하합니다! 🎂 생일 기념 특별 할인을 준비했어요. 문의: {전화번호}',
       complete: '[{매장명}] {고객명}님, {반려견명}의 미용이 완료되었습니다! 서비스: {서비스}, 금액: {금액}원. 감사합니다! 💕',
-      cardSend: '[{매장명}] {고객명}님, 오늘 {반려견명} 미용 사진이에요! 예쁘게 다녀갔어요. 감사합니다 ♥'
+      cardSend: '[{매장명}] {고객명}님, 오늘 {반려견명} 미용 사진이에요! 예쁘게 다녀갔어요. 감사합니다 ♥',
+      unpaid: '[{매장명}] {고객명}님 안녕하세요. {날짜} {반려견명} 미용 금액 {금액}원이 아직 결제되지 않아 안내드려요. 편하실 때 결제 부탁드립니다. 감사합니다. 문의: {전화번호}'
     };
     // 기본 문구는 설정 화면의 DEFAULT_SMS_TEMPLATES 를 먼저 쓴다 (여기만 빠져 리포트 문구가 비어 나가던 문제)
     const shared = typeof DEFAULT_SMS_TEMPLATES !== 'undefined' ? DEFAULT_SMS_TEMPLATES : {};
@@ -2923,7 +3568,9 @@ const App = {
       out = out.replace(new RegExp(`\\{${key}\\}`, 'g'), () => String(val || '')); // 함수로 넣어 값 속 '$' 가 특수문자로 해석되지 않게
     }
     // 호출처가 넘기지 않은 변수({시점}, {담당} 등)는 손님에게 그대로 보이면 안 된다 → 제거 후 공백 정리
-    return out.replace(/\{[^{}]{1,12}\}/g, '').replace(/[ \t]{2,}/g, ' ').replace(/ ([.,!?])/g, '$1').trim();
+    return out.replace(/\{[^{}]{1,12}\}/g, '').replace(/[ \t]{2,}/g, ' ').replace(/ ([.,!?])/g, '$1')
+      // 매장 전화번호를 안 넣었으면 '문의:' 만 덩그러니 남는다 → 줄째 지운다
+      .replace(/[ \t]*\(?문의\s*[:：]\s*\)?[ \t]*(?=\n|$)/g, '').trim();
   },
 
   // SMS URI 생성 유틸리티
@@ -2934,7 +3581,7 @@ const App = {
   },
 
   getSmsUrl(phone, body) {
-    const cleanPhone = (phone || '').replace(/\D/g, '');
+    const cleanPhone = this.phoneDigits(phone);
     if (!cleanPhone) return '';
     if (!body) return `sms:${cleanPhone}`;
     return `sms:${cleanPhone}${this.getSmsSep()}body=${encodeURIComponent(body)}`;

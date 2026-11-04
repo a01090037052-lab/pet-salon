@@ -14,6 +14,18 @@ App.pages.analytics = {
   _customStart: '',
   _customEnd: '',
 
+  // 좁은 칸의 큰 금액은 숫자 중간에서 줄바꿈되지 않게 한국식으로 줄인다 (258,024,000 → '2억 5,802만원', 3,580,000 → '358만원')
+  _compactWon(amount) {
+    const n = Math.round(Number(amount) || 0);
+    const abs = Math.abs(n);
+    const sign = n < 0 ? '-' : '';
+    if (abs < 1000000) return App.formatCurrency(n);
+    if (abs < 100000000) return sign + Math.round(abs / 10000).toLocaleString('ko-KR') + '만원';
+    const eok = Math.floor(abs / 100000000);
+    const man = Math.round((abs % 100000000) / 10000);
+    return sign + eok.toLocaleString('ko-KR') + '억' + (man > 0 ? ' ' + man.toLocaleString('ko-KR') + '만원' : '원');
+  },
+
   async render(container) {
     const period = this._period;
     const today = App.getToday();
@@ -176,7 +188,7 @@ App.pages.analytics = {
       monthlyRevMap[mon] = (monthlyRevMap[mon] || 0) + App.getRecordAmount(r);
       monthlyCntMap[mon] = (monthlyCntMap[mon] || 0) + 1;
     });
-    const months = period === '1year' ? 12 : period === '6months' ? 6 : period === '3months' ? 3 : period === 'custom' ? Math.max(1, Math.ceil((new Date(periodEnd) - new Date(periodStart)) / (1000*60*60*24*30))) : 1;
+    const months = period === '1year' ? 12 : period === '6months' ? 6 : period === '3months' ? 3 : period === 'custom' ? Math.max(1, (Number(periodEnd.slice(0, 4)) * 12 + Number(periodEnd.slice(5, 7))) - (Number(periodStart.slice(0, 4)) * 12 + Number(periodStart.slice(5, 7))) + 1) : 1;
     const avgPriceByMonth = [];
     // 직접 설정 기간은 '오늘'이 아니라 선택한 기간의 월을 따라간다 (예전엔 2024년 상반기를 골라도 최근 N개월 막대가 나왔다)
     const chartEnd = period === 'custom' ? App.parseLocalDate(periodEnd) : now;
@@ -185,9 +197,54 @@ App.pages.analytics = {
       const mon = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
       const cnt = monthlyCntMap[mon] || 0;
       const rev = monthlyRevMap[mon] || 0;
-      avgPriceByMonth.push({ label: `${d.getMonth() + 1}월`, avg: cnt > 0 ? Math.round(rev / cnt) : 0, month: mon });
+      avgPriceByMonth.push({ label: `${d.getMonth() + 1}월`, avg: cnt > 0 ? Math.round(rev / cnt) : 0, month: mon, rev, cnt });
     }
-    const avgPriceMax = Math.max(...avgPriceByMonth.map(m => m.avg), 1);
+    // 막대가 12개를 넘으면(긴 직접 설정 기간) 390px 폰에서 라벨이 겹친다 → 분기별, 그래도 12개 넘으면 연도별로 묶는다
+    let avgPriceBars = avgPriceByMonth;
+    let avgPriceUnit = '';
+    const groupBars = (keyOf, labelOf) => {
+      const out = [];
+      avgPriceByMonth.forEach(m => {
+        const k = keyOf(m.month);
+        let g = out[out.length - 1];
+        if (!g || g.key !== k) { g = { key: k, label: labelOf(m.month), rev: 0, cnt: 0 }; out.push(g); }
+        g.rev += m.rev; g.cnt += m.cnt;
+      });
+      out.forEach(g => { g.avg = g.cnt > 0 ? Math.round(g.rev / g.cnt) : 0; });
+      return out;
+    };
+    if (avgPriceBars.length > 12) {
+      // 막대 폭이 좁아 라벨은 짧게: 1분기는 연도('24), 나머지는 2Q·3Q·4Q. 전체 범위는 제목 옆에 적는다
+      const qOf = mon => Math.ceil(Number(mon.slice(5, 7)) / 3);
+      avgPriceBars = groupBars(mon => `${mon.slice(0, 4)}-Q${qOf(mon)}`, mon => (qOf(mon) === 1 ? `'${mon.slice(2, 4)}` : `${qOf(mon)}Q`));
+      const firstM = avgPriceByMonth[0].month, lastM = avgPriceByMonth[avgPriceByMonth.length - 1].month;
+      avgPriceUnit = `분기별 · '${firstM.slice(2, 4)} ${qOf(firstM)}Q~'${lastM.slice(2, 4)} ${qOf(lastM)}Q`;
+      if (avgPriceBars.length > 12) {
+        avgPriceBars = groupBars(mon => mon.slice(0, 4), mon => `'${mon.slice(2, 4)}`);
+        avgPriceUnit = '연도별';
+      }
+    }
+    const avgPriceMax = Math.max(...avgPriceBars.map(m => m.avg), 1);
+
+    // 최근 6개월 월별 매출 (기간 선택과 무관하게 이번 달 포함 6개월 — 예전 매출 화면 '인사이트' 탭에서 옮겨 옴)
+    const trendStart = (() => { const d = new Date(now.getFullYear(), now.getMonth() - 5, 1); return App.formatLocalDate(d); })();
+    const trendRecs = await DB.getByDateRange('records', 'date', trendStart, today + 'z');
+    const trendRevMap = {};
+    const trendCntMap = {};
+    trendRecs.forEach(r => {
+      if (!r.date) return;
+      const mon = r.date.slice(0, 7);
+      trendRevMap[mon] = (trendRevMap[mon] || 0) + App.getRecordAmount(r);
+      trendCntMap[mon] = (trendCntMap[mon] || 0) + 1;
+    });
+    const thisMonthKey = today.slice(0, 7);
+    const monthlyTrend = [];
+    for (let i = 5; i >= 0; i--) {
+      const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+      const mon = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+      monthlyTrend.push({ month: mon, label: `${d.getMonth() + 1}월`, rev: trendRevMap[mon] || 0, count: trendCntMap[mon] || 0 });
+    }
+    const trendMax = Math.max(...monthlyTrend.map(m => m.rev), 1);
 
     // 요일별 패턴
     const dayOfWeekStats = [0, 0, 0, 0, 0, 0, 0];
@@ -216,14 +273,18 @@ App.pages.analytics = {
       hourStats[h].count++;
     });
     const hours = [];
-    for (let h = 9; h <= 20; h++) {
+    // 시간대는 데이터에서 정한다 (빈 경우 9~20시)
+    const hourKeys = Object.keys(hourStats).map(Number);
+    const hourMin = hourKeys.length ? Math.min(...hourKeys) : 9;
+    const hourMaxH = hourKeys.length ? Math.max(...hourKeys) : 20;
+    for (let h = hourMin; h <= hourMaxH; h++) {
       hours.push({ hour: h, label: `${h}시`, count: hourStats[h]?.count || 0 });
     }
     const hourMax = Math.max(...hours.map(h => h.count), 1);
 
     // ===== 미용사 성과 =====
-    // 미용사명이 전혀 없으면 (1인 살롱·미설정) 섹션 생략
-    const hasAnyGroomer = records.some(r => r.groomer);
+    // 미용사가 2명 이상 등록됐을 때만 표시 (1인 살롱·미설정이면 섹션 생략)
+    const hasAnyGroomer = (await App.isMultiGroomer()) && records.some(r => r.groomer);
     const groomerStats = {};
     if (hasAnyGroomer) {
       records.forEach(r => {
@@ -249,6 +310,7 @@ App.pages.analytics = {
     const prevCustomerCount = new Set(prevRecords.map(r => r.customerId).filter(Boolean)).size;
     const prevVisitCount = prevRecords.length;
     const totalRev = records.reduce((s, r) => s + App.getRecordAmount(r), 0);
+    const totalComp = records.reduce((s, r) => s + (Number(r.complimentaryTotal) || 0), 0); // 서비스(무료)로 제공한 금액
     const returnRatePct = periodCustomerIds.length > 0 ? Math.round((returnCount / periodCustomerIds.length) * 100) : 0;
 
     // ===== 인사이트 자동 생성 =====
@@ -342,14 +404,14 @@ App.pages.analytics = {
     if (atRiskPets.length > 0) {
       insights.push({
         type: 'warning',
-        text: `이탈 임박 ${atRiskPets.length}마리 — 재방문 메시지 권장`,
+        text: `많이 늦음 ${atRiskPets.length}마리 — 재방문 메시지 권장`,
         link: { page: 'pets', petSort: 'status', list: buildPetList(atRiskPets), totalCount: atRiskPets.length }
       });
     }
     if (remindPets.length >= 3) {
       insights.push({
         type: 'info',
-        text: `리마인드 필요 ${remindPets.length}마리 — 재방문 시점 도래`,
+        text: `올 때 됨 ${remindPets.length}마리 — 재방문 시점 도래`,
         link: { page: 'pets', petSort: 'status', list: buildPetList(remindPets), totalCount: remindPets.length }
       });
     }
@@ -507,7 +569,7 @@ App.pages.analytics = {
           const detail = expandable ? `
             <div class="insight-detail" data-insight-detail-idx="${idx}" style="display:none;padding:6px 14px 10px;background:var(--bg);border-radius:8px;margin:-2px 0 6px;font-size:0.85rem;max-height:220px;overflow-y:auto;-webkit-overflow-scrolling:touch;overscroll-behavior:contain">
               ${i.link.list.map(item => {
-                const phoneClean = item.phone ? item.phone.replace(/\D/g, '') : '';
+                const phoneClean = item.phone ? App.phoneDigits(item.phone) : '';
                 const phoneLink = item.phone ? `<a href="tel:${phoneClean}" onclick="event.stopPropagation()" style="color:var(--primary);font-weight:700;text-decoration:none;font-size:0.78rem;flex-shrink:0">${App.formatPhoneHtml(item.phone)}</a>` : '';
                 const subRow = (item.sublabel || phoneLink) ? `<div style="font-size:0.78rem;color:var(--text-muted);margin-top:3px;display:flex;align-items:center;gap:8px;flex-wrap:wrap"><span>${App.escapeHtml(item.sublabel || '')}</span>${phoneLink}</div>` : '';
                 return `<div class="insight-detail-item" data-page="${item.page}"${item.id != null ? ` data-id="${item.id}"` : ''} style="padding:10px 0;border-bottom:1px solid var(--border-light);cursor:pointer;color:var(--text-primary);min-height:40px">
@@ -563,20 +625,21 @@ App.pages.analytics = {
           <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px">
             <div style="text-align:center;padding:14px 8px 10px;background:var(--bg);border-radius:var(--radius);position:relative;min-width:0">
               ${cmpCorner(totalRev, prevTotalRev)}
-              <div style="font-size:1.1rem;font-weight:800;color:var(--primary);line-height:1.2;overflow-wrap:anywhere">${App.formatCurrency(totalRev)}</div>
+              <div style="font-size:${this._compactWon(totalRev).length > 9 ? '0.84rem' : this._compactWon(totalRev).length > 7 ? '0.95rem' : '1.1rem'};font-weight:800;color:var(--primary);line-height:1.2;white-space:nowrap" title="${App.formatCurrency(totalRev)}">${this._compactWon(totalRev)}</div>
               <div style="font-size:0.78rem;color:var(--text-secondary);margin-top:4px;white-space:nowrap">매출</div>
             </div>
             <div style="text-align:center;padding:14px 8px 10px;background:var(--bg);border-radius:var(--radius);position:relative;min-width:0">
               ${cmpCorner(records.length, prevVisitCount)}
-              <div style="font-size:1.1rem;font-weight:800;color:var(--info);line-height:1.2;overflow-wrap:anywhere">${records.length}건</div>
+              <div style="font-size:1.1rem;font-weight:800;color:var(--info);line-height:1.2;white-space:nowrap">${records.length.toLocaleString('ko-KR')}건</div>
               <div style="font-size:0.78rem;color:var(--text-secondary);margin-top:4px;white-space:nowrap">방문</div>
             </div>
             <div style="text-align:center;padding:14px 8px 10px;background:var(--bg);border-radius:var(--radius);position:relative;min-width:0">
               ${cmpCorner(periodCustomerIds.length, prevCustomerCount)}
-              <div style="font-size:1.1rem;font-weight:800;color:var(--success);line-height:1.2;overflow-wrap:anywhere">${periodCustomerIds.length}명</div>
+              <div style="font-size:1.1rem;font-weight:800;color:var(--success);line-height:1.2;white-space:nowrap">${periodCustomerIds.length.toLocaleString('ko-KR')}명</div>
               <div style="font-size:0.78rem;color:var(--text-secondary);margin-top:4px;white-space:nowrap">고객</div>
             </div>
           </div>
+          ${totalComp > 0 ? `<div style="margin-top:10px;display:flex;justify-content:space-between;font-size:0.8rem;color:var(--text-secondary)"><span>서비스로 제공한 금액 <span style="color:var(--text-muted)">(매출 제외)</span></span><span>${App.formatCurrency(totalComp)}</span></div>` : ''}
         </div>
       </div>
 
@@ -737,21 +800,57 @@ App.pages.analytics = {
       <!-- 매출 추이 -->
       <h3 style="font-size:1rem;font-weight:800;margin-bottom:12px;color:var(--text-primary)">${App.icon('cash')} 매출 추이</h3>
 
+      <!-- 최근 6개월 월별 매출 (기간 선택과 무관) -->
+      <div class="card chart-card" style="margin-bottom:16px">
+        <div class="card-header">
+          <span class="card-title">최근 6개월 매출 <small style="font-weight:500;color:var(--text-muted)">(기간 선택과 무관)</small></span>
+        </div>
+        <div class="card-body chart-wrapper">
+          ${(() => {
+            const niceMax = (v) => { if (v <= 0) return 1000000; const mag = Math.pow(10, Math.floor(Math.log10(v))); const norm = v / mag; return Math.ceil(norm * 4) / 4 * mag; };
+            const tMax = niceMax(trendMax);
+            const filled = monthlyTrend.filter(m => m.rev > 0);
+            const tAvg = filled.length > 0 ? Math.round(filled.reduce((s, m) => s + m.rev, 0) / filled.length) : 0;
+            return `<div style="position:relative;height:220px;padding:0 8px;margin-left:36px">
+              <div style="position:absolute;left:0;right:0;bottom:45%;border-bottom:1px dashed var(--border-light)"><span style="position:absolute;left:-38px;top:-8px;font-size:0.72rem;color:var(--text-muted)">${Math.round(tMax * 0.5 / 10000)}만</span></div>
+              <div style="position:absolute;left:0;right:0;bottom:90%;border-bottom:1px dashed var(--border-light)"><span style="position:absolute;left:-38px;top:-8px;font-size:0.72rem;color:var(--text-muted)">${Math.round(tMax / 10000)}만</span></div>
+              <div style="display:flex;gap:12px;height:180px;position:relative;z-index:1">
+                ${monthlyTrend.map(m => {
+                  const barH = m.rev > 0 ? Math.max(8, Math.round((m.rev / tMax) * 130)) : 4;
+                  const isCurrent = m.month === thisMonthKey;
+                  const barBg = m.rev === 0 ? 'var(--border-light)' : isCurrent ? 'linear-gradient(to top,var(--success),#34D399)' : 'linear-gradient(to top,var(--primary),#818CF8)';
+                  const label = m.rev >= 10000 ? Math.round(m.rev / 10000) + '만' : (m.rev > 0 ? App.formatCurrency(m.rev) : '');
+                  return `<div style="flex:1;position:relative;text-align:center;min-width:0" title="${m.month}: ${App.formatCurrency(m.rev)} (${m.count}건)">
+                    <span style="font-size:0.74rem;color:${isCurrent ? 'var(--success)' : 'var(--text-secondary)'};font-weight:800;position:absolute;top:0;left:0;right:0;overflow:hidden;text-overflow:clip;white-space:nowrap">${label}</span>
+                    <div style="position:absolute;bottom:36px;left:8%;right:8%;height:${barH}px;background:${barBg};border-radius:8px 8px 0 0"></div>
+                    <div style="position:absolute;bottom:0;left:0;right:0;text-align:center">
+                      <div style="font-size:0.82rem;font-weight:${isCurrent ? '800' : '600'};color:${isCurrent ? 'var(--primary)' : 'var(--text-muted)'}">${m.label}</div>
+                      <div style="font-size:0.7rem;color:var(--text-muted)">${m.count}건</div>
+                    </div>
+                  </div>`;
+                }).join('')}
+              </div>
+            </div>
+            ${tAvg > 0 ? `<div style="text-align:center;margin-top:12px;padding-top:10px;border-top:1px solid var(--border-light);font-size:0.85rem;color:var(--text-secondary)">월평균 <strong style="color:var(--warning)">${App.formatCurrency(tAvg)}</strong></div>` : ''}`;
+          })()}
+        </div>
+      </div>
+
       <!-- 객단가 추이 (3개월 이상일 때만 의미 있음) -->
       ${avgPriceByMonth.length >= 3 ? `
       <div class="card" style="margin-bottom:16px">
         <div class="card-header">
-          <span class="card-title">객단가 추이</span>
+          <span class="card-title">객단가 추이${avgPriceUnit ? ` <span style="font-size:0.78rem;font-weight:500;color:var(--text-muted)">(${avgPriceUnit})</span>` : ''}</span>
         </div>
         <div class="card-body">
-          <div style="display:flex;gap:${avgPriceByMonth.length > 6 ? '4' : '10'}px;height:140px;position:relative">
-            ${avgPriceByMonth.map((m, i) => {
+          <div style="display:flex;gap:${avgPriceBars.length > 6 ? '4' : '10'}px;height:140px;position:relative">
+            ${avgPriceBars.map((m, i) => {
               const barH = m.avg > 0 ? Math.max(8, Math.round((m.avg / avgPriceMax) * 100)) : 4;
-              const isCurrent = i === avgPriceByMonth.length - 1;
-              return `<div style="flex:1;position:relative;text-align:center">
-                <span style="font-size:0.72rem;color:${isCurrent ? 'var(--success)' : 'var(--text-secondary)'};font-weight:700;position:absolute;top:0;left:0;right:0;white-space:nowrap">${m.avg > 0 ? (m.avg >= 10000 ? (Math.round(m.avg / 1000) / 10) + '만' : App.formatCurrency(m.avg)) : ''}</span>
+              const isCurrent = i === avgPriceBars.length - 1;
+              return `<div style="flex:1;position:relative;text-align:center;min-width:0" title="${m.label}: ${App.formatCurrency(m.avg)}">
+                <span style="font-size:${avgPriceBars.length > 6 ? '0.64rem' : '0.72rem'};color:${isCurrent ? 'var(--success)' : 'var(--text-secondary)'};font-weight:700;position:absolute;top:0;left:0;right:0;white-space:nowrap;overflow:hidden">${m.avg > 0 ? (m.avg >= 10000 ? (Math.round(m.avg / 1000) / 10) + '만' : App.formatCurrency(m.avg)) : ''}</span>
                 <div style="position:absolute;bottom:18px;left:15%;right:15%;height:${barH}px;background:${isCurrent ? 'linear-gradient(to top,var(--success),#34D399)' : 'linear-gradient(to top,var(--info),#60A5FA)'};border-radius:6px 6px 0 0"></div>
-                <span style="font-size:0.75rem;color:${isCurrent ? 'var(--primary)' : 'var(--text-muted)'};font-weight:${isCurrent ? '700' : '500'};position:absolute;bottom:0;left:0;right:0">${m.label}</span>
+                <span style="font-size:0.75rem;color:${isCurrent ? 'var(--primary)' : 'var(--text-muted)'};font-weight:${isCurrent ? '700' : '500'};position:absolute;bottom:0;left:0;right:0;white-space:nowrap;overflow:hidden${avgPriceBars.length > 6 ? ';font-size:0.66rem' : ''}">${m.label}</span>
               </div>`;
             }).join('')}
           </div>
@@ -805,7 +904,7 @@ App.pages.analytics = {
         </div>
       </div>
 
-      <!-- 미용사 성과 (미용사 배정된 기록이 있을 때만) -->
+      <!-- 미용사 성과 (미용사 2명 이상 등록 + 배정된 기록이 있을 때만) -->
       ${groomerList.length > 0 ? `
       <h3 style="font-size:1rem;font-weight:800;margin-bottom:12px;color:var(--text-primary)">${App.icon('user')} 미용사 성과</h3>
       <div class="card" style="margin-bottom:20px">

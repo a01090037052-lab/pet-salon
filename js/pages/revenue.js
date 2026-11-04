@@ -39,6 +39,8 @@ App.pages.revenue = {
     const thisMonth = today.slice(0, 7);
     const monthRecords = records.filter(r => r.date && r.date.startsWith(thisMonth));
     const monthRevenue = monthRecords.reduce((sum, r) => sum + App.getRecordAmount(r), 0);
+    // 서비스(무료)로 제공한 금액 — 매출에는 안 들어간다 (참고용)
+    const monthComp = monthRecords.reduce((sum, r) => sum + (Number(r.complimentaryTotal) || 0), 0);
 
     // 미수금 집계 — 전체 기간
     const unpaidTotal = unpaidRecs.reduce((sum, r) => sum + App.getRecordAmount(r), 0);
@@ -50,7 +52,10 @@ App.pages.revenue = {
     const monthUnpaid = monthRecords
       .filter(r => r.paymentMethod === 'unpaid')
       .reduce((sum, r) => sum + App.getRecordAmount(r), 0);
-    const monthCollected = monthRevenue - monthUnpaid;
+    // 수금일(paidAt)이 있으면 그 달에 들어온 돈으로 센다 — 지난달 미수금을 이번 달에 받았다면 이번 달 실입금이다
+    const monthCollected = records
+      .filter(r => r.paymentMethod !== 'unpaid' && String(r.paidAt || r.date || '').startsWith(thisMonth))
+      .reduce((sum, r) => sum + App.getRecordAmount(r), 0);
 
     // 결제 수단별 통계 (이번 달)
     const paymentStats = { cash: 0, card: 0, transfer: 0, unpaid: 0, none: 0 };
@@ -81,29 +86,11 @@ App.pages.revenue = {
     }).reduce((sum, r) => sum + App.getRecordAmount(r), 0);
     const pacingChange = lastMonthPacing > 0 ? Math.round(((monthRevenue - lastMonthPacing) / lastMonthPacing) * 100) : null;
 
-    // 요일별 패턴 (최근 8주 평균)
-    const eightWeeksAgo = (() => { const d = new Date(); d.setDate(d.getDate() - 56); return App.formatLocalDate(d); })();
-    const dayOfWeekStats = [0, 0, 0, 0, 0, 0, 0];
-    const dowDateSet = [new Set(), new Set(), new Set(), new Set(), new Set(), new Set(), new Set()];
-    records.forEach(r => {
-      if (!r.date || r.date < eightWeeksAgo) return;
-      const dow = new Date(r.date + 'T00:00:00').getDay();
-      dayOfWeekStats[dow] += App.getRecordAmount(r);
-      dowDateSet[dow].add(r.date);
-    });
-    const dowLabels = ['일', '월', '화', '수', '목', '금', '토'];
-    const dowData = dowLabels.map((label, i) => ({
-      label,
-      avg: dowDateSet[i].size > 0 ? Math.round(dayOfWeekStats[i] / dowDateSet[i].size) : 0,
-      days: dowDateSet[i].size
-    })).sort((a, b) => b.avg - a.avg);
-    const dowMax = dowData.length > 0 ? dowData[0].avg || 1 : 1;
-    const hasEnoughDowData = dowData.some(d => d.days >= 4);
-
     // 월 매출 목표
     const monthlyGoal = Number(await DB.getSetting('monthlyGoal')) || 0;
 
-    // 미용사별 매출
+    // 미용사별 매출 — 미용사 2명 이상 등록 시에만 표시 (1인 살롱엔 의미 없음)
+    const multiGroomer = await App.isMultiGroomer();
     const groomerStats = {};
     monthRecords.forEach(r => {
       const name = r.groomer || '미지정';
@@ -121,7 +108,6 @@ App.pages.revenue = {
     // O(N) 집계: 전체 레코드를 한 번만 순회하여 날짜별/월별 집계
     const dailyRevMap = {};
     const monthlyRevMap = {};
-    const monthlyCntMap = {};
     records.forEach(r => {
       if (!r.date) return;
       const amt = App.getRecordAmount(r);
@@ -129,7 +115,6 @@ App.pages.revenue = {
       const mon = r.date.slice(0, 7);
       dailyRevMap[day] = (dailyRevMap[day] || 0) + amt;
       monthlyRevMap[mon] = (monthlyRevMap[mon] || 0) + amt;
-      monthlyCntMap[mon] = (monthlyCntMap[mon] || 0) + 1;
     });
 
     // 이번 주 일별 차트 데이터
@@ -159,7 +144,7 @@ App.pages.revenue = {
     const lastMonthRevenue = monthlyRevMap[lastMonth] || 0;
     const lastMonthVariableCost = variableCosts[lastMonth] || 0;
     const lastMonthProfit = lastMonthRevenue - fixedCost - lastMonthVariableCost;
-    // 인사이트 탭의 '전월 대비'도 상단 카드와 같은 정의(지난달 같은 일차까지)를 쓴다.
+    // 손익 카드의 '전월 대비'도 페이스 카드와 같은 정의(지난달 같은 일차까지)를 쓴다.
     // 예전엔 '이번 달 지금까지 vs 지난달 전체'라 5일엔 -85%, 상단엔 +10% 가 동시에 보였다.
     const monthChange = pacingChange;
     const daysInMonth = new Date(year, month + 1, 0).getDate();
@@ -183,20 +168,7 @@ App.pages.revenue = {
     }
     const currentWeekIdx = Math.floor((todayDay - 1) / 7);
 
-    // 월별 매출 추이 (최근 6개월)
-    const monthlyTrend = [];
-    let trendMax = 1;
-    for (let i = 5; i >= 0; i--) {
-      const tDate = new Date(year, month - i, 1);
-      const tMonth = `${tDate.getFullYear()}-${String(tDate.getMonth() + 1).padStart(2, '0')}`;
-      const tLabel = `${tDate.getMonth() + 1}월`;
-      const rev = monthlyRevMap[tMonth] || 0;
-      const cnt = monthlyCntMap[tMonth] || 0;
-      monthlyTrend.push({ month: tMonth, label: tLabel, rev, count: cnt });
-      if (rev > trendMax) trendMax = rev;
-    }
-
-    const paymentLabels = { cash: '현금', card: '카드', transfer: '이체', unpaid: '미결제', none: '미선택' };
+    const paymentLabels = { cash: '현금', card: '카드', transfer: '계좌이체', unpaid: '미결제', none: '미선택' };
     const paymentColors = { cash: 'var(--success)', card: 'var(--primary)', transfer: 'var(--info)', unpaid: 'var(--danger)', none: 'var(--text-muted)' };
     const monthPaymentTotal = Object.values(paymentStats).reduce((a, b) => a + b, 0) || 1;
 
@@ -207,16 +179,14 @@ App.pages.revenue = {
           <p class="page-subtitle">매출 현황 및 통계</p>
         </div>
         <div class="page-actions">
-          <button class="btn btn-secondary" id="btn-revenue-export">${App.icon('file')} 세무 자료 내보내기</button>
           <button class="btn btn-secondary" id="btn-revenue-daily-report">${App.icon('receipt')} 일일 정산표</button>
         </div>
       </div>
 
-      <!-- 매출 탭 분리 (기본: 이번 달) -->
+      <!-- 매출 탭 분리 (기본: 이번 달). 요일별·월별 추이 같은 분석 차트는 분석 화면에만 둔다 -->
       <div class="revenue-tabs" style="display:flex;gap:4px;margin-bottom:16px;background:var(--bg-white);border-radius:var(--radius);padding:4px;box-shadow:var(--shadow-xs)">
         <button class="revenue-tab" data-tab="today" style="flex:1;padding:10px;border:none;border-radius:8px;font-weight:600;font-size:0.85rem;cursor:pointer;background:transparent;color:var(--text-secondary)">오늘</button>
         <button class="revenue-tab active" data-tab="month" style="flex:1;padding:10px;border:none;border-radius:8px;font-weight:600;font-size:0.85rem;cursor:pointer;background:var(--primary);color:#fff">이번 달</button>
-        <button class="revenue-tab" data-tab="analysis" style="flex:1;padding:10px;border:none;border-radius:8px;font-weight:600;font-size:0.85rem;cursor:pointer;background:transparent;color:var(--text-secondary)">인사이트</button>
       </div>
 
       <!-- 오늘 탭 -->
@@ -227,7 +197,7 @@ App.pages.revenue = {
           // 미수금이 있으면 실입금액을 함께 보여준다 — 달성률은 청구 기준이라
           // 100% 여도 통장에 다 들어온 게 아닐 수 있다.
           const unpaidNote = monthUnpaid > 0
-            ? '<div style="margin-top:6px;font-size:0.8rem;color:var(--text-muted);display:flex;justify-content:space-between"><span>실입금 ' + App.formatCurrency(monthCollected) + '</span><span style="color:var(--danger)">미수 ' + App.formatCurrency(monthUnpaid) + '</span></div>'
+            ? '<div style="margin-top:6px;font-size:0.8rem;color:var(--text-muted);display:flex;justify-content:space-between"><span>이번 달 받은 돈 ' + App.formatCurrency(monthCollected) + '</span><span style="color:var(--danger)">미수 ' + App.formatCurrency(monthUnpaid) + '</span></div>'
             : '';
           return '<div class="card" style="margin-bottom:16px"><div class="card-body" style="padding:16px 20px"><div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px"><span style="font-weight:700">이번 달 매출 목표</span><span style="font-weight:800;color:' + barColor + '">' + pct + '%</span></div><div style="height:10px;background:var(--border-light);border-radius:5px;overflow:hidden"><div style="height:100%;width:' + pct + '%;background:' + barColor + ';border-radius:5px;transition:width 0.3s"></div></div><div style="display:flex;justify-content:space-between;margin-top:6px;font-size:0.82rem;color:var(--text-secondary)"><span>' + App.formatCurrency(monthRevenue) + '</span><span>목표: ' + App.formatCurrency(monthlyGoal) + '</span></div>' + unpaidNote + '</div></div>';
         })() : ''}
@@ -255,7 +225,7 @@ App.pages.revenue = {
               todayRecords.sort((a, b) => (b.date + (b.createdAt || '')).localeCompare(a.date + (a.createdAt || ''))).slice(0, 10).map(r => {
                 const c = customerMap[r.customerId];
                 const p = petMap[r.petId];
-                const payLabel = { cash: '현금', card: '카드', transfer: '이체', unpaid: '미결제' };
+                const payLabel = { cash: '현금', card: '카드', transfer: '계좌이체', unpaid: '미결제' };
                 const time = r.createdAt ? new Date(r.createdAt).toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' }) : '-';
                 const isUnpaid = r.paymentMethod === 'unpaid';
                 return `<div style="display:flex;align-items:center;gap:10px;padding:10px 0;border-bottom:1px solid var(--border-light)${isUnpaid ? ';border-left:3px solid var(--danger);padding-left:10px' : ''}">
@@ -279,7 +249,7 @@ App.pages.revenue = {
           <div class="card-body" style="padding:12px 20px;display:flex;gap:14px;justify-content:center;flex-wrap:wrap">
             ${todayPayment.card.count > 0 ? `<span style="font-size:0.88rem"><strong style="color:var(--primary)">카드</strong> ${todayPayment.card.count}건 · ${App.formatCurrency(todayPayment.card.amount)}</span>` : ''}
             ${todayPayment.cash.count > 0 ? `<span style="font-size:0.88rem"><strong style="color:var(--success)">현금</strong> ${todayPayment.cash.count}건 · ${App.formatCurrency(todayPayment.cash.amount)}</span>` : ''}
-            ${todayPayment.transfer.count > 0 ? `<span style="font-size:0.88rem"><strong style="color:var(--info)">이체</strong> ${todayPayment.transfer.count}건 · ${App.formatCurrency(todayPayment.transfer.amount)}</span>` : ''}
+            ${todayPayment.transfer.count > 0 ? `<span style="font-size:0.88rem"><strong style="color:var(--info)">계좌이체</strong> ${todayPayment.transfer.count}건 · ${App.formatCurrency(todayPayment.transfer.amount)}</span>` : ''}
             ${todayPayment.unpaid.count > 0 ? `<span style="font-size:0.88rem"><strong style="color:var(--danger)">미결제</strong> ${todayPayment.unpaid.count}건 · ${App.formatCurrency(todayPayment.unpaid.amount)}</span>` : ''}
           </div>
         </div>
@@ -326,6 +296,30 @@ App.pages.revenue = {
 
       <!-- 이번 달 탭 (기본) -->
       <div class="revenue-tab-content" id="rev-tab-month" style="display:block">
+        <!-- 매출 vs 실제 받은 돈 — 같은 크기로 나란히.
+             매출은 미용한 날 기준(세금 신고 기준, 미수금 포함), 실입금은 이번 달 실제로 들어온 돈(지난달 미수금 수금 포함) -->
+        <div class="card" style="margin-bottom:16px">
+          <div class="card-body" style="padding:14px 16px">
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+              <div>
+                <div style="font-size:0.8rem;color:var(--text-secondary);font-weight:600">이번 달 매출</div>
+                <div style="font-size:1.25rem;font-weight:800;margin-top:2px">${App.formatCurrency(monthRevenue)}</div>
+                <div style="font-size:0.72rem;color:var(--text-muted);margin-top:2px">미용한 날 기준 · 미수금 포함</div>
+              </div>
+              <div>
+                <div style="font-size:0.8rem;color:var(--text-secondary);font-weight:600">실제 받은 돈 (실입금)</div>
+                <div style="font-size:1.25rem;font-weight:800;margin-top:2px">${App.formatCurrency(monthCollected)}</div>
+                <div style="font-size:0.72rem;color:var(--text-muted);margin-top:2px">이번 달에 결제된 돈</div>
+              </div>
+            </div>
+            ${monthComp > 0 ? `<div style="margin-top:10px;padding-top:8px;border-top:1px solid var(--border-light);display:flex;justify-content:space-between;font-size:0.8rem;color:var(--text-secondary)"><span>서비스로 제공한 금액 <span style="color:var(--text-muted)">(매출 제외)</span></span><span>${App.formatCurrency(monthComp)}</span></div>` : ''}
+            ${unpaidRecs.length > 0 ? `
+            <a href="#dashboard" style="display:flex;align-items:center;justify-content:space-between;gap:8px;margin-top:12px;padding-top:10px;border-top:1px solid var(--border-light);text-decoration:none;color:var(--danger);font-size:0.85rem;font-weight:700">
+              <span>${App.icon('alert')} 미수금 ${unpaidRecs.length}건 · ${App.formatCurrency(unpaidTotal)}</span>
+              <span style="font-weight:600">홈에서 보기 &rarr;</span>
+            </a>` : ''}
+          </div>
+        </div>
         <!-- 이번 달 페이스 -->
         <div class="card" style="margin-bottom:20px">
           <div class="card-header">
@@ -421,106 +415,8 @@ App.pages.revenue = {
           </div>
         </div>
 
-        <!-- 미용사별 매출 -->
-        ${groomerStatList.length > 0 ? `
-        <div class="card" style="margin-top:20px">
-          <div class="card-header">
-            <span class="card-title">${App.icon('list')} 이번 달 미용사별 매출</span>
-          </div>
-          <div class="card-body" style="padding:16px">
-            ${groomerStatList.map(([name, stats]) => {
-              const pct = Math.round((stats.revenue / groomerMaxRev) * 100);
-              const totalMonthRev = groomerStatList.reduce((s, [, st]) => s + st.revenue, 0);
-              const sharePct = totalMonthRev > 0 ? Math.round((stats.revenue / totalMonthRev) * 100) : 0;
-              return `
-                <div style="margin-bottom:16px;padding-bottom:16px;border-bottom:1px solid var(--border)">
-                  <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
-                    <span style="font-weight:800;font-size:1rem">${App.escapeHtml(name)}</span>
-                    <span style="font-weight:700;color:var(--primary)">${App.formatCurrency(stats.revenue)}</span>
-                  </div>
-                  <div style="height:8px;background:var(--border-light);border-radius:4px;overflow:hidden;margin-bottom:8px">
-                    <div style="height:100%;width:${pct}%;background:linear-gradient(90deg,var(--primary),#818CF8);border-radius:4px"></div>
-                  </div>
-                  <div style="display:flex;gap:16px;font-size:0.82rem;color:var(--text-secondary)">
-                    <span>${App.icon('scissors')} ${stats.count}건</span>
-                    <span>비율 ${sharePct}%</span>
-                  </div>
-                </div>`;
-            }).join('')}
-          </div>
-        </div>
-        ` : ''}
-      </div>
-
-      <!-- 인사이트 탭 -->
-      <div class="revenue-tab-content" id="rev-tab-analysis" style="display:none">
-        <!-- 요일별 패턴 -->
-        <div class="card" style="margin-bottom:20px">
-          <div class="card-header">
-            <span class="card-title">${App.icon('calendar')} 요일별 평균 매출 (최근 8주)</span>
-          </div>
-          <div class="card-body">
-            ${!hasEnoughDowData ? '<p style="color:var(--text-muted);text-align:center;padding:12px">데이터가 쌓이면 요일별 패턴이 표시됩니다 (최소 4주)</p>' :
-              `<div style="display:flex;flex-direction:column;gap:10px">
-                ${dowData.map((d, i) => {
-                  const pct = Math.max(5, Math.round((d.avg / dowMax) * 100));
-                  const isTop = i === 0;
-                  const isBottom = i === dowData.length - 1;
-                  return `<div>
-                    <div style="display:flex;justify-content:space-between;margin-bottom:4px;align-items:center">
-                      <span style="font-weight:${isTop ? '800' : '600'};font-size:0.9rem">${d.label}요일${isTop ? ' <span style="font-size:0.7rem;color:var(--success)">(최다)</span>' : ''}${isBottom ? ' <span style="font-size:0.7rem;color:var(--text-muted)">(최소)</span>' : ''}</span>
-                      <span style="font-weight:700;font-size:0.9rem;color:${isTop ? 'var(--success)' : 'var(--text-secondary)'}">${d.avg >= 10000 ? Math.round(d.avg / 10000) + '만원' : App.formatCurrency(d.avg)}</span>
-                    </div>
-                    <div style="height:8px;background:var(--border-light);border-radius:4px;overflow:hidden">
-                      <div style="height:100%;width:${pct}%;background:${isTop ? 'var(--success)' : 'var(--primary)'};border-radius:4px"></div>
-                    </div>
-                  </div>`;
-                }).join('')}
-              </div>
-              <div style="margin-top:12px;padding-top:12px;border-top:1px solid var(--border);font-size:0.82rem;color:var(--text-muted);text-align:center">
-                ${dowData[0].label}요일이 평균 매출 1위, ${dowData[dowData.length - 1].label}요일이 최저
-              </div>`}
-          </div>
-        </div>
-
-        <!-- 월별 매출 추이 -->
-        <div class="card chart-card" style="margin-bottom:20px">
-          <div class="card-header">
-            <span class="card-title">${App.icon('trend')} 최근 6개월 매출 추이</span>
-          </div>
-          <div class="card-body chart-wrapper">
-            ${(() => {
-              const niceMax = (v) => { if (v <= 0) return 1000000; const mag = Math.pow(10, Math.floor(Math.log10(v))); const norm = v / mag; return Math.ceil(norm * 4) / 4 * mag; };
-              const tMax = niceMax(trendMax);
-              const tAvg = monthlyTrend.filter(m => m.rev > 0).length > 0 ? Math.round(monthlyTrend.reduce((s, m) => s + m.rev, 0) / monthlyTrend.filter(m => m.rev > 0).length) : 0;
-              const tAvgPct = tAvg > 0 ? Math.round((tAvg / tMax) * 90) : 0;
-              return `<div style="position:relative;height:220px;padding:0 8px;margin-left:36px">
-                <div style="position:absolute;left:0;right:0;bottom:45%;border-bottom:1px dashed var(--border-light)"><span style="position:absolute;left:-38px;top:-8px;font-size:0.72rem;color:var(--text-muted)">${Math.round(tMax * 0.5 / 10000)}만</span></div>
-                <div style="position:absolute;left:0;right:0;bottom:90%;border-bottom:1px dashed var(--border-light)"><span style="position:absolute;left:-38px;top:-8px;font-size:0.72rem;color:var(--text-muted)">${Math.round(tMax / 10000)}만</span></div>
-                <div style="display:flex;gap:12px;height:180px;position:relative;z-index:1">
-                  ${monthlyTrend.map(m => {
-                    const barH = m.rev > 0 ? Math.max(8, Math.round((m.rev / tMax) * 130)) : 4;
-                    const isCurrent = m.month === thisMonth;
-                    const barBg = m.rev === 0 ? 'var(--border-light)' : isCurrent ? 'linear-gradient(to top,var(--success),#34D399)' : 'linear-gradient(to top,var(--primary),#818CF8)';
-                    const label = m.rev >= 10000 ? Math.round(m.rev / 10000) + '만' : (m.rev > 0 ? App.formatCurrency(m.rev) : '');
-                    return `<div style="flex:1;position:relative;text-align:center;min-width:0" title="${m.month}: ${App.formatCurrency(m.rev)} (${m.count}건)">
-                      <span style="font-size:0.74rem;color:${isCurrent ? 'var(--success)' : 'var(--text-secondary)'};font-weight:800;position:absolute;top:0;left:0;right:0;overflow:hidden;text-overflow:clip;white-space:nowrap">${label}</span>
-                      <div style="position:absolute;bottom:36px;left:8%;right:8%;height:${barH}px;background:${barBg};border-radius:8px 8px 0 0"></div>
-                      <div style="position:absolute;bottom:0;left:0;right:0;text-align:center">
-                        <div style="font-size:0.82rem;font-weight:${isCurrent ? '800' : '600'};color:${isCurrent ? 'var(--primary)' : 'var(--text-muted)'}">${m.label}</div>
-                        <div style="font-size:0.7rem;color:var(--text-muted)">${m.count}건</div>
-                      </div>
-                    </div>`;
-                  }).join('')}
-                </div>
-              </div>
-              ${tAvg > 0 ? `<div style="text-align:center;margin-top:12px;padding-top:10px;border-top:1px solid var(--border-light);font-size:0.85rem;color:var(--text-secondary)">월평균 <strong style="color:var(--warning)">${App.formatCurrency(tAvg)}</strong></div>` : ''}`;
-            })()}
-            </div>
-          </div>
-
         <!-- 이번 달 손익 -->
-        <div class="card" style="margin-bottom:20px">
+        <div class="card" style="margin-top:20px">
           <div class="card-header">
             <span class="card-title">${App.icon('chart')} 이번 달 손익</span>
           </div>
@@ -578,11 +474,43 @@ App.pages.revenue = {
           </div>
         </div>
 
-        <!-- 상세 분석 링크 -->
-        <a href="#analytics" style="display:block;text-align:center;padding:16px;background:var(--bg-white);border-radius:var(--radius);box-shadow:var(--shadow-xs);color:var(--primary);font-weight:700;font-size:0.9rem;text-decoration:none;margin-bottom:20px">
-          ${App.icon('chart')} 상세 분석 보기 (고객, 서비스, 미용사 등) &rarr;
-        </a>
+        <!-- 미용사별 매출 -->
+        ${multiGroomer && groomerStatList.length > 0 ? `
+        <div class="card" style="margin-top:20px">
+          <div class="card-header">
+            <span class="card-title">${App.icon('list')} 이번 달 미용사별 매출</span>
+          </div>
+          <div class="card-body" style="padding:16px">
+            ${groomerStatList.map(([name, stats]) => {
+              const pct = Math.round((stats.revenue / groomerMaxRev) * 100);
+              const totalMonthRev = groomerStatList.reduce((s, [, st]) => s + st.revenue, 0);
+              const sharePct = totalMonthRev > 0 ? Math.round((stats.revenue / totalMonthRev) * 100) : 0;
+              return `
+                <div style="margin-bottom:16px;padding-bottom:16px;border-bottom:1px solid var(--border)">
+                  <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+                    <span style="font-weight:800;font-size:1rem">${App.escapeHtml(name)}</span>
+                    <span style="font-weight:700;color:var(--primary)">${App.formatCurrency(stats.revenue)}</span>
+                  </div>
+                  <div style="height:8px;background:var(--border-light);border-radius:4px;overflow:hidden;margin-bottom:8px">
+                    <div style="height:100%;width:${pct}%;background:linear-gradient(90deg,var(--primary),#818CF8);border-radius:4px"></div>
+                  </div>
+                  <div style="display:flex;gap:16px;font-size:0.82rem;color:var(--text-secondary)">
+                    <span>${App.icon('scissors')} ${stats.count}건</span>
+                    <span>비율 ${sharePct}%</span>
+                  </div>
+                </div>`;
+            }).join('')}
+          </div>
+        </div>
+        ` : ''}
 
+        <!-- 분석 화면·세무 자료 바로가기 (요일별·월별 추이는 분석 화면, 내보내기는 설정 > 데이터 한 곳에서) -->
+        <a href="#analytics" style="display:block;text-align:center;padding:16px;background:var(--bg-white);border-radius:var(--radius);box-shadow:var(--shadow-xs);color:var(--primary);font-weight:700;font-size:0.9rem;text-decoration:none;margin:20px 0 8px">
+          ${App.icon('chart')} 요일별·월별 추이 등 자세한 분석 보기 &rarr;
+        </a>
+        <div style="text-align:center;margin-bottom:20px">
+          <a href="#settings" onclick="try{sessionStorage.setItem('settings-open-tab','data')}catch(e){}" style="font-size:0.82rem;color:var(--text-muted)">세무 자료 내보내기는 설정 &rsaquo; 데이터에서</a>
+        </div>
       </div>
     `;
    } catch (err) {
@@ -607,11 +535,6 @@ App.pages.revenue = {
       const prev = document.querySelector(`.revenue-tab[data-tab="${this._activeTab}"]`);
       if (prev) activate(prev);
     }
-
-    // 세무 자료 내보내기
-    document.getElementById('btn-revenue-export')?.addEventListener('click', () => {
-      App.pages.records?.showExportModal();
-    });
 
     // 일일 정산표
     document.getElementById('btn-revenue-daily-report')?.addEventListener('click', () => {

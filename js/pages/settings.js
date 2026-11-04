@@ -8,7 +8,8 @@ const DEFAULT_SMS_TEMPLATES = {
   birthday: '[{매장명}] {고객명}님! {반려견명}의 생일을 축하합니다! 🎂 생일 기념 특별 할인을 준비했어요. 문의: {전화번호}',
   complete: '[{매장명}] {고객명}님, {반려견명}의 미용이 완료되었습니다! 서비스: {서비스}, 금액: {금액}원. 감사합니다! 💕',
   cardSend: '[{매장명}] {고객명}님, 오늘 {반려견명} 미용 사진이에요! 예쁘게 다녀갔어요. 감사합니다 ♥',
-  reportSend: '[{매장명}] {고객명}님, 오늘 {반려견명} 미용 리포트예요. 사진과 오늘 상태, 집에서 관리법을 담았어요. 감사합니다 ♥ {리뷰링크}'
+  reportSend: '[{매장명}] {고객명}님, 오늘 {반려견명} 미용 리포트예요. 사진과 오늘 상태, 집에서 관리법을 담았어요. 감사합니다 ♥ {리뷰링크}',
+  unpaid: '[{매장명}] {고객명}님 안녕하세요. {날짜} {반려견명} 미용 금액 {금액}원이 아직 결제되지 않아 안내드려요. 편하실 때 결제 부탁드립니다. 감사합니다. 문의: {전화번호}'
 };
 
 // 템플릿별 설명·쓸 수 있는 변수 — 화면에서 변수 버튼과 미리보기를 만든다.
@@ -20,10 +21,11 @@ const SMS_TEMPLATE_META = [
   { key: 'complete', label: '미용 완료', when: '미용 기록을 저장한 직후', vars: ['고객명', '반려견명', '서비스', '금액', '매장명', '전화번호', '리뷰링크'] },
   { key: 'reportSend', label: '리포트 전송', when: '미용 리포트(이미지)를 보호자에게 보낼 때', vars: ['고객명', '반려견명', '다음방문일', '매장명', '전화번호', '리뷰링크'] },
   { key: 'cardSend', label: '사진 카드', when: '사진 카드를 손님에게 보낼 때', vars: ['고객명', '반려견명', '매장명', '전화번호', '리뷰링크'] },
-  { key: 'revisit', label: '재방문 알림', when: '홈 · 고객 화면의 재방문 알림', vars: ['고객명', '반려견명', '경과일수', '마지막방문일', '매장명', '전화번호'] },
-  { key: 'atRisk', label: '이탈 위험', when: '방문 주기가 많이 지난 손님', vars: ['고객명', '반려견명', '경과일수', '마지막방문일', '매장명', '전화번호'] },
-  { key: 'churned', label: '이탈 고객', when: '오래 안 온 손님', vars: ['고객명', '반려견명', '경과일수', '마지막방문일', '매장명', '전화번호'] },
-  { key: 'birthday', label: '생일 축하', when: '홈의 생일 알림', vars: ['고객명', '반려견명', '매장명', '전화번호'] }
+  { key: 'revisit', label: '올 때 됨', when: '홈 \'연락할 손님\'(올 때 됨·늦음) · 고객 화면', vars: ['고객명', '반려견명', '경과일수', '마지막방문일', '매장명', '전화번호'] },
+  { key: 'atRisk', label: '많이 늦음', when: '홈 \'연락할 손님\'(올 때 됨·늦음) 중 주기가 많이 지난 손님', vars: ['고객명', '반려견명', '경과일수', '마지막방문일', '매장명', '전화번호'] },
+  { key: 'churned', label: '오래 안 옴', when: '홈 \'연락할 손님\'(오래 안 옴)', vars: ['고객명', '반려견명', '경과일수', '마지막방문일', '매장명', '전화번호'] },
+  { key: 'birthday', label: '생일 축하', when: '홈의 생일 알림', vars: ['고객명', '반려견명', '매장명', '전화번호'] },
+  { key: 'unpaid', label: '미수금 안내', when: '홈 \'미수금\' 카드의 문자 버튼', vars: ['고객명', '반려견명', '날짜', '금액', '매장명', '전화번호'] }
 ];
 
 App.pages.settings = {
@@ -59,11 +61,14 @@ App.pages.settings = {
       undoMeta = null;
     }
     const recordPhotoKeep = await App.getRecordPhotoKeep();
+    const priceTable = await App.getPriceBands();
 
     // 보안 설정 로드
     const sec = (typeof Security !== 'undefined') ? await Security._load() : { enabled: false, pinLength: 6, maxAttempts: 5, lockoutSeconds: 30 };
     const isLockOn = !!sec.enabled;
     const isThisDeviceRegistered = (typeof Security !== 'undefined') ? await Security.isTrusted() : true;
+    // 이 기기에선 껐지만 GitHub(master-config.js)에는 잠금이 남아 있는 상태
+    const isOffHereOnly = !isLockOn && typeof Security !== 'undefined' && Security.masterConfigEnabled();
 
     container.innerHTML = `
       <div class="page-header">
@@ -136,7 +141,7 @@ App.pages.settings = {
             <div class="card-body">
               <div class="form-group">
                 <label class="form-label">등록된 미용사 <span style="font-size:0.78rem;color:var(--text-muted);font-weight:400">(선택)</span></label>
-                <div class="form-hint" style="margin-bottom:8px">1인 살롱은 비워두세요. 예약·기록 폼에서 직접 입력 가능합니다.</div>
+                <div class="form-hint" style="margin-bottom:8px">혼자 운영하면 비워두거나 본인 1명만 적으세요. 직원을 2명 이상 등록하면 예약 화면에 담당 미용사·미용사별 타임테이블이, 매출·분석 화면에 미용사별 실적이 나타납니다.</div>
                 <div id="groomer-list" style="display:flex;flex-direction:column;gap:8px;margin-bottom:12px">
                   ${(groomers || []).map((g, i) => `
                     <div style="display:flex;align-items:center;gap:8px">
@@ -191,7 +196,7 @@ App.pages.settings = {
                   { c: '#10B981', name: '그린' },
                   { c: '#F59E0B', name: '오렌지' },
                   { c: '#3B82F6', name: '블루' },
-                  { c: '#8B5CF6', name: '퍼플' },
+                  { c: '#9F1239', name: '버건디' },
                   { c: '#EF4444', name: '레드' },
                   { c: '#14B8A6', name: '틸' }
                 ].map(({c, name}) => `
@@ -221,6 +226,13 @@ App.pages.settings = {
 
       <!-- Tab 2: 운영 설정 -->
       <div class="settings-tab-content" id="tab-operation" style="display:none">
+        <!-- 가격 구간 (몸무게) — 서비스 가격이 이 구간표를 따른다 -->
+        <div class="card" id="price-band-card" style="margin-bottom:20px">
+          <div class="card-header">
+            <span class="card-title">${App.icon('coins')} 가격 구간 (몸무게)</span>
+          </div>
+          <div class="card-body" id="price-band-summary">${this._priceBandSummaryHtml(priceTable)}</div>
+        </div>
         <div class="grid-2">
           <!-- 예약 알림 설정 -->
           <div class="card">
@@ -233,7 +245,7 @@ App.pages.settings = {
                   <input type="checkbox" id="s-notifEnabled" ${notifEnabled ? 'checked' : ''}>
                   예약 알림 활성화
                 </label>
-                <div class="form-hint">예약 전에 알림을 띄웁니다. 앱이 열려 있을 때만 옵니다 (앱을 닫으면 오지 않아요).</div>
+                <div class="form-hint">예약 전에 알림을 띄웁니다. <strong>앱이 열려 있을 때만 알림이 와요(아이폰)</strong> — 앱을 닫으면 오지 않아요. 알림에는 반려견 이름과 시간만 보여요.</div>
               </div>
               <div class="form-group">
                 <label class="form-label">알림 시간</label>
@@ -308,6 +320,44 @@ App.pages.settings = {
 
       <!-- Tab 3: 데이터 -->
       <div class="settings-tab-content" id="tab-data" style="display:none">
+        <!-- Backup & Restore — 데이터 탭 맨 위 (가장 자주 쓰고, 동기화보다 먼저 챙겨야 할 안전장치) -->
+        <div class="card" style="margin-bottom:20px">
+          <div class="card-header">
+            <span class="card-title">${App.icon('save')} 데이터 백업 및 복원</span>
+          </div>
+          <div class="card-body">
+            <div class="grid-2" style="gap:24px">
+              <div>
+                <h4 style="margin-bottom:8px">백업 (내보내기)</h4>
+                <p style="color:var(--text-secondary);font-size:0.9rem;margin-bottom:12px">
+                  데이터를 JSON 파일로 저장합니다. 사진 제외 시 파일 크기가 대폭 줄어 빠르고 안전합니다.
+                </p>
+                <div style="display:flex;flex-direction:column;gap:8px">
+                  <button class="btn btn-success" id="btn-export">${App.icon('download')} 백업 (사진 제외 · 권장)</button>
+                  <button class="btn btn-secondary" id="btn-export-full" style="font-size:0.85rem">${App.icon('camera')} 사진 포함 백업 (용량 주의)</button>
+                </div>
+              </div>
+              <div>
+                <h4 style="margin-bottom:8px">복원 (가져오기)</h4>
+                <p style="color:var(--text-secondary);font-size:0.9rem;margin-bottom:12px">
+                  백업 파일에서 데이터를 복원합니다. 기존 데이터는 덮어쓰기되고, 동기화가 켜져 있으면 다른 기기에도 그대로 반영됩니다.
+                </p>
+                <input type="file" id="import-file" accept=".json" style="display:none">
+                <button class="btn btn-warning" id="btn-import">${App.icon('upload')} 데이터 복원하기</button>
+                ${undoMeta && undoMeta.date ? `
+                <div id="undo-import-box" style="margin-top:12px;padding:10px 12px;border:1px solid var(--border);border-radius:8px;background:var(--bg)">
+                  <div style="font-size:0.85rem;color:var(--text-secondary);margin-bottom:8px">
+                    ${App.formatDateTime(undoMeta.date)} 복원 직전 상태가 보관되어 있습니다.<br>
+                    <span style="color:var(--text-muted)">고객 ${undoMeta.customers ?? '-'}명 · 기록 ${undoMeta.records ?? '-'}건 · 사진 제외</span>
+                    ${undoMeta.photosReplaced ? `<br><span style="color:var(--danger)">복원 파일에 사진이 포함되어 있어 기기 사진은 이미 교체됐습니다. 되돌려도 사진은 복구되지 않습니다.</span>` : ''}
+                  </div>
+                  <button class="btn btn-secondary" id="btn-undo-import" style="width:100%">복원 전 상태로 되돌리기</button>
+                </div>` : ''}
+              </div>
+            </div>
+          </div>
+        </div>
+
         <!-- 기기 간 동기화 -->
         ${typeof Sync !== 'undefined' ? `
         <div class="card" style="margin-bottom:20px">
@@ -384,44 +434,6 @@ App.pages.settings = {
           </div>
         </div>
 
-        <!-- Backup & Restore -->
-        <div class="card" style="margin-top:20px">
-          <div class="card-header">
-            <span class="card-title">${App.icon('save')} 데이터 백업 및 복원</span>
-          </div>
-          <div class="card-body">
-            <div class="grid-2" style="gap:24px">
-              <div>
-                <h4 style="margin-bottom:8px">백업 (내보내기)</h4>
-                <p style="color:var(--text-secondary);font-size:0.9rem;margin-bottom:12px">
-                  데이터를 JSON 파일로 저장합니다. 사진 제외 시 파일 크기가 대폭 줄어 빠르고 안전합니다.
-                </p>
-                <div style="display:flex;flex-direction:column;gap:8px">
-                  <button class="btn btn-success" id="btn-export">${App.icon('download')} 백업 (사진 제외 · 권장)</button>
-                  <button class="btn btn-secondary" id="btn-export-full" style="font-size:0.85rem">${App.icon('camera')} 사진 포함 백업 (용량 주의)</button>
-                </div>
-              </div>
-              <div>
-                <h4 style="margin-bottom:8px">복원 (가져오기)</h4>
-                <p style="color:var(--text-secondary);font-size:0.9rem;margin-bottom:12px">
-                  백업 파일에서 데이터를 복원합니다. 기존 데이터는 덮어쓰기되고, 동기화가 켜져 있으면 다른 기기에도 그대로 반영됩니다.
-                </p>
-                <input type="file" id="import-file" accept=".json" style="display:none">
-                <button class="btn btn-warning" id="btn-import">${App.icon('upload')} 데이터 복원하기</button>
-                ${undoMeta && undoMeta.date ? `
-                <div id="undo-import-box" style="margin-top:12px;padding:10px 12px;border:1px solid var(--border);border-radius:8px;background:var(--bg)">
-                  <div style="font-size:0.85rem;color:var(--text-secondary);margin-bottom:8px">
-                    ${App.formatDateTime(undoMeta.date)} 복원 직전 상태가 보관되어 있습니다.<br>
-                    <span style="color:var(--text-muted)">고객 ${undoMeta.customers ?? '-'}명 · 기록 ${undoMeta.records ?? '-'}건 · 사진 제외</span>
-                    ${undoMeta.photosReplaced ? `<br><span style="color:var(--danger)">복원 파일에 사진이 포함되어 있어 기기 사진은 이미 교체됐습니다. 되돌려도 사진은 복구되지 않습니다.</span>` : ''}
-                  </div>
-                  <button class="btn btn-secondary" id="btn-undo-import" style="width:100%">복원 전 상태로 되돌리기</button>
-                </div>` : ''}
-              </div>
-            </div>
-          </div>
-        </div>
-
         <!-- Danger Zone -->
         <div class="card" style="margin-top:20px;border:1px solid var(--danger)">
           <div class="card-header" style="background:var(--danger-light)">
@@ -444,18 +456,24 @@ App.pages.settings = {
           </div>
           <div class="card-body">
             <p style="color:var(--text-secondary);font-size:0.9rem;margin-bottom:14px">
-              URL을 알아도 마스터 코드 모르면 사용 불가. 사장님이 직접 등록한 디바이스만 영구 사용할 수 있습니다.
+              <strong>처음 보는 기기에서 앱을 열면 코드를 묻는 가림막</strong>이에요. 앱 주소를 알게 된 사람이 바로 들어오지 못하게 막는 정도이고, 데이터를 암호화하지는 않아요.<br>
+              <span style="font-size:0.84rem;color:var(--text-muted)">고객 데이터를 실제로 지켜 주는 건 기기마다 따로 저장되는 구조와 Google 로그인(클라우드 백업)이에요. 휴대폰 자체 잠금도 꼭 켜 두세요.</span>
             </p>
             <div style="display:flex;align-items:center;gap:12px;padding:12px;background:var(--bg);border-radius:var(--radius);margin-bottom:16px">
               <span style="font-size:1.4rem">${App.icon(isLockOn ? 'lock' : 'unlock')}</span>
               <div class="flex-1">
-                <div style="font-weight:700">${isLockOn ? '마스터 코드 잠금 사용 중' : '잠금 비활성'}</div>
-                <div style="font-size:0.82rem;color:var(--text-muted)">${isLockOn ? `${sec.pinLength}자리 코드 · 등록된 디바이스만 사용` : '누구나 접근 가능'}</div>
+                <div style="font-weight:700">${isLockOn ? '마스터 코드 잠금 사용 중' : isOffHereOnly ? '이 기기에서는 꺼짐' : '잠금 비활성'}</div>
+                <div style="font-size:0.82rem;color:var(--text-muted)">${isLockOn ? `${sec.pinLength}자리 코드 · 등록된 기기만 사용` : isOffHereOnly ? '새 기기 잠금은 GitHub 설정에 남아 있음' : '누구나 접근 가능'}</div>
               </div>
               ${isLockOn
                 ? `<button class="btn btn-danger btn-sm" id="btn-sec-disable">잠금 해제</button>`
                 : `<button class="btn btn-primary btn-sm" id="btn-sec-enable">잠금 설정</button>`}
             </div>
+            ${isOffHereOnly ? `
+            <div class="form-group" style="margin-top:12px">
+              <button class="btn btn-warning" id="btn-sec-show-off-config" style="width:100%;min-height:44px">${App.icon('globe')} 모든 기기 잠금 끄기 (GitHub 설정)</button>
+              <div class="form-hint">GitHub 의 master-config.js 를 고쳐야 새 기기에서도 잠금이 꺼져요.</div>
+            </div>` : ''}
 
             ${isLockOn ? `
             <div class="form-group" style="margin-top:12px">
@@ -468,7 +486,7 @@ App.pages.settings = {
             </div>
             <div class="form-group">
               <button class="btn btn-secondary" id="btn-sec-regen-recovery" style="width:100%;min-height:44px">복구 코드 재발급</button>
-              <div class="form-hint">새 코드 발급 시 기존 코드는 즉시 무효화됩니다</div>
+              <div class="form-hint">이 기기에선 바로 바뀌어요. 새 기기에서 예전 코드를 막으려면 이어서 나오는 GitHub 설정을 올려 주세요</div>
             </div>
             <hr style="border:none;border-top:1px solid var(--border);margin:18px 0">
             <div class="form-group">
@@ -519,6 +537,300 @@ App.pages.settings = {
   },
 
   // 이메일·비밀번호 로그인/설정 모달 (아이폰 Safari 등 구글 로그인이 막히는 기기용)
+  // ========== 가격 구간 (몸무게) ==========
+  _priceBandSummaryHtml(table) {
+    const chips = table.bands.map((b, i) => `<span class="badge badge-info" style="padding:6px 10px;font-size:0.85rem">${App.escapeHtml(App.getBandLabel(table, i))}</span>`).join(' ');
+    const ok = table.overKg;
+    if (table.bandsOff) return `
+      <div style="font-size:0.85rem;color:var(--text-secondary);margin-bottom:10px"><strong>몸무게 구간 사용 안 함</strong> — 모든 서비스를 단일가로 받아요. 예전에 적은 구간 가격은 지우지 않고 보관해요 (다시 켜면 그대로 돌아와요).</div>
+      <button type="button" class="btn btn-secondary" id="btn-edit-price-bands" style="min-height:44px">${App.icon('edit')} 구간 설정</button>
+      <a href="#services" class="btn btn-ghost" style="min-height:44px">서비스 가격 보기</a>`;
+    return `
+      <div style="font-size:0.85rem;color:var(--text-secondary);margin-bottom:10px">서비스 가격을 몸무게 구간별로 정해요. 경계 몸무게는 아래 구간에 들어가요 (예: 5kg → 3~5kg).</div>
+      <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px">${chips}</div>
+      <div style="font-size:0.85rem;margin-bottom:12px">${ok
+        ? `큰 아이 추가 요금: <strong>${App.escapeHtml(App.describeOverKgRule({ from: App.overKgFrom(table), perKg: ok.perKg }))}</strong> <span style="color:var(--text-muted)">(소수 kg 올림 · 서비스마다 바꿀 수 있음)</span>`
+        : '<span style="color:var(--text-muted)">초과 kg 추가 요금 꺼짐</span>'} · 반올림 ${App.formatCurrency(table.rounding)}</div>
+      <button type="button" class="btn btn-secondary" id="btn-edit-price-bands" style="min-height:44px">${App.icon('edit')} 구간 편집</button>
+      <a href="#services" class="btn btn-ghost" style="min-height:44px">서비스 가격 보기</a>`;
+  },
+
+  // 구간표 편집 모달. 가격은 구간 id 에 붙어 있어 경계만 바꾸면 가격은 그대로다.
+  // 새로 생긴 구간(추가·프리셋)은 copyFrom 구간의 가격을 복사해 시작한다.
+  async showPriceBandEditor() {
+    const orig = await App.getPriceBands();
+    const services = await DB.getAll('services');
+    const state = {
+      bands: orig.bands.map(b => ({ id: b.id, upTo: b.upTo })),
+      overKg: orig.overKg ? { ...orig.overKg } : null,
+      rounding: orig.rounding,
+      bandsOff: !!orig.bandsOff,
+      nextId: orig.nextId // 새 구간 id 카운터 (지운 id 를 다시 쓰지 않는다)
+    };
+    const lastOverKg = orig.overKg ? { ...orig.overKg } : { from: 10, perKg: 5000, ceil: true };
+    // 이 구간에 가격이 있는 (구간 가격) 서비스 수
+    const countPriced = (bandId) => services.filter(s => {
+      const p = App.getServicePricing(s, orig);
+      return p.mode === 'weight' && Number(p.prices[bandId]) > 0;
+    }).length;
+
+    App.showModal({
+      title: '가격 구간 편집',
+      saveText: '구간 저장',
+      noAutoFocus: true, // 열자마자 숫자 키패드가 올라와 화면을 가리지 않게
+      content: `
+        <div class="form-group" style="background:var(--bg);border-radius:var(--radius);padding:12px">
+          <label class="checkbox-label" style="font-weight:700">
+            <input type="checkbox" id="pb-off" ${state.bandsOff ? 'checked' : ''}> 몸무게 구간 사용 안 함 (모든 서비스 단일가)
+          </label>
+          <div class="form-hint" id="pb-off-hint" style="margin-top:6px">${state.bandsOff ? '' : '체크하면 구간 칸이 모든 화면에서 숨겨져요.'}</div>
+        </div>
+        <div id="pb-band-ui" style="display:${state.bandsOff ? 'none' : 'block'}">
+        <div class="form-group">
+          <label class="form-label">빠른 설정</label>
+          <div style="display:flex;gap:6px;flex-wrap:wrap">
+            <button type="button" class="payment-chip" data-preset="three">3단계 (~7 / ~15 / 15kg~)</button>
+            <button type="button" class="payment-chip" data-preset="five">5단계 (~3 / ~5 / ~7 / ~10 / 10kg~)</button>
+          </div>
+        </div>
+        <div class="form-group">
+          <label class="form-label">구간 <span style="color:var(--text-muted);font-size:0.78rem;font-weight:400">(각 구간의 최대 몸무게 kg — 그 몸무게까지 포함)</span></label>
+          <div id="pb-rows"></div>
+          <button type="button" class="btn btn-secondary btn-sm" id="pb-add" style="margin-top:8px;min-height:44px">+ 구간 추가</button>
+        </div>
+        <div class="form-group" style="background:var(--bg);border-radius:var(--radius);padding:12px">
+          <label class="checkbox-label" style="font-weight:700">
+            <input type="checkbox" id="pb-over-on" ${state.overKg ? 'checked' : ''}> 큰 아이 초과 kg 추가 요금
+          </label>
+          <div id="pb-over-fields" style="display:${state.overKg ? 'flex' : 'none'};gap:8px;align-items:center;flex-wrap:wrap;margin-top:8px;font-size:0.9rem">
+            <input type="number" id="pb-over-from" value="${lastOverKg.from}" min="1" step="0.5" inputmode="decimal" style="width:80px"> kg 넘으면
+            1kg당 + <input type="number" id="pb-over-per" value="${lastOverKg.perKg}" min="0" step="1000" inputmode="numeric" style="width:110px"> 원
+          </div>
+          <div class="form-hint" style="margin-top:6px">소수 kg 은 올려서 계산해요 (10.3kg → 1kg 추가). 서비스마다 '가게 기본 / 없음 / 따로'를 고를 수 있어요 (서비스 › 더 보기).</div>
+        </div>
+        </div>
+        <div class="form-group">
+          <label class="form-label">반올림 단위 <span style="color:var(--text-muted);font-size:0.78rem;font-weight:400">(초과 요금·일괄 조정·자동 채움)</span></label>
+          <select id="pb-rounding">
+            ${[100, 500, 1000, 5000, 10000].map(v => `<option value="${v}" ${state.rounding === v ? 'selected' : ''}>${v.toLocaleString('ko-KR')}원</option>`).join('')}
+          </select>
+        </div>
+        <div id="pb-preview" class="form-hint"></div>
+      `,
+      onSave: () => this._savePriceBands(orig, state)
+    });
+
+    const offHint = () => document.getElementById('pb-off-hint');
+    document.getElementById('pb-off')?.addEventListener('change', (e) => {
+      document.getElementById('pb-band-ui').style.display = e.target.checked ? 'none' : 'block';
+      const h = offHint();
+      if (h) h.innerHTML = e.target.checked
+        ? '모든 서비스가 <strong>단일가</strong>로 계산돼요. 구간 가격 서비스는 단일가가 적혀 있으면 그 값, 없으면 <strong>첫(가장 가벼운) 구간 가격</strong>을 써요. 구간 가격은 지우지 않고 보관해요 — 다시 켜면 그대로 돌아와요.'
+        : '체크하면 구간 칸이 모든 화면에서 숨겨져요.';
+    });
+    const rowsEl = document.getElementById('pb-rows');
+    const labelOf = (i) => App.getBandLabel({ bands: state.bands.map(b => ({ ...b, upTo: b.upTo })) }, i);
+    const render = () => {
+      rowsEl.innerHTML = state.bands.map((b, i) => {
+        const isLast = i === state.bands.length - 1;
+        return `<div class="pb-row" data-i="${i}" style="display:flex;align-items:center;gap:8px;padding:6px 0;border-bottom:1px solid var(--border-light)">
+          <span style="flex:1;font-weight:700">${App.escapeHtml(labelOf(i) || '-')}</span>
+          ${isLast ? '<span style="color:var(--text-muted);font-size:0.85rem;width:110px;text-align:right">그 이상 전부</span>'
+                   : `<span style="display:flex;align-items:center;gap:4px"><input type="number" class="pb-upto" data-i="${i}" value="${b.upTo ?? ''}" min="0.5" step="0.5" inputmode="decimal" style="width:80px"> kg 까지</span>`}
+          <button type="button" class="btn btn-ghost btn-sm pb-del" data-i="${i}" ${state.bands.length <= 1 ? 'disabled' : ''} aria-label="구간 삭제" style="min-width:44px;min-height:44px">${App.icon('trash')}</button>
+        </div>`;
+      }).join('');
+      const pv = document.getElementById('pb-preview');
+      if (pv) pv.textContent = '미리보기: ' + state.bands.map((b, i) => labelOf(i)).join(' / ');
+      syncOverFrom();
+    };
+    // 초과 kg 기준은 마지막 구간 시작보다 낮을 수 없다. 마지막 구간 시작이 바뀌면 기준도 그 값으로 맞춘다 (고칠 수는 있음)
+    const lastLower = () => state.bands.length > 1 ? Number(state.bands[state.bands.length - 2].upTo) || 0 : 0;
+    let trackedLower = lastLower();
+    const syncOverFrom = () => {
+      const fromEl = document.getElementById('pb-over-from');
+      if (!fromEl) return;
+      const lb = lastLower();
+      fromEl.min = String(lb || 1);
+      if (lb !== trackedLower) {
+        trackedLower = lb;
+        if (lb > 0) fromEl.value = lb;
+      }
+    };
+    render();
+    document.getElementById('pb-over-from')?.addEventListener('change', (e) => {
+      const lb = lastLower();
+      const v = parseFloat(e.target.value);
+      if (lb > 0 && !(v >= lb)) { e.target.value = lb; App.showToast(`초과 kg 기준은 마지막 구간 시작(${App.formatKg(lb)}kg)보다 낮을 수 없어요.`, 'info'); }
+    });
+
+    rowsEl.addEventListener('input', (e) => {
+      const inp = e.target.closest('.pb-upto');
+      if (!inp) return;
+      const v = parseFloat(inp.value);
+      state.bands[Number(inp.dataset.i)].upTo = v > 0 ? v : null;
+      syncOverFrom();
+      // 이름만 다시 (입력 중인 칸은 그대로)
+      rowsEl.querySelectorAll('.pb-row').forEach(row => {
+        const i = Number(row.dataset.i);
+        const span = row.querySelector('span');
+        if (span) span.textContent = labelOf(i) || '-';
+      });
+      const pv = document.getElementById('pb-preview');
+      if (pv) pv.textContent = '미리보기: ' + state.bands.map((b, i) => labelOf(i)).join(' / ');
+    });
+    rowsEl.addEventListener('click', async (e) => {
+      const btn = e.target.closest('.pb-del');
+      if (!btn || btn.disabled) return;
+      const i = Number(btn.dataset.i);
+      const b = state.bands[i];
+      const n = orig.bands.some(x => x.id === b.id) ? countPriced(b.id) : 0;
+      const label = labelOf(i);
+      if (n > 0) {
+        const ok = await App.confirm(`<strong>${App.escapeHtml(label)}</strong> 구간에 가격이 있는 서비스가 <strong>${n}개</strong> 있어요.<br>삭제하면 그 가격은 지워지고, 이 몸무게는 ${i === state.bands.length - 1 ? '바로 앞(더 가벼운)' : '다음(더 무거운)'} 구간 가격을 따라요. 삭제할까요?`, { okLabel: '구간 삭제' });
+        if (!ok) return;
+      }
+      state.bands.splice(i, 1);
+      if (state.bands.length) state.bands[state.bands.length - 1].upTo = null; // 마지막은 항상 '그 이상'
+      render();
+    });
+    document.getElementById('pb-add')?.addEventListener('click', () => {
+      // 마지막('그 이상') 구간 앞에 새 경계를 하나 추가 — 가격은 잘라낸 마지막 구간에서 복사
+      const last = state.bands[state.bands.length - 1];
+      const prevUp = state.bands.length > 1 ? Number(state.bands[state.bands.length - 2].upTo) || 0 : 0;
+      const nb = { id: App._newBandId({ bands: state.bands.concat(orig.bands), nextId: state.nextId }), upTo: prevUp + 5, copyFrom: last.copyFrom || last.id };
+      state.nextId = Number(nb.id.slice(1)) + 1;
+      state.bands.splice(state.bands.length - 1, 0, nb);
+      render();
+    });
+    document.querySelectorAll('[data-preset]').forEach(btn => {
+      btn.addEventListener('click', async () => {
+        const preset = App.PRICE_BAND_PRESETS[btn.dataset.preset];
+        const ok = await App.confirm('구간을 프리셋으로 바꿀까요?<br><small style="color:var(--text-muted)">새 구간 가격은 지금 구간표에서 같은 몸무게가 속한 구간 가격을 복사해요. 저장 전엔 바뀌지 않아요.</small>', { okLabel: '바꾸기', danger: false });
+        if (!ok) return;
+        const idState = { bands: orig.bands.concat(state.bands), nextId: state.nextId };
+        state.bands = preset.bands.map((pb, i) => {
+          const lower = i > 0 ? preset.bands[i - 1].upTo : 0;
+          const rep = pb.upTo != null ? pb.upTo : lower + 0.1; // 그 구간 대표 몸무게
+          const src = App.resolveBand(orig, rep).band.id;
+          const nb = { id: App._newBandId(idState), upTo: pb.upTo, copyFrom: src };
+          return nb;
+        });
+        state.nextId = idState.nextId;
+        state.overKg = preset.overKg ? { ...preset.overKg } : null;
+        const on = document.getElementById('pb-over-on');
+        if (on) on.checked = !!state.overKg;
+        document.getElementById('pb-over-fields').style.display = state.overKg ? 'flex' : 'none';
+        if (state.overKg) {
+          document.getElementById('pb-over-from').value = state.overKg.from;
+          document.getElementById('pb-over-per').value = state.overKg.perKg;
+        }
+        trackedLower = lastLower(); // 프리셋의 기준값을 그대로 쓴다
+        render();
+      });
+    });
+    document.getElementById('pb-over-on')?.addEventListener('change', (e) => {
+      document.getElementById('pb-over-fields').style.display = e.target.checked ? 'flex' : 'none';
+      if (e.target.checked) {
+        const fromEl = document.getElementById('pb-over-from');
+        const lb = lastLower();
+        const v = parseFloat(fromEl.value);
+        if (!(v > 0) || v < lb) fromEl.value = lb || 10;
+      }
+    });
+  },
+
+  async _savePriceBands(orig, state) {
+    const bands = state.bands.map(b => ({ ...b }));
+    if (bands.length === 0) { App.showToast('구간이 하나 이상 있어야 해요.', 'error'); return; }
+    bands[bands.length - 1].upTo = null;
+    for (let i = 0; i < bands.length - 1; i++) {
+      const up = Number(bands[i].upTo);
+      if (!(up > 0)) { App.showToast(`${i + 1}번째 구간의 최대 몸무게를 입력하세요.`, 'error'); return; }
+      if (i > 0 && !(up > Number(bands[i - 1].upTo))) { App.showToast('구간 몸무게는 위에서 아래로 커져야 해요.', 'error'); return; }
+    }
+    const overOn = document.getElementById('pb-over-on')?.checked;
+    let overKg = null;
+    if (overOn) {
+      const from = parseFloat(document.getElementById('pb-over-from')?.value);
+      const perKg = Number(document.getElementById('pb-over-per')?.value);
+      if (!(from > 0) || !(perKg > 0)) { App.showToast('초과 kg 기준과 1kg당 금액을 입력하세요.', 'error'); return; }
+      const lb = bands.length > 1 ? Number(bands[bands.length - 2].upTo) || 0 : 0;
+      overKg = { from: Math.max(from, lb), perKg, ceil: true }; // 마지막 구간 시작보다 낮으면 올린다
+    }
+    const rounding = Number(document.getElementById('pb-rounding')?.value) || 1000;
+    const bandsOff = !!document.getElementById('pb-off')?.checked;
+    // 경계만 바꿨는지 (같은 구간 id·순서, 추가 요금·반올림·사용 여부 그대로) — 가격은 구간 id 에 붙어 있어 그대로다
+    const sameIds = bands.length === orig.bands.length && bands.every((b, i) => b.id === orig.bands[i].id);
+    const sameOver = JSON.stringify(overKg && { f: overKg.from, p: overKg.perKg }) === JSON.stringify(orig.overKg && { f: orig.overKg.from, p: orig.overKg.perKg });
+    const boundaryOnly = sameIds && sameOver && rounding === orig.rounding && bandsOff === !!orig.bandsOff
+      && bands.some((b, i) => (b.upTo ?? null) !== (orig.bands[i].upTo ?? null));
+    if (bandsOff && !orig.bandsOff) {
+      // '구간 사용 안 함'을 켜기 전에: 서비스마다 가격이 어떻게 바뀌는지 보여 주고 확인
+      const offTable = { ...orig, bandsOff: true };
+      const all = (await DB.getAll('services')).filter(s => s.isActive !== false);
+      const rows = all.map(s => {
+        const p = App.getServicePricing(s, orig);
+        const r = App.calcServicePrice(s, null, offTable);
+        const rule = App.getOverKgRule(s, offTable, p);
+        const before = p.free ? '무료' : App.formatServicePrice(s, orig);
+        const after = r.free ? '무료' : App.formatCurrency(r.price) + ' 단일가';
+        return `<div style="padding:3px 0;border-bottom:1px solid var(--border-light);font-size:0.82rem"><strong>${App.escapeHtml(s.name)}</strong> ${App.escapeHtml(before)} → <strong>${App.escapeHtml(after)}</strong>${rule ? `<div style="color:var(--warning-text-strong, #b45309);font-size:0.75rem">+ 이 서비스만 따로: ${App.escapeHtml(App.describeOverKgRule(rule))} (계속 붙어요)</div>` : ''}</div>`;
+      }).join('');
+      const ok = await App.confirm(`모든 서비스를 단일가로 받아요. 가격은 이렇게 바뀌어요:<div style="max-height:40vh;overflow-y:auto;margin:8px 0;text-align:left">${rows || '<div style="color:var(--text-muted)">서비스가 아직 없어요</div>'}</div><small style="color:var(--text-muted)">구간 가격은 보관돼요 — 다시 켜면 돌아와요. 가게 기본 kg당 요금은 쓰지 않아요.</small>`, { okLabel: '단일가로 바꾸기', cancelLabel: '취소', danger: false });
+      if (!ok) return;
+    }
+    try {
+      // 구버전 기기에서 고친 가격을 먼저 반영 (덮어쓰지 않게)
+      await App.migratePriceBands();
+      const table = App.normalizePriceBands({ version: 1, nextId: state.nextId, bands: bands.map(b => ({ id: b.id, upTo: b.upTo })), overKg, rounding, bandsOff });
+      // 구간표를 먼저 저장한다 — 서비스부터 쓰면 그 사이(또는 도중 실패 시) 다른 기기가 모르는 구간 id 로 0원을 계산했다.
+      // 서비스에는 가격을 적을 때의 구간 경계(bandsAt)가 남아, 구간표와 서비스가 잠깐 어긋나도 가격이 계산된다.
+      await App.savePriceBands(table);
+      const services = await DB.getAll('services');
+      const now = new Date().toISOString();
+      let updated = 0;
+      for (const svc of services) {
+        const before = JSON.stringify([svc.pricing || null, svc.priceSmall, svc.priceMedium, svc.priceLarge]);
+        const p = svc.pricing ? JSON.parse(JSON.stringify(svc.pricing)) : App.legacyToPricing(svc, orig);
+        if (p.mode === 'weight') {
+          // 이 서비스 가격이 (옛 구간 id 로 남아) 지금 구간표와 안 맞으면 먼저 대표 몸무게로 옮겨 놓는다
+          let src = p.prices || {};
+          if (App._pricingTable(p, orig) !== orig) {
+            src = {};
+            App.getServiceBandRows({ ...svc, pricing: p }, orig).forEach(r => { if (r.price > 0) src[r.id] = r.price; });
+          }
+          const next = {};
+          bands.forEach(b => {
+            const v = Number(src[b.id]) || (b.copyFrom ? Number(src[b.copyFrom]) || 0 : 0);
+            if (v > 0) next[b.id] = v;
+          });
+          const hadAny = Object.values(p.prices || {}).some(v => Number(v) > 0);
+          if (Object.keys(next).length > 0 || !hadAny) {
+            const kept = Object.fromEntries(Object.entries(src).filter(([k]) => next[k] != null || bands.some(b => b.id === k)));
+            if (JSON.stringify(next) !== JSON.stringify(kept)) svc.priceChangedAt = now;
+            p.prices = next;
+          } // 옮길 가격이 하나도 안 나오면(있을 수 없는 경우) 원래 가격·bandsAt 을 그대로 둔다
+        }
+        svc.pricing = p;
+        App.applyLegacyPrices(svc, table);
+        // 실제로 바뀐 서비스만 쓴다 (동기화 쓰기 최소화)
+        if (JSON.stringify([svc.pricing, svc.priceSmall, svc.priceMedium, svc.priceLarge]) !== before) {
+          await DB.update('services', svc);
+          updated++;
+        }
+      }
+      if (boundaryOnly) App.showToast('구간 경계를 저장했어요 (가격은 그대로)');
+      else if (bandsOff !== !!orig.bandsOff) App.showToast(bandsOff ? '이제 모든 서비스를 단일가로 받아요. 구간 가격은 보관돼요.' : '몸무게 구간을 다시 써요. 서비스 가격을 확인하세요.', 'info', { duration: 6000 });
+      else App.showToast(`가격 구간을 저장했어요${updated ? ' (서비스 ' + updated + '개 가격 갱신)' : ''}. 서비스 가격을 확인하세요.`);
+      App.closeModal();
+      App.handleRoute();
+    } catch (e) {
+      console.error('가격 구간 저장 실패:', e);
+      App.showToast('저장 중 오류가 발생했습니다.', 'error');
+    }
+  },
+
   _syncPasswordModal(mode) {
     const st = Sync.getStatus();
     const title = mode === 'set' ? '다른 기기용 비밀번호' : '이메일·비밀번호로 로그인';
@@ -634,6 +946,7 @@ App.pages.settings = {
 
   async init() {
     this.bindSyncCard();
+    document.getElementById('btn-edit-price-bands')?.addEventListener('click', () => this.showPriceBandEditor());
     // Tab switching with unsaved changes warning
     document.querySelectorAll('.settings-tab').forEach(tab => {
       tab.addEventListener('click', async () => {
@@ -652,6 +965,14 @@ App.pages.settings = {
         document.getElementById(tabId).style.display = 'block';
       });
     });
+    // 다른 화면의 바로가기(예: 매출 > '세무 자료 내보내기는 설정 › 데이터에서')가 특정 탭을 열어 달라고 남긴 표시
+    try {
+      const openTab = sessionStorage.getItem('settings-open-tab');
+      if (openTab) {
+        sessionStorage.removeItem('settings-open-tab');
+        document.querySelector(`.settings-tab[data-tab="${openTab}"]`)?.click();
+      }
+    } catch (e) { /* ignore */ }
 
     // Mark tab as modified when any input changes (input이면 change도 커버)
     document.querySelectorAll('.settings-tab-content input, .settings-tab-content select, .settings-tab-content textarea').forEach(el => {
@@ -706,9 +1027,14 @@ App.pages.settings = {
     document.getElementById('s-logo-upload')?.addEventListener('click', () => document.getElementById('s-logo-file')?.click());
     document.getElementById('s-logo-file')?.addEventListener('change', (e) => {
       const file = e.target.files[0];
+      e.target.value = ''; // 같은 파일을 다시 골라도 change 가 뜨게
       if (!file) return;
+      if (file.type && !file.type.startsWith('image/')) { App.showToast('사진(이미지) 파일만 올릴 수 있어요.', 'error'); return; }
+      // 너무 큰 원본은 폰 메모리 부족으로 멈출 수 있어 막는다 (작게 줄여서 저장하므로 보통 사진은 충분)
+      if (file.size > 20 * 1024 * 1024) { App.showToast('파일이 너무 커요 (20MB 이하만).', 'error'); return; }
       const reader = new FileReader();
       reader.onload = (ev) => {
+        // 200px 로 줄여 저장 (용량 작게)
         App.resizeImage(ev.target.result, async (compressed) => {
           await DB.setSetting('shopLogo', compressed);
           const preview = document.getElementById('s-logo-preview');
@@ -924,6 +1250,8 @@ App.pages.settings = {
         await DB.importAll(data);
         // 구버전 백업엔 반려견 방문 통계가 없을 수 있다 → 즉시 재계산 (목록·분석이 이 값을 읽는다)
         if (App.migratePetVisitStats) await App.migratePetVisitStats(true);
+        // 구버전 백업(사이즈 가격)이면 몸무게 구간 가격으로 다시 변환
+        if (App.migratePriceBands) await App.migratePriceBands(true);
         App.showToast('데이터가 복원되었습니다. (이전 데이터 자동 백업 완료)');
         App.handleRoute();
       } catch (err) {
@@ -962,10 +1290,13 @@ App.pages.settings = {
 
     // Clear all
     document.getElementById('btn-clear-all')?.addEventListener('click', async () => {
-      const confirmed = await App.confirm('정말로 모든 데이터를 삭제하시겠습니까?<br><strong>이 작업은 되돌릴 수 없습니다!</strong>', { okLabel: '계속' });
+      const confirmed = await App.confirm('정말로 이 기기의 모든 데이터를 삭제하시겠습니까?<br><strong>이 작업은 되돌릴 수 없습니다!</strong><br><small style="color:var(--text-muted)">지우기 전에 위의 백업을 먼저 받아 두세요.</small>', { okLabel: '계속' });
       if (!confirmed) return;
 
-      const doubleConfirm = await App.confirm('마지막 확인입니다.<br>모든 고객, 반려견, 예약, 미용 기록, 서비스 메뉴가 삭제됩니다.', { okLabel: '모두 삭제' });
+      const doubleConfirm = await App.confirm('마지막 확인입니다. 이 기기에서 아래가 모두 지워집니다.<br>' +
+        '• 고객, 반려견, 예약, 미용 기록, 사진, 서비스 메뉴<br>' +
+        '• <strong>매장 설정, 문자 템플릿, 로고, 잠금 설정</strong>도 함께<br>' +
+        '<small style="color:var(--text-muted)">클라우드(Google 로그인)에 올라간 데이터는 지워지지 않아요. 동기화 연결만 끊깁니다.</small>', { okLabel: '모두 삭제' });
       if (!doubleConfirm) return;
 
       try {
@@ -1144,7 +1475,13 @@ App.pages.settings = {
           <div class="form-hint">덮기: 사진이 보일 칸을 투명하게 뚫은 PNG. 아래 가이드를 받아 그 위에 디자인하면 칸 위치가 정확히 맞아요.</div>
           <div class="frame-guide-row">
             <select id="f-frame-guide-layout" aria-label="가이드 레이아웃">
-              ${Object.entries(App.pages.records._CARD_LAYOUTS).map(([k, l]) => `<option value="${k}" ${k === (frame.guideLayout || 'feed4') ? 'selected' : ''}>${l.name}</option>`).join('')}
+              ${(() => {
+                // 기본은 '피드 4:5' — 사진 4장이면 자동으로 4칸 모양이라 예전 '피드 4컷'(feed4)과 같은 가이드가 나온다.
+                // 예전에 feed4·story4 로 저장된 프레임은 가장 가까운 새 레이아웃(feed·story)으로 이어받는다.
+                const R = App.pages.records;
+                const cur = (R._CARD_LAYOUT_MIGRATE || {})[frame.guideLayout] || frame.guideLayout || 'feed';
+                return Object.entries(R._CARD_LAYOUTS).filter(([, l]) => !l.legacy).map(([k, l]) => `<option value="${k}" ${k === cur ? 'selected' : ''}>${l.name}</option>`).join('');
+              })()}
             </select>
             <button type="button" class="btn btn-secondary" id="f-frame-guide">${App.icon('download')} 칸 위치 가이드 저장</button>
           </div>
@@ -1202,7 +1539,7 @@ App.pages.settings = {
           textColor: document.getElementById('f-frame-text').value,
           enabled: document.getElementById('f-frame-enabled').checked,
           mode: document.querySelector('input[name="f-frame-mode"]:checked')?.value === 'overlay' ? 'overlay' : 'bg',
-          guideLayout: document.getElementById('f-frame-guide-layout')?.value || frame.guideLayout || 'feed4',
+          guideLayout: document.getElementById('f-frame-guide-layout')?.value || frame.guideLayout || 'feed',
           createdAt: frame.createdAt || new Date().toISOString()
         };
         const all = (await DB.getSetting('customFrames')) || [];
@@ -1224,7 +1561,7 @@ App.pages.settings = {
       if (btn.disabled) return;
       btn.disabled = true;
       try {
-        const layout = document.getElementById('f-frame-guide-layout')?.value || 'feed4';
+        const layout = document.getElementById('f-frame-guide-layout')?.value || 'feed';
         const cv = await App.pages.records.makeFrameGuide(layout);
         const blob = await new Promise(r => cv.toBlob(r, 'image/png'));
         const fileName = `프레임가이드_${layout}_${cv.width}x${cv.height}.png`;
@@ -1260,9 +1597,11 @@ App.pages.settings = {
   },
 
   // GitHub master-config.js 스니펫 표시 (배포 시 적용 필수)
-  async _showMasterConfigModal(includeRecovery) {
+  // mode: 'off' = 잠금 끄기용 내용, 'recovery' = 복구 코드 재발급 후
+  async _showMasterConfigModal(mode) {
     if (typeof Security === 'undefined') return;
-    const snippet = await Security.getMasterConfigSnippet();
+    const isOff = mode === 'off';
+    const snippet = isOff ? Security.getMasterConfigOffSnippet() : await Security.getMasterConfigSnippet();
     if (!snippet) {
       App.showToast('마스터 코드 설정 후 사용 가능합니다', 'warning');
       return;
@@ -1270,13 +1609,17 @@ App.pages.settings = {
     const repoEditUrl = 'https://github.com/a01090037052-lab/pet-salon/edit/main/js/master-config.js';
     setTimeout(() => {
     App.showModal({
-      title: 'GitHub 배포 설정 (다른 디바이스 잠금 활성화)',
+      title: isOff ? 'GitHub 설정 (모든 기기 잠금 끄기)' : 'GitHub 배포 설정 (다른 디바이스 잠금 활성화)',
       saveText: '닫기',
       onSave: () => { App.closeModal(); },
       content: `
         <div style="font-size:0.88rem;color:var(--text-secondary);line-height:1.6;margin-bottom:14px">
-          <strong style="color:var(--danger)">${App.icon('alert')} 다른 디바이스에서도 잠금이 작동하려면 아래 내용을 GitHub에 push 해야 합니다.</strong><br>
-          이 작업은 <strong>매장 첫 설정 시 한 번</strong> 또는 <strong>마스터 코드 변경 시</strong>에만 필요합니다.
+          ${isOff ? `<strong style="color:var(--danger)">${App.icon('alert')} 이 기기에서는 잠금이 꺼졌어요. 하지만 GitHub 설정에 잠금이 남아 있어서, 새 기기에서는 여전히 코드를 물어요.</strong><br>
+          모든 기기에서 끄려면 아래 내용으로 GitHub 의 master-config.js 를 바꿔 주세요.`
+          : mode === 'recovery' ? `<strong style="color:var(--danger)">${App.icon('alert')} 새 복구 코드는 지금은 이 기기에만 저장됐어요.</strong><br>
+          아래 내용을 GitHub 에 올려야 새 기기에서도 새 복구 코드가 통하고, <strong>예전 복구 코드는 더 이상 안 통해요.</strong>`
+          : `<strong style="color:var(--danger)">${App.icon('alert')} 다른 디바이스에서도 잠금이 작동하려면 아래 내용을 GitHub에 push 해야 합니다.</strong><br>
+          이 작업은 <strong>매장 첫 설정 시 한 번</strong>, <strong>마스터 코드 변경</strong>, <strong>복구 코드 재발급</strong> 때 필요합니다.`}
         </div>
 
         <div style="margin-bottom:14px">
@@ -1303,7 +1646,7 @@ App.pages.settings = {
         </div>
 
         <div style="background:var(--bg);padding:10px;border-radius:6px;font-size:0.82rem;color:var(--text-secondary)">
-          <strong>적용 후</strong>: 1~2분 안에 GitHub Pages 배포 → 모든 디바이스에서 잠금 화면 표시됩니다.
+          <strong>적용 후</strong>: 1~2분 안에 GitHub Pages 배포 → ${isOff ? '새 기기에서도 잠금 화면이 뜨지 않습니다.' : '모든 디바이스에서 잠금 화면 표시됩니다.'}
         </div>
       `
     });
@@ -1430,6 +1773,11 @@ App.pages.settings = {
       }
     });
 
+    // 이 기기에서만 꺼진 상태 → 모든 기기 잠금 끄기용 GitHub 설정
+    document.getElementById('btn-sec-show-off-config')?.addEventListener('click', () => {
+      this._showMasterConfigModal('off');
+    });
+
     // GitHub 배포 설정 보기 (이미 마스터 코드 설정된 사용자용 — 언제든 다시 볼 수 있게)
     document.getElementById('btn-sec-show-config')?.addEventListener('click', () => {
       this._showMasterConfigModal();
@@ -1461,6 +1809,11 @@ App.pages.settings = {
       try {
         const newRecovery = await Security.regenerateRecovery(currentPin);
         this._showRecoveryModal(newRecovery, true);
+        // 복구 코드 모달을 닫으면 → GitHub 설정 안내 (안 올리면 새 기기에선 옛 복구 코드가 계속 통한다)
+        App._modalOnClose = () => {
+          App._modalOnClose = null;
+          this._showMasterConfigModal('recovery');
+        };
       } catch (e) {
         App.showToast(e.message, 'error');
       }
@@ -1494,9 +1847,16 @@ App.pages.settings = {
       const currentPin = await this._promptPin('잠금 해제 — 현재 마스터 코드 확인', '마스터 코드 확인 후 잠금을 해제합니다', { requireConfirm: false });
       if (!currentPin) return;
       try {
-        await Security.disable(currentPin);
-        App.showToast('마스터 코드 잠금 해제됨');
-        App.handleRoute();
+        const masterStillOn = await Security.disable(currentPin);
+        if (masterStillOn) {
+          App.showToast('이 기기에서 잠금을 껐어요');
+          // GitHub 설정에 잠금이 남아 있으니 모든 기기 끄기 안내 → 닫히면 화면 새로고침
+          App._modalOnClose = () => { App.handleRoute(); App._modalOnClose = null; };
+          this._showMasterConfigModal('off');
+        } else {
+          App.showToast('마스터 코드 잠금 해제됨');
+          App.handleRoute();
+        }
       } catch (e) {
         App.showToast(e.message, 'error');
       }
@@ -1511,6 +1871,7 @@ App.pages.settings = {
       if (btn) { btn.disabled = true; btn.textContent = '되돌리는 중...'; }
       await DB.importAll(autoBackup.data);
       if (App.migratePetVisitStats) await App.migratePetVisitStats(true);
+      if (App.migratePriceBands) await App.migratePriceBands(true);
       App.showToast('복원 직전 상태로 되돌렸습니다.');
       App.handleRoute();
     } catch (restoreErr) {

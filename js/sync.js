@@ -28,7 +28,7 @@ const Sync = {
   RECORD_PHOTO_FIELDS: ['photoBefore', 'photoAfter'],
   PHOTO_STORES: ['petPhotos', 'recordPhotos'],
   // 동기화하지 않는 설정 키 (기기별 설정). DB._isInternalSetting(_autoBackup*, _sync*, sync) 도 제외된다.
-  LOCAL_SETTINGS: new Set(['sync', 'security', 'lastBackupDate', 'petVisitStatsVersion', 'lastIntegrityCheck', 'customFrames', 'customStickers', 'inlinePhotosMigratedAt']),
+  LOCAL_SETTINGS: new Set(['sync', 'security', 'lastBackupDate', 'petVisitStatsVersion', 'lastIntegrityCheck', 'customFrames', 'customStickers', 'inlinePhotosMigratedAt', 'priceBandsMigrated']),
 
   _s: null,            // 'sync' 설정 {enabled, deviceId, deviceNo, shopId, lastPullAt:{}, email}
   _auth: null,
@@ -52,6 +52,9 @@ const Sync = {
   _pendingPhotos: {},
   _pendingRecordPhotos: {}, // 기록보다 사진 문서가 먼저 도착한 경우 — 기록이 오면 붙인다
   _photoSig: {},
+  _tombs: {},          // 이 기기가 아는 삭제 {store_id: 삭제 시각} — 그보다 오래된 수정은 받지 않고, put 때 삭제 표시를 지울지 판단 (_syncTombs)
+  _tombReady: null,    // 리스너 시작 후 첫 삭제 표시 묶음을 반영했는지 — 보내기 전에 기다린다
+  _failAt: {},         // 받기에 실패한 문서의 가장 이른 서버 시각 — 받은 기준 시각을 그 앞에 묶어 둔다
   _refreshTimer: null,
   _saveTimer: null,
   _settingsChanged: false,
@@ -77,6 +80,10 @@ const Sync = {
       });
       this._s = (await DB.getSetting('sync')) || null;
       this._photoSig = (await DB.getSetting('_syncPhotoSig')) || {};
+      this._tombs = (await DB.getSetting('_syncTombs')) || {};
+      // 클라우드 삭제 표시 보관 기간이 지난 것은 잊는다
+      const tombCut = Date.now() - this.TOMBSTONE_KEEP_DAYS * 86400000;
+      for (const k of Object.keys(this._tombs)) if (!(this._tombs[k] > tombCut)) delete this._tombs[k];
       // 리다이렉트 로그인(홈 화면 앱)에서 돌아온 경우 → 연결 마법사 이어서 진행
       let pending = null;
       try { pending = sessionStorage.getItem(this.PENDING_ENABLE_KEY); } catch (_) {}
@@ -122,6 +129,7 @@ const Sync = {
         if (ph) items.push(ph);
       }
       if (store === 'records') items.push(...this._recordPhotoItems(op, id, data));
+      if (op === 'delete') this._noteTomb(store, id, Date.now());
       this._enqueue(items).then(() => { this._refreshPending(); this._scheduleFlush(); })
         .catch(e => console.warn('Sync enqueue 실패:', e));
     } catch (e) { console.warn('Sync.onLocalWrite 오류 (무시):', e); }
@@ -146,6 +154,7 @@ const Sync = {
       this._stopListeners();
       this._s = null;
       this._photoSig = {};
+      this._tombs = {};
       this._pending = 0;
       this._emit();
     } catch (_) {}
@@ -370,7 +379,7 @@ const Sync = {
             const data = this._toRemote(store, r);
             if (!data) continue;
             if (store !== 'settings') data.id = id;
-            items.push({ store, op: 'put', id, data });
+            items.push({ store, op: 'put', id, data, ct: true }); // 클라우드에 없던 것일 수 있다 — 남은 삭제 표시도 지운다
           }
         } else if (ph === 'petPhotos') {
           // 3) 반려견 프로필 사진: 받을 것은 받고, 클라우드에 없는 이 기기 사진은 올린다
@@ -466,6 +475,10 @@ const Sync = {
         await this._saveNow();
       }
       await this._clearQueue();
+      // 보내지 못한 삭제는 편지함과 함께 버려졌다 — 기억도 지워야 다시 켤 때 클라우드에 남은 레코드를 받는다
+      this._tombs = {};
+      clearTimeout(this._tombTimer);
+      try { await DB.setSetting('_syncTombs', {}); } catch (_) {}
       this._pending = 0;
       this._error = null;
       this._fatal = false;
@@ -657,6 +670,9 @@ const Sync = {
     // 기기 번호 (id 대역) — 데이터를 옮기기 전에 정해 둔다
     if (s.deviceNo == null) s.deviceNo = await this._allocDeviceNo();
     await this._clearQueue();
+    this._tombs = {};
+    clearTimeout(this._tombTimer);
+    await DB.setSetting('_syncTombs', {});
 
     if (mode === 'pull') {
       if (localHas) await this._backupLocal();
@@ -777,6 +793,7 @@ const Sync = {
       this._lastSyncAt = Date.now();
       await this._saveNow();
       if (App.migratePetVisitStats) { try { await App.migratePetVisitStats(true); } catch (_) {} }
+      if (App.migratePriceBands) { try { await App.migratePriceBands(); } catch (_) {} }
     } finally {
       this._progressDone();
     }
@@ -805,8 +822,27 @@ const Sync = {
   async pushAll({ replace = false, progress = false } = {}) {
     const items = [];
     const localIds = {};
+    const stamp = new Date().toISOString();
     for (const store of this.STORES) {
-      let rows = await DB.getAll(store);
+      // 복원·교체로 올릴 때: 옛 수정 시각 그대로 올리면 다른 기기가 '더 오래된 것'으로 보고 무시하고
+      // 삭제 표시(지금 시각)만 퍼져 기기마다 데이터가 달라졌다 → 이 기기 레코드의 수정 시각을 지금으로 찍어 이기게 한다.
+      // 읽기와 시각 기록을 한 트랜잭션에서 해서, 그 사이에 저장된 다른 변경을 옛 내용으로 덮지 않는다.
+      let rows = !replace ? await DB.getAll(store) : await new Promise((resolve, reject) => {
+        const out = [];
+        const tx = DB.db.transaction(store, 'readwrite');
+        const req = tx.objectStore(store).openCursor();
+        req.onsuccess = () => {
+          const cur = req.result;
+          if (!cur) return;
+          const r = cur.value;
+          if (!(store === 'settings' && this.isLocalOnlySetting(r.key))) { r.updatedAt = stamp; cur.update(r); }
+          out.push(r);
+          cur.continue();
+        };
+        tx.oncomplete = () => resolve(out);
+        tx.onerror = () => reject(tx.error);
+        tx.onabort = () => reject(tx.error);
+      });
       if (store === 'settings') rows = rows.filter(r => !this.isLocalOnlySetting(r.key));
       localIds[store] = new Set();
       for (const r of rows) {
@@ -814,7 +850,7 @@ const Sync = {
         const data = this._toRemote(store, r);
         if (!data) continue;
         localIds[store].add(String(id));
-        items.push({ store, op: 'put', id, data });
+        items.push({ store, op: 'put', id, data, ct: replace });
       }
     }
     localIds.petPhotos = new Set();
@@ -839,6 +875,7 @@ const Sync = {
           if (store === 'petPhotos' && localIds.pets.has(d.id)) return;
           if (store === 'recordPhotos') { const p = this._parseRecordPhotoId(d.id); if (p && localIds.records.has(String(p.rid))) return; }
           const id = (store === 'settings' || store === 'recordPhotos') ? d.id : Number(d.id);
+          this._noteTomb(store, id, Date.now());
           items.push({ store, op: 'delete', id, data: null });
         }), { pageSize: this._pageSizeFor(store) });
       }
@@ -863,14 +900,18 @@ const Sync = {
     this._emit();
     const FV = firebase.firestore.FieldValue;
     try {
+      // 다른 기기에서 지운 것을 먼저 반영한다 — 오프라인 동안 고친 레코드를 먼저 보내면 지운 레코드가 되살아난다
+      if (this._tombReady) await this._tombReady;
       for (;;) {
         const rows = await this._queuePeek(400);
         if (!rows.length) break;
         const batch = this._fs.batch();
         const done = [];
+        const cleared = []; // 이번에 클라우드 삭제 표시를 지운 레코드 → 커밋 후 기억에서도 지운다
         let ops = 0, bytes = 0;
         for (const row of rows) {
-          const need = 2; // put 도 삭제 표시 제거까지 2개
+          const clearTomb = row.op !== 'put' || this._needTombClear(row);
+          const need = clearTomb ? 2 : 1; // put 은 삭제 표시를 지울 때만 2개
           if (ops + need > this.MAX_OPS) break;
           const ref = this._col(row.store).doc(String(row.id));
           if (row.op === 'put') {
@@ -884,7 +925,7 @@ const Sync = {
             bytes += sz;
             try {
               batch.set(ref, { ...data, _serverAt: FV.serverTimestamp() });
-              batch.delete(this._col('tombstones').doc(`${row.store}_${row.id}`));
+              if (clearTomb) { batch.delete(this._col('tombstones').doc(`${row.store}_${row.id}`)); cleared.push(`${row.store}_${row.id}`); }
             } catch (e) {
               // 저장할 수 없는 모양의 데이터는 set() 에서 바로 거부된다 — 이 한 건만 건너뛰고 나머지는 보낸다
               if (e && e.code === 'invalid-argument') { console.warn(`Sync: 전송 불가 데이터 건너뜀 (${row.store} #${row.id})`, e); done.push(row.qid); continue; }
@@ -908,6 +949,7 @@ const Sync = {
               await this._commitOneByOne(rows.filter(r => done.includes(r.qid)));
             } else throw e;
           }
+          if (cleared.length) { cleared.forEach(k => { delete this._tombs[k]; }); this._saveTombsLater(); }
         }
         await this._queueRemove(done);
         if (this._progress) {
@@ -948,7 +990,7 @@ const Sync = {
           if (data) {
             const b = this._fs.batch();
             b.set(ref, { ...data, _serverAt: FV.serverTimestamp() });
-            b.delete(this._col('tombstones').doc(`${row.store}_${row.id}`));
+            if (this._needTombClear(row)) b.delete(this._col('tombstones').doc(`${row.store}_${row.id}`));
             await this._withTimeout(b.commit(), 30000);
           }
         } else {
@@ -962,6 +1004,13 @@ const Sync = {
         else throw e;
       }
     }
+  },
+
+  // put 과 함께 클라우드 삭제 표시도 지울지 — 필요할 때만 (매번 지우면 무료 쓰기 한도를 두 배로 쓴다).
+  // 사진 문서, 복원·교체·다시 맞추기로 올리는 것(ct), 이 기기가 아는 삭제가 있는 레코드만 지운다.
+  // 남아 있는 옛 삭제 표시는 해롭지 않다 — 받는 쪽은 모두 수정 시각을 비교해 더 새 레코드를 지우지 않는다.
+  _needTombClear(row) {
+    return !!row.ct || this.PHOTO_STORES.includes(row.store) || this._tombs[`${row.store}_${row.id}`] != null;
   },
 
   _withTimeout(p, ms) {
@@ -981,6 +1030,10 @@ const Sync = {
     this._s.lastOnlineAt = Date.now();
     this._saveLater();
     this._listenStartedAt = Date.now();
+    this._failAt = {}; // 새로 시작하면 받은 기준 시각(실패한 문서 앞)부터 다시 받는다
+    // 첫 삭제 표시 묶음을 반영하면(또는 20초가 지나면) 보내기를 시작한다 (flush 가 기다린다)
+    let tombDone;
+    this._tombReady = new Promise(r => { tombDone = r; setTimeout(r, 20000); });
     this._pruneTombstones().catch(e => console.warn('Sync: 삭제 표시 정리 실패', e));
     const TS = firebase.firestore.Timestamp;
     this._retryPendingRecordPhotos();
@@ -991,8 +1044,8 @@ const Sync = {
       // 마지막으로 받은 서버 시각 이후만 — 앱을 켤 때마다 전체를 다시 읽지 않는다 (무료 읽기 한도 보호)
       if (since) q = q.where('_serverAt', '>', TS.fromMillis(since));
       const unsub = q.onSnapshot(
-        snap => this._onSnapshot(store, snap),
-        err => this._handleError(err)
+        snap => { this._onSnapshot(store, snap); if (store === 'tombstones') this._applyChain.then(tombDone, tombDone); },
+        err => { if (store === 'tombstones') tombDone(); this._handleError(err); }
       );
       this._unsubs.push(unsub);
     }
@@ -1093,20 +1146,41 @@ const Sync = {
         if (!st) return; // 아직 서버에 기록되지 않은 이 기기의 쓰기
         if (st > maxTs) maxTs = st;
         if (d._deviceId && d._deviceId === this._s.deviceId) return; // 내가 보낸 것
-        docs.push({ id: c.doc.id, data: d });
+        docs.push({ id: c.doc.id, data: d, st });
       });
       if (!maxTs) return;
       this._applyChain = this._applyChain.then(async () => {
         if (!this.isEnabled()) return;
         let changed = 0;
+        let failAt = 0; // 반영하지 못한 문서 중 가장 이른 서버 시각
         if (docs.length) {
-          if (store === 'tombstones') changed = await this._applyTombstones(docs);
-          else if (store === 'petPhotos') changed = await this._applyPetPhotos(docs);
-          else if (store === 'recordPhotos') changed = await this._applyRecordPhotos(docs);
-          else changed = await this._applyRemote(store, docs, false);
-          if (store === 'records') await this._afterRemoteRecords(docs);
+          try {
+            if (store === 'tombstones') changed = await this._applyTombstones(docs);
+            else if (store === 'petPhotos') changed = await this._applyPetPhotos(docs);
+            else if (store === 'recordPhotos') changed = await this._applyRecordPhotos(docs);
+            else changed = await this._applyRemote(store, docs, false);
+            if (store === 'records') await this._afterRemoteRecords(docs);
+          } catch (e) {
+            console.warn('Sync 적용 실패:', store, e);
+            docs.forEach(x => { x._failed = true; });
+          }
+          // 사진은 한 장씩 실패할 수 있다 (_failed 표시).
+          // 같은 문서가 3번 넘게 실패하면 더는 기준 시각을 묶지 않는다 — 깨진 문서 하나 때문에
+          // 앱을 켤 때마다 그 뒤 문서를 전부 다시 읽어 무료 읽기 한도를 쓰지 않도록.
+          const fc = this._s.failCnt || (this._s.failCnt = {});
+          docs.forEach(x => {
+            const k = store + '|' + x.id;
+            if (!x._failed) { if (fc[k]) delete fc[k]; return; }
+            fc[k] = (fc[k] || 0) + 1;
+            if (fc[k] > 3) { console.warn('Sync: 계속 실패해 건너뜀', k); return; }
+            if (!failAt || x.st < failAt) failAt = x.st;
+          });
         }
-        this._s.lastPullAt[store] = Math.max(this._s.lastPullAt[store] || 0, maxTs);
+        if (failAt) this._failAt[store] = Math.min(this._failAt[store] || Infinity, failAt);
+        // 받은 기준 시각은 실패한 문서 앞까지만 — 예전엔 실패해도 기준이 넘어가 그 문서를 다시는 받지 않았다.
+        // (다음에 리스너를 다시 시작하면 그 문서부터 다시 받는다)
+        const nextAt = Math.max(this._s.lastPullAt[store] || 0, maxTs);
+        this._s.lastPullAt[store] = this._failAt[store] ? Math.min(nextAt, this._failAt[store] - 1) : nextAt;
         this._lastSyncAt = Date.now();
         this._s.lastSyncAt = this._lastSyncAt;
         this._s.lastOnlineAt = this._lastSyncAt;
@@ -1137,6 +1211,8 @@ const Sync = {
           const local = req.result;
           const remoteTs = Number(d._updatedAt) || 0;
           if (!force && local && this._localTs(local) >= remoteTs) return;
+          // 이 기기가 아는 삭제보다 오래된 수정은 받지 않는다 (오프라인 기기가 늦게 보낸 수정이 지운 레코드를 되살리던 문제)
+          if (!force && !local && (this._tombs[`${store}_${key}`] || 0) >= remoteTs) return;
           const rec = this._fromRemote(store, d, local);
           if (store === 'settings') rec.key = key; else rec.id = key;
           os.put(rec);
@@ -1172,16 +1248,28 @@ const Sync = {
       if (store === 'petPhotos' || store === 'recordPhotos') return Promise.resolve();
       if (!this.STORES.includes(store)) return Promise.resolve();
       return new Promise((resolve, reject) => {
-        const tx = DB.db.transaction(store, 'readwrite');
+        const tx = DB.db.transaction([store, 'syncQueue'], 'readwrite');
         const os = tx.objectStore(store);
+        const qidx = tx.objectStore('syncQueue').index('qk');
         for (const t of byStore[store]) {
           const key = store === 'settings' ? String(t.id) : Number(t.id);
           if (store === 'settings' && this.isLocalOnlySetting(key)) continue;
+          const tts = Number(t._updatedAt) || 0;
+          this._noteTomb(store, key, tts);
           const req = os.get(key);
           req.onsuccess = () => {
             const local = req.result;
             // 삭제 이후에 이 기기에서 다시 고친 레코드는 살린다
-            if (local && this._localTs(local) <= (Number(t._updatedAt) || 0)) { os.delete(key); total++; }
+            if (local && this._localTs(local) <= tts) { os.delete(key); total++; }
+          };
+          // 삭제보다 먼저 고쳐 두고 아직 못 보낸 수정은 버린다 — 보내면 클라우드·다른 기기에서 지운 레코드가 되살아난다
+          const qreq = qidx.openCursor(IDBKeyRange.only(`${store}|${key}`));
+          qreq.onsuccess = () => {
+            const cur = qreq.result;
+            if (!cur) return;
+            const row = cur.value;
+            if (row.op === 'put' && (Number(row.data && row.data._updatedAt) || row.ts || 0) <= tts) cur.delete();
+            cur.continue();
           };
         }
         tx.oncomplete = () => resolve();
@@ -1189,7 +1277,7 @@ const Sync = {
         tx.onabort = () => reject(tx.error);
       });
     });
-    return Promise.all(photoJobs).then(() => Promise.all(storeJobs())).then(() => { if (total && App.notifyTabSync) App.notifyTabSync(); return total; });
+    return Promise.all(photoJobs).then(() => Promise.all(storeJobs())).then(() => { this._refreshPending(); if (total && App.notifyTabSync) App.notifyTabSync(); return total; });
   },
 
   // 반려견 프로필 사진(400px) — 이 기기에 원본 사진이 없을 때만 넣는다.
@@ -1223,7 +1311,7 @@ const Sync = {
         if (!applied) { await DB.deletePhoto(newId); continue; }
         if (oldId && oldId !== newId) await DB.deletePhoto(oldId);
         changed++;
-      } catch (e) { console.warn('Sync: 반려견 사진 저장 실패', petId, e); }
+      } catch (e) { console.warn('Sync: 반려견 사진 저장 실패', petId, e); doc._failed = true; }
     }
     if (changed && App.notifyTabSync) App.notifyTabSync();
     return changed;
@@ -1281,6 +1369,9 @@ const Sync = {
         if (busy || typing || dirtyTab) { this._scheduleRefresh(2000); return; }
         if (document.visibilityState !== 'visible') return; // 다시 보일 때 visibilitychange 에서 처리
         this._refreshWanted = false;
+        App._priceBandsCache = null; // 다른 기기에서 구간표를 바꿨을 수 있다
+        // 구버전 기기에서 고친 사이즈 가격(서명 불일치)·새로 만든 메뉴를 구간 가격으로 맞춘다 (바뀐 게 없으면 쓰지 않음)
+        if (App.migratePriceBands) { try { await App.migratePriceBands(); } catch (_) {} }
         if (this._settingsChanged) {
           this._settingsChanged = false;
           try { if (App.applyShopName) await App.applyShopName(); if (App.applyTheme) await App.applyTheme(); } catch (_) {}
@@ -1495,7 +1586,7 @@ const Sync = {
         delete this._pendingRecordPhotos[String(doc.id)];
         changed++;
         if (rec.petId) pets.add(rec.petId);
-      } catch (e) { console.warn('Sync: 기록 사진 적용 실패', doc && doc.id, e); }
+      } catch (e) { console.warn('Sync: 기록 사진 적용 실패', doc && doc.id, e); if (doc) doc._failed = true; }
     }
     for (const petId of pets) { try { await App.pruneRecordPhotos(petId); } catch (_) {} }
     if (changed && App.notifyTabSync) App.notifyTabSync();
@@ -1622,8 +1713,12 @@ const Sync = {
         // 레코드 번호는 rid 에 둔다 — 편지함의 keyPath 가 'id' 라서 id 로 넣으면 편지함 번호로 쓰여
         // 고객 1번과 반려견 1번처럼 종류가 다른 같은 번호가 부딪혀 묶음 전체가 저장되지 않았다.
         const row = { qk, store: it.store, op: it.op, rid: it.id, data: it.data || null, ts: now };
-        const r = idx.getAllKeys(qk);
-        r.onsuccess = () => { (r.result || []).forEach(k => os.delete(k)); os.add(row); };
+        if (it.ct) row.ct = true; // 보낼 때 클라우드 삭제 표시도 지운다 (_needTombClear)
+        const r = idx.getAll(qk);
+        r.onsuccess = () => {
+          (r.result || []).forEach(old => { if (old.ct) row.ct = true; os.delete(old.id); });
+          os.add(row);
+        };
       }
       tx.oncomplete = () => resolve();
       tx.onerror = () => reject(tx.error);
@@ -1739,6 +1834,20 @@ const Sync = {
   _saveSigLater() {
     clearTimeout(this._sigTimer);
     this._sigTimer = setTimeout(() => { DB.setSetting('_syncPhotoSig', this._photoSig).catch(() => {}); }, 1500);
+  },
+
+  // 삭제(이 기기에서 지운 것·받은 삭제 표시)를 기억해 둔다 — 늦게 도착한 그 이전의 수정이 지운 레코드를 되살리지 않게
+  _noteTomb(store, id, ts) {
+    if (!this.STORES.includes(store) || id == null || !ts) return;
+    const k = `${store}_${id}`;
+    if ((this._tombs[k] || 0) >= ts) return;
+    this._tombs[k] = ts;
+    this._saveTombsLater();
+  },
+
+  _saveTombsLater() {
+    clearTimeout(this._tombTimer);
+    this._tombTimer = setTimeout(() => { DB.setSetting('_syncTombs', this._tombs).catch(() => {}); }, 1500);
   },
 
   _handleError(e) {
