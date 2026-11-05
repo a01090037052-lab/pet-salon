@@ -4,14 +4,15 @@
 //  - 로컬 쓰기 → syncQueue(보낼 편지함)에 쌓임 → 온라인·로그인 시 Firestore 로 일괄 전송.
 //  - 다른 기기의 변경 → onSnapshot 리스너(마지막으로 받은 시각 이후만) → 로컬에 반영.
 //  - 백엔드를 바꿀 때는 이 파일만 교체하면 된다 (db.js 는 Sync.onLocalWrite / allocId / afterImport 만 안다).
-// Firestore 경로: shops/main/{customers|pets|appointments|records|services|settings|expenses}/{id}
+// Firestore 경로: shops/main/{customers|pets|appointments|records|services|settings|expenses|prepaid}/{id}
 //                shops/main/petPhotos/{petId}, shops/main/recordPhotos/{recordId}_{photoBefore|photoAfter},
 //                shops/main/tombstones/{store}_{id}, shops/main/meta/{shop|devices}
 const Sync = {
   SDK_VER: '10.14.1',
   SHOP_ID: 'main',
-  STORES: ['customers', 'pets', 'appointments', 'records', 'services', 'settings', 'expenses'],
-  ID_STORES: ['customers', 'pets', 'services', 'appointments', 'records', 'expenses'],
+  // prepaid(정액권 장부, DB v7): 옛 기기(v6)는 이 목록에 없어서 그 컬렉션·삭제 표시를 읽지 않고 건너뛴다 (_applyTombstones 의 STORES 검사)
+  STORES: ['customers', 'pets', 'appointments', 'records', 'services', 'settings', 'expenses', 'prepaid'],
+  ID_STORES: ['customers', 'pets', 'services', 'appointments', 'records', 'expenses', 'prepaid'],
   ID_RANGE: 1e9, // 기기 번호마다 id 대역을 나눠 두 기기가 같은 번호를 만들지 않게 한다
   MAX_OPS: 450, // writeBatch 한도 500 미만
   MAX_BATCH_BYTES: 8 * 1024 * 1024, // 사진 묶음 상한 (Firestore 배치 10MiB)

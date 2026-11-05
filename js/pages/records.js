@@ -90,7 +90,7 @@ App.pages.records = {
     const unpaidRecs = loadMode === 'unpaid'
       ? records
       : (await DB.getByIndex('records', 'paymentMethod', 'unpaid'));
-    const unpaidTotal = unpaidRecs.reduce((sum, r) => sum + App.getRecordAmount(r), 0);
+    const unpaidTotal = unpaidRecs.reduce((sum, r) => sum + App.getUnpaidAmount(r), 0);
 
     // ========== 목록 행/카드 빌더 (점진 렌더용) ==========
     // 데이터는 메모리에 다 두고 DOM에는 150개씩만 붙인다 (3년치 수천 건을 한 번에 그리면 iPhone 메모리 부족)
@@ -124,7 +124,7 @@ App.pages.records = {
                       <td class="hide-mobile"><span style="font-size:0.85rem">${App.escapeHtml(serviceNames)}</span>${Array.isArray(r.complimentary) && r.complimentary.length ? ' <span class="badge badge-success" style="font-size:0.7rem;padding:1px 6px">서비스</span>' : ''}</td>
                       <td><strong>${App.formatCurrency(App.getRecordAmount(r))}</strong>${r.discount || r.extraCharge ? `<div style="font-size:0.7rem;color:var(--text-muted)">${r.discount ? '-' + App.formatCurrency(r.discount) : ''}${r.extraCharge ? '+' + App.formatCurrency(r.extraCharge) : ''}</div>` : ''}</td>
                       ${showGroomer ? `<td class="hide-mobile">${App.escapeHtml(r.groomer || '-')}</td>` : ''}
-                      <td class="hide-mobile">${this.getPaymentLabel(r.paymentMethod)}${paidNote(r)}</td>
+                      <td class="hide-mobile">${this.getPaymentLabel(r.paymentMethod, r)}${paidNote(r)}</td>
                       <td class="hide-mobile" style="max-width:150px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${App.escapeHtml(r.memo || '')}">
                         ${App.escapeHtml(r.memo || '-')}
                       </td>
@@ -155,7 +155,7 @@ App.pages.records = {
                   <div class="mobile-card-meta">
                     ${showGroomer ? `<span>${App.icon('scissors')} ${App.escapeHtml(r.groomer || '-')}</span>` : ''}
                     <!-- 미결제는 빨간 배지 하나만 (결제수단 글자 '미결제' + 배지가 겹쳐 '미결제 미결제'로 보였다) -->
-                    ${isUnpaid ? '' : `<span>${this.getPaymentLabel(r.paymentMethod)}${paidNote(r)}</span>`}
+                    ${isUnpaid ? '' : `<span>${this.getPaymentLabel(r.paymentMethod, r)}${paidNote(r)}</span>`}
                     ${App._recordHasPhoto(r) ? `<span>${App.icon('camera')} 사진</span>` : ''}
                     ${Number(r.complimentaryTotal) > 0 || (Array.isArray(r.complimentary) && r.complimentary.length) ? `<span class="badge badge-success" style="font-size:0.72rem;padding:2px 8px" title="서비스(무료)로 제공: ${App.escapeHtml((r.complimentary || []).map(c => c.name).join(', '))}">서비스</span>` : ''}
                     ${isUnpaid ? '<span class="badge badge-danger">미결제</span>' : ''}
@@ -561,7 +561,7 @@ App.pages.records = {
       visibleSum += amt;
       if (r.paymentMethod === 'unpaid') {
         unpaidCount++;
-        unpaidSum += amt;
+        unpaidSum += App.getUnpaidAmount(r);
       }
     });
 
@@ -677,6 +677,11 @@ App.pages.records = {
     compList.filter(c => c && !c.main).forEach(c => { compAddon[App.normalizeServiceName(c.name)] = Number(c.price) || 0; });
 
     const petOptions = await App.getPetOptions(record.customerId, record.petId);
+    // 정액권으로 (일부) 낸 기록이면 정액권 칩이 켜진 채로 연다. 나머지 결제 수단은 paymentMethod 에 있다
+    const pfMode = Number(record.prepaidUsed) > 0 || record.paymentMethod === 'prepaid';
+    const pfRest0 = pfMode && record.paymentMethod && record.paymentMethod !== 'prepaid' ? record.paymentMethod : 'card';
+    this._formTotal = record.finalPrice != null ? Number(record.finalPrice) || 0
+      : (Number(record.servicePrice || record.totalPrice) || 0) + (Number(record.addonPrice) || 0) - (Number(record.discount) || 0) + (Number(record.extraCharge) || 0);
     // 담당 미용사 칸: 미용사 2명 이상 등록 시에만 보인다. 등록 명단에 없는 이름이 이미 적힌 기록이면 그 값을 볼 수 있게 보인다
     const registeredGroomers = (await DB.getSetting('groomers')) || [];
     const showGroomerField = registeredGroomers.length >= 2 || !!(record.groomer && !registeredGroomers.includes(record.groomer));
@@ -767,12 +772,22 @@ App.pages.records = {
         <div class="form-group">
           <label class="form-label">결제 수단</label>
           <div id="f-paymentMethod-chips" style="display:flex;gap:6px;flex-wrap:wrap">
-            <button type="button" class="payment-chip${(!record.paymentMethod && !id) || record.paymentMethod === 'card' ? ' active' : ''}" data-value="card">카드</button>
-            <button type="button" class="payment-chip${record.paymentMethod === 'cash' ? ' active' : ''}" data-value="cash">현금</button>
-            <button type="button" class="payment-chip${record.paymentMethod === 'transfer' ? ' active' : ''}" data-value="transfer">계좌이체</button>
-            <button type="button" class="payment-chip${record.paymentMethod === 'unpaid' ? ' active' : ''}" data-value="unpaid">미결제</button>
+            <button type="button" class="payment-chip${!pfMode && ((!record.paymentMethod && !id) || record.paymentMethod === 'card') ? ' active' : ''}" data-value="card">카드</button>
+            <button type="button" class="payment-chip${!pfMode && record.paymentMethod === 'cash' ? ' active' : ''}" data-value="cash">현금</button>
+            <button type="button" class="payment-chip${!pfMode && record.paymentMethod === 'transfer' ? ' active' : ''}" data-value="transfer">계좌이체</button>
+            <button type="button" class="payment-chip${!pfMode && record.paymentMethod === 'unpaid' ? ' active' : ''}" data-value="unpaid">미결제</button>
+            <!-- 정액권: 잔액이 있는 손님(또는 이미 정액권으로 낸 기록)일 때만 보인다 -->
+            <button type="button" class="payment-chip${pfMode ? ' active' : ''}" data-value="prepaid"${pfMode ? '' : ' hidden'}>정액권</button>
           </div>
-          <input type="hidden" id="f-paymentMethod" value="${(!record.paymentMethod && !id) ? 'card' : (record.paymentMethod || 'card')}">
+          <input type="hidden" id="f-paymentMethod" value="${pfMode ? 'prepaid' : (!record.paymentMethod && !id) ? 'card' : (record.paymentMethod || 'card')}">
+          <div id="f-prepaid-info" class="prepaid-form-info" style="display:none"></div>
+          <div id="f-prepaid-rest" class="prepaid-rest" style="display:none">
+            <div class="prepaid-rest-q"></div>
+            <div style="display:flex;gap:6px;flex-wrap:wrap">
+              ${[['cash', '현금'], ['card', '카드'], ['transfer', '계좌이체'], ['unpaid', '미수']].map(([v, l]) => `<button type="button" class="payment-chip prepaid-rest-chip${pfRest0 === v ? ' active' : ''}" data-value="${v}">${l}</button>`).join('')}
+            </div>
+          </div>
+          <input type="hidden" id="f-prepaidRest" value="${pfRest0}">
         </div>
 
         <!-- 현금영수증 (현금 결제 시에만 표시) -->
@@ -1266,12 +1281,17 @@ App.pages.records = {
       if (on) App.showToast('기본가를 서비스(무료)로 제공해요. 영수증에 \'서비스\'로 찍혀요.', 'info');
     });
     const calcTotal = () => {
-      const base = isMainFree() ? 0 : (Number(document.getElementById('f-servicePrice')?.value) || 0);
-      const addon = Number(document.getElementById('f-addonPrice')?.value) || 0;
-      const discount = Number(document.getElementById('f-discount')?.value) || 0;
-      const extra = Number(document.getElementById('f-extraCharge')?.value) || 0;
+      const { finalPrice } = App.calcRecordTotals({
+        servicePrice: document.getElementById('f-servicePrice')?.value,
+        addonPrice: document.getElementById('f-addonPrice')?.value,
+        discount: document.getElementById('f-discount')?.value,
+        extraCharge: document.getElementById('f-extraCharge')?.value,
+        mainFree: isMainFree()
+      });
       const el = document.getElementById('final-price-value');
-      if (el) el.textContent = App.formatCurrency(base + addon - discount + extra);
+      if (el) el.textContent = App.formatCurrency(finalPrice);
+      this._formTotal = finalPrice;
+      if (this._prepaidRender) this._prepaidRender();
       // 서비스(무료)로 제공한 항목 — '상세 옵션'을 접어 둬도 보이게 합계 아래 한 줄
       const cs = document.getElementById('f-comp-summary');
       if (cs) {
@@ -1319,6 +1339,65 @@ App.pages.records = {
       });
     });
 
+    // ===== 정액권 (잔액 있는 손님만 칩이 보인다) =====
+    // 쓸 수 있는 금액 = 고른 고객의 잔액 (+ 이 기록이 이미 쓴 금액). 고객·합계가 바뀌면 다시 그린다
+    const pf = { avail: 0, cid: null, keepChip: pfMode, seq: 0 };
+    const prepaidChip = document.querySelector('#f-paymentMethod-chips .payment-chip[data-value="prepaid"]');
+    const pfInfo = document.getElementById('f-prepaid-info');
+    const pfRestRow = document.getElementById('f-prepaid-rest');
+    const pfSelected = () => document.getElementById('f-paymentMethod')?.value === 'prepaid';
+    this._prepaidRender = () => {
+      if (!prepaidChip || !prepaidChip.isConnected) { this._prepaidRender = null; return; }
+      const split = App.calcPrepaidUse(pf.avail, this._formTotal);
+      const show = pf.avail > 0 || (pf.keepChip && pfSelected());
+      prepaidChip.hidden = !show;
+      if (!show && pfSelected()) {
+        // 잔액 없는 손님으로 바꿨다 — 나머지로 고른 결제 수단(기본 카드)으로 돌린다
+        const fallback = document.getElementById('f-prepaidRest')?.value || 'card';
+        document.querySelector(`#f-paymentMethod-chips .payment-chip[data-value="${fallback}"]`)?.click();
+        return;
+      }
+      if (pfInfo) {
+        pfInfo.style.display = show && pf.avail !== 0 ? 'block' : 'none';
+        if (pfSelected()) {
+          pfInfo.innerHTML = `정액권 잔액 <strong>${App.formatCurrency(pf.avail)}</strong> · 사용 ${App.formatCurrency(split.used)} → 남는 잔액 ${App.formatCurrency(split.balanceLeft)}`;
+        } else {
+          pfInfo.innerHTML = `정액권 잔액 <strong>${App.formatCurrency(pf.avail)}</strong>`;
+        }
+      }
+      const rest = pfSelected() ? split.rest : 0;
+      if (pfRestRow) {
+        pfRestRow.style.display = rest > 0 ? 'block' : 'none';
+        const q = pfRestRow.querySelector('.prepaid-rest-q');
+        if (q) q.textContent = `잔액 ${App.formatCurrency(Math.max(0, pf.avail))} — 나머지 ${App.formatCurrency(rest)}은?`;
+      }
+      const cashGroup = document.getElementById('cashreceipt-group');
+      if (cashGroup && pfSelected()) cashGroup.style.display = rest > 0 && document.getElementById('f-prepaidRest')?.value === 'cash' ? 'block' : 'none';
+    };
+    this._prepaidCustomer = async (cid) => {
+      const my = ++pf.seq;
+      cid = Number(cid) || null;
+      let avail = 0;
+      if (cid) {
+        try { avail = await Prepaid.availableFor(await Prepaid.payerFor(id || null, record.customerId, cid), id || null); } catch (_) { avail = 0; }
+      }
+      if (my !== pf.seq) return; // 고객을 빠르게 바꾼 경우 마지막 것만
+      // 이미 정액권으로 낸 기록이라도 다른 고객으로 바꾸면 그 고객 잔액 기준
+      if (cid !== Number(record.customerId)) pf.keepChip = false;
+      pf.cid = cid; pf.avail = avail;
+      if (this._prepaidRender) this._prepaidRender();
+    };
+    prepaidChip && paymentChips.forEach(chip => chip.addEventListener('click', () => { if (this._prepaidRender) this._prepaidRender(); }));
+    document.querySelectorAll('#f-prepaid-rest .prepaid-rest-chip').forEach(chip => {
+      chip.addEventListener('click', () => {
+        document.querySelectorAll('#f-prepaid-rest .prepaid-rest-chip').forEach(c => c.classList.remove('active'));
+        chip.classList.add('active');
+        document.getElementById('f-prepaidRest').value = chip.dataset.value;
+        if (this._prepaidRender) this._prepaidRender();
+      });
+    });
+    if (record.customerId) this._prepaidCustomer(record.customerId);
+
     // 현금영수증 checkbox → 승인번호 입력란 토글
     document.getElementById('f-cashReceipt')?.addEventListener('change', (e) => {
       const noInput = document.getElementById('f-cashReceiptNo');
@@ -1346,6 +1425,7 @@ App.pages.records = {
 
     // 반려견 목록 갱신 + 없으면 그 자리에서 등록 버튼 제공 (change 이벤트도 여기서 발생시킨다)
     const origCustomerOnChange = async (cid, preferPetId) => {
+      if (this._prepaidCustomer) this._prepaidCustomer(cid);
       await App.refreshPetSelect(cid, preferPetId);
     };
 
@@ -1511,7 +1591,7 @@ App.pages.records = {
       const date = document.getElementById('f-date').value;
       const groomer = document.getElementById('f-groomer').value.trim();
       const memo = document.getElementById('f-memo').value.trim();
-      const paymentMethod = document.getElementById('f-paymentMethod').value;
+      let paymentMethod = document.getElementById('f-paymentMethod').value;
 
       // 새 서비스/스타일/가격 필드
       const service = App.normalizeServiceName(document.getElementById('f-service')?.value);
@@ -1529,7 +1609,11 @@ App.pages.records = {
         if (tag.dataset.free === '1') freeAddons.push({ name: t, price: Number(tag.dataset.price) || 0 });
       });
       const addonPrice = Number(document.getElementById('f-addonPrice')?.value) || 0;
-      const totalPrice = servicePrice + addonPrice;
+      const discount = Number(document.getElementById('f-discount')?.value) || 0;
+      const extraCharge = Number(document.getElementById('f-extraCharge')?.value) || 0;
+      // 금액 식은 화면 합계와 같은 함수 (App.calcRecordTotals — tests/money.test.js)
+      const money = App.calcRecordTotals({ servicePrice: servicePriceInputVal, addonPrice, discount, extraCharge, mainFree, freeAddons });
+      const totalPrice = money.totalPrice;
       // 호환용: serviceNames 배열도 저장
       const serviceNames = service ? [service] : [];
       // 오늘 몸무게 (구간 가격 스냅샷 · 반려견 프로필 갱신)
@@ -1583,11 +1667,9 @@ App.pages.records = {
       if (!date) { App.showToast('날짜를 입력해주세요.', 'error'); App.highlightField('f-date'); return; }
       if (!service) { App.showToast('서비스를 입력해주세요.', 'error'); App.highlightField('f-service'); return; }
 
-      const discount = Number(document.getElementById('f-discount')?.value) || 0;
-      const extraCharge = Number(document.getElementById('f-extraCharge')?.value) || 0;
-      const finalPrice = totalPrice - discount + extraCharge;
-      if (finalPrice < 0) { App.showToast('할인이 금액보다 큽니다. 할인 금액을 확인해주세요.', 'error'); App.highlightField('f-discount'); return; }
-      const compTotal0 = (mainFree ? servicePriceInputVal : 0) + freeAddons.reduce((t, a) => t + a.price, 0);
+      const finalPrice = money.finalPrice;
+      if (money.negative) { App.showToast('할인이 금액보다 큽니다. 할인 금액을 확인해주세요.', 'error'); App.highlightField('f-discount'); return; }
+      const compTotal0 = money.complimentaryTotal;
       if (finalPrice === 0 && paymentMethod !== 'unpaid' && !(mainFree || freeAddons.length)) {
         // 예약→기록 흐름에서 가격이 비어 0원 매출이 조용히 쌓이던 문제. 무료 서비스는 확인 후 저장.
         const okZero = await App.confirm('합계가 <strong>0원</strong>입니다. 무료 서비스로 저장할까요?', { okLabel: '0원으로 저장', danger: false });
@@ -1597,6 +1679,33 @@ App.pages.records = {
       if (Math.max(totalPrice, finalPrice) > 5000000) {
         const okBig = await App.confirm(`합계가 <strong>${App.formatCurrency(Math.max(totalPrice, finalPrice))}</strong>입니다. 금액이 맞나요?`, { okLabel: '이 금액으로 저장', danger: false });
         if (!okBig) { App.highlightField('f-servicePrice'); return; }
+      }
+      // 정액권: 저장 직전 잔액으로 다시 계산 — 쓸 금액 = min(잔액, 합계), 나머지는 고른 결제 수단(paymentMethod)
+      let prepaidUsed = 0;
+      let prepaidPayer = customerId;
+      if (paymentMethod === 'prepaid') {
+        const restMethod = document.getElementById('f-prepaidRest')?.value || 'card';
+        const restLabel = this.getPaymentLabel(restMethod);
+        let avail = 0;
+        try {
+          const origRec = id ? await DB.get('records', id) : null;
+          prepaidPayer = await Prepaid.payerFor(id || null, origRec ? origRec.customerId : null, customerId);
+          avail = await Prepaid.availableFor(prepaidPayer, id || null);
+        } catch (_) { avail = 0; }
+        const split = App.calcPrepaidUse(avail, finalPrice, restMethod);
+        prepaidUsed = split.used;
+        const rest = split.rest;
+        if (prepaidUsed <= 0 && finalPrice > 0) {
+          const ok = await App.confirm(`이 손님은 정액권 잔액이 없습니다.<br><strong>${App.formatCurrency(finalPrice)}</strong>을 ${restLabel}(으)로 저장할까요?`, { okLabel: `${restLabel}(으)로 저장`, danger: false });
+          if (!ok) return;
+          await new Promise(r => setTimeout(r, 180));
+        } else if (rest > 0 && document.getElementById('f-prepaid-rest')?.style.display === 'none') {
+          // 화면에서 '나머지는?'을 묻지 못한 경우(그사이 잔액이 바뀜) — 저장 전에 한 번 묻는다
+          const ok = await App.confirm(`정액권 잔액 ${App.formatCurrency(avail)} — 나머지 <strong>${App.formatCurrency(rest)}</strong>은 ${restLabel}(으)로 받을까요?`, { okLabel: '이대로 저장', danger: false });
+          if (!ok) return;
+          await new Promise(r => setTimeout(r, 180));
+        }
+        paymentMethod = split.paymentMethod;
       }
       const appointmentId = document.getElementById('f-appointmentId')?.value || null;
       const status = 'completed';
@@ -1629,6 +1738,7 @@ App.pages.records = {
       const cashReceiptNo = document.getElementById('f-cashReceiptNo')?.value?.trim() || '';
 
       const data = { customerId, petId, date, groomer, nextVisitDate, service, serviceId, servicePrice, serviceCategory, addons, addonServiceIds, addonPrice, style, serviceNames, totalPrice, discount, extraCharge, finalPrice, memo, paymentMethod, cashReceiptYn, cashReceiptNo, appointmentId, status, condition, cooperativeness, skinStatus, earStatus, mattingLevel };
+      if (prepaidUsed > 0) data.prepaidUsed = prepaidUsed;
       // 서비스(무료)로 제공한 항목 — 금액(finalPrice)에는 안 들어가고, 원래 가격만 남긴다 (영수증 '서비스' 줄 · 매출 화면 '서비스로 제공한 금액')
       if (mainFree || freeAddons.length) {
         const svcList = await DB.getAll('services').catch(() => []);
@@ -1681,6 +1791,7 @@ App.pages.records = {
           data.paidMethod = null;
         }
         Object.assign(existing, data);
+        if (!prepaidUsed) delete existing.prepaidUsed;
         // 몸무게 칸을 비우고 고쳤으면 예전 몸무게·구간 스냅샷을 지운다 (남기면 영수증에 옛 몸무게가 찍힌다)
         if (!weightAtVisit) {
           delete existing.weightAtVisit;
@@ -1694,11 +1805,13 @@ App.pages.records = {
           delete existing.menuPriceAtVisit; delete existing.priceOver; delete existing.priceBandId; delete existing.priceBandLabel;
         }
         await DB.update('records', existing);
+        await this._syncPrepaidUse(existing, prepaidPayer);
         await this._persistRecordPhotos(id);
         await App.pruneRecordPhotos(petId, id).catch(() => {});
         App.showToast('미용 기록이 수정되었습니다.');
       } else {
         newId = await DB.add('records', data);
+        if (prepaidUsed > 0) await this._syncPrepaidUse({ ...data, id: newId }, prepaidPayer);
         await this._persistRecordPhotos(newId);
         await App.pruneRecordPhotos(petId, newId).catch(() => {});
         // If linked to an appointment, mark it as completed now
@@ -1812,11 +1925,21 @@ App.pages.records = {
     }
   },
 
+  // 기록의 정액권 사용 줄(장부)을 기록에 맞춘다 — 실패해도 기록 저장은 지킨다
+  async _syncPrepaidUse(record, payerId) {
+    try { await Prepaid.syncRecordUse(record, payerId); }
+    catch (e) {
+      console.error('정액권 장부 갱신 실패:', e);
+      App.showToast('정액권 잔액 반영 중 오류가 났습니다. 고객 화면에서 정액권 내역을 확인해주세요.', 'error');
+    }
+  },
+
   async deleteRecord(id, opts = {}) {
     const record = await DB.get('records', id);
     if (!record) { App.showToast('기록을 찾을 수 없습니다.', 'error'); return; }
     const pet = record.petId ? await DB.get('pets', record.petId) : null;
-    const detail = `<small style="color:var(--text-muted)">${App.formatDate(record.date)}${pet ? ' · ' + App.escapeHtml(pet.name) : ''} · ${App.formatCurrency(App.getRecordAmount(record))}</small>`;
+    const detail = `<small style="color:var(--text-muted)">${App.formatDate(record.date)}${pet ? ' · ' + App.escapeHtml(pet.name) : ''} · ${App.formatCurrency(App.getRecordAmount(record))}</small>`
+      + (Number(record.prepaidUsed) > 0 ? `<br><small>정액권으로 낸 ${App.formatCurrency(record.prepaidUsed)}은 잔액으로 돌아갑니다.</small>` : '');
     const confirmed = await App.confirm(`이 미용 기록을 삭제하시겠습니까?<br>${detail}<br><strong>이 작업은 되돌릴 수 없습니다.</strong>`, { okLabel: '삭제' });
     if (!confirmed) return;
     try {
@@ -1835,6 +1958,8 @@ App.pages.records = {
         }
       }
       await DB.delete('records', id);
+      // 정액권 사용 줄도 지운다 (잔액 복구 — 다른 기기에는 삭제 표시로 전달)
+      try { await Prepaid.removeRecordUse(id); } catch (e) { console.warn('정액권 사용 줄 삭제 실패:', e); }
       // pet lastVisitDate 재계산
       if (record && record.petId) await this._recalcPetLastVisit(record.petId);
       // 고객 태그 재계산 (방문 횟수 기반, 수동 변경 보존)
@@ -1908,10 +2033,18 @@ App.pages.records = {
     const paymentMethods = ['cash', 'card', 'transfer', 'unpaid'];
     paymentMethods.forEach(m => { paymentBreakdown[m] = { count: 0, amount: 0 }; });
     todayRecs.forEach(r => {
+      // 정액권으로 일부 낸 기록은 정액권 몫과 나머지 결제 수단 몫으로 나눠 센다
+      const sp = Prepaid.splitOf(r);
+      if (sp.used > 0) {
+        if (!paymentBreakdown.prepaid) { paymentBreakdown.prepaid = { count: 0, amount: 0 }; if (!paymentMethods.includes('prepaid')) paymentMethods.push('prepaid'); }
+        paymentBreakdown.prepaid.count++;
+        paymentBreakdown.prepaid.amount += sp.used;
+        if (!sp.rest || !sp.restMethod) return;
+      }
       const method = r.paymentMethod || 'none';
       if (!paymentBreakdown[method]) paymentBreakdown[method] = { count: 0, amount: 0 };
       paymentBreakdown[method].count++;
-      paymentBreakdown[method].amount += App.getRecordAmount(r);
+      paymentBreakdown[method].amount += sp.used > 0 ? sp.rest : App.getRecordAmount(r);
     });
 
     // 미용사별 집계
@@ -1931,7 +2064,7 @@ App.pages.records = {
     const dayNames = ['일', '월', '화', '수', '목', '금', '토'];
     const reportDow = dayNames[new Date(reportDate + 'T00:00:00').getDay()];
     const groomerMax = Object.values(groomerBreakdown).reduce((m, d) => Math.max(m, d.amount), 1);
-    const paymentColors = { cash: 'var(--success)', card: 'var(--primary)', transfer: 'var(--info)', unpaid: 'var(--danger)' };
+    const paymentColors = { cash: 'var(--success)', card: 'var(--primary)', transfer: 'var(--info)', unpaid: 'var(--danger)', prepaid: 'var(--warning)' };
 
     const content = `
       <div id="daily-report-content">
@@ -2005,7 +2138,7 @@ App.pages.records = {
                   </div>
                   <div style="text-align:right;flex-shrink:0">
                     <div style="font-weight:700;font-size:0.9rem">${App.formatCurrency(App.getRecordAmount(r))}</div>
-                    <div style="font-size:0.72rem;color:${isUnpaid ? 'var(--danger)' : 'var(--text-muted)'}">${this.getPaymentLabel(r.paymentMethod)}</div>
+                    <div style="font-size:0.72rem;color:${isUnpaid ? 'var(--danger)' : 'var(--text-muted)'}">${this.getPaymentLabel(r.paymentMethod, r)}</div>
                   </div>
                 </div>`;
               }).join('')}
@@ -2042,6 +2175,13 @@ App.pages.records = {
     const shopName = await DB.getSetting('shopName') || '펫살롱';
     const shopPhone = await DB.getSetting('shopPhone') || '';
     const shopAddress = await DB.getSetting('shopAddress') || '';
+    // 정액권으로 낸 몫 — '정액권 사용 -N원 (잔액 M원)' (잔액은 이 사용 직후 기준)
+    let prepaidRows = '';
+    if (Number(record.prepaidUsed) > 0) {
+      const useEntry = await Prepaid.getUseEntry(record.id).catch(() => null);
+      const after = useEntry ? await Prepaid.balanceAfter(useEntry).catch(() => null) : null;
+      prepaidRows = `<div class="receipt-row"><span>정액권 사용</span><span>-${App.formatCurrency(Prepaid.splitOf(record).used)}${after != null ? ` (잔액 ${App.formatCurrency(after)})` : ''}</span></div>`;
+    }
 
     // 금액은 기록에 저장된 값만 쓴다 (현재 메뉴 가격으로 찍으면 가격 변경 후 영수증 줄 합이 소계와 어긋난다)
     // 메뉴는 포함 항목(includedItems) 표시용으로만 조회
@@ -2149,7 +2289,8 @@ App.pages.records = {
           ${extraCharge > 0 ? `<div class="receipt-row"><span>기타 추가</span><span>+${App.formatCurrency(extraCharge)}</span></div>` : ''}
           <div class="receipt-row total"><span>합계</span><span>${App.formatCurrency(finalPrice)}</span></div>
           ${record.paidAt && record.paidAt !== record.date ? `<div class="receipt-row"><span>수금일</span><span>${App.formatDate(record.paidAt)}</span></div>` : ''}
-          ${record.paymentMethod ? `<div class="receipt-row"><span>결제</span><span>${this.getPaymentLabel(record.paymentMethod)}</span></div>` : ''}
+          ${prepaidRows}
+          ${record.paymentMethod && record.paymentMethod !== 'prepaid' ? `<div class="receipt-row"><span>결제</span><span>${this.getPaymentLabel(record.paymentMethod)}${prepaidRows ? ' ' + App.formatCurrency(Prepaid.splitOf(record).rest) : ''}</span></div>` : ''}
           <div class="receipt-footer">
             <p>감사합니다 ♥</p>
           </div>
@@ -2254,9 +2395,12 @@ App.pages.records = {
     App.showToast('이전 미용 기록을 가져왔습니다.');
   },
 
-  getPaymentLabel(method) {
-    const labels = { cash: '현금', card: '카드', transfer: '계좌이체', unpaid: '미결제' };
-    return labels[method] || '-';
+  // r(기록)을 함께 주면 정액권으로 일부 낸 기록을 '정액권+카드'처럼 보여 준다
+  getPaymentLabel(method, r) {
+    const labels = { cash: '현금', card: '카드', transfer: '계좌이체', unpaid: '미결제', prepaid: '정액권' };
+    const base = labels[method] || '-';
+    if (r && method !== 'prepaid' && Number(r.prepaidUsed) > 0) return '정액권+' + (method === 'unpaid' ? '미결제' : base);
+    return base;
   },
 
   // ========== 사진 카드 생성 & 공유 ==========
@@ -5029,12 +5173,14 @@ App.pages.records = {
       }
       const total = filtered.reduce((sum, r) => sum + App.getRecordAmount(r), 0);
 
-      const breakdown = { cash: { count: 0, amount: 0 }, card: { count: 0, amount: 0 }, transfer: { count: 0, amount: 0 }, unpaid: { count: 0, amount: 0 } };
+      const breakdown = { cash: { count: 0, amount: 0 }, card: { count: 0, amount: 0 }, transfer: { count: 0, amount: 0 }, unpaid: { count: 0, amount: 0 }, prepaid: { count: 0, amount: 0 } };
       filtered.forEach(r => {
+        const sp = Prepaid.splitOf(r);
+        if (sp.used > 0) { breakdown.prepaid.count++; breakdown.prepaid.amount += sp.used; }
         const m = r.paymentMethod || '';
-        if (breakdown[m]) {
+        if (breakdown[m] && m !== 'prepaid' && (sp.used === 0 || sp.rest > 0)) {
           breakdown[m].count++;
-          breakdown[m].amount += App.getRecordAmount(r);
+          breakdown[m].amount += sp.used > 0 ? sp.rest : App.getRecordAmount(r);
         }
       });
 
@@ -5061,6 +5207,7 @@ App.pages.records = {
           ${row('현금', breakdown.cash.amount, breakdown.cash.count)}
           ${row('카드', breakdown.card.amount, breakdown.card.count)}
           ${row('계좌이체', breakdown.transfer.amount, breakdown.transfer.count)}
+          ${breakdown.prepaid.count > 0 ? row('정액권 사용', breakdown.prepaid.amount, breakdown.prepaid.count) : ''}
           <div style="display:flex;justify-content:space-between;padding:6px 0">
             <span style="color:${breakdown.unpaid.count > 0 ? 'var(--danger)' : 'var(--text-secondary)'}">미결제</span>
             <span style="font-weight:600;color:${breakdown.unpaid.count > 0 ? 'var(--danger)' : 'inherit'}">${App.formatCurrency(breakdown.unpaid.amount)} <span style="color:var(--text-muted);font-weight:400;font-size:0.85rem">(${breakdown.unpaid.count}건)</span></span>
@@ -5158,7 +5305,10 @@ App.pages.records = {
       const category = resolveCategory(r);
       const dateNoDash = (r.date || '').replace(/-/g, '');
       const txId = dateNoDash ? `${dateNoDash}-${r.id}` : String(r.id);
-      const paymentLabel = { cash: '현금', card: '카드', transfer: '계좌이체', unpaid: '미수금' }[r.paymentMethod] || '';
+      const paymentLabel0 = { cash: '현금', card: '카드', transfer: '계좌이체', unpaid: '미수금', prepaid: '정액권' }[r.paymentMethod] || '';
+      // 정액권(선불)은 충전 때가 아니라 미용한 날 매출로 잡는다 — 결제수단 칸에 정액권 몫을 적는다
+      const pUsed = Number(r.prepaidUsed) || 0;
+      const paymentLabel = pUsed > 0 && r.paymentMethod !== 'prepaid' ? `정액권 ${pUsed}+${paymentLabel0}` : paymentLabel0;
       const memoParts = [
         r.style ? '스타일: ' + r.style : '',
         (r.addons || []).length > 0 ? '추가: ' + r.addons.join(', ') : '',
@@ -5179,6 +5329,7 @@ App.pages.records = {
         groomer: r.groomer || '',
         paymentMethod: r.paymentMethod || '',
         paymentLabel,
+        prepaidUsed: pUsed,
         amount: App.getRecordAmount(r),
         cashReceiptYn: r.cashReceiptYn ? 'Y' : 'N',
         cashReceiptNo: r.cashReceiptNo || '',
@@ -5283,6 +5434,7 @@ App.pages.records = {
           groomer: r.groomer,
           paymentMethod: r.paymentMethod,
           paymentLabel: r.paymentLabel,
+          prepaidUsed: r.prepaidUsed,
           amount: r.amount,
           cashReceiptYn: r.cashReceiptYn === 'Y',
           cashReceiptNo: r.cashReceiptNo,

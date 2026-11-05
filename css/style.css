@@ -3692,3 +3692,199 @@ a.stat-card { display: flex; }
 .svc-more[open] > summary .ico { transform: none; }
 .svc-radio { display: flex; align-items: center; gap: 8px; min-height: 40px; font-size: 0.88rem; cursor: pointer; }
 .svc-radio input { width: 18px; height: 18px; flex-shrink: 0; }
+
+/* =====================================================================
+   가독성·피로도 개선 (v185 레이아웃 정리)
+   - 넓은 화면에서 상자·막대가 좌우로 길게 늘어지지 않게 본문 폭을 제한하고,
+     긴 한 줄짜리 목록·카드를 두 단(또는 격자)으로 나눈다.
+   - 색 면을 줄이고(경고 목록·완료 버튼), 표 머리글·숫자를 읽기 쉽게.
+   - 화면별 규칙은 #page-content[data-page] (app.js _renderPageNow 에서 설정)로 건다.
+   ===================================================================== */
+
+/* ---- 1. 전역: 흐름·숫자·폭 ---- */
+body { line-height: 1.5; font-variant-numeric: tabular-nums; }
+/* flex 자식이 표의 최소 폭만큼 넓어져 1280px 창에서 가로 스크롤이 생기던 문제 */
+.main-content { min-width: 0; }
+/* 본문 최대 폭: 1440 → 1280 (안쪽 1216px). 1920 모니터에서도 한눈에 읽히는 폭 */
+.page-content { max-width: 1280px; }
+/* 컴퓨터 화면은 기본 글자 14 → 15px (폰은 그대로 14px: 화면이 좁아 줄바꿈이 늘어나지 않게) */
+@media (min-width: 1024px) { html { font-size: 15px; } }
+
+/* ---- 2. 차분한 표면: 그림자·색 면 줄이기 ---- */
+/* 정보 카드는 누르는 대상이 아니므로 마우스를 올려도 들썩이지 않게 */
+@media (hover: hover) { .card:hover { box-shadow: 0 1px 3px rgba(0,0,0,0.04), 0 1px 2px rgba(0,0,0,0.02); } }
+/* 표 머리글: 한글에 대문자·넓은 자간은 의미가 없고 흐려 보였다 */
+.data-table th { text-transform: none; letter-spacing: 0.1px; font-size: max(12px, 0.78rem); color: var(--text-secondary); }
+.data-table td { line-height: 1.4; }
+/* 경고 목록(재방문·미수금·생일): 노란 그라데이션 면 → 옅은 회색 면 + 왼쪽 색 띠만 */
+.alert-item { background: var(--bg); }
+@media (hover: hover) { .alert-item:hover { transform: none; background: var(--border-light); } }
+.alert-item.unpaid-item { border-left-color: var(--danger); }
+/* 홈 '미용 완료': 예약 카드 밖의 꽉 찬 초록 막대 → 카드 안 작은 초록 버튼 (어느 예약의 버튼인지 분명하게)
+   컴퓨터: 전화·상태 오른쪽 끝 / 폰(600px 이하): 카드 아래 한 줄 전체 */
+.btn.dash-complete-btn { flex-shrink: 0; min-height: 40px; padding: 0 14px; font-size: 0.86rem; white-space: nowrap; box-shadow: none; }
+@media (max-width: 600px) {
+  .appointment-item:has(> .dash-complete-btn) { flex-wrap: wrap; row-gap: 10px; }
+  .appointment-item > .btn.dash-complete-btn { flex: 1 1 100%; min-height: 44px; }
+}
+/* 홈 목록 '더 보기 (N건) / 접기' */
+.dash-more-btn { display: flex; align-items: center; justify-content: center; gap: 4px; width: 100%; min-height: 44px; margin-top: 4px; border: 1px dashed var(--border); border-radius: var(--radius); background: transparent; color: var(--text-secondary); font-size: 0.85rem; font-weight: 700; cursor: pointer; }
+.dash-more-btn .ico { transition: transform 0.2s; }
+.dash-more-btn.open .ico { transform: rotate(180deg); }
+@media (hover: hover) { .dash-more-btn:hover { background: var(--bg); color: var(--text-primary); } }
+
+/* ---- 3. 설정 저장 버튼: 폰은 꽉 차게, 컴퓨터는 오른쪽에 알맞은 크기로 ---- */
+.settings-save-btn { width: 100%; margin-top: 20px; }
+@media (min-width: 769px) {
+  .settings-save-btn { display: flex; width: auto; min-width: 280px; margin-left: auto; }
+  .settings-tabs { max-width: 720px; }
+}
+
+/* ---- 4. 검색·필터 줄: 컴퓨터에서는 한 줄, 칸은 내용에 맞는 폭 ---- */
+@media (min-width: 900px) {
+  .filter-bar { flex-wrap: nowrap; }
+  .filter-bar > .search-box { flex: 1 1 300px; max-width: 440px !important; min-width: 220px; }
+  .filter-bar > .filter-bar-row { flex: 1 1 auto; width: auto; justify-content: flex-end; }
+  .filter-bar-row > select, .filter-bar-row > input { flex: 0 1 210px !important; min-width: 130px; }
+}
+
+/* ---- 5. 기간·탭 선택 막대: 버튼 2~5개가 1200px 로 늘어나지 않게 가운데 정렬 ---- */
+@media (min-width: 769px) {
+  .revenue-tabs { max-width: 420px; margin-left: auto; margin-right: auto; }
+  #page-content[data-page="analytics"] div:has(> .analytics-period) { max-width: 560px; margin-left: auto; margin-right: auto; }
+}
+
+/* ---- 6. 화면별 두 단 배치 (넓은 화면) ---- */
+.dash-col > :last-child { margin-bottom: 0 !important; }
+@media (min-width: 1200px) {
+  /* 홈: 왼쪽 = 오늘·다음 영업일 예약, 오른쪽 = 미수금·연락할 손님·매출·생일 */
+  .dash-grid { display: grid; grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr); gap: 20px; align-items: start; margin-bottom: 20px; }
+  .dash-col > * { margin-bottom: 16px !important; }
+  .dash-col > :last-child { margin-bottom: 0 !important; }
+  .dash-col-side .stats-grid { grid-template-columns: 1fr 1fr; gap: 12px; }
+  .dash-col-side .stat-card { padding: 16px; gap: 12px; }
+  .dash-col-side .stat-icon { width: 40px; height: 40px; }
+
+  /* 분석: 섹션(고객·견종·서비스·매출 추이·미용사)을 두 단으로 */
+  .an-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px 24px; align-items: start; }
+
+  /* 매출(이번 달): 요약·일별 차트는 한 줄 전체, 나머지는 두 칸씩 */
+  .rev-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 20px; align-items: start; }
+  .rev-grid > * { margin: 0 !important; }
+  .rev-grid > :first-child, .rev-grid > .chart-card, .rev-grid > .rev-profit:last-child { grid-column: 1 / -1; }
+
+  /* 서비스 메뉴: 서비스 줄을 두 칸 격자로 (분류 머리글은 한 줄 전체) */
+  .svc-list { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); column-gap: 12px; align-items: start; }
+  .svc-list > .service-category-header { grid-column: 1 / -1; }
+}
+@media (min-width: 1100px) {
+  /* 반려견 목록: 한 줄 카드 → 격자 (1280px 화면에서 2칸, 1440px 이상에서 3칸) */
+  .pet-list { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); column-gap: 10px; align-items: start; }
+  .pet-list > .pet-group-head { grid-column: 1 / -1; }
+  /* 반려견 상세: 응대 정보 4칸을 한 줄로 */
+  .pet-glance { grid-template-columns: repeat(4, minmax(0, 1fr)) !important; }
+}
+
+/* ===== 정액권 (금액형 선불) — 쓰는 손님에게만 보인다 ===== */
+.payment-chip[hidden] { display: none; }
+.prepaid-form-info { margin-top: 8px; font-size: 0.82rem; color: var(--text-secondary); }
+.prepaid-form-info strong { color: var(--warning-text-strong); }
+.prepaid-rest { margin-top: 8px; padding: 10px 12px; background: var(--warning-bg-soft); border: 1px solid var(--warning-border-soft); border-radius: var(--radius); }
+.prepaid-rest-q { font-size: 0.85rem; font-weight: 700; color: var(--warning-text-strong); margin-bottom: 8px; }
+.prepaid-rest .payment-chip { min-height: 40px; padding: 6px 14px; }
+.prepaid-badge { display: inline-block; margin-left: 6px; padding: 2px 7px; border-radius: 6px; font-size: 0.7rem; font-weight: 700; white-space: nowrap; flex-shrink: 0; background: var(--warning-bg-soft); color: var(--warning-text-strong); border: 1px solid var(--warning-border-soft); }
+.prepaid-meta { color: var(--warning-text-strong); font-weight: 700; }
+.prepaid-head { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; margin-bottom: 8px; }
+.prepaid-balance { font-size: 0.95rem; color: var(--text-secondary); }
+.prepaid-balance strong { font-size: 1.15rem; color: var(--warning-text-strong); }
+.prepaid-balance.neg strong { color: var(--danger); }
+.prepaid-actions { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 8px; }
+.prepaid-actions .btn { min-height: 40px; }
+.prepaid-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; min-height: 44px; padding: 8px 2px; border-bottom: 1px solid var(--border-light); cursor: pointer; }
+.prepaid-row.is-more { display: none; }
+.prepaid-row-main { flex: 1; min-width: 0; display: flex; align-items: center; gap: 8px; font-size: 0.85rem; }
+.prepaid-type { flex-shrink: 0; font-size: 0.72rem; font-weight: 700; padding: 2px 7px; border-radius: 6px; background: var(--bg); color: var(--text-secondary); border: 1px solid var(--border-light); }
+.prepaid-type.t-charge { background: var(--warning-bg-soft); color: var(--warning-text-strong); border-color: var(--warning-border-soft); }
+.prepaid-date { flex-shrink: 0; color: var(--text-secondary); font-weight: 600; }
+.prepaid-sub { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text-muted); }
+.prepaid-amt { flex-shrink: 0; font-size: 0.9rem; }
+.prepaid-amt.neg { color: var(--text-secondary); }
+.prepaid-preview { margin-top: 4px; padding: 10px 12px; background: var(--bg); border-radius: var(--radius); font-size: 0.9rem; display: flex; justify-content: space-between; }
+.rev-prepaid-line { margin-top: 10px; padding-top: 8px; border-top: 1px solid var(--border-light); font-size: 0.8rem; color: var(--text-secondary); }
+
+/* ===== 고객 상세: 컴퓨터(1100px+)에서 두 단 =====
+   왼쪽 = 손님 정보·메모·반려견·정액권, 오른쪽 = 예정 예약·미용 기록·방문 통계.
+   폰·태블릿은 단 묶음을 풀고(display:contents) order 로 예전 한 줄 순서를 그대로 지킨다. */
+.cust-detail-layout { display: flex; flex-direction: column; }
+.cust-detail-col { display: contents; }
+.cust-detail-layout .detail-header { order: 1; }
+.cust-detail-layout .cust-detail-notes { order: 2; }
+.cust-detail-layout .cd-pets { order: 3; }
+.cust-detail-layout .cd-upcoming { order: 4; }
+.cust-detail-layout .prepaid-section { order: 5; }
+.cust-detail-layout .cd-records { order: 6; }
+.cust-detail-layout .cd-stats { order: 7; }
+.cust-rec-row.is-unpaid { background: var(--warning-light); }
+@media (min-width: 1100px) {
+  .cust-detail-layout { display: grid; grid-template-columns: minmax(0, 4fr) minmax(0, 6fr); gap: 0 28px; align-items: start; }
+  .cust-detail-col { display: block; min-width: 0; }
+  /* 좁아진 왼쪽 단: 버튼 줄은 이름 아래 한 줄 전체로 */
+  .cust-detail-layout .detail-header { flex-wrap: wrap; gap: 14px 16px; padding: 20px; margin-bottom: 24px; }
+  .cust-detail-layout .detail-header > .detail-info { flex: 1 1 0; min-width: 0; }
+  .cust-detail-layout .detail-header > div:last-child { flex: 1 1 100%; margin-left: 0 !important; display: grid !important; grid-template-columns: repeat(auto-fit, minmax(84px, 1fr)); }
+  .cust-detail-layout .detail-header > div:last-child > .btn { padding-left: 6px; padding-right: 6px; white-space: nowrap; justify-content: center; }
+  .cust-detail-layout .detail-avatar { width: 60px; height: 60px; }
+  /* 반려견 카드는 한 줄에 하나 (좁은 단에서 2칸이면 이름이 잘렸다) */
+  .cust-detail-layout .cd-pets .grid-3 { grid-template-columns: 1fr; gap: 10px; }
+  /* 오른쪽 단 '예정된 예약'은 헤더 카드 높이와 맞춰 위쪽 여백 없이 */
+  .cust-detail-col-side > .detail-section:first-child { margin-top: 0; }
+  /* 오른쪽 단 기록은 7칸 표 대신 두 줄 목록(폰과 같은 모양 — customers.js 가 1100px+ 에서 고른다): 표는 단 폭에서 가로로 잘렸다 */
+  .cust-detail-layout .cd-records .cust-rec-row { padding-left: 8px !important; padding-right: 8px !important; border-radius: var(--radius-sm); }
+  @media (hover: hover) { .cust-detail-layout .cd-records .cust-rec-row:hover { background: var(--bg-white); } }
+  .cust-detail-layout .cd-records .cust-rec-row.is-unpaid-card { padding-left: 12px !important; }
+  .cust-detail-layout .cd-stats .info-grid { grid-template-columns: repeat(3, minmax(0, 1fr)) !important; }
+}
+
+/* 1100~1279px 는 사이드바를 빼면 왼쪽 단이 300px 남짓 — 장식용 사람 아이콘은 빼고 이름·요약에 자리를 준다 */
+@media (min-width: 1100px) and (max-width: 1279px) {
+  .cust-detail-layout .detail-avatar { display: none; }
+}
+
+/* ===== 다크 모드 보정 (v185) =====
+   - 다크 팔레트의 밝은 강조색(#818CF8·#34D399·#FBBF24·#60A5FA·#F87171) 위 흰 글자는 대비 1.7~3.0 로 흐렸다
+     → 채운 버튼·선택된 탭은 한 단계 진한 바탕으로. (글자 색으로 쓰는 --primary 등은 그대로 밝게 둔다)
+   - 넓은 색 면(오늘 예약 줄 짙은 파랑, 미결제 줄 갈색)이 눈을 피로하게 했다 → 옅은 면으로.
+   - 흐린 글씨(--text-muted)가 카드 위에서 3.8:1 → 5:1 이상으로. */
+@media (prefers-color-scheme: dark) {
+  :root {
+    --text-muted: #8E8E99;
+    --info-bg-soft: #172036;
+    --warning-light: #2E2109;
+  }
+  .btn-primary,
+  .quick-filter-btn.active, .settings-tab.active, .revenue-tab.active, .analytics-period.active,
+  .card-tab.active, .tpl-tab.active, .rec-ba button.on, .payment-chip.active, .service-chip:has(input:checked),
+  .calendar-cell.today .cal-day-num, .cal-overflow {
+    background: var(--primary-hover);
+    border-color: var(--primary-hover);
+  }
+  /* 매출·분석 기간 탭은 JS 가 인라인으로 칠한다 — 덮어쓰려면 !important */
+  .revenue-tab.active, .analytics-period.active { background: var(--primary-hover) !important; }
+  @media (hover: hover) {
+    .btn-primary:hover { background: var(--primary-hover); filter: brightness(1.12); }
+  }
+  .btn-success, .export-period-btn.active { background: #047857; border-color: #047857; }
+  .btn-danger, .nav-badge, .bottom-nav-badge { background: #B91C1C; }
+  .btn-warning { background: #B45309; }
+  .btn-info { background: #1D4ED8; }
+  @media (hover: hover) {
+    .btn-success:hover { background: #059669; }
+    .btn-danger:hover { background: #DC2626; }
+    .btn-warning:hover { background: #C2410C; }
+    .btn-info:hover { background: #2563EB; }
+  }
+  /* 미결제 기록 줄: 갈색 면 대신 옅은 붉은 면 + 왼쪽 띠 */
+  .cust-rec-row.is-unpaid { background: rgba(248,113,113,0.08); box-shadow: inset 3px 0 0 var(--danger); }
+  /* 예약 상태 '대기' 글자: 라이트용 진한 갈색(#B45309)이 어두운 면에서 묻혔다 */
+  .appt-status-sel[data-st="pending"], .appt-result.none { color: var(--warning-text-strong); }
+}

@@ -6,11 +6,12 @@ App.pages.revenue = {
     // 최근 1년 records만 로드 (성능 최적화), 미수금/전체 매출은 경량 집계
     const oneYearAgo = (() => { const d = new Date(); d.setFullYear(d.getFullYear() - 1); return App.formatLocalDate(d); })();
     // 미수금은 paymentMethod 인덱스로 직접 조회 (예전엔 전체 기록을 다 읽어 미수금만 골라냈다 — 몇 년 쌓이면 매출 페이지가 느려진다)
-    const [records, unpaidRecs, customers, pets] = await Promise.all([
+    const [records, unpaidRecs, customers, pets, prepaidAll] = await Promise.all([
       DB.getByDateRange('records', 'date', oneYearAgo, '9999-12-31'),
       DB.getByIndex('records', 'paymentMethod', 'unpaid'),
       DB.getAllLight('customers', ['memo', 'address']),
-      DB.getAllLight('pets', ['photo', 'temperament', 'healthNotes', 'preferredStyle'])
+      DB.getAllLight('pets', ['photo', 'temperament', 'healthNotes', 'preferredStyle']),
+      Prepaid.getAllEntries()
     ]);
     const sorted = records.sort((a, b) => (b.date || '').localeCompare(a.date || ''));
     const customerMap = {}; customers.forEach(c => customerMap[c.id] = c);
@@ -43,7 +44,7 @@ App.pages.revenue = {
     const monthComp = monthRecords.reduce((sum, r) => sum + (Number(r.complimentaryTotal) || 0), 0);
 
     // 미수금 집계 — 전체 기간
-    const unpaidTotal = unpaidRecs.reduce((sum, r) => sum + App.getRecordAmount(r), 0);
+    const unpaidTotal = unpaidRecs.reduce((sum, r) => sum + App.getUnpaidAmount(r), 0);
 
     // 이번 달 미수금 / 실입금
     // 매출(monthRevenue)은 청구 기준이라 미수금을 포함한다 — 서비스를 제공한 시점에
@@ -51,26 +52,32 @@ App.pages.revenue = {
     // 현금흐름 판단이 흐려지지 않도록 실입금액을 나란히 보여준다.
     const monthUnpaid = monthRecords
       .filter(r => r.paymentMethod === 'unpaid')
-      .reduce((sum, r) => sum + App.getRecordAmount(r), 0);
+      .reduce((sum, r) => sum + App.getUnpaidAmount(r), 0);
     // 수금일(paidAt)이 있으면 그 달에 들어온 돈으로 센다 — 지난달 미수금을 이번 달에 받았다면 이번 달 실입금이다
-    const monthCollected = records
-      .filter(r => r.paymentMethod !== 'unpaid' && String(r.paidAt || r.date || '').startsWith(thisMonth))
-      .reduce((sum, r) => sum + App.getRecordAmount(r), 0);
+    // 정액권으로 낸 몫은 이미 충전한 날 받은 돈이라 빼고(나머지만), 대신 이번 달 충전(받은 돈)을 더하고 환불(돌려준 돈)을 뺀다
+    // 계산식은 Prepaid.monthCollected 한 곳에 두고 자동 테스트로 지킨다 (tests/prepaid.test.js)
+    const { collected: monthCollected, charge: monthCharge, refund: monthRefund } = Prepaid.monthCollected(records, prepaidAll, thisMonth);
+    const prepaidOutstanding = prepaidAll.reduce((s, e) => s + (Number(e.credit) || 0), 0);
 
-    // 결제 수단별 통계 (이번 달)
-    const paymentStats = { cash: 0, card: 0, transfer: 0, unpaid: 0, none: 0 };
+    // 결제 수단별 통계 (이번 달) — 정액권으로 낸 몫은 '정액권'으로 따로
+    const paymentStats = { cash: 0, card: 0, transfer: 0, prepaid: 0, unpaid: 0, none: 0 };
     monthRecords.forEach(r => {
-      const method = r.paymentMethod || 'none';
-      paymentStats[method] = (paymentStats[method] || 0) + App.getRecordAmount(r);
+      const sp = Prepaid.splitOf(r);
+      paymentStats.prepaid += sp.used;
+      if (!sp.rest) return;
+      const method = (r.paymentMethod === 'prepaid' ? null : r.paymentMethod) || 'none';
+      paymentStats[method] = (paymentStats[method] || 0) + sp.rest;
     });
 
     // 오늘 결제 수단 요약 (건수 + 금액)
-    const todayPayment = { cash: { count: 0, amount: 0 }, card: { count: 0, amount: 0 }, transfer: { count: 0, amount: 0 }, unpaid: { count: 0, amount: 0 } };
+    const todayPayment = { cash: { count: 0, amount: 0 }, card: { count: 0, amount: 0 }, transfer: { count: 0, amount: 0 }, prepaid: { count: 0, amount: 0 }, unpaid: { count: 0, amount: 0 } };
     todayRecords.forEach(r => {
+      const sp = Prepaid.splitOf(r);
+      if (sp.used > 0) { todayPayment.prepaid.count++; todayPayment.prepaid.amount += sp.used; }
       const m = r.paymentMethod || 'none';
-      if (todayPayment[m]) {
+      if (todayPayment[m] && m !== 'prepaid' && sp.rest > 0) {
         todayPayment[m].count++;
-        todayPayment[m].amount += App.getRecordAmount(r);
+        todayPayment[m].amount += sp.rest;
       }
     });
 
@@ -168,8 +175,8 @@ App.pages.revenue = {
     }
     const currentWeekIdx = Math.floor((todayDay - 1) / 7);
 
-    const paymentLabels = { cash: '현금', card: '카드', transfer: '계좌이체', unpaid: '미결제', none: '미선택' };
-    const paymentColors = { cash: 'var(--success)', card: 'var(--primary)', transfer: 'var(--info)', unpaid: 'var(--danger)', none: 'var(--text-muted)' };
+    const paymentLabels = { cash: '현금', card: '카드', transfer: '계좌이체', prepaid: '정액권', unpaid: '미결제', none: '미선택' };
+    const paymentColors = { cash: 'var(--success)', card: 'var(--primary)', transfer: 'var(--info)', prepaid: 'var(--warning)', unpaid: 'var(--danger)', none: 'var(--text-muted)' };
     const monthPaymentTotal = Object.values(paymentStats).reduce((a, b) => a + b, 0) || 1;
 
     container.innerHTML = `
@@ -225,7 +232,7 @@ App.pages.revenue = {
               todayRecords.sort((a, b) => (b.date + (b.createdAt || '')).localeCompare(a.date + (a.createdAt || ''))).slice(0, 10).map(r => {
                 const c = customerMap[r.customerId];
                 const p = petMap[r.petId];
-                const payLabel = { cash: '현금', card: '카드', transfer: '계좌이체', unpaid: '미결제' };
+                const payLabel = { cash: '현금', card: '카드', transfer: '계좌이체', unpaid: '미결제', prepaid: '정액권' };
                 const time = r.createdAt ? new Date(r.createdAt).toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' }) : '-';
                 const isUnpaid = r.paymentMethod === 'unpaid';
                 return `<div style="display:flex;align-items:center;gap:10px;padding:10px 0;border-bottom:1px solid var(--border-light)${isUnpaid ? ';border-left:3px solid var(--danger);padding-left:10px' : ''}">
@@ -235,7 +242,7 @@ App.pages.revenue = {
                   </div>
                   <div style="text-align:right;flex-shrink:0">
                     <div style="font-weight:700;font-size:0.9rem">${App.formatCurrency(App.getRecordAmount(r))}</div>
-                    <div style="font-size:0.75rem;color:${isUnpaid ? 'var(--danger)' : 'var(--text-muted)'}">${payLabel[r.paymentMethod] || '-'}</div>
+                    <div style="font-size:0.75rem;color:${isUnpaid ? 'var(--danger)' : 'var(--text-muted)'}">${Number(r.prepaidUsed) > 0 && r.paymentMethod !== 'prepaid' ? '정액권+' : ''}${payLabel[r.paymentMethod] || '-'}</div>
                   </div>
                 </div>`;
               }).join('') +
@@ -250,6 +257,7 @@ App.pages.revenue = {
             ${todayPayment.card.count > 0 ? `<span style="font-size:0.88rem"><strong style="color:var(--primary)">카드</strong> ${todayPayment.card.count}건 · ${App.formatCurrency(todayPayment.card.amount)}</span>` : ''}
             ${todayPayment.cash.count > 0 ? `<span style="font-size:0.88rem"><strong style="color:var(--success)">현금</strong> ${todayPayment.cash.count}건 · ${App.formatCurrency(todayPayment.cash.amount)}</span>` : ''}
             ${todayPayment.transfer.count > 0 ? `<span style="font-size:0.88rem"><strong style="color:var(--info)">계좌이체</strong> ${todayPayment.transfer.count}건 · ${App.formatCurrency(todayPayment.transfer.amount)}</span>` : ''}
+            ${todayPayment.prepaid.count > 0 ? `<span style="font-size:0.88rem"><strong style="color:var(--warning)">정액권</strong> ${todayPayment.prepaid.count}건 · ${App.formatCurrency(todayPayment.prepaid.amount)}</span>` : ''}
             ${todayPayment.unpaid.count > 0 ? `<span style="font-size:0.88rem"><strong style="color:var(--danger)">미결제</strong> ${todayPayment.unpaid.count}건 · ${App.formatCurrency(todayPayment.unpaid.amount)}</span>` : ''}
           </div>
         </div>
@@ -296,6 +304,7 @@ App.pages.revenue = {
 
       <!-- 이번 달 탭 (기본) -->
       <div class="revenue-tab-content" id="rev-tab-month" style="display:block">
+        <div class="rev-grid">
         <!-- 매출 vs 실제 받은 돈 — 같은 크기로 나란히.
              매출은 미용한 날 기준(세금 신고 기준, 미수금 포함), 실입금은 이번 달 실제로 들어온 돈(지난달 미수금 수금 포함) -->
         <div class="card" style="margin-bottom:16px">
@@ -309,9 +318,10 @@ App.pages.revenue = {
               <div>
                 <div style="font-size:0.8rem;color:var(--text-secondary);font-weight:600">실제 받은 돈 (실입금)</div>
                 <div style="font-size:1.25rem;font-weight:800;margin-top:2px">${App.formatCurrency(monthCollected)}</div>
-                <div style="font-size:0.72rem;color:var(--text-muted);margin-top:2px">이번 달에 결제된 돈</div>
+                <div style="font-size:0.72rem;color:var(--text-muted);margin-top:2px">이번 달에 결제된 돈${prepaidAll.length ? ' · 정액권 충전 포함' : ''}</div>
               </div>
             </div>
+            ${prepaidAll.length ? `<div class="rev-prepaid-line">정액권: 이번 달 충전 ${App.formatCurrency(monthCharge)}${monthRefund ? ' · 환불 ' + App.formatCurrency(monthRefund) : ''} · 남은 잔액 합계 ${App.formatCurrency(prepaidOutstanding)}</div>` : ''}
             ${monthComp > 0 ? `<div style="margin-top:10px;padding-top:8px;border-top:1px solid var(--border-light);display:flex;justify-content:space-between;font-size:0.8rem;color:var(--text-secondary)"><span>서비스로 제공한 금액 <span style="color:var(--text-muted)">(매출 제외)</span></span><span>${App.formatCurrency(monthComp)}</span></div>` : ''}
             ${unpaidRecs.length > 0 ? `
             <a href="#dashboard" style="display:flex;align-items:center;justify-content:space-between;gap:8px;margin-top:12px;padding-top:10px;border-top:1px solid var(--border-light);text-decoration:none;color:var(--danger);font-size:0.85rem;font-weight:700">
@@ -416,7 +426,7 @@ App.pages.revenue = {
         </div>
 
         <!-- 이번 달 손익 -->
-        <div class="card" style="margin-top:20px">
+        <div class="card rev-profit" style="margin-top:20px">
           <div class="card-header">
             <span class="card-title">${App.icon('chart')} 이번 달 손익</span>
           </div>
@@ -504,6 +514,7 @@ App.pages.revenue = {
         </div>
         ` : ''}
 
+        </div>
         <!-- 분석 화면·세무 자료 바로가기 (요일별·월별 추이는 분석 화면, 내보내기는 설정 > 데이터 한 곳에서) -->
         <a href="#analytics" style="display:block;text-align:center;padding:16px;background:var(--bg-white);border-radius:var(--radius);box-shadow:var(--shadow-xs);color:var(--primary);font-weight:700;font-size:0.9rem;text-decoration:none;margin:20px 0 8px">
           ${App.icon('chart')} 요일별·월별 추이 등 자세한 분석 보기 &rarr;

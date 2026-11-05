@@ -504,6 +504,9 @@ const App = {
     const pageModule = this.pages[page];
     if (pageModule && pageModule.render) {
       const content = document.getElementById('page-content');
+      // 화면별 레이아웃(CSS)용 표시 — 데스크톱에서 화면마다 폭·단 나눔을 다르게 준다
+      content.dataset.page = page;
+      content.dataset.view = params && params.length ? 'detail' : 'list';
       // Fade transition
       content.style.animation = 'none';
       content.offsetHeight; // trigger reflow
@@ -939,12 +942,12 @@ const App = {
   apptResultHtml(appt, rec, recordKnown = true) {
     if (!appt || appt.status !== 'completed') return '';
     if (rec) {
-      const amt = this.formatCurrency(this.getRecordAmount(rec));
+      const amt = this.formatCurrency(rec.paymentMethod === 'unpaid' ? this.getUnpaidAmount(rec) : this.getRecordAmount(rec));
       if (rec.paymentMethod === 'unpaid') {
         return `<div class="appt-result unpaid"><span>${this.icon('alert')} 미결제 <strong>${amt}</strong></span>` +
           `<button type="button" class="btn btn-sm btn-success btn-pay-unpaid" data-id="${rec.id}">결제</button></div>`;
       }
-      const pay = this.pages.records ? this.pages.records.getPaymentLabel(rec.paymentMethod) : '';
+      const pay = this.pages.records ? this.pages.records.getPaymentLabel(rec.paymentMethod, rec) : '';
       return `<button type="button" class="appt-result paid btn-open-record" data-record-id="${rec.id}">` +
         `<span>${this.icon('check-circle')} 미용 완료 <strong>${amt}</strong>${pay && pay !== '-' ? ' · ' + pay : ''}</span>${this.icon('chevron-right')}</button>`;
     }
@@ -1008,6 +1011,39 @@ const App = {
 
   getRecordAmount(r) {
     return Number(r.finalPrice != null ? r.finalPrice : r.totalPrice) || 0;
+  },
+
+  // 미수금으로 남은 금액 — 정액권으로 일부 낸 기록은 나머지만 (매출은 getRecordAmount 그대로)
+  getUnpaidAmount(r) {
+    return Math.max(0, this.getRecordAmount(r) - (Number(r.prepaidUsed) || 0));
+  },
+
+  // 기록 폼의 금액 식 — 화면 합계(calcTotal)와 저장(saveRecord)이 같이 쓴다 (화면 없이 테스트 가능)
+  //  servicePrice: 기본가 칸 값 (mainFree 면 받는 금액은 0, 원래 가격은 서비스 제공 금액으로)
+  //  addonPrice: 추가 금액 칸 값 (무료 추가 항목은 화면에서 이미 빠져 있다) / freeAddons: [{ name, price }]
+  //  prepaidAvailable 를 주면 정액권 나누기(calcPrepaidUse)도 함께 — 안 주면 prepaid: null
+  calcRecordTotals({ servicePrice, addonPrice, discount, extraCharge, mainFree, freeAddons, prepaidAvailable, restMethod } = {}) {
+    const inputPrice = Number(servicePrice) || 0;
+    const charged = mainFree ? 0 : inputPrice;
+    const totalPrice = charged + (Number(addonPrice) || 0);
+    const finalPrice = totalPrice - (Number(discount) || 0) + (Number(extraCharge) || 0);
+    const complimentaryTotal = (mainFree ? inputPrice : 0) + (freeAddons || []).reduce((t, a) => t + (Number(a && a.price) || 0), 0);
+    return {
+      servicePrice: charged, totalPrice, finalPrice,
+      negative: finalPrice < 0, // 할인이 금액보다 큼 → 저장 막음
+      complimentaryTotal,
+      prepaid: prepaidAvailable == null ? null : this.calcPrepaidUse(prepaidAvailable, finalPrice, restMethod)
+    };
+  },
+
+  // 정액권 나누기: 쓸 금액 = min(잔액, 합계) (잔액이 0 이하면 0), 나머지는 restMethod.
+  // 다 정액권으로 냈으면 결제 수단 'prepaid'. available = 잔액 (+ 수정 중인 기록이 이미 쓴 금액)
+  calcPrepaidUse(available, total, restMethod) {
+    const avail = Number(available) || 0;
+    const t = Math.max(0, Number(total) || 0);
+    const used = Math.max(0, Math.min(avail, t));
+    const rest = t - used;
+    return { used, rest, balanceLeft: avail - used, paymentMethod: used > 0 && rest <= 0 ? 'prepaid' : restMethod };
   },
 
   formatLocalDate(date) {
@@ -1628,7 +1664,8 @@ const App = {
   // 목록·칩용 가격 글자. 몸무게를 모르는 구간 가격 서비스는 '3.5만~5.5만' 범위로.
   // 끝의 '~'는 사장님이 '~부터'로 표시를 고른 경우에만 붙는다.
   formatServicePrice(svc, table, weightOrSize) {
-    const fmt = (v) => this.formatPriceShort(v) || '무료';
+    // '무료'는 사장님이 무료로 표시한 서비스(pricing.free)만 — 가격 칸이 비었거나 0원이면 '가격 미입력'
+    const fmt = (v) => this.formatPriceShort(v) || '가격 미입력';
     const r = this.calcServicePrice(svc, weightOrSize, table);
     if (r.free) return '무료';
     const tail = r.fromPrice ? '~' : '';
@@ -3129,7 +3166,7 @@ const App = {
 
     // Calculate unpaid balance
     const unpaidRecords = cRecords.filter(r => r.paymentMethod === 'unpaid');
-    const unpaidBalance = unpaidRecords.reduce((sum, r) => sum + App.getRecordAmount(r), 0);
+    const unpaidBalance = unpaidRecords.reduce((sum, r) => sum + App.getUnpaidAmount(r), 0);
 
     const phoneClean = this.phoneDigits(customer.phone);
 

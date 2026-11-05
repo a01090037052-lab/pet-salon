@@ -46,13 +46,21 @@ App.pages.settings = {
     // 사용자가 템플릿 수정했는지 (기본 펼침 판단)
     const hasCustomTemplate = Object.keys(savedTemplates).length > 0;
 
-    const [customers, pets, appointments, records, services] = await Promise.all([
+    const [customers, pets, appointments, records, services, prepaidRows] = await Promise.all([
       DB.count('customers'),
       DB.count('pets'),
       DB.count('appointments'),
       DB.count('records'),
-      DB.count('services')
+      DB.count('services'),
+      DB.count('prepaid').catch(() => 0)
     ]);
+    // 정액권은 쓰는 매장만 한 줄 (잔액 있는 손님 수 · 잔액 합계)
+    let prepaidSummary = null;
+    if (prepaidRows > 0) {
+      const bm = Prepaid.balanceMap(await Prepaid.getAllEntries());
+      const vals = Object.values(bm).filter(v => v !== 0);
+      prepaidSummary = { rows: prepaidRows, holders: vals.filter(v => v > 0).length, total: vals.reduce((a, b) => a + b, 0) };
+    }
     // 직전 복원 취소용 메타 (사본 본문은 크므로 메타만 읽는다)
     let undoMeta = await DB.getSetting('_autoBackupBeforeImportMeta');
     // 되돌리기 사본은 7일만 보관 — 오래된 사본으로 되돌리면 그 뒤에 쌓인 예약·기록이 (동기화 시 모든 기기에서) 사라진다
@@ -221,7 +229,7 @@ App.pages.settings = {
           </div>
         </div>
 
-        <button class="btn btn-primary btn-lg" id="btn-save-tab-shop" style="width:100%;margin-top:20px">매장 관리 설정 저장</button>
+        <button class="btn btn-primary btn-lg settings-save-btn" id="btn-save-tab-shop">매장 관리 설정 저장</button>
       </div>
 
       <!-- Tab 2: 운영 설정 -->
@@ -315,7 +323,7 @@ App.pages.settings = {
         </div>
 
         <div style="height:80px"></div>
-        <button class="btn btn-primary btn-lg" id="btn-save-tab-operation" style="width:100%;margin-top:20px">운영 설정 저장</button>
+        <button class="btn btn-primary btn-lg settings-save-btn" id="btn-save-tab-operation">운영 설정 저장</button>
       </div>
 
       <!-- Tab 3: 데이터 -->
@@ -387,9 +395,12 @@ App.pages.settings = {
                 <a href="#records" style="display:flex;justify-content:space-between;align-items:center;padding:10px 4px;border-bottom:1px solid var(--border);color:inherit;text-decoration:none">
                   <span>미용 기록</span><span><strong>${records}건</strong> <span style="color:var(--text-muted);margin-left:6px">&rsaquo;</span></span>
                 </a>
-                <a href="#services" style="display:flex;justify-content:space-between;align-items:center;padding:10px 4px;color:inherit;text-decoration:none">
+                <a href="#services" style="display:flex;justify-content:space-between;align-items:center;padding:10px 4px;color:inherit;text-decoration:none${prepaidSummary ? ';border-bottom:1px solid var(--border)' : ''}">
                   <span>서비스 메뉴</span><span><strong>${services}개</strong> <span style="color:var(--text-muted);margin-left:6px">&rsaquo;</span></span>
                 </a>
+                ${prepaidSummary ? `<div style="display:flex;justify-content:space-between;align-items:center;padding:10px 4px">
+                  <span>정액권</span><span><strong>${prepaidSummary.rows}건</strong> <span style="color:var(--text-muted);font-size:0.85rem">· 잔액 ${prepaidSummary.holders}명 ${App.formatCurrency(prepaidSummary.total)}</span></span>
+                </div>` : ''}
               </div>
             </div>
           </div>

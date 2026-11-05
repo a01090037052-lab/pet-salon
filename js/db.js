@@ -4,7 +4,7 @@ const DB = {
   mode: 'idb', // 'server' or 'idb'
   db: null,
   name: 'PetGroomingShop',
-  version: 6, // v6: syncQueue (기기 간 동기화 보낼 편지함)
+  version: 7, // v6: syncQueue (기기 간 동기화 보낼 편지함), v7: prepaid (정액권 장부)
 
   stores: {
     customers: { keyPath: 'id', autoIncrement: true, indexes: [{ name: 'name', keyPath: 'name' }, { name: 'phone', keyPath: 'phone' }] },
@@ -15,6 +15,8 @@ const DB = {
     settings: { keyPath: 'key' },
     photos: { keyPath: 'id', autoIncrement: true, indexes: [{ name: 'ownerId', keyPath: 'ownerId' }, { name: 'type', keyPath: 'type' }] },
     expenses: { keyPath: 'id', autoIncrement: true, indexes: [{ name: 'month', keyPath: 'month' }, { name: 'category', keyPath: 'category' }] },
+    // 정액권(금액형 선불) 장부 — 충전·사용·환불·조정 한 줄씩. 잔액 = credit 합 (고객에 따로 적어 두지 않는다)
+    prepaid: { keyPath: 'id', autoIncrement: true, indexes: [{ name: 'customerId', keyPath: 'customerId' }, { name: 'date', keyPath: 'date' }, { name: 'recordId', keyPath: 'recordId' }] },
     // 기기 간 동기화 대기열 — 이 기기 전용. 백업·복원·무결성 점검 대상이 아니다.
     syncQueue: { keyPath: 'id', autoIncrement: true, indexes: [{ name: 'qk', keyPath: 'qk' }] }
   },
@@ -700,7 +702,8 @@ const DB = {
       // v2 → v3: photos 스토어 추가 (없으면 빈 배열로 초기화)
       // v3 → v4: pets.photoId/photoThumb 도입 (구버전은 photo 인라인 → import 시 그대로 두고 추후 optimizeStorage로 변환)
       // v4 → v5: paymentMethod 인덱스 (기존 데이터 호환)
-      // 향후 추가: 6 → 7, 7 → 8 등
+      // v6 → v7: prepaid(정액권) 스토어 추가 — 아래에서 빈 배열 보장 (옛 백업 = 정액권 없던 시절 → 복원하면 장부도 비운다)
+      // 향후 추가: 7 → 8 등
     };
 
     let v = sourceVer;
@@ -722,6 +725,7 @@ const DB = {
     // photos 스토어가 없으면 빈 배열 보장 (v3 미만 백업)
     if (!Array.isArray(migrated.photos)) migrated.photos = [];
     if (!Array.isArray(migrated.expenses)) migrated.expenses = [];
+    if (!Array.isArray(migrated.prepaid)) migrated.prepaid = [];
     migrated._version = this.version;
     return migrated;
   },
@@ -1125,4 +1129,127 @@ const DB = {
     return this.update('settings', { key, value, updatedAt: new Date().toISOString() });
   },
 
+};
+
+// ========== 정액권 (금액형 선불) 장부 ==========
+// 한 보호자(고객)의 잔액을 그 집 반려견이 함께 쓴다. 잔액은 장부(prepaid 스토어)의 credit 합으로만 계산한다 — 원본은 장부 하나.
+//  charge: 충전 (amount = 받은 돈, bonus = 덤, credit = amount + bonus)
+//  use:    미용 기록에서 사용 (recordId 로 연결, credit = -사용액) — 기록 저장·삭제 때 함께 고친다
+//  refund: 환불 (amount = 돌려준 돈, credit = -잔액에서 뺀 금액)
+//  adjust: 조정 (credit = ±, 메모 필수)
+const Prepaid = {
+  TYPE_LABELS: { charge: '충전', use: '사용', refund: '환불', adjust: '조정' },
+
+  _sortDesc(list) {
+    return list.sort((a, b) => (b.date || '').localeCompare(a.date || '') || (b.createdAt || '').localeCompare(a.createdAt || '') || (Number(b.id) || 0) - (Number(a.id) || 0));
+  },
+
+  balanceOf(entries) {
+    return (entries || []).reduce((s, e) => s + (Number(e.credit) || 0), 0);
+  },
+
+  async listByCustomer(customerId) {
+    if (customerId == null || !Number.isFinite(Number(customerId))) return [];
+    try { return this._sortDesc(await DB.getByIndex('prepaid', 'customerId', Number(customerId))); }
+    catch (e) { console.warn('정액권 장부 조회 실패:', e); return []; }
+  },
+
+  async getBalance(customerId) {
+    return this.balanceOf(await this.listByCustomer(customerId));
+  },
+
+  // 전체 장부 → { customerId: 잔액 } (목록 배지·매출 합계용). 장부가 비었으면 빈 객체
+  async getAllEntries() {
+    try { return await DB.getAll('prepaid'); } catch (_) { return []; }
+  },
+  balanceMap(entries) {
+    const m = {};
+    (entries || []).forEach(e => { m[e.customerId] = (m[e.customerId] || 0) + (Number(e.credit) || 0); });
+    return m;
+  },
+
+  async getUseEntry(recordId) {
+    if (recordId == null) return null;
+    try {
+      const list = await DB.getByIndex('prepaid', 'recordId', Number(recordId));
+      return list.find(e => e.type === 'use') || null;
+    } catch (_) { return null; }
+  },
+
+  // 기록에 쓸 수 있는 금액 = 그 고객 잔액 + (이 기록이 이미 그 고객 잔액에서 쓴 금액)
+  async availableFor(customerId, recordId) {
+    return this.availableIn(await this.listByCustomer(customerId), recordId);
+  },
+  // (순수 함수) 한 고객의 장부 entries 로 계산
+  availableIn(entries, recordId) {
+    let bal = this.balanceOf(entries);
+    if (recordId != null) {
+      const own = (entries || []).find(e => e.type === 'use' && Number(e.recordId) === Number(recordId));
+      if (own) bal -= Number(own.credit) || 0; // credit 은 음수 → 되돌려 더한다
+    }
+    return bal;
+  },
+
+  // 이 기록의 정액권을 낸 보호자 — 보통 기록의 고객이지만, 반려견을 다른 보호자로 옮긴 기록은
+  // 사용 줄(장부)이 원래 보호자에게 남아 있다. 폼에서 고객을 바꾸지 않았으면 그 보호자를 계속 쓴다.
+  async payerFor(recordId, origCustomerId, formCustomerId) {
+    if (recordId == null || Number(origCustomerId) !== Number(formCustomerId)) return Number(formCustomerId);
+    const cur = await this.getUseEntry(recordId);
+    return cur ? Number(cur.customerId) : Number(formCustomerId);
+  },
+
+  // 기록 저장 뒤 호출 — 사용액(used)에 맞춰 'use' 줄을 만들거나 고치거나 지운다 (payerId: 정액권을 낸 보호자)
+  async syncRecordUse(record, payerId) {
+    if (!record || record.id == null) return;
+    const used = Math.max(0, Math.round(Number(record.prepaidUsed) || 0));
+    const payer = Number(payerId != null ? payerId : record.customerId);
+    const cur = await this.getUseEntry(record.id);
+    if (!used) { if (cur) await DB.delete('prepaid', cur.id); return; }
+    if (cur) {
+      if (Number(cur.amount) === used && Number(cur.customerId) === payer && cur.date === record.date) return;
+      Object.assign(cur, { customerId: payer, amount: used, credit: -used, date: record.date });
+      await DB.update('prepaid', cur);
+    } else {
+      await DB.add('prepaid', { customerId: payer, type: 'use', amount: used, credit: -used, bonus: 0, recordId: Number(record.id), date: record.date, memo: '' });
+    }
+  },
+
+  // 이 줄까지 반영된 잔액 (영수증의 '사용 후 잔액') — 날짜·입력 순서대로 더한다
+  async balanceAfter(entry) {
+    if (!entry) return null;
+    return this.balanceAfterIn(await this.listByCustomer(entry.customerId), entry.id);
+  },
+  // (순수 함수) 한 고객의 장부 entries(순서 무관)에서 entryId 줄까지의 잔액 — 날짜·입력 시각·id 오름차순
+  balanceAfterIn(entries, entryId) {
+    const list = this._sortDesc([...(entries || [])]).reverse();
+    let bal = 0;
+    for (const e of list) { bal += Number(e.credit) || 0; if (e.id === entryId) return bal; }
+    return bal;
+  },
+
+  async removeRecordUse(recordId) {
+    const cur = await this.getUseEntry(recordId);
+    if (cur) await DB.delete('prepaid', cur.id);
+  },
+
+  // 미용 기록의 정액권 몫 / 나머지 (나머지 결제 수단 = record.paymentMethod, 전액 정액권이면 'prepaid')
+  splitOf(r) {
+    const total = Number(r && (r.finalPrice != null ? r.finalPrice : r.totalPrice)) || 0;
+    const used = Math.min(total, Math.max(0, Number(r && r.prepaidUsed) || 0));
+    return { used, rest: total - used, restMethod: r && r.paymentMethod === 'prepaid' ? null : (r && r.paymentMethod) };
+  },
+
+  // (순수 함수) 그 달(month = 'YYYY-MM') 실입금 = 미수 아닌 기록의 정액권 뺀 나머지(수금일 paidAt, 없으면 미용일 기준)
+  //   + 그 달 충전으로 받은 돈(amount — 보너스 제외) − 그 달 환불로 돌려준 돈. 사용·조정은 돈이 오가지 않는다
+  monthCollected(records, entries, month) {
+    const inMonth = (d) => String(d || '').startsWith(month);
+    const monthEntries = (entries || []).filter(e => inMonth(e.date));
+    const sumAmount = (type) => monthEntries.filter(e => e.type === type).reduce((s, e) => s + (Number(e.amount) || 0), 0);
+    const charge = sumAmount('charge');
+    const refund = sumAmount('refund');
+    const fromRecords = (records || [])
+      .filter(r => r.paymentMethod !== 'unpaid' && inMonth(r.paidAt || r.date))
+      .reduce((sum, r) => sum + this.splitOf(r).rest, 0);
+    return { collected: fromRecords + charge - refund, charge, refund };
+  }
 };

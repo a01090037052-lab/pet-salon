@@ -96,11 +96,11 @@ App.pages.pets = {
           if (isInactive) {
             rightChip = `<span style="font-size:0.72rem;padding:4px 10px;background:var(--border-light);color:var(--text-muted);border-radius:12px;font-weight:600;flex-shrink:0;white-space:nowrap">${inactiveLabel}</span>`;
           } else if (vs === 'at-risk') {
-            rightChip = `<span style="font-size:0.72rem;padding:4px 10px;background:var(--danger);color:#fff;border-radius:12px;font-weight:700;flex-shrink:0;white-space:nowrap">많이 늦음</span>`;
+            rightChip = `<span style="font-size:0.72rem;padding:4px 10px;background:var(--danger-light);color:var(--danger-text-strong);border-radius:12px;font-weight:700;flex-shrink:0;white-space:nowrap">많이 늦음</span>`;
           } else if (vs === 'remind') {
-            rightChip = `<span style="font-size:0.72rem;padding:4px 10px;background:var(--warning);color:#fff;border-radius:12px;font-weight:700;flex-shrink:0;white-space:nowrap">올 때 됨</span>`;
+            rightChip = `<span style="font-size:0.72rem;padding:4px 10px;background:var(--warning-light);color:var(--warning-text-strong);border-radius:12px;font-weight:700;flex-shrink:0;white-space:nowrap">올 때 됨</span>`;
           } else if (vs === 'churned') {
-            rightChip = `<span style="font-size:0.72rem;padding:4px 10px;background:var(--text-muted);color:#fff;border-radius:12px;font-weight:600;flex-shrink:0;white-space:nowrap">오래 안 옴</span>`;
+            rightChip = `<span style="font-size:0.72rem;padding:4px 10px;background:var(--bg);color:var(--text-secondary);border:1px solid var(--border-light);border-radius:12px;font-weight:600;flex-shrink:0;white-space:nowrap">오래 안 옴</span>`;
           } else if (vs === 'new') {
             rightChip = `<span style="font-size:0.72rem;padding:4px 10px;background:var(--bg);color:var(--text-muted);border:1px solid var(--border);border-radius:12px;font-weight:600;flex-shrink:0;white-space:nowrap">방문 전</span>`;
           } else if (p.groomingCycle && (p.lastVisitDate || lastVisit)) {
@@ -154,16 +154,16 @@ App.pages.pets = {
             'churned': { label: '오래 안 옴', color: 'var(--text-muted)' },
             'inactive': { label: '비활성 (사망/양도)', color: 'var(--border)' }
           };
-          return Object.entries(groups).filter(([, gp]) => gp.length > 0).map(([gs, gp]) => {
+          return '<div class="pet-list">' + Object.entries(groups).filter(([, gp]) => gp.length > 0).map(([gs, gp]) => {
             const meta = groupMeta[gs];
-            return `<div style="margin:14px 0 8px;display:flex;align-items:center;gap:8px;padding:0 2px">
+            return `<div class="pet-group-head" style="margin:14px 0 8px;display:flex;align-items:center;gap:8px;padding:0 2px">
               <span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:${meta.color};flex-shrink:0"></span>
               <span style="font-size:0.88rem;font-weight:800;color:var(--text-primary)">${meta.label}</span>
               <span style="font-size:0.78rem;color:var(--text-muted)">${gp.length}마리</span>
             </div>` + gp.map(renderCard).join('');
-          }).join('');
+          }).join('') + '</div>';
         }
-        return sorted.map(renderCard).join('');
+        return '<div class="pet-list">' + sorted.map(renderCard).join('') + '</div>';
       })()}
     `;
   },
@@ -293,8 +293,8 @@ App.pages.pets = {
         ).join('') : '';
 
         return `
-      <!-- 응대 카드 (단골 응대 핵심 정보) -->
-      <div style="display:grid;grid-template-columns:repeat(2,1fr);gap:8px;margin-bottom:16px">
+      <!-- 응대 카드 (단골 응대 핵심 정보) — 폰은 2칸, 넓은 화면은 4칸 한 줄 (CSS .pet-glance) -->
+      <div class="pet-glance" style="display:grid;grid-template-columns:repeat(2,1fr);gap:8px;margin-bottom:16px">
         <div style="padding:14px 12px;background:var(--bg-white);border:1px solid var(--border);border-radius:var(--radius);min-width:0">
           <div style="font-size:0.72rem;color:var(--text-muted);margin-bottom:4px">다음 미용 권장</div>
           <div style="font-size:1rem;font-weight:800;color:${isOverdue ? 'var(--danger)' : 'var(--primary)'};white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${nextDays != null ? (isOverdue ? Math.abs(nextDays) + '일 초과' : nextDays === 0 ? '오늘' : 'D-' + nextDays) : '데이터 부족'}</div>
@@ -792,14 +792,18 @@ App.pages.pets = {
         // 보호자를 바꾸면 이 반려견의 미용 기록·예약도 새 보호자로 옮긴다
         // (안 옮기면 예약 문자가 옛 보호자에게 가고, 옛 보호자를 지울 때 기록이 함께 지워진다)
         if (prevCustomerId && prevCustomerId !== customerId) {
+          let prepaidMoved = 0;
           for (const store of ['records', 'appointments']) {
             const rows = await DB.getByIndex(store, 'petId', id);
             for (const r of rows) {
               if (r.customerId === customerId) continue;
+              if (store === 'records' && Number(r.prepaidUsed) > 0) prepaidMoved++;
               r.customerId = customerId;
               await DB.update(store, r);
             }
           }
+          // 정액권 장부는 돈을 낸 보호자 것이라 옮기지 않는다 (잔액은 원래 보호자에게 남는다)
+          if (prepaidMoved) setTimeout(() => App.showToast(`정액권으로 낸 기록 ${prepaidMoved}건은 옮겼지만, 정액권 잔액·내역은 원래 보호자에게 남습니다.`, 'info', { duration: 7000 }), 400);
           const rp = App.pages.records;
           if (rp && rp._recalcCustomerTag) {
             try { await rp._recalcCustomerTag(prevCustomerId); await rp._recalcCustomerTag(customerId); } catch (_) {}
@@ -882,19 +886,25 @@ App.pages.pets = {
         DB.getByIndex('appointments', 'petId', id),
         DB.getByIndex('records', 'petId', id)
       ]);
-      const unpaidSum = records.filter(r => r.paymentMethod === 'unpaid').reduce((s, r) => s + App.getRecordAmount(r), 0);
+      const unpaidSum = records.filter(r => r.paymentMethod === 'unpaid').reduce((s, r) => s + App.getUnpaidAmount(r), 0);
       const revenueSum = records.reduce((s, r) => s + App.getRecordAmount(r), 0);
+      // 정액권으로 낸 기록이 지워지면 그 사용분은 보호자 잔액으로 돌아간다
+      const prepaidUses = [];
+      for (const r of records) { if (Number(r.prepaidUsed) > 0) { const u = await Prepaid.getUseEntry(r.id); if (u) prepaidUses.push(u); } }
+      const prepaidBack = prepaidUses.reduce((s, u) => s + (Number(u.amount) || 0), 0);
       const confirmed = await App.confirm(
         `"${App.escapeHtml(pet.name)}"을(를) 삭제하시겠습니까?<br>` +
         `예약 <strong>${appointments.length}</strong>건 · 지난 미용 기록 <strong>${records.length}</strong>건과 사진이 함께 삭제됩니다.` +
         (revenueSum > 0 ? `<br><span style="color:var(--danger)">이 아이의 매출 ${App.formatCurrency(revenueSum)}도 매출 통계에서 빠집니다.</span>` : '') +
         (unpaidSum > 0 ? `<br><span style="color:var(--danger)">미수금 ${App.formatCurrency(unpaidSum)}도 사라집니다.</span>` : '') +
+        (prepaidBack > 0 ? `<br>정액권으로 낸 ${App.formatCurrency(prepaidBack)}은 보호자 잔액으로 돌아갑니다.` : '') +
         `<br><small style="color:var(--text-muted)">되돌릴 수 없어요. 지우기 전에 설정 &gt; 데이터에서 백업을 먼저 받아 두세요.<br>사망·양도라면 삭제 대신 수정에서 상태를 바꾸세요 — 기록은 남고 알림에서만 빠집니다.</small>`,
         { okLabel: '삭제' });
       if (!confirmed) return;
       const ops = [
         ...appointments.map(a => ({ store: 'appointments', id: a.id })),
         ...records.map(r => ({ store: 'records', id: r.id })),
+        ...prepaidUses.map(u => ({ store: 'prepaid', id: u.id })),
         { store: 'pets', id }
       ];
       await DB.deleteCascade(ops);

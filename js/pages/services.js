@@ -169,7 +169,7 @@ App.pages.services = {
                 + '<button class="btn-service-menu" data-id="' + s.id + '" title="더보기" aria-label="더보기" onclick="event.stopPropagation()" style="background:none;border:none;cursor:pointer;font-size:1.4rem;color:var(--text-muted);padding:0;flex-shrink:0;min-width:44px;min-height:44px;display:flex;align-items:center;justify-content:center;line-height:1">' + App.icon('more') + '</button>'
                 + '</div>';
         });
-        return html;
+        return '<div class="svc-list">' + html + '</div>';
       })(sorted)}
     `;
   },

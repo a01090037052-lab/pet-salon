@@ -54,7 +54,7 @@ App.pages.analytics = {
       DB.getByIndex('records', 'paymentMethod', 'unpaid'),
       DB.getByDateRange('appointments', 'date', periodStart, periodEnd + 'z')
     ]);
-    const unpaidTotal = unpaidRecs.reduce((s, r) => s + App.getRecordAmount(r), 0);
+    const unpaidTotal = unpaidRecs.reduce((s, r) => s + App.getUnpaidAmount(r), 0);
     const customerMap = {}; customers.forEach(c => { customerMap[c.id] = c; });
     const petMap = {}; pets.forEach(p => { petMap[p.id] = p; });
     const serviceNameMap = {}; services.forEach(s => { serviceNameMap[s.id] = s.name; });
@@ -367,7 +367,7 @@ App.pages.analytics = {
         return {
           page: 'records',
           id: r.id,
-          label: `${App.formatDate(r.date)}${p ? ' · ' + p.name : ''} · ${App.formatCurrency(App.getRecordAmount(r))}`,
+          label: `${App.formatDate(r.date)}${p ? ' · ' + p.name : ''} · ${App.formatCurrency(App.getUnpaidAmount(r))}`,
           sublabel: c ? App.getCustomerLabel(c) : '',
           phone: c?.phone || ''
         };
@@ -643,6 +643,8 @@ App.pages.analytics = {
         </div>
       </div>
 
+      <div class="an-grid">
+      <section class="an-sec">
       <!-- 고객 분석 -->
       <h3 style="font-size:1rem;font-weight:800;margin-bottom:12px;color:var(--text-primary)">${App.icon('user')} 고객 분석</h3>
 
@@ -698,6 +700,8 @@ App.pages.analytics = {
       </div>
       ` : ''}
 
+      </section>
+      <section class="an-sec">
       <!-- 견종 분석 -->
       <h3 style="font-size:1rem;font-weight:800;margin-bottom:12px;color:var(--text-primary)">${App.icon('paw')} 견종 분석</h3>
 
@@ -730,6 +734,8 @@ App.pages.analytics = {
       </div>
       ` : ''}
 
+      </section>
+      <section class="an-sec">
       <!-- 서비스 분석 -->
       <h3 style="font-size:1rem;font-weight:800;margin-bottom:12px;color:var(--text-primary)">${App.icon('scissors')} 서비스 분석</h3>
 
@@ -797,6 +803,8 @@ App.pages.analytics = {
       </div>
       ` : ''}
 
+      </section>
+      <section class="an-sec">
       <!-- 매출 추이 -->
       <h3 style="font-size:1rem;font-weight:800;margin-bottom:12px;color:var(--text-primary)">${App.icon('cash')} 매출 추이</h3>
 
@@ -904,8 +912,10 @@ App.pages.analytics = {
         </div>
       </div>
 
+      </section>
       <!-- 미용사 성과 (미용사 2명 이상 등록 + 배정된 기록이 있을 때만) -->
       ${groomerList.length > 0 ? `
+      <section class="an-sec">
       <h3 style="font-size:1rem;font-weight:800;margin-bottom:12px;color:var(--text-primary)">${App.icon('user')} 미용사 성과</h3>
       <div class="card" style="margin-bottom:20px">
         <div class="card-body" style="padding:12px 16px">
@@ -933,7 +943,9 @@ App.pages.analytics = {
           }).join('')}
         </div>
       </div>
+      </section>
       ` : ''}
+      </div>
     `;
   },
 
