@@ -108,10 +108,18 @@ describe('몸무게 없음 / 사이즈만 있는 반려견', () => {
     assert.equal(r.bySize, true);
   });
   test('medium → 대표 9kg → 7~10kg 50,000원', () => assert.equal(price(weightSvc(), 'medium'), 50000));
-  test('large → 마지막 구간 60,000원, 몸무게를 모르니 초과 요금 없음', () => {
+  test('large → 대표 20kg → 기본 5단계에선 마지막 구간 60,000원, 몸무게를 모르니 초과 요금 없음', () => {
     const r = App.calcServicePrice(weightSvc(), 'large', T());
     assert.equal(r.price, 60000);
     assert.equal(r.over, null);
+  });
+  test('40kg 까지 있는 구간표(~10·~20·~30·~40·40~)에서 large → 10~20kg 구간 (맨 끝 구간 아님)', () => {
+    const t = App.normalizePriceBands({ bands: [{ id: 'k1', upTo: 10 }, { id: 'k2', upTo: 20 }, { id: 'k3', upTo: 30 }, { id: 'k4', upTo: 40 }, { id: 'k5', upTo: null }], overKg: null });
+    const svc = { name: '전체미용', category: 'grooming', pricing: { mode: 'weight', prices: { k1: 40000, k2: 60000, k3: 80000, k4: 100000, k5: 120000 }, overKgMode: 'inherit' } };
+    const r = App.calcServicePrice(svc, 'large', t);
+    assert.equal(r.bandId, 'k2');
+    assert.equal(r.bandLabel, '10~20kg');
+    assert.equal(r.price, 60000);
   });
 });
 
@@ -134,12 +142,19 @@ describe('서비스별 초과 kg 규칙 (inherit / off / custom)', () => {
     assert.equal(App.getOverKgRule(svc, T()), null);
     assert.equal(price(svc, 15), 60000);
   });
-  test('반올림 단위: 1kg × 7,500원 → 1,000원 단위 반올림 8,000원 (10.5kg = 68,000원)', () => {
-    assert.equal(price(weightSvc({ overKgMode: 'custom', overKgCustom: { from: 10, perKg: 7500 } }), 10.5), 68000);
+  test('초과 요금은 반올림하지 않는다: 1kg × 7,500원 = 7,500원 (10.5kg = 67,500원)', () => {
+    assert.equal(price(weightSvc({ overKgMode: 'custom', overKgCustom: { from: 10, perKg: 7500 } }), 10.5), 67500);
   });
-  test('올림 끔(ceil:false): 10.34kg → 0.3kg × 5,000 = 1,500 → 2,000원 → 62,000원', () => {
+  test('반올림 단위 10,000원이어도 1kg당 5,500원은 그대로: 11kg = 60,000 + 5,500 = 65,500원', () => {
+    const t = App.normalizePriceBands({ bands: T().bands, overKg: { from: 10, perKg: 5500, ceil: true }, rounding: 10000 });
+    assert.equal(t.rounding, 10000);
+    const r = App.calcServicePrice(weightSvc(), 11, t);
+    assert.equal(r.over.extra, 5500);
+    assert.equal(r.price, 65500);
+  });
+  test('올림 끔(ceil:false): 10.34kg → 0.3kg × 5,000 = 1,500원 → 61,500원', () => {
     const t = App.normalizePriceBands({ bands: T().bands, overKg: { from: 10, perKg: 5000, ceil: false } });
-    assert.equal(price(weightSvc(), 10.34, t), 62000);
+    assert.equal(price(weightSvc(), 10.34, t), 61500);
   });
   test('가게 초과 요금이 꺼진 구간표(overKg null): 15kg = 60,000원', () => {
     assert.equal(price(weightSvc(), 15, { ...T(), overKg: null }), 60000);
@@ -149,8 +164,8 @@ describe('서비스별 초과 kg 규칙 (inherit / off / custom)', () => {
 describe('기본 초과 규칙 (defaultOverKgMode)', () => {
   test('미용 코스 → 가게 기본(inherit)', () => assert.equal(App.defaultOverKgMode({ name: '전체미용', category: 'grooming' }), 'inherit'));
   test('카테고리 없음 → 미용 코스로 보고 inherit', () => assert.equal(App.defaultOverKgMode({ name: '가위컷' }), 'inherit'));
-  test('이름에 목욕/스파/약욕 → off', () => {
-    for (const name of ['목욕', '스파 목욕', '약욕']) assert.equal(App.defaultOverKgMode({ name, category: 'grooming' }), 'off', name);
+  test('이름은 보지 않는다: 미용 코스 목욕/스파/약욕 → inherit', () => {
+    for (const name of ['목욕', '스파 목욕', '약욕']) assert.equal(App.defaultOverKgMode({ name, category: 'grooming' }), 'inherit', name);
   });
   test('추가 옵션·단독 케어 → off', () => {
     assert.equal(App.defaultOverKgMode({ name: '발톱', category: 'addon' }), 'off');
@@ -270,10 +285,10 @@ describe('구버전 가격 → 구간 가격 (legacyToPricing)', () => {
     assert.equal(p.overKgMode, 'inherit');
     assert.deepEqual(plain(p.prices), { b1: 30000, b2: 30000, b3: 30000, b4: 40000, b5: 40000 });
   });
-  test('목욕(초과 요금 없음): 마지막 구간(10kg~) = 대형가', () => {
+  test('목욕(미용 코스)도 가게 기본: 마지막 구간(10kg~) = 중형가 (kg당 요금이 위에 더해짐)', () => {
     const p = App.legacyToPricing(v182('목욕', 'grooming', 20000, 25000, 35000), T());
-    assert.equal(p.overKgMode, 'off');
-    assert.deepEqual(plain(p.prices), { b1: 20000, b2: 20000, b3: 20000, b4: 25000, b5: 35000 });
+    assert.equal(p.overKgMode, 'inherit');
+    assert.deepEqual(plain(p.prices), { b1: 20000, b2: 20000, b3: 20000, b4: 25000, b5: 25000 });
   });
   test('추가 옵션도 초과 요금 없음 → 마지막 구간 = 대형가', () => {
     const p = App.legacyToPricing(v182('엉킴', 'addon', 5000, 8000, 10000), T());
@@ -350,5 +365,51 @@ describe('구버전 기기 가격 수정 반영 (adoptLegacyEdit)', () => {
     svc.priceSmall = svc.priceMedium = svc.priceLarge = -5000;
     App.adoptLegacyEdit(svc, T());
     assert.equal(svc.pricing.flat, 20000);
+  });
+});
+
+describe('몸무게 오타 확인 기준 (weightConfirmThreshold / needsWeightConfirm)', () => {
+  const T40 = () => App.normalizePriceBands({ bands: [{ id: 'k1', upTo: 10 }, { id: 'k2', upTo: 20 }, { id: 'k3', upTo: 30 }, { id: 'k4', upTo: 40 }, { id: 'k5', upTo: null }], overKg: null });
+  test('기본 5단계(마지막 구간 10kg~) → max(30, 15) = 30kg', () => assert.equal(App.weightConfirmThreshold(T()), 30));
+  test('40kg 구간표(마지막 구간 40kg~) → 60kg', () => assert.equal(App.weightConfirmThreshold(T40()), 60));
+  test('구간 사용 안 함 → Infinity, 묻지 않음', () => {
+    const t = { ...T(), bandsOff: true };
+    assert.equal(App.weightConfirmThreshold(t), Infinity);
+    assert.equal(App.needsWeightConfirm(52, 5.2, t), false);
+  });
+  test('프로필 없음: 기본표 52kg 은 묻고 25kg 은 안 묻는다', () => {
+    assert.equal(App.needsWeightConfirm(52, null, T()), true);
+    assert.equal(App.needsWeightConfirm(25, 0, T()), false);
+  });
+  test('프로필 5.2kg 에 52 입력(오타) → 묻는다, 40kg 표에서도', () => {
+    assert.equal(App.needsWeightConfirm(52, 5.2, T()), true);
+    assert.equal(App.needsWeightConfirm(52, 5.2, T40()), true);
+  });
+  test('40kg 표 가게의 45kg 아이(프로필 45) → 안 묻는다', () => assert.equal(App.needsWeightConfirm(45, 45, T40()), false));
+  test('프로필과 50% 넘게 차이: 5.2 → 0.52(줄어듦) 묻고, 5.2 → 7(35%) 안 묻는다', () => {
+    assert.equal(App.needsWeightConfirm(0.52, 5.2, T()), true);
+    assert.equal(App.needsWeightConfirm(7, 5.2, T()), false);
+  });
+  test('기준 kg 을 넘으면 프로필과 같아도 묻는다 (기본표 35kg)', () => assert.equal(App.needsWeightConfirm(35, 35, T()), true));
+});
+
+describe('견종 맞춤 서비스 (serviceMatchesBreed)', () => {
+  test('이름에 견종이 들어 있으면 true', () => assert.equal(App.serviceMatchesBreed('말티즈 전체미용', '말티즈'), true));
+  test("괄호 안 '·' 항목 중 하나와 같으면 true", () => assert.equal(App.serviceMatchesBreed('스포팅 (말티즈·푸들)', '푸들'), true));
+  test("견종이 '토이 푸들'이면 괄호 안 '푸들'도 맞음", () => assert.equal(App.serviceMatchesBreed('가위컷 (푸들·비숑)', '토이 푸들'), true));
+  test('맞지 않거나 견종이 없으면 false', () => {
+    assert.equal(App.serviceMatchesBreed('스포팅 (말티즈·푸들)', '시츄'), false);
+    assert.equal(App.serviceMatchesBreed('전체미용', ''), false);
+    assert.equal(App.serviceMatchesBreed('전체미용', null), false);
+  });
+});
+
+describe('가격 미입력 메뉴', () => {
+  test("구간 가격이 비어 있으면 describeBandPrice 가 '0원'을 쓰지 않는다", () => {
+    const svc = { name: '전체미용', category: 'grooming', pricing: { mode: 'weight', prices: {}, overKgMode: 'inherit' } };
+    const r = App.calcServicePrice(svc, 5.2, T());
+    const s = App.describeBandPrice(r, 5.2);
+    assert.ok(!s.includes('0원'), s);
+    assert.ok(s.includes('가격 미입력'), s);
   });
 });

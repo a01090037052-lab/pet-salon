@@ -41,20 +41,10 @@ App.pages.services = {
   },
 
   async render(container) {
-    // 최근 12개월 records만 로드 — 3년+ 누적 시 메모리 부담 회피 (서비스 통계는 1년 기준 충분)
-    const oneYearAgo = (() => { const d = new Date(); d.setFullYear(d.getFullYear() - 1); return App.formatLocalDate(d); })();
-    const [services, records] = await Promise.all([
-      DB.getAll('services'),
-      DB.getByDateRange('records', 'date', oneYearAgo, '9999-12-31')
-    ]);
+    const services = await DB.getAll('services');
     const active = services.filter(s => s.isActive !== false);
     const inactive = services.filter(s => s.isActive === false);
     const priceTable = await App.getPriceBands();
-
-    // 서비스 사용 횟수 집계 — 기록 1건은 서비스당 한 번만 센다 (_recordUsesService 우선순위)
-    const usageById = {};
-    services.forEach(s => { usageById[s.id] = records.filter(r => this._recordUsesService(r, s)).length; });
-    const getUsage = (s) => usageById[s.id] || 0;
 
     const sorted = this._sortServices([...services]);
 
@@ -65,17 +55,16 @@ App.pages.services = {
           <p class="page-subtitle">총 ${active.length}개${inactive.length > 0 ? ' (비활성 ' + inactive.length + '개)' : ''}</p>
         </div>
         <div class="page-actions">
-          <button class="btn btn-secondary" id="btn-init-services" title="기본 템플릿">+ 템플릿</button>
           ${active.length > 0 ? '<button class="btn btn-warning" id="btn-bulk-price" title="일괄 가격 조정">' + App.icon('coins') + ' 일괄 조정</button>' : ''}
           <button class="btn btn-primary" id="btn-add-service">+ 새 서비스</button>
         </div>
       </div>
-      <!-- 가격 구간 한 줄 (헤더 버튼이 두 줄로 넘치지 않게 따로) -->
-      <button type="button" id="btn-price-bands" style="display:flex;align-items:center;gap:8px;width:100%;min-height:44px;margin-bottom:12px;padding:8px 12px;background:var(--bg-white);border:1px solid var(--border-light);border-radius:var(--radius);cursor:pointer;text-align:left;font-size:0.85rem;color:var(--text-secondary)">
+      <!-- 가격 구간 한 줄 (헤더 버튼이 두 줄로 넘치지 않게 따로) — 구간 사용 안 함이면 숨긴다 (설정 › 운영 설정에서 다시 켬) -->
+      ${priceTable.bandsOff ? '' : `<button type="button" id="btn-price-bands" style="display:flex;align-items:center;gap:8px;width:100%;min-height:44px;margin-bottom:12px;padding:8px 12px;background:var(--bg-white);border:1px solid var(--border-light);border-radius:var(--radius);cursor:pointer;text-align:left;font-size:0.85rem;color:var(--text-secondary)">
         <span style="font-weight:700;color:var(--text-primary,inherit);flex-shrink:0">몸무게 구간</span>
-        <span style="flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${priceTable.bandsOff ? '사용 안 함 (모든 서비스 단일가)' : priceTable.bands.map((b, i) => App.escapeHtml(App.getBandLabel(priceTable, i))).join(' · ')}</span>
+        <span style="flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${priceTable.bands.map((b, i) => App.escapeHtml(App.getBandLabel(priceTable, i))).join(' · ')}</span>
         <span style="color:var(--primary);font-weight:700;flex-shrink:0">편집</span>
-      </button>
+      </button>`}
       ${services.length > 0 ? `
       <div class="search-box" style="margin-bottom:12px;max-width:none;position:relative">
         <span class="search-icon">${App.icon('search')}</span>
@@ -93,6 +82,7 @@ App.pages.services = {
             <button class="btn btn-primary" id="btn-init-services-empty">기본 서비스 등록</button>
             <button class="btn btn-secondary" onclick="document.getElementById('btn-add-service').click()">직접 등록</button>
           </div>
+          ${this._bandsOffHint(priceTable)}
         </div>
       ` : ((list) => {
         // 카테고리별 카운트 사전 계산
@@ -103,13 +93,6 @@ App.pages.services = {
           catCounts[c] = (catCounts[c] || 0) + 1;
         });
 
-        // 가격 변경 이력 (30일 이상 전 변경 시만)
-        const priceAgeTxtOf = (s) => {
-          if (!s.priceChangedAt) return '';
-          const days = Math.floor((Date.now() - new Date(s.priceChangedAt).getTime()) / (1000 * 60 * 60 * 24));
-          if (days < 30) return '';
-          return days >= 365 ? Math.floor(days / 365) + '년 전 변경' : Math.floor(days / 30) + '개월 전 변경';
-        };
         let lastCat = '';
         let inInactive = false;
         let html = '';
@@ -136,23 +119,11 @@ App.pages.services = {
                     + '</div>';
             }
           }
-          const usage = getUsage(s);
-          // '신규'는 최근 7일 안에 만든 서비스에만 (예전엔 안 쓴 서비스마다 붙어 모든 카드가 신규로 보였다)
-          const isNew = s.createdAt && (Date.now() - new Date(s.createdAt).getTime()) < 7 * 86400000;
-          const usageTxt = usage > 0 ? '1년간 ' + usage + '회' : (isNew ? '신규' : '');
-          // 가격 표시: 단일가는 '30,000원'('~부터'면 '30,000원~'), 구간 가격은 '3.5만~5.5만' + 아래 줄에 구간별 가격
-          const pricing = App.getServicePricing(s, priceTable);
+          // 카드는 3줄까지: 이름 / 가격('30,000원' 또는 구간 범위 '3만~5만') / 큰 아이 추가 요금(붙을 때만).
+          // 구간별 가격은 카드를 눌러 수정 화면에서 본다.
           const priceDisplay = App.formatServicePrice(s, priceTable);
-          const byBand = pricing.mode === 'weight' && !priceTable.bandsOff && !pricing.free;
-          const bandLine = byBand
-            ? App.getServiceBandRows(s, priceTable).map(r => r.label + ' ' + (r.price ? App.formatManwon(r.price) : '(앞 구간)')).join(' · ')
-            : '';
-          // 큰 아이 추가 요금 규칙 한 줄 (구간 가격이거나, 이 서비스만 따로 정한 경우)
-          const rule = App.getOverKgRule(s, priceTable, pricing);
-          const ruleLine = rule
-            ? App.describeOverKgRule(rule)
-            : (byBand && priceTable.overKg ? '큰 아이 추가 요금 없음' : '');
-          const metaTxt = [usageTxt, priceAgeTxtOf(s)].filter(Boolean).join(' · ');
+          const rule = App.getOverKgRule(s, priceTable);
+          const ruleLine = rule ? App.describeOverKgRule(rule) : '';
           const isFav = !!s.favorite;
           const barStyle = isOff ? 'border-left:4px solid var(--border);'
                                  : isFav ? 'border-left:4px solid #F59E0B;'
@@ -162,9 +133,7 @@ App.pages.services = {
                 + '<div style="flex:1;min-width:0">'
                 +   '<div style="font-size:1.05rem;font-weight:800;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">' + App.escapeHtml(s.name) + '</div>'
                 +   '<div class="service-price-display" data-id="' + s.id + '" style="font-size:0.95rem;font-weight:800;color:var(--primary);margin-top:3px;overflow-wrap:anywhere">' + priceDisplay + '</div>'
-                +   (bandLine ? '<div class="service-band-line" style="font-size:0.75rem;color:var(--text-secondary);margin-top:2px;overflow-wrap:anywhere">' + App.escapeHtml(bandLine) + '</div>' : '')
-                +   (ruleLine ? '<div class="service-rule-line" style="font-size:0.75rem;color:var(--text-secondary);margin-top:2px">' + App.escapeHtml(ruleLine) + '</div>' : '')
-                +   (metaTxt ? '<div style="font-size:0.78rem;color:var(--text-muted);margin-top:3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">' + metaTxt + '</div>' : '')
+                +   (ruleLine ? '<div class="service-rule-line" style="font-size:0.75rem;color:var(--text-secondary);margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">' + App.escapeHtml(ruleLine) + '</div>' : '')
                 + '</div>'
                 + '<button class="btn-service-menu" data-id="' + s.id + '" title="더보기" aria-label="더보기" onclick="event.stopPropagation()" style="background:none;border:none;cursor:pointer;font-size:1.4rem;color:var(--text-muted);padding:0;flex-shrink:0;min-width:44px;min-height:44px;display:flex;align-items:center;justify-content:center;line-height:1">' + App.icon('more') + '</button>'
                 + '</div>';
@@ -228,8 +197,8 @@ App.pages.services = {
     }, 200);
     document.getElementById('service-search')?.addEventListener('input', (e) => _debouncedSearch(e.target.value));
 
-    document.getElementById('btn-init-services')?.addEventListener('click', () => this.initDefaultServices());
     document.getElementById('btn-init-services-empty')?.addEventListener('click', () => this.initDefaultServices());
+    this._bindBandsOffHint();
     document.getElementById('btn-bulk-price')?.addEventListener('click', () => this.showBulkPriceModal());
     document.getElementById('btn-price-bands')?.addEventListener('click', () => App.pages.settings.showPriceBandEditor());
   },
@@ -277,8 +246,8 @@ App.pages.services = {
     const catLabels = this._categoryLabels;
     const catCounts = {};
     active.forEach(s => { const c = s.category || 'grooming'; catCounts[c] = (catCounts[c] || 0) + 1; });
-    const ROUNDS = [100, 500, 1000, 5000, 10000];
-    const defRound = ROUNDS.includes(table.rounding) ? table.rounding : 1000;
+    // 반올림은 설정 › 가격 구간의 단위를 그대로 쓴다 (여기서 따로 고르지 않는다)
+    this._bulkUnit = Number(table.rounding) > 0 ? Number(table.rounding) : 1000;
     const defTarget = catCounts.grooming ? 'grooming' : 'all';
     this._bulkReady = null;
 
@@ -323,15 +292,7 @@ App.pages.services = {
         <div class="form-group">
           <label class="form-label">조정값 <span style="color:var(--text-muted);font-size:0.78rem">(내릴 때는 앞에 - 예: -5000)</span></label>
           <input type="number" id="bulk-value" placeholder="예: 5000" step="100" data-no-enter-save>
-          <div class="form-hint" style="margin-top:4px">예) 5000 = 5,000원 인상 / 비율 -5 = 5% 인하 · 비어 있는 칸은 그대로</div>
-        </div>
-
-        <div class="form-group">
-          <label class="form-label">반올림 단위 <span style="color:var(--text-muted);font-size:0.78rem;font-weight:400">(기본: 가격 구간 설정 값)</span></label>
-          <div id="bulk-round-chips" style="display:flex;gap:6px;flex-wrap:wrap">
-            ${ROUNDS.map(v => `<button type="button" class="payment-chip${v === defRound ? ' active' : ''}" data-value="${v}">${v.toLocaleString('ko-KR')}원</button>`).join('')}
-          </div>
-          <input type="hidden" id="bulk-round" value="${defRound}">
+          <div class="form-hint" style="margin-top:4px">예) 5000 = 5,000원 인상 / 비율 -5 = 5% 인하 · 비어 있는 칸은 그대로 · ${this._bulkUnit.toLocaleString('ko-KR')}원 단위로 반올림 (가격 구간 설정)</div>
         </div>
 
         <div id="bulk-preview" style="display:none;background:var(--bg);border-radius:var(--radius);padding:12px;margin-top:8px;font-size:0.82rem;scroll-margin-bottom:90px"></div>
@@ -350,7 +311,7 @@ App.pages.services = {
       const saveBtn = document.getElementById('modal-save');
       if (saveBtn) { saveBtn.dataset.label = '미리보기'; if (!saveBtn.disabled) saveBtn.textContent = '미리보기'; }
     };
-    [['bulk-target-chips', 'bulk-target'], ['bulk-band-chips', 'bulk-band'], ['bulk-mode-chips', 'bulk-mode'], ['bulk-round-chips', 'bulk-round']].forEach(([chipsId, hiddenId]) => {
+    [['bulk-target-chips', 'bulk-target'], ['bulk-band-chips', 'bulk-band'], ['bulk-mode-chips', 'bulk-mode']].forEach(([chipsId, hiddenId]) => {
       document.querySelectorAll('#' + chipsId + ' .payment-chip').forEach(btn => {
         btn.addEventListener('click', () => {
           document.querySelectorAll('#' + chipsId + ' .payment-chip').forEach(b => b.classList.remove('active'));
@@ -375,15 +336,14 @@ App.pages.services = {
     const target = document.getElementById('bulk-target')?.value || 'all';
     const band = document.getElementById('bulk-band')?.value || 'all';
     const mode = document.getElementById('bulk-mode')?.value || 'amount';
-    const r = Number(document.getElementById('bulk-round')?.value);
-    const unit = [100, 500, 1000, 5000, 10000].includes(r) ? r : 1000;
+    const unit = this._bulkUnit || 1000;
     const valueInput = Number(document.getElementById('bulk-value')?.value);
     if (!valueInput || isNaN(valueInput)) return null;
     const calcPrice = (orig) => {
       // 0원 = 그 구간은 받지 않는(비워 둔) 칸 — 올리지 않고 0 그대로 둔다
       if (!(Number(orig) > 0)) return 0;
       const next = mode === 'percent' ? orig * (1 + valueInput / 100) : orig + valueInput;
-      return Math.max(0, Math.round(next / unit) * unit); // 선택한 단위로 반올림
+      return Math.max(0, Math.round(next / unit) * unit); // 가격 구간 설정의 단위로 반올림
     };
     return { target, band, mode, unit, valueInput, calcPrice, key: [target, band, mode, unit, valueInput].join('|') };
   },
@@ -563,6 +523,16 @@ App.pages.services = {
     }
   },
 
+  // 단일가 가게용 한 줄 안내 (빈 메뉴·기본 서비스 등록·새 서비스) — 이미 '구간 사용 안 함'이면 없음
+  _bandsOffHint(table) {
+    if (table.bandsOff) return '';
+    return `<div class="form-hint svc-bands-off-hint" style="margin-top:12px">몸무게와 상관없이 한 가격이면 설정 › 가격 구간에서 '구간 사용 안 함'을 켜세요 <button type="button" class="btn btn-ghost btn-sm svc-open-bands" style="min-height:36px;color:var(--primary);font-weight:700;padding:0 6px">구간 설정 열기</button></div>`;
+  },
+
+  _bindBandsOffHint() {
+    document.querySelectorAll('.svc-open-bands').forEach(b => b.addEventListener('click', () => App.pages.settings.showPriceBandEditor()));
+  },
+
   // 새 서비스의 가격 방식 기본값: 이 기기에서 마지막으로 고른 방식 → (없으면) 지금 메뉴에 더 많은 방식 → 구간 가격.
   // 가게가 '구간 사용 안 함'이면 언제나 단일가.
   _defaultPricingMode(services, table) {
@@ -599,10 +569,13 @@ App.pages.services = {
     const flatVal = pricing.mode === 'weight' ? (bandsOff ? (App.calcServicePrice({ ...service, pricing }, null, table).base || '') : '') : (Number(pricing.flat) || '');
     // 큰 아이 추가 요금 규칙
     const overMode = id ? App.getOverKgMode(service, pricing) : App.defaultOverKgMode({ category: service.category || 'grooming' });
+    // 구간 사용 안 함이면 추가 요금 칸을 숨긴다 — 단, '이 서비스만 따로'는 몸무게로 계속 붙으므로 보여 준다 (몰래 붙는 요금 없게)
+    const showOver = !bandsOff || overMode === 'custom';
     const shopFrom = table.overKg ? App.overKgFrom(table) : null;
     const lastLower = table.bands.length > 1 ? Number(table.bands[table.bands.length - 2].upTo) || 0 : 0;
     const custom = pricing.overKgCustom || { from: shopFrom || lastLower || 10, perKg: table.overKg ? table.overKg.perKg : 5000 };
     const headKg = App.formatKg(shopFrom || Number(custom.from) || 10);
+    const shopNote = '(' + (table.overKg && !bandsOff ? App.describeOverKgRule({ from: shopFrom, perKg: table.overKg.perKg }) : '지금은 없음') + ')';
     const STANDARD_INCLUDED = ['발톱 정리', '귀청소', '항문샘', '발바닥', '위생 미용', '향수'];
     const included = service.includedItems || [];
 
@@ -622,11 +595,12 @@ App.pages.services = {
             <button type="button" class="payment-chip${service.category === 'care' ? ' active' : ''}" data-value="care">${App.icon('drop')} 단독 케어</button>
           </div>
           <input type="hidden" id="f-category" value="${service.category || 'grooming'}">
+          <div class="form-hint" style="margin-top:6px">미용 코스 = 주 서비스 · 추가 옵션 = 기록의 추가 항목에만 · 단독 케어 = 둘 다</div>
         </div>
 
         <!-- 가격 — 몸무게 구간별 / 모든 구간 같은 가격(단일가) / 무료 -->
         <div class="form-group">
-          <label class="form-label">가격 (원) <span class="required">*</span></label>
+          <label class="form-label">가격 (원) <span style="color:var(--text-muted);font-size:0.78rem;font-weight:400">(비워 두면 &lsquo;가격 미입력&rsquo; — 상담 후 결정)</span></label>
           <label style="display:flex;align-items:center;gap:6px;margin-bottom:8px;font-size:0.88rem;cursor:pointer">
             <input type="checkbox" id="f-price-free" ${isFree ? 'checked' : ''} style="width:18px;height:18px;cursor:pointer">
             <span>무료 서비스 (0원)</span>
@@ -646,16 +620,17 @@ App.pages.services = {
                 <span style="width:84px;flex-shrink:0;font-weight:700;font-size:0.88rem">${App.escapeHtml(App.getBandLabel(table, i))}</span>
                 <input type="number" class="f-band-price" id="f-band-${b.id}" data-band="${b.id}" value="${pricing.mode === 'weight' ? bandVal(b.id) : ''}" placeholder="비어 있음" min="0" step="1000" inputmode="numeric" style="flex:1">
               </div>`).join('')}
-              <div style="background:var(--bg);border-radius:var(--radius);padding:8px 10px;margin-top:6px;font-size:0.85rem">
-                <div style="font-weight:700;margin-bottom:6px">한 번에 채우기</div>
-                <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap">
+              <details class="svc-more" style="background:var(--bg);border-radius:var(--radius);padding:0 10px;margin-top:6px;font-size:0.85rem">
+                <summary style="min-height:40px;display:flex;align-items:center;cursor:pointer;font-weight:700;list-style:none">${App.icon('chevron-down')}&nbsp;한 번에 채우기 <span style="font-weight:500;color:var(--text-muted);margin-left:4px">(첫 구간 + 구간마다 +N원)</span></summary>
+                <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;padding-bottom:8px">
                   첫 구간 <input type="number" id="f-fill-base" placeholder="가격" min="0" step="1000" inputmode="numeric" style="width:92px">
                   구간마다 + <input type="number" id="f-fill-step" value="5000" min="0" step="1000" inputmode="numeric" style="width:84px"> 원
                   <button type="button" class="btn btn-sm btn-secondary" id="f-fill-apply" style="min-height:40px">채우기</button>
                 </div>
-              </div>
+              </details>
               <div class="form-hint" style="margin-top:4px">구간은 설정 › 운영 설정 › 가격 구간에서 바꿔요.</div>
             </div>
+            ${id ? '' : this._bandsOffHint(table)}
           </div>
         </div>
 
@@ -665,9 +640,10 @@ App.pages.services = {
             ${App.icon('chevron-down')} 더 보기 <span id="f-more-summary" style="font-weight:500;font-size:0.78rem;color:var(--text-muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0"></span>
           </summary>
           <div style="padding:4px 0 8px">
-            <div class="form-group" id="f-overkg-group">
+            <div class="form-group" id="f-overkg-group" style="${showOver ? '' : 'display:none'}">
               <label class="form-label">${headKg}kg 넘는 아이 추가 요금</label>
-              <label class="svc-radio"><input type="radio" name="f-overkg" value="inherit" ${overMode === 'inherit' ? 'checked' : ''}> 가게 기본 <span style="color:var(--text-muted);font-size:0.8rem">(${table.overKg && !bandsOff ? App.escapeHtml(App.describeOverKgRule({ from: shopFrom, perKg: table.overKg.perKg })) : '지금은 없음'})</span></label>
+              ${bandsOff ? `<div class="form-hint" style="margin:0 0 6px">구간을 꺼도 이 서비스만 따로 정한 추가 요금은 반려견 몸무게로 계속 붙어요. 받지 않으려면 '추가 요금 없음'을 고르세요.</div>` : ''}
+              <label class="svc-radio" id="f-overkg-inherit-label"><input type="radio" name="f-overkg" value="inherit" ${overMode === 'inherit' ? 'checked' : ''}> 가게 기본 <span id="f-overkg-inherit-note" style="color:var(--text-muted);font-size:0.8rem"></span></label>
               <label class="svc-radio"><input type="radio" name="f-overkg" value="off" ${overMode === 'off' ? 'checked' : ''}> 추가 요금 없음</label>
               <label class="svc-radio"><input type="radio" name="f-overkg" value="custom" ${overMode === 'custom' ? 'checked' : ''}> 이 서비스만 따로</label>
               <div id="f-overkg-custom" style="display:${overMode === 'custom' ? 'flex' : 'none'};align-items:center;gap:6px;flex-wrap:wrap;margin:4px 0 0 26px;font-size:0.88rem">
@@ -740,8 +716,10 @@ App.pages.services = {
       };
     }
 
+    this._bindBandsOffHint();
     const $ = (x) => document.getElementById(x);
-    // 새 서비스는 분류·이름에 맞춰 기본 규칙을 따라가다가, 직접 고르면 멈춘다 (이어서 등록 때 다시 풀린다 — 표시는 DOM 에)
+    // 새 서비스는 분류 기본값(미용 코스 = 가게 기본, 추가 옵션·단독 케어 = 없음)을 따라가다가, 직접 고르면 멈춘다.
+    // 이름·단일가 전환은 고른 값을 바꾸지 않는다. (이어서 등록 때 다시 풀린다 — 표시는 DOM 에)
     const overGroup = $('f-overkg-group');
     if (overGroup && id) overGroup.dataset.touched = '1';
     const curMode = () => ($('f-price-flat')?.checked || bandsOff) ? 'flat' : 'weight';
@@ -752,9 +730,10 @@ App.pages.services = {
       if (!el) return;
       const parts = [];
       const m = document.querySelector('input[name="f-overkg"]:checked')?.value;
-      if (m === 'custom') parts.push(App.describeOverKgRule({ from: parseFloat($('f-overkg-from')?.value) || 0, perKg: Number($('f-overkg-per')?.value) || 0 }));
-      else if (m === 'off') parts.push('큰 아이 추가 요금 없음');
-      else if (curMode() === 'weight' && table.overKg) parts.push('추가 요금 가게 기본');
+      if (!showOver) { /* 구간 사용 안 함: 큰 아이 추가 요금 칸을 숨긴다 */ }
+      else if (m === 'custom') parts.push(App.describeOverKgRule({ from: parseFloat($('f-overkg-from')?.value) || 0, perKg: Number($('f-overkg-per')?.value) || 0 }));
+      else if (m === 'off' || (curMode() === 'flat' && table.overKg)) parts.push('큰 아이 추가 요금 없음');
+      else if (table.overKg) parts.push('추가 요금 가게 기본');
       if ($('f-fromPrice')?.checked) parts.push('~부터');
       const inc = ($('f-includedItems')?.value || '').split('|').filter(Boolean).length;
       if (inc) parts.push('포함 ' + inc + '개');
@@ -764,9 +743,15 @@ App.pages.services = {
     const updateOverHint = () => {
       const m = document.querySelector('input[name="f-overkg"]:checked')?.value;
       if ($('f-overkg-custom')) $('f-overkg-custom').style.display = m === 'custom' ? 'flex' : 'none';
+      // 단일가는 '가게 기본' 추가 요금이 붙지 않는다 → 그 칸을 흐리게 막고 이유를 보여 준다 (고른 값은 그대로 둔다)
+      const flat = curMode() === 'flat';
+      const inh = document.querySelector('input[name="f-overkg"][value="inherit"]');
+      if (inh) inh.disabled = flat;
+      if ($('f-overkg-inherit-label')) $('f-overkg-inherit-label').style.opacity = flat ? '0.5' : '';
+      if ($('f-overkg-inherit-note')) $('f-overkg-inherit-note').textContent = flat ? '(단일가에는 안 붙어요)' : shopNote;
       const hint = $('f-overkg-hint');
       if (hint) {
-        if (curMode() === 'flat' && m === 'inherit') hint.textContent = '단일가 서비스에는 가게 기본 추가 요금이 붙지 않아요. 붙이려면 \'이 서비스만 따로\'를 고르세요.';
+        if (flat && m === 'inherit') hint.textContent = '단일가는 몸무게와 상관없이 같은 가격이라 가게 기본 추가 요금이 붙지 않아요. 큰 아이에게 더 받으려면 \'이 서비스만 따로\'를 고르세요.';
         else if (m === 'custom' && curMode() === 'weight' && lastLower > 0) hint.textContent = `마지막 구간(${App.formatKg(lastLower)}kg~)보다 가벼운 아이에게는 붙지 않아요.`;
         else hint.textContent = '';
       }
@@ -774,7 +759,7 @@ App.pages.services = {
     };
     const setOverDefault = () => {
       if (overGroup?.dataset.touched === '1') return;
-      const def = App.defaultOverKgMode({ category: $('f-category')?.value || 'grooming', name: $('f-name')?.value || '' });
+      const def = App.defaultOverKgMode({ category: $('f-category')?.value || 'grooming' });
       const r = document.querySelector(`input[name="f-overkg"][value="${def}"]`);
       if (r) r.checked = true;
       updateOverHint();
@@ -782,7 +767,6 @@ App.pages.services = {
     document.querySelectorAll('input[name="f-overkg"]').forEach(r => r.addEventListener('change', () => { if (overGroup) overGroup.dataset.touched = '1'; updateOverHint(); }));
     ['f-overkg-from', 'f-overkg-per', 'f-description'].forEach(x => $(x)?.addEventListener('input', updateMoreSummary));
     $('f-fromPrice')?.addEventListener('change', updateMoreSummary);
-    $('f-name')?.addEventListener('change', setOverDefault);
     // 이름 글자 수 — 40자를 넘으면 잘라 버리지 않고 알려 준다
     const nameCount = () => {
       const el = $('f-name-count'); const n = ($('f-name')?.value || '').trim().length;
@@ -877,14 +861,17 @@ App.pages.services = {
     if (free) {
       pricing.free = true;
     } else if (flatMode) {
+      // 비우거나 0원 = 가격 미입력 (상담 후 결정). 무료는 '무료 서비스' 체크로만.
       pricing.flat = Math.max(0, Number($('f-priceFlat')?.value) || 0);
-      if (!(pricing.flat > 0)) {
+      const keepsBands = table.bandsOff && existingPricing && existingPricing.mode === 'weight';
+      if (!(pricing.flat > 0) && keepsBands && Object.values(existingPricing.prices || {}).some(v => Number(v) > 0)) {
+        // 보관된 구간 가격이 있으면 단일가 칸을 비워도 첫 구간 가격이 쓰인다 — 말없이 가격이 남지 않게 막는다
         App.highlightField('f-priceFlat');
-        App.showToast("가격을 입력하세요 (무료면 '무료 서비스' 체크)", 'error');
+        App.showToast("보관된 구간 가격이 쓰여요. 가격을 적거나 '무료 서비스'를 체크하세요.", 'error');
         return { error: true };
       }
       // '구간 사용 안 함' 중에 구간 가격 서비스를 고쳐도 구간 가격은 지우지 않고 보관한다 (다시 켜면 돌아온다)
-      if (table.bandsOff && existingPricing && existingPricing.mode === 'weight') {
+      if (keepsBands) {
         pricing.mode = 'weight';
         pricing.prices = { ...(existingPricing.prices || {}) };
         if (existingPricing.bandsAt) pricing.bandsAt = existingPricing.bandsAt;
@@ -893,12 +880,8 @@ App.pages.services = {
       const inputs = Array.from(document.querySelectorAll('.f-band-price'));
       const vals = inputs.map(inp => Math.max(0, Number(inp.value) || 0));
       const filled = vals.filter(v => v > 0);
-      if (filled.length === 0) {
-        if (inputs[0]) App.highlightField(inputs[0].id || 'f-fill-base');
-        App.showToast("가격을 입력하세요 (무료면 '무료 서비스' 체크)", 'error');
-        return { error: true };
-      }
-      if (filled.length < vals.length) {
+      // 모든 구간이 비었으면 가격 미입력으로 저장 (prices {})
+      if (filled.length > 0 && filled.length < vals.length) {
         // 일부 구간만 적었다 — 빈 구간을 어떻게 할지 묻는다
         const first = filled[0];
         const emptyLabels = inputs.map((inp, i) => vals[i] > 0 ? null : App.getBandLabel(table, i)).filter(Boolean);
@@ -962,7 +945,7 @@ App.pages.services = {
     if (!name) { App.highlightField('f-name'); App.showToast('서비스명을 입력해주세요.', 'error'); return; }
     if (name.length > 40) { App.highlightField('f-name'); App.showToast(`서비스명은 40자까지예요 (지금 ${name.length}자).`, 'error'); return; }
 
-    let table = await App.getPriceBands();
+    const table = await App.getPriceBands();
     const category = $('f-category')?.value || 'grooming';
     const includedItemsStr = $('f-includedItems')?.value || '';
     const includedItems = includedItemsStr.split('|').map(s => s.trim()).filter(Boolean);
@@ -991,25 +974,6 @@ App.pages.services = {
     const read = await this._readPricingFromForm(table, existing0 ? App.getServicePricing(existing0, table) : null);
     if (read.error) return;
     const pricing = read.pricing;
-
-    // 처음 한 번: 가게 기본 큰 아이 추가 요금을 그대로 쓸지 묻는다 (구간 가격 + 가게 기본 규칙인 서비스를 처음 저장할 때)
-    let openBandEditor = false;
-    if (!id && pricing.mode === 'weight' && !pricing.free && pricing.overKgMode === 'inherit' && table.overKg && !table.bandsOff
-        && !(await DB.getSetting('overKgDefaultAsked'))) {
-      const rule = App.describeOverKgRule({ from: App.overKgFrom(table), perKg: table.overKg.perKg });
-      const pick = await App.choose(`큰 아이 추가 요금: <strong>${App.escapeHtml(rule)}</strong> 추가<br>그대로 쓸까요?<br><small style="color:var(--text-muted)">미용 코스에 붙어요. 서비스마다 '더 보기'에서 바꿀 수 있어요.</small>`, [
-        { value: 'keep', label: '그대로' },
-        { value: 'edit', label: '금액 바꾸기' },
-        { value: 'off', label: '쓰지 않기' }
-      ], { cancelLabel: '나중에' });
-      if (pick) await DB.setSetting('overKgDefaultAsked', 1);
-      if (pick === 'edit') openBandEditor = true;
-      if (pick === 'off') {
-        table = await App.savePriceBands({ ...table, overKg: null });
-        await App.refreshLegacyPrices(table);
-        App.showToast('큰 아이 추가 요금을 껐어요. 설정 › 가격 구간에서 다시 켤 수 있어요.', 'info');
-      }
-    }
 
     const data = { name, description, pricing, category, isActive: true, includedItems };
     App.applyLegacyPrices(data, table); // 구버전 기기용 priceSmall/Medium/Large + 서명
@@ -1040,7 +1004,7 @@ App.pages.services = {
       if (opts.cont) {
         // 이어서 등록: 분류·가격 방식은 그대로, 이름·가격·세부 설정만 비운다
         this._contAdded = (this._contAdded || 0) + 1;
-        App.showToast(openBandEditor ? `"${name}" 등록 — 추가 요금 금액은 다 등록한 뒤 설정 › 가격 구간에서 바꾸세요` : `"${name}" 등록 — 다음 서비스를 입력하세요`, openBandEditor ? 'info' : 'success');
+        App.showToast(`"${name}" 등록 — 다음 서비스를 입력하세요`);
         App._modalDirty = false; // 비운 새 칸은 '작성 중'이 아니다
         $('f-name').value = '';
         $('f-name').dispatchEvent(new Event('input')); // 글자 수 표시 갱신
@@ -1066,7 +1030,6 @@ App.pages.services = {
 
     this._contAdded = 0; // 아래 handleRoute 한 번만
     App.closeModal();
-    if (openBandEditor) { setTimeout(() => App.pages.settings.showPriceBandEditor(), 350); App.handleRoute(); return; }
     if (renamedFrom) {
       // closeModal()의 history.back() 이 확인창을 바로 닫아 버리지 않게 잠깐 기다린다
       await new Promise(r => setTimeout(r, 180));
@@ -1241,7 +1204,8 @@ App.pages.services = {
       + '<button type="button" class="btn btn-sm btn-ghost" id="tpl-toggle-all" style="min-height:40px">전체 해제</button></div>'
       + '<label style="display:flex;align-items:center;gap:8px;padding:10px 12px;margin-bottom:8px;background:var(--bg);border-radius:var(--radius);cursor:pointer;font-size:0.88rem">'
       + '<input type="checkbox" id="tpl-flat" ' + (table0.bandsOff ? 'checked disabled' : '') + ' style="width:18px;height:18px">'
-      + '<span><strong>단일가로 등록</strong> <span style="color:var(--text-muted);font-size:0.8rem">— 몸무게 상관없이 아래 가격 하나로</span></span></label>';
+      + '<span><strong>단일가로 등록</strong> <span style="color:var(--text-muted);font-size:0.8rem">— 몸무게 상관없이 아래 가격 하나로</span></span></label>'
+      + this._bandsOffHint(table0);
     for (const cat of catOrder) {
       const items = available.filter(d => d.category === cat);
       if (items.length === 0) continue;
@@ -1284,6 +1248,7 @@ App.pages.services = {
       });
     };
     paintPrices();
+    this._bindBandsOffHint();
     document.getElementById('tpl-flat')?.addEventListener('change', paintPrices);
     // 전체 선택 / 전체 해제
     const syncToggle = () => {

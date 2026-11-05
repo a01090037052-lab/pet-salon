@@ -128,27 +128,6 @@ App.pages.dashboard = {
     }, 50);
   },
 
-  // 전체 고객의 방문 상태 요약 (대시보드 카드용)
-  _computeVisitStatusSummary(pets, customerMap, revisitDays) {
-    const summary = { normal: 0, new: 0, remind: 0, 'at-risk': 0, churned: 0 };
-    // 고객별로 가장 최근 방문한 반려견 기준으로 상태 판정
-    const customerBestStatus = {};
-    const statusPriority = App.VISIT_STATUS_PRIORITY;
-    pets.forEach(pet => {
-      if (pet.petStatus && pet.petStatus !== 'active') return;
-      const customer = customerMap[pet.customerId];
-      if (!customer) return;
-      const status = App.getPetVisitStatus(pet, revisitDays);
-      const prev = customerBestStatus[pet.customerId];
-      // 고객의 반려견 중 가장 좋은(낮은) 상태를 사용
-      if (!prev || statusPriority[status] < statusPriority[prev]) {
-        customerBestStatus[pet.customerId] = status;
-      }
-    });
-    Object.values(customerBestStatus).forEach(s => summary[s]++);
-    return summary;
-  },
-
   async render(container) {
     // Skip re-render if recent and no data changed.
     // 단, 컨테이너에 대시보드 내용이 실제로 남아있을 때만 skip 한다 —
@@ -201,7 +180,8 @@ App.pages.dashboard = {
         .sort((a, b) => (a.time || '').localeCompare(b.time || ''));
       const monthRecords = recentRecords.filter(r => r.date && r.date.startsWith(thisMonth));
 
-      // 오늘 요약 한 줄 — 오늘 예약 · 주의 반려견(특이사항이 있거나 직전 기록이 '주의'/'까다로움') · 미결제 (GroomBoard 아침 브리핑 방식)
+      // 오늘 요약 한 줄 — 오늘 예약 · 주의 반려견(특이사항이 있거나 직전 기록이 '주의'/'까다로움') (GroomBoard 아침 브리핑 방식).
+      // 미결제는 아래 '미결제 현황' 카드가 이미 보여주므로 여기서는 뺐다
       // 오늘 예약 반려견만 직전 기록을 따로 읽는다 (recentRecords 는 두 달치라 6~8주 주기 아이의 '주의'를 놓쳤다)
       const cautionPetIds = new Set();
       for (const a of [...new Map(todayAppointments.map(x => [x.petId, x])).values()]) {
@@ -216,9 +196,27 @@ App.pages.dashboard = {
         <div class="today-brief">
           <a href="#appointments" class="today-brief-item"><span class="tb-label">${App.icon('calendar')} 오늘 예약</span><b>${todayAppointments.length}건</b></a>
           <a href="#appointments" class="today-brief-item${cautionPetIds.size ? ' warn' : ''}" title="${App.escapeHtml(cautionNames.join(', '))}"><span class="tb-label">${App.icon('alert')} 주의</span><b>${cautionPetIds.size}마리</b></a>
-          <a href="#records" class="today-brief-item${unpaidRecords.length ? ' warn' : ''}"><span class="tb-label">${App.icon('coins')} 미결제</span><b>${unpaidRecords.length}건</b></a>
         </div>`;
       const monthRevenue = monthRecords.reduce((sum, r) => sum + App.getRecordAmount(r), 0);
+
+      // 마감 안 한 지난 예약 — 최근 14일(오늘 제외) 중 대기·확정·미용중으로 남은 예약.
+      // 미용은 했는데 기록을 안 남겼거나, 노쇼·취소 처리를 잊은 건이다. 0건이면 아무것도 그리지 않는다.
+      // 누르면 예약 화면이 정확히 이 건들만 걸러 연다 (#appointments/open)
+      let openPastLine = '';
+      try {
+        const openFrom = App.parseLocalDate(today); openFrom.setDate(openFrom.getDate() - 14);
+        const openTo = App.parseLocalDate(today); openTo.setDate(openTo.getDate() - 1);
+        const pastAppts = await DB.getByDateRange('appointments', 'date', App.formatLocalDate(openFrom), App.formatLocalDate(openTo));
+        const openPastCount = pastAppts.filter(a => App.pages.appointments.isOpenPast(a, today)).length;
+        if (openPastCount > 0) {
+          openPastLine = `
+        <a href="#appointments/open" class="safety-note warn" style="text-decoration:none">
+          ${App.icon('alert')}
+          <div class="flex-1"><strong>마감 안 한 지난 예약 ${openPastCount}건</strong></div>
+          ${App.icon('chevron-right')}
+        </a>`;
+        }
+      } catch (_) {}
 
       // 전월 동기 대비 (매출 페이지와 같은 정의: 지난달 같은 일차까지와 비교)
       const revenueChange = App.revenuePacing(recentRecords, today).pct;
@@ -324,9 +322,6 @@ App.pages.dashboard = {
       const revisitAlerts = allRevisitAlerts.filter(a => a.visitStatus !== 'churned');
       const longGoneAlerts = allRevisitAlerts.filter(a => a.visitStatus === 'churned');
 
-      // 고객 방문 상태 요약
-      const visitSummary = this._computeVisitStatusSummary(pets, customerMap, revisitDays);
-
       // VIP 미방문 알림 (30일 이상)
       const customerLastVisitMap = {};
       pets.forEach(p => {
@@ -407,9 +402,9 @@ App.pages.dashboard = {
         b._smsBody = encodeURIComponent(msg);
       }
 
-      // 미수금 안내 문자 본문 — 화면에 그려지는 10건만 (설정 > 메시지 템플릿의 '미수금 안내')
+      // 미결제 안내 문자 본문 — 화면에 그려지는 5건만 (설정 > 메시지 템플릿의 '미수금 안내')
       unpaidRecords.sort((a, b) => (b.date || '').localeCompare(a.date || ''));
-      for (const r of unpaidRecords.slice(0, 10)) {
+      for (const r of unpaidRecords.slice(0, 5)) {
         const customer = customerMap[r.customerId];
         const msg = await App.buildSms('unpaid', {
           '고객명': (customer && customer.name) || '',
@@ -521,6 +516,8 @@ App.pages.dashboard = {
           ${todayBrief}
         </div>
 
+        ${openPastLine}
+
         ${safetyTop}
 
         ${onboardingHtml}
@@ -616,15 +613,14 @@ App.pages.dashboard = {
         ${unpaidRecords.length > 0 ? `
         <div class="card dash-accordion" style="margin-bottom:20px;border:1.5px solid var(--danger)">
           <div class="card-header dash-accordion-toggle" style="background:var(--danger-light);cursor:pointer;user-select:none" data-target="dash-unpaid">
-            <span class="card-title text-danger">${App.icon('cash')} 미수금 현황</span>
+            <span class="card-title text-danger">${App.icon('cash')} 미결제 현황</span>
             <div style="display:flex;align-items:center;gap:8px">
               <span class="badge badge-danger">${unpaidRecords.length}건 / ${App.formatCurrency(unpaidTotal)}</span>
               <span class="dash-chevron" style="display:inline-flex;transition:transform 0.2s;font-size:0.8rem">${App.icon('chevron-down')}</span>
             </div>
           </div>
           <div class="card-body" id="dash-unpaid" style="display:${unpaidRecords.length > 0 ? 'block' : 'none'}">
-            ${unpaidRecords.length > 10 ? `<div style="font-size:0.82rem;color:var(--text-muted);margin-bottom:8px;text-align:right"><a href="#records" style="color:var(--primary)">미수금 전체 ${unpaidRecords.length}건 보기 &rarr;</a></div>` : ''}
-            ${this._moreList(unpaidRecords.slice(0, 10).map(r => {
+            ${unpaidRecords.slice(0, 5).map(r => {
               const customer = customerMap[r.customerId];
               const pet = petMap[r.petId];
               return `
@@ -642,15 +638,16 @@ App.pages.dashboard = {
                     </div>
                   </div>
                 </div>`;
-            }))}
+            }).join('')}
+            ${unpaidRecords.length > 5 ? `<div style="text-align:center;padding:10px 0 2px;font-size:0.85rem"><a href="#records" onclick="sessionStorage.setItem('record-filter',JSON.stringify({_loadMode:'unpaid',payment:'unpaid'}))" style="color:var(--primary);font-weight:600">전체 ${unpaidRecords.length}건 보기 &rarr;</a></div>` : ''}
           </div>
         </div>
         ` : ''}
 
         <!-- 4. 연락할 손님 — 재방문 알림·장기 미방문·VIP 미방문·고객 관리 현황을 한 카드에 (각 목록의 계산·제외 규칙은 그대로) -->
-        ${(revisitAlerts.length + longGoneAlerts.length + vipUnvisitedAlerts.length + visitSummary.remind + visitSummary['at-risk'] + visitSummary.churned) > 0 ? (() => {
+        ${(revisitAlerts.length + longGoneAlerts.length + vipUnvisitedAlerts.length) > 0 ? (() => {
           const segs = [
-            // 탭·아래 현황 줄·고객 목록 필터가 같은 말을 쓴다: 올 때 됨 / 많이 늦음 / 오래 안 옴
+            // 탭·고객 목록 필터가 같은 말을 쓴다: 올 때 됨 / 많이 늦음 / 오래 안 옴
             { key: 'due', label: '올 때 됨·늦음', count: revisitAlerts.length },
             { key: 'gone', label: '오래 안 옴', count: longGoneAlerts.length },
             { key: 'vip', label: 'VIP', count: vipUnvisitedAlerts.length }
@@ -668,7 +665,6 @@ App.pages.dashboard = {
               : `<button class="btn btn-sm btn-ghost btn-copy-sms btn-mark-contacted" data-customer-id="${a.customer.id}" data-sms="${App.escapeHtml(decodeURIComponent(a._smsBody))}" onclick="event.stopPropagation()" title="메시지 복사 (카톡용)">복사</button>`;
           };
           const empty = '<p style="color:var(--text-muted);text-align:center;padding:12px 0">지금 연락할 손님이 없어요</p>';
-          const filterLink = (vs, label, n, color) => `<a href="#customers" onclick="sessionStorage.setItem('customer-filter',JSON.stringify({visitStatus:'${vs}'}))" style="color:${color};text-decoration:none;white-space:nowrap">${label} <strong>${n}</strong></a>`;
           return `
         <div class="card dash-accordion" style="margin-bottom:20px">
           <div class="card-header dash-accordion-toggle" style="cursor:pointer;user-select:none" data-target="dash-contact">
@@ -713,7 +709,6 @@ App.pages.dashboard = {
                   </div>
                 </div>`;
               }))}
-              ${revisitAlerts.length > 15 ? `<div style="text-align:center;padding:10px 0 2px;font-size:0.82rem;color:var(--text-muted)">외 ${revisitAlerts.length - 15}건 — 연락하면 다음 고객이 올라옵니다</div>` : ''}
             </div>
 
             <!-- 오래 안 옴 (미용 주기 2배 초과 — 매일 보는 목록에서 분리) -->
@@ -738,8 +733,7 @@ App.pages.dashboard = {
                     ${contactBtns(a)}
                     <button class="btn btn-sm btn-ghost btn-exclude-pet" data-pet-id="${a.pet.id}" data-pet-name="${App.escapeHtml(a.pet.name || '')}" onclick="event.stopPropagation()" title="관리 제외 (이사·사망 등)" style="flex-shrink:0;color:var(--text-muted)">제외</button>
                   </div>
-                </div>`))}
-              ${longGoneAlerts.length > 10 ? `<div style="text-align:center;padding:10px 0 2px;font-size:0.82rem;color:var(--text-muted)">외 ${longGoneAlerts.length - 10}건</div>` : ''}`}
+                </div>`))}`}
             </div>
 
             <!-- VIP (30일+ 미방문, 예약 잡힌 VIP 제외) -->
@@ -753,15 +747,6 @@ App.pages.dashboard = {
                   ${x.customer.phone ? `<a href="tel:${App.escapeHtml(App.phoneDigits(x.customer.phone))}" class="btn btn-sm btn-secondary" onclick="event.stopPropagation()" title="전화 걸기" style="flex-shrink:0">전화</a>` : ''}
                 </div>
               `))}
-              ${vipUnvisitedAlerts.length > 15 ? `<div style="text-align:center;padding:10px 0 0;font-size:0.85rem;color:var(--text-muted)">총 ${vipUnvisitedAlerts.length}명 중 15명 표시</div>` : ''}
-            </div>
-
-            <!-- 전체 현황 (예전 '고객 관리 현황' 카드) — 누르면 고객 목록을 그 상태로 걸러 연다 -->
-            <div style="display:flex;flex-wrap:wrap;gap:6px 14px;justify-content:center;margin-top:12px;padding-top:10px;border-top:1px solid var(--border-light);font-size:0.8rem">
-              ${filterLink('normal', '정상', visitSummary.normal, 'var(--success)')}
-              ${filterLink('remind', '올 때 됨', visitSummary.remind, 'var(--warning-text-strong)')}
-              ${filterLink('at-risk', '많이 늦음', visitSummary['at-risk'], 'var(--danger)')}
-              ${filterLink('churned', '오래 안 옴', visitSummary.churned, 'var(--text-muted)')}
             </div>
           </div>
         </div>`;
@@ -858,7 +843,7 @@ App.pages.dashboard = {
     }
   },
 
-  // 홈 목록(미수금·연락할 손님): 처음엔 5건만, 나머지는 '더 보기 (N건)'으로 그 자리에서 펼친다.
+  // 홈 목록(연락할 손님): 처음엔 5건만, 나머지는 '더 보기 (N건)'으로 그 자리에서 펼친다.
   // 숨긴 줄도 DOM 에 있어 init 의 버튼 연결(결제·문자·제외 등)이 그대로 걸린다.
   _moreList(items, shown = 5) {
     if (items.length <= shown) return items.join('');
@@ -927,7 +912,7 @@ App.pages.dashboard = {
       });
     });
 
-    // 미수금·연락할 손님 '더 보기 / 접기' (그 자리에서 펼침)
+    // 연락할 손님 '더 보기 / 접기' (그 자리에서 펼침)
     document.querySelectorAll('.dash-more-btn').forEach(btn => {
       btn.addEventListener('click', (e) => {
         e.stopPropagation();

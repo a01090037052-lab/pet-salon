@@ -1251,5 +1251,33 @@ const Prepaid = {
       .filter(r => r.paymentMethod !== 'unpaid' && inMonth(r.paidAt || r.date))
       .reduce((sum, r) => sum + this.splitOf(r).rest, 0);
     return { collected: fromRecords + charge - refund, charge, refund };
+  },
+
+  // (순수 함수) 그 달 실입금을 결제 수단별로 — 합계(total)는 monthCollected 의 collected 와 같다.
+  //  records: 기록의 나머지 결제 (미수 제외, 수금일 기준) / charge: 정액권 충전 받은 돈 / refund: 돌려준 돈 (빼는 값)
+  //  수단 키: card · cash · transfer · none(미선택). 돈이 오가지 않는 참고값:
+  //  used = 그 달 미용한 기록에서 정액권으로 낸 몫, adjustOut = 그 달 '조정'으로 줄인 잔액 (예: 노쇼 예약금), adjustIn = 늘린 잔액
+  monthByMethod(records, entries, month) {
+    const inMonth = (d) => String(d || '').startsWith(month);
+    const bucket = () => ({ card: 0, cash: 0, transfer: 0, none: 0 });
+    const key = (m) => (m === 'card' || m === 'cash' || m === 'transfer') ? m : 'none';
+    const out = { records: bucket(), charge: bucket(), refund: bucket(), used: 0, adjustOut: 0, adjustIn: 0, total: 0 };
+    (records || []).forEach(r => {
+      if (inMonth(r.date)) out.used += this.splitOf(r).used;
+      if (r.paymentMethod === 'unpaid' || !inMonth(r.paidAt || r.date)) return;
+      const sp = this.splitOf(r);
+      if (sp.rest) out.records[key(sp.restMethod)] += sp.rest;
+    });
+    (entries || []).filter(e => inMonth(e.date)).forEach(e => {
+      if (e.type === 'charge') out.charge[key(e.method)] += Number(e.amount) || 0;
+      else if (e.type === 'refund') out.refund[key(e.method)] += Number(e.amount) || 0;
+      else if (e.type === 'adjust') {
+        const c = Number(e.credit) || 0;
+        if (c < 0) out.adjustOut += -c; else out.adjustIn += c;
+      }
+    });
+    const sum = (b) => b.card + b.cash + b.transfer + b.none;
+    out.total = sum(out.records) + sum(out.charge) - sum(out.refund);
+    return out;
   }
 };

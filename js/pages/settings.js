@@ -600,8 +600,11 @@ App.pages.settings = {
         <div class="form-group">
           <label class="form-label">빠른 설정</label>
           <div style="display:flex;gap:6px;flex-wrap:wrap">
-            <button type="button" class="payment-chip" data-preset="three">3단계 (~7 / ~15 / 15kg~)</button>
-            <button type="button" class="payment-chip" data-preset="five">5단계 (~3 / ~5 / ~7 / ~10 / 10kg~)</button>
+            ${['three', 'five'].map(k => {
+              const pb = App.PRICE_BAND_PRESETS[k].bands;
+              const txt = pb.map((b, i) => b.upTo != null ? '~' + b.upTo : (i > 0 ? pb[i - 1].upTo : 0) + 'kg~').join(' / ');
+              return `<button type="button" class="payment-chip" data-preset="${k}">${pb.length}단계 (${txt})</button>`;
+            }).join('')}
           </div>
         </div>
         <div class="form-group">
@@ -706,10 +709,12 @@ App.pages.settings = {
       render();
     });
     document.getElementById('pb-add')?.addEventListener('click', () => {
-      // 마지막('그 이상') 구간 앞에 새 경계를 하나 추가 — 가격은 잘라낸 마지막 구간에서 복사
-      const last = state.bands[state.bands.length - 1];
-      const prevUp = state.bands.length > 1 ? Number(state.bands[state.bands.length - 2].upTo) || 0 : 0;
-      const nb = { id: App._newBandId({ bands: state.bands.concat(orig.bands), nextId: state.nextId }), upTo: prevUp + 5, copyFrom: last.copyFrom || last.id };
+      // 마지막('그 이상') 구간 앞에 새 경계를 하나 추가 — 가격은 바로 앞(더 가벼운) 구간에서 복사.
+      // 새 구간이 맨 앞이 되면(구간이 하나뿐) 원래 첫 구간에서 복사
+      const n = state.bands.length;
+      const src = n > 1 ? state.bands[n - 2] : state.bands[0];
+      const prevUp = n > 1 ? Number(state.bands[n - 2].upTo) || 0 : 0;
+      const nb = { id: App._newBandId({ bands: state.bands.concat(orig.bands), nextId: state.nextId }), upTo: prevUp + 5, copyFrom: src.copyFrom || src.id };
       state.nextId = Number(nb.id.slice(1)) + 1;
       state.bands.splice(state.bands.length - 1, 0, nb);
       render();
@@ -717,7 +722,7 @@ App.pages.settings = {
     document.querySelectorAll('[data-preset]').forEach(btn => {
       btn.addEventListener('click', async () => {
         const preset = App.PRICE_BAND_PRESETS[btn.dataset.preset];
-        const ok = await App.confirm('구간을 프리셋으로 바꿀까요?<br><small style="color:var(--text-muted)">새 구간 가격은 지금 구간표에서 같은 몸무게가 속한 구간 가격을 복사해요. 저장 전엔 바뀌지 않아요.</small>', { okLabel: '바꾸기', danger: false });
+        const ok = services.length === 0 || await App.confirm('구간을 프리셋으로 바꿀까요?<br><small style="color:var(--text-muted)">새 구간 가격은 지금 구간표에서 같은 몸무게가 속한 구간 가격을 복사해요. 저장 전엔 바뀌지 않아요.</small>', { okLabel: '바꾸기', danger: false });
         if (!ok) return;
         const idState = { bands: orig.bands.concat(state.bands), nextId: state.nextId };
         state.bands = preset.bands.map((pb, i) => {
@@ -785,16 +790,67 @@ App.pages.settings = {
         const r = App.calcServicePrice(s, null, offTable);
         const rule = App.getOverKgRule(s, offTable, p);
         const before = p.free ? '무료' : App.formatServicePrice(s, orig);
-        const after = r.free ? '무료' : App.formatCurrency(r.price) + ' 단일가';
+        const after = r.free ? '무료' : r.price > 0 ? App.formatCurrency(r.price) + ' 단일가' : '가격 미입력';
         return `<div style="padding:3px 0;border-bottom:1px solid var(--border-light);font-size:0.82rem"><strong>${App.escapeHtml(s.name)}</strong> ${App.escapeHtml(before)} → <strong>${App.escapeHtml(after)}</strong>${rule ? `<div style="color:var(--warning-text-strong, #b45309);font-size:0.75rem">+ 이 서비스만 따로: ${App.escapeHtml(App.describeOverKgRule(rule))} (계속 붙어요)</div>` : ''}</div>`;
       }).join('');
       const ok = await App.confirm(`모든 서비스를 단일가로 받아요. 가격은 이렇게 바뀌어요:<div style="max-height:40vh;overflow-y:auto;margin:8px 0;text-align:left">${rows || '<div style="color:var(--text-muted)">서비스가 아직 없어요</div>'}</div><small style="color:var(--text-muted)">구간 가격은 보관돼요 — 다시 켜면 돌아와요. 가게 기본 kg당 요금은 쓰지 않아요.</small>`, { okLabel: '단일가로 바꾸기', cancelLabel: '취소', danger: false });
       if (!ok) return;
     }
+    const table = App.normalizePriceBands({ version: 1, nextId: state.nextId, bands: bands.map(b => ({ id: b.id, upTo: b.upTo })), overKg, rounding, bandsOff });
+    // 서비스 1개의 새 pricing — 가격은 구간 id 에 붙어 있고, 새 구간은 copyFrom 구간 가격으로 시작 (미리보기·저장 공통)
+    const nextPricing = (svc) => {
+      const p = svc.pricing ? JSON.parse(JSON.stringify(svc.pricing)) : App.legacyToPricing(svc, orig);
+      let priceMoved = false;
+      if (p.mode === 'weight') {
+        // 이 서비스 가격이 (옛 구간 id 로 남아) 지금 구간표와 안 맞으면 먼저 대표 몸무게로 옮겨 놓는다
+        let src = p.prices || {};
+        if (App._pricingTable(p, orig) !== orig) {
+          src = {};
+          App.getServiceBandRows({ ...svc, pricing: p }, orig).forEach(r => { if (r.price > 0) src[r.id] = r.price; });
+        }
+        const next = {};
+        bands.forEach(b => {
+          const v = Number(src[b.id]) || (b.copyFrom ? Number(src[b.copyFrom]) || 0 : 0);
+          if (v > 0) next[b.id] = v;
+        });
+        const hadAny = Object.values(p.prices || {}).some(v => Number(v) > 0);
+        if (Object.keys(next).length > 0 || !hadAny) {
+          const kept = Object.fromEntries(Object.entries(src).filter(([k]) => next[k] != null || bands.some(b => b.id === k)));
+          priceMoved = JSON.stringify(next) !== JSON.stringify(kept);
+          p.prices = next;
+        } // 옮길 가격이 하나도 안 나오면(있을 수 없는 경우) 원래 가격·bandsAt 을 그대로 둔다
+      }
+      return { p, priceMoved };
+    };
+    if (!bandsOff) {
+      // 구간 가격이 실제로 바뀌는 서비스가 있으면 '이전 → 이후'를 보여 주고 확인 (경계만 옮긴 경우·서비스 0개면 묻지 않는다)
+      const onOrig = { ...orig, bandsOff: false };
+      const inv = App.pages.services._bandInversions.bind(App.pages.services);
+      const rowsTxt = (rows) => rows.map(v => v ? App.formatManwon(v) : '-').join(' / ');
+      const changed = (await DB.getAll('services')).filter(s => s.isActive !== false).map(s => {
+        const p0 = App.getServicePricing(s, orig);
+        if (p0.free || p0.mode !== 'weight') return null;
+        const p1 = nextPricing(s).p;
+        const s1 = { ...s, pricing: p1 };
+        const before = App.getServiceBandRows(s, onOrig).map(r => r.price);
+        const after = App.getServiceBandRows(s1, table).map(r => r.price);
+        if (!before.some(v => v > 0) && !after.some(v => v > 0)) return null; // 가격 미입력 서비스
+        const range0 = App.formatServicePrice(s, onOrig), range1 = App.formatServicePrice(s1, table);
+        if (range0 === range1 && JSON.stringify(before) === JSON.stringify(after)) return null;
+        const oldInv = inv(p0, onOrig).length;
+        const newInv = inv(p1, table);
+        return { name: s.name, before: rowsTxt(before), after: rowsTxt(after), inv: newInv.length > oldInv ? newInv : [] };
+      }).filter(Boolean);
+      if (changed.length) {
+        const labels = (t) => t.bands.map((b, i) => App.escapeHtml(App.getBandLabel(t, i))).join(' / ');
+        const rows = changed.map(c => `<div style="padding:3px 0;border-bottom:1px solid var(--border-light);font-size:0.82rem"><strong>${App.escapeHtml(c.name)}</strong> ${App.escapeHtml(c.before)} → <strong>${App.escapeHtml(c.after)}</strong>${c.inv.length ? `<div style="color:var(--danger);font-size:0.75rem">${App.icon('alert')} 무거운 구간이 더 싸져요: ${App.escapeHtml(c.inv.join(', '))}</div>` : ''}</div>`).join('');
+        const ok = await App.confirm(`서비스 ${changed.length}개의 구간 가격이 이렇게 바뀌어요:<div style="font-size:0.75rem;color:var(--text-muted);margin-top:6px;text-align:left">이전 구간: ${labels(onOrig)}<br>이후 구간: ${labels(table)}</div><div style="max-height:40vh;overflow-y:auto;margin:8px 0;text-align:left">${rows}</div><small style="color:var(--text-muted)">새 구간은 바로 앞(더 가벼운) 구간 가격으로 시작해요. 저장 뒤 서비스 메뉴에서 고칠 수 있어요.</small>`, { okLabel: '구간 저장', cancelLabel: '취소', danger: false });
+        if (!ok) return;
+      }
+    }
     try {
       // 구버전 기기에서 고친 가격을 먼저 반영 (덮어쓰지 않게)
       await App.migratePriceBands();
-      const table = App.normalizePriceBands({ version: 1, nextId: state.nextId, bands: bands.map(b => ({ id: b.id, upTo: b.upTo })), overKg, rounding, bandsOff });
       // 구간표를 먼저 저장한다 — 서비스부터 쓰면 그 사이(또는 도중 실패 시) 다른 기기가 모르는 구간 id 로 0원을 계산했다.
       // 서비스에는 가격을 적을 때의 구간 경계(bandsAt)가 남아, 구간표와 서비스가 잠깐 어긋나도 가격이 계산된다.
       await App.savePriceBands(table);
@@ -803,26 +859,8 @@ App.pages.settings = {
       let updated = 0;
       for (const svc of services) {
         const before = JSON.stringify([svc.pricing || null, svc.priceSmall, svc.priceMedium, svc.priceLarge]);
-        const p = svc.pricing ? JSON.parse(JSON.stringify(svc.pricing)) : App.legacyToPricing(svc, orig);
-        if (p.mode === 'weight') {
-          // 이 서비스 가격이 (옛 구간 id 로 남아) 지금 구간표와 안 맞으면 먼저 대표 몸무게로 옮겨 놓는다
-          let src = p.prices || {};
-          if (App._pricingTable(p, orig) !== orig) {
-            src = {};
-            App.getServiceBandRows({ ...svc, pricing: p }, orig).forEach(r => { if (r.price > 0) src[r.id] = r.price; });
-          }
-          const next = {};
-          bands.forEach(b => {
-            const v = Number(src[b.id]) || (b.copyFrom ? Number(src[b.copyFrom]) || 0 : 0);
-            if (v > 0) next[b.id] = v;
-          });
-          const hadAny = Object.values(p.prices || {}).some(v => Number(v) > 0);
-          if (Object.keys(next).length > 0 || !hadAny) {
-            const kept = Object.fromEntries(Object.entries(src).filter(([k]) => next[k] != null || bands.some(b => b.id === k)));
-            if (JSON.stringify(next) !== JSON.stringify(kept)) svc.priceChangedAt = now;
-            p.prices = next;
-          } // 옮길 가격이 하나도 안 나오면(있을 수 없는 경우) 원래 가격·bandsAt 을 그대로 둔다
-        }
+        const { p, priceMoved } = nextPricing(svc);
+        if (priceMoved) svc.priceChangedAt = now;
         svc.pricing = p;
         App.applyLegacyPrices(svc, table);
         // 실제로 바뀐 서비스만 쓴다 (동기화 쓰기 최소화)
@@ -832,8 +870,8 @@ App.pages.settings = {
         }
       }
       if (boundaryOnly) App.showToast('구간 경계를 저장했어요 (가격은 그대로)');
-      else if (bandsOff !== !!orig.bandsOff) App.showToast(bandsOff ? '이제 모든 서비스를 단일가로 받아요. 구간 가격은 보관돼요.' : '몸무게 구간을 다시 써요. 서비스 가격을 확인하세요.', 'info', { duration: 6000 });
-      else App.showToast(`가격 구간을 저장했어요${updated ? ' (서비스 ' + updated + '개 가격 갱신)' : ''}. 서비스 가격을 확인하세요.`);
+      else if (bandsOff !== !!orig.bandsOff) App.showToast(bandsOff ? '이제 모든 서비스를 단일가로 받아요. 구간 가격은 보관돼요.' : '몸무게 구간을 다시 써요.' + (services.length ? ' 서비스 가격을 확인하세요.' : ''), 'info', { duration: 6000 });
+      else App.showToast(`가격 구간을 저장했어요${updated ? ' (서비스 ' + updated + '개 가격 갱신)' : ''}${services.length ? '. 서비스 가격을 확인하세요.' : ''}`);
       App.closeModal();
       App.handleRoute();
     } catch (e) {

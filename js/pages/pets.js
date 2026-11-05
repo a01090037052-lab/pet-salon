@@ -177,6 +177,8 @@ App.pages.pets = {
     }
     const customer = await DB.get('customers', pet.customerId);
     const records = (await DB.getByIndex('records', 'petId', petId)).sort((a, b) => (b.date || '').localeCompare(a.date || ''));
+    // 미용 때 잰 몸무게 최근 3번 (오래된 → 최근) — 프로필 몸무게 옆 한 줄, 날짜는 눌러서(title)
+    const weighIns = records.filter(r => Number(r.weightAtVisit) > 0).slice(0, 3).reverse();
 
     const age = pet.birthYear ? (new Date().getFullYear() - pet.birthYear) + '살' : (pet.birthDate ? this.calculateAge(pet.birthDate) : '-');
 
@@ -226,6 +228,7 @@ App.pages.pets = {
           <div class="detail-meta">
             <span>${App.escapeHtml(pet.breed || '견종 미입력')}</span>
             <span>${pet.weight ? pet.weight + 'kg' : ''}</span>
+            ${weighIns.length >= 2 ? `<span class="pet-weight-trend" tabindex="0" title="${App.escapeHtml(weighIns.map(r => App.formatDate(r.date) + ' ' + Number(r.weightAtVisit) + 'kg').join(' / '))}" style="color:var(--text-muted);cursor:help" onclick="App.showToast(this.title, 'info', { duration: 5000 })">최근 몸무게 ${weighIns.map(r => Number(r.weightAtVisit)).join(' → ')}kg</span>` : ''}
             <span>보호자: <a href="#customers/${pet.customerId}" style="color:var(--primary)">${App.escapeHtml(App.getCustomerLabel(customer))}</a></span>
             ${customer?.phone ? `<a href="tel:${App.escapeHtml(App.phoneDigits(customer.phone))}" style="color:var(--primary)" aria-label="전화" title="전화">${App.icon('phone')}</a> <a href="sms:${App.escapeHtml(App.phoneDigits(customer.phone))}" style="color:var(--primary)" aria-label="문자" title="문자">${App.icon('message')}</a>` : ''}
           </div>
@@ -504,6 +507,11 @@ App.pages.pets = {
     // 정확한 생일 (나이만 입력해 생긴 'YYYY-01-01' 은 진짜 생일이 아니라 비워 둔다)
     const origBirth = (pet.birthDate && !(pet.birthYear && pet.birthDate === `${pet.birthYear}-01-01`)) ? pet.birthDate : '';
     this._inlinePetId = null;
+    // 가격 구간표(몸무게 kg 구간)를 쓰면 '사이즈' 칸은 필요 없다 — 값(pet.size)은 옛 데이터용으로 그대로 둔다
+    let bandsOn = true;
+    try { bandsOn = !(await App.getPriceBands()).bandsOff; } catch (_) {}
+    // 자주 안 쓰는 칸은 '더 보기' 안에 — 수정할 때 그 안에 값이 있으면 펼쳐서 연다
+    const moreHasValue = !!id && !!(pet.neutered || pet.photoThumb || pet.photo || pet.photoId || pet.temperament || pet.healthNotes || pet.allergies || pet.memo || pet.preferredStyle || pet.groomingCycle || (pet.petStatus && pet.petStatus !== 'active') || (!bandsOn && pet.size));
 
     App.showModal({
       title: id ? '반려견 정보 수정' : '새 반려견 등록',
@@ -549,13 +557,15 @@ App.pages.pets = {
           <input type="date" id="f-birthdate" value="${App.escapeHtml(origBirth)}" data-orig="${App.escapeHtml(origBirth)}" max="${App.getToday()}">
           <div class="form-hint">생일을 넣으면 나이는 생일 기준으로 계산되고, 생일이 다가오면 홈 화면에 알려 드려요. 모르면 나이만 넣으세요.</div>
         </div>
+        <button type="button" class="cf-more-toggle" id="pet-more-toggle">${moreHasValue ? '− 추가 항목 접기' : '+ 더 보기 (중성화 · 사진 · 성격 · 건강 · 스타일 · 주기)'}</button>
+        <div id="pet-more"${moreHasValue ? '' : ' style="display:none"'}>
         <div class="form-group">
           <label class="checkbox-label">
             <input type="checkbox" id="f-neutered" ${pet.neutered ? 'checked' : ''}>
             중성화 완료
           </label>
         </div>
-        <div class="form-group">
+        ${bandsOn ? `<input type="hidden" id="f-size" value="${App.escapeHtml(pet.size || '')}">` : `<div class="form-group">
           <label class="form-label">사이즈</label>
           <select id="f-size">
             <option value="" ${!pet.size ? 'selected' : ''}>자동 (몸무게 기준)</option>
@@ -564,7 +574,7 @@ App.pages.pets = {
             <option value="large" ${pet.size === 'large' ? 'selected' : ''}>대형 (15kg 이상)</option>
           </select>
           <div class="form-hint">미용 가격 자동 계산에 사용됩니다</div>
-        </div>
+        </div>`}
         <div class="form-group">
           <label class="form-label">사진</label>
           <div class="pet-photo-upload">
@@ -624,10 +634,19 @@ App.pages.pets = {
           </select>
           <div class="form-hint">사망/양도 상태의 반려견은 재방문 알림에서 제외됩니다</div>
         </div>` : ''}
+        </div>
       `,
       onSave: () => this.savePet(id, presetCustomerId)
     });
     App.ensureBreedList();
+    document.getElementById('pet-more-toggle')?.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const more = document.getElementById('pet-more');
+      if (!more) return;
+      const show = more.style.display === 'none';
+      more.style.display = show ? 'block' : 'none';
+      e.currentTarget.textContent = show ? '− 추가 항목 접기' : '+ 더 보기 (중성화 · 사진 · 성격 · 건강 · 스타일 · 주기)';
+    });
 
     if (!presetCustomerId) {
       await App.renderCustomerSelect('pet-customer-select', pet.customerId || null, async (cid, newPetId) => {
@@ -859,16 +878,9 @@ App.pages.pets = {
         } else {
           data._newPetId = await DB.add('pets', data);
         }
-        const newPetId = data._newPetId;
-        App.showToast('새 반려견이 등록되었습니다.');
+        // 예약은 묻지 않는다 — 토스트 한 줄 뒤 원래 화면(목록·상세)을 다시 그린다. 예약은 홈·예약 화면에서 평소처럼
+        App.showToast('반려견 등록 완료');
         App.closeModal();
-        // closeModal()의 history.back()이 비동기라 바로 confirm 을 띄우면 그 popstate 가 confirm 을 닫아버린다
-        await new Promise(r => setTimeout(r, 180));
-        const doAppt = await App.confirm('바로 예약을 등록하시겠습니까?', { danger: false, okLabel: '예약 등록' });
-        if (doAppt) {
-          App.pages.appointments.showForm(null, customerId, { petId: newPetId });
-          return;
-        }
         App.handleRoute();
       }
     } catch (err) {

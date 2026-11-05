@@ -842,12 +842,22 @@ const App = {
     dismissBtn.textContent = '\u00D7';
     dismissBtn.onclick = () => { toast.style.animation = 'toastOut 0.3s ease forwards'; setTimeout(() => toast.remove(), 300); };
     toast.appendChild(msgSpan);
+    // opts.action = { label, onClick } — 토스트 안 동작 링크 하나 (예: 저장 뒤 '문자 보내기'). 누르면 실행하고 토스트를 닫는다
+    if (opts.action && opts.action.label && typeof opts.action.onClick === 'function') {
+      const actBtn = document.createElement('button');
+      actBtn.type = 'button';
+      actBtn.className = 'toast-action';
+      actBtn.textContent = opts.action.label;
+      actBtn.style.cssText = 'background:none;border:none;color:inherit;font-weight:800;text-decoration:underline;cursor:pointer;padding:4px 6px;min-height:32px;white-space:nowrap;font-size:inherit';
+      actBtn.onclick = () => { try { opts.action.onClick(); } finally { dismissBtn.onclick(); } };
+      toast.appendChild(actBtn);
+    }
     toast.appendChild(dismissBtn);
     container.appendChild(toast);
 
-    // Duration: opts.duration 우선 → html(링크 포함)=10s, error=5s, warning=6s, info=5s, success=2.5s
+    // Duration: opts.duration 우선 → 동작 링크=8s, html(링크 포함)=10s, error=5s, warning=6s, info=5s, success=2.5s
     const duration = (typeof opts.duration === 'number' && opts.duration > 0) ? opts.duration
-      : opts.html ? 10000 : type === 'error' ? 5000 : type === 'warning' ? 6000 : type === 'info' ? 5000 : 2500;
+      : opts.action ? 8000 : opts.html ? 10000 : type === 'error' ? 5000 : type === 'warning' ? 6000 : type === 'info' ? 5000 : 2500;
     setTimeout(() => {
       if (toast.parentElement) {
         toast.style.animation = 'toastOut 0.3s ease forwards';
@@ -948,8 +958,10 @@ const App = {
           `<button type="button" class="btn btn-sm btn-success btn-pay-unpaid" data-id="${rec.id}">결제</button></div>`;
       }
       const pay = this.pages.records ? this.pages.records.getPaymentLabel(rec.paymentMethod, rec) : '';
-      return `<button type="button" class="appt-result paid btn-open-record" data-record-id="${rec.id}">` +
-        `<span>${this.icon('check-circle')} 미용 완료 <strong>${amt}</strong>${pay && pay !== '-' ? ' · ' + pay : ''}</span>${this.icon('chevron-right')}</button>`;
+      // 금액·결제는 글자로만 보여주고, 누르는 건 '기록 보기' 하나 (줄 전체가 버튼이라 '완료' 표시인지 헷갈렸다)
+      return `<div class="appt-result paid" style="cursor:default">` +
+        `<span>${this.icon('check-circle')} 미용 완료 <strong>${amt}</strong>${pay && pay !== '-' ? ' · ' + pay : ''}</span>` +
+        `<button type="button" class="btn btn-sm btn-secondary btn-open-record" data-record-id="${rec.id}">기록 보기</button></div>`;
     }
     if (!recordKnown) return '';
     return `<div class="appt-result none"><span>기록 없음 · 매출에 안 잡혔어요</span>` +
@@ -1161,6 +1173,15 @@ const App = {
 
   async getRevisitDays() {
     return Number(await DB.getSetting('revisitDays')) || 30;
+  },
+
+  // 다음 미용 추천일: 방문일 + 반려견 권장 주기(없으면 fallbackDays — 설정 '재방문 기준', 기본 30일). 'YYYY-MM-DD' 또는 ''
+  calcNextVisitDate(dateStr, cycleDays, fallbackDays) {
+    const days = Number(cycleDays) > 0 ? Number(cycleDays) : Number(fallbackDays) > 0 ? Number(fallbackDays) : 0;
+    const base = dateStr ? this.parseLocalDate(dateStr) : null;
+    if (!days || !base || isNaN(base.getTime())) return '';
+    base.setDate(base.getDate() + days);
+    return this.formatLocalDate(base);
   },
 
   classifyVisitStatus(lastVisitDate, groomingCycle) {
@@ -1384,11 +1405,11 @@ const App = {
     rounding: 1000
   },
   PRICE_BAND_PRESETS: {
-    three: { bands: [{ upTo: 7 }, { upTo: 15 }, { upTo: null }], overKg: null },
+    three: { bands: [{ upTo: 5 }, { upTo: 10 }, { upTo: null }], overKg: null },
     five: { bands: [{ upTo: 3 }, { upTo: 5 }, { upTo: 7 }, { upTo: 10 }, { upTo: null }], overKg: { from: 10, perKg: 5000, ceil: true } }
   },
   LEGACY_REP_WEIGHTS: { small: 5, medium: 10, large: 20 }, // 구버전 priceSmall/Medium/Large 에 적는 대표 체중
-  SIZE_REP_WEIGHTS: { small: 4, medium: 9 },               // 몸무게 없이 사이즈만 있는 반려견 (large = 마지막 구간)
+  SIZE_REP_WEIGHTS: { small: 4, medium: 9, large: 20 },    // 몸무게 없이 사이즈만 있는 반려견의 대표 체중 (구간이 40kg 까지 있는 가게에서 대형이 맨 끝 구간으로 가지 않게)
 
   // 저장된 값이 깨졌거나 없으면 기본 5단계로
   normalizePriceBands(v) {
@@ -1476,6 +1497,35 @@ const App = {
     return Math.max(Number(table.overKg.from) || 0, lastLower);
   },
 
+  // 몸무게 오타(52 → 5.2) 확인 기준 kg = max(30, 마지막 구간 시작 × 1.5). 구간 사용 안 함이면 묻지 않는다(Infinity)
+  weightConfirmThreshold(table) {
+    if (!table || table.bandsOff) return Infinity;
+    const bands = table.bands || [];
+    const lastFrom = bands.length > 1 ? Number(bands[bands.length - 2].upTo) || 0 : 0;
+    return Math.max(30, lastFrom * 1.5);
+  },
+
+  // 입력한 몸무게를 한 번 물어볼지: 기준 kg 초과, 또는 프로필 몸무게와 50% 넘게 차이(늘거나 줄거나)
+  needsWeightConfirm(weight, profileWeight, table) {
+    const w = Number(weight);
+    if (!(w > 0) || !table || table.bandsOff) return false;
+    if (w > this.weightConfirmThreshold(table)) return true;
+    const pw = Number(profileWeight);
+    return pw > 0 && Math.abs(w - pw) > pw * 0.5;
+  },
+
+  // 반려견 견종에 맞는 서비스인지: 이름에 견종이 들어 있거나, 이름 괄호 안 '·'로 나눈 말 중 하나가 견종과 맞으면 true
+  // 예: 견종 '말티즈' → '말티즈 전체미용', '스포팅 (말티즈·푸들)'. 견종 '토이 푸들' → '(푸들·비숑)'
+  serviceMatchesBreed(serviceName, breed) {
+    const norm = (v) => String(v || '').replace(/\s+/g, '').toLowerCase();
+    const b = norm(breed), name = norm(serviceName);
+    if (b.length < 2 || !name) return false;
+    if (name.includes(b)) return true;
+    const m = String(serviceName).match(/\(([^)]*)\)/);
+    if (!m) return false;
+    return m[1].split('·').map(norm).some(t => t.length >= 2 && (t === b || b.includes(t)));
+  },
+
   // 몸무게 → 구간 ("이하" 규칙: upTo 이하면 그 구간)
   resolveBand(table, weight) {
     const w = Number(weight);
@@ -1528,11 +1578,10 @@ const App = {
 
   // ===== 서비스별 큰 아이(초과 kg) 추가 요금 (v184) =====
   // pricing.overKgMode: 'inherit'(가게 기본) | 'off'(추가 요금 없음) | 'custom'(이 서비스만 overKgCustom {from, perKg})
-  // 값이 없는 서비스(v184 이전)는 기본값: 미용 코스 = 가게 기본, 추가 옵션·단독 케어·이름에 목욕/스파/약욕 = 없음
+  // 값이 없을 때 기본값: 미용 코스 = 가게 기본, 추가 옵션·단독 케어 = 없음 (작은 추가 메뉴에 kg당 요금이 붙지 않게).
+  // 이름은 보지 않는다 — '스파 목욕'도 미용 코스면 가게 기본 (이름 규칙이 몰래 요금을 끄던 문제).
   defaultOverKgMode(svc) {
-    const s = svc || {};
-    if ((s.category || 'grooming') !== 'grooming') return 'off';
-    return /목욕|스파|약욕/.test(String(s.name || '')) ? 'off' : 'inherit';
+    return ((svc && svc.category) || 'grooming') === 'grooming' ? 'inherit' : 'off';
   },
 
   getOverKgMode(svc, p) {
@@ -1570,8 +1619,8 @@ const App = {
   _overCharge(rule, weight, base, table) {
     if (!rule || !(weight > rule.from) || !(base > 0)) return null;
     const kg = rule.ceil === false ? Math.round((weight - rule.from) * 10) / 10 : Math.ceil(Math.round((weight - rule.from) * 1000) / 1000);
-    const unit = table.rounding || 1000;
-    const extra = Math.round((kg * rule.perKg) / unit) * unit;
+    // 사장님이 적은 1kg당 금액 그대로 (반올림 단위는 일괄 조정·한 번에 채우기에만 쓴다)
+    const extra = Math.round(kg * rule.perKg);
     return extra > 0 ? { kg, perKg: rule.perKg, extra, from: rule.from, source: rule.source } : null;
   },
 
@@ -1619,9 +1668,7 @@ const App = {
     if (weight) r = this.resolveBand(table, weight);
     else if (size) {
       bySize = true;
-      r = size === 'large'
-        ? { band: table.bands[table.bands.length - 1], index: table.bands.length - 1, label: this.getBandLabel(table, table.bands.length - 1) }
-        : this.resolveBand(table, this.SIZE_REP_WEIGHTS[size]);
+      r = this.resolveBand(table, this.SIZE_REP_WEIGHTS[size]);
     }
     if (!r) return { price: 0, mode: 'weight', bandId: null, bandLabel: '', needsWeight: true, bySize: false, over: null, fromPrice };
     // 그 구간 칸이 비었으면 가까운 아래 구간 → 위 구간 가격 (0원으로 떨어지지 않게). 어느 칸 값을 썼는지 fallback 에 남겨 화면에 솔직히 적는다
@@ -1653,6 +1700,8 @@ const App = {
     if (res.mode === 'weight' && res.bandLabel) {
       const head = res.bySize ? '사이즈 기준' : this.formatKg(weight) + 'kg';
       const fb = res.fallback === 'prev' ? ' (앞 구간 가격)' : res.fallback === 'next' ? ' (뒤 구간 가격)' : res.fallback === 'min' ? ' (가장 낮은 구간 가격)' : '';
+      // 가격을 안 적은 메뉴 — '0원'으로 보이지 않게
+      if (!(res.base > 0)) return `${head} → ${res.bandLabel} 구간 (가격 미입력)`;
       s = `${head} → ${res.bandLabel} 구간${fb} ${this.formatCurrency(res.base)}`;
     } else if (res.mode === 'flat' && res.over) {
       s = `${this.formatKg(weight)}kg → 기본 ${this.formatCurrency(res.base)}`;
@@ -1785,15 +1834,14 @@ const App = {
         const services = await DB.getAll('services');
         let migrated = 0;
         const adopted = [];
-        const overOff = []; // 이번에 '초과 kg 요금 없음'으로 정해진 미용 코스 (목욕·스파·약욕) — 큰 아이는 대형가
-        const addonOff = []; // 같은 이유로 '없음'인 추가 옵션·단독 케어 (구간 가격 서비스만 알림)
+        const addonOff = []; // 이번에 '초과 kg 요금 없음'으로 정해진 추가 옵션·단독 케어 (구간 가격 서비스만 알림)
         for (const svc of services) {
           // v184: 서비스별 초과 kg 규칙을 아직 안 적은 서비스 → 기본값을 적는다 (한 번만 — 값이 있으면 건드리지 않는다).
           // 계산은 값이 없어도 같은 기본값을 쓰므로 미용 코스 가격은 그대로다. 구버전 호환 가격은 아래에서 함께 다시 적는다.
           if (svc.pricing && (svc.pricing.mode === 'flat' || svc.pricing.mode === 'weight') && svc.pricing.overKgMode == null) {
             const mode = this.defaultOverKgMode(svc);
             svc.pricing.overKgMode = mode;
-            if (mode === 'off' && svc.pricing.mode === 'weight' && table.overKg) ((svc.category || 'grooming') === 'grooming' ? overOff : addonOff).push(svc.name);
+            if (mode === 'off' && svc.pricing.mode === 'weight' && table.overKg) addonOff.push(svc.name);
             const sigBefore = svc.pricing.legacySig;
             const changedOld = sigBefore && sigBefore !== this._legacySig(svc); // 구버전 기기 수정분은 아래 분기에서 먼저 받아들인다
             if (!changedOld) {
@@ -1806,7 +1854,7 @@ const App = {
           if (!p || (p.mode !== 'flat' && p.mode !== 'weight')) {
             const hadPrice = (Number(svc.priceSmall) || 0) + (Number(svc.priceMedium) || 0) + (Number(svc.priceLarge) || 0) > 0;
             svc.pricing = this.legacyToPricing(svc, table);
-            if (svc.pricing.overKgMode === 'off' && svc.pricing.mode === 'weight' && table.overKg) ((svc.category || 'grooming') === 'grooming' ? overOff : addonOff).push(svc.name);
+            if (svc.pricing.overKgMode === 'off' && svc.pricing.mode === 'weight' && table.overKg) addonOff.push(svc.name);
             svc.pricing.migratedFrom = { small: Number(svc.priceSmall) || 0, medium: Number(svc.priceMedium) || 0, large: Number(svc.priceLarge) || 0 };
             this.applyLegacyPrices(svc, table);
             // 가격이 있던 서비스가 0원이 되면 안 된다 (안전 확인)
@@ -1838,12 +1886,9 @@ const App = {
             await DB.update('services', svc);
           }
         }
-        if (overOff.length + addonOff.length > 0) {
-          const names = (arr) => arr.slice(0, 3).join(', ') + (arr.length > 3 ? ' 외 ' + (arr.length - 3) + '개' : '');
-          const parts = [];
-          if (overOff.length) parts.push(`${names(overOff)}(목욕·스파·약욕)`);
-          if (addonOff.length) parts.push(`${names(addonOff)}(추가 옵션·케어)`);
-          this.showToast(`${parts.join(', ')}에는 큰 아이 kg당 추가 요금이 붙지 않고 구간 가격(무거운 구간은 대형가)을 받아요. 서비스 메뉴 › 더 보기에서 바꿀 수 있어요.`, 'info', { duration: 10000 });
+        if (addonOff.length > 0) {
+          const names = addonOff.slice(0, 3).join(', ') + (addonOff.length > 3 ? ' 외 ' + (addonOff.length - 3) + '개' : '');
+          this.showToast(`${names}(추가 옵션·케어)에는 큰 아이 kg당 추가 요금이 붙지 않고 구간 가격(무거운 구간은 대형가)을 받아요. 서비스 메뉴 › 더 보기에서 바꿀 수 있어요.`, 'info', { duration: 10000 });
         }
         if (adopted.length > 0) {
           this.showToast(`다른 기기(이전 버전)에서 바뀐 가격을 반영했어요: ${adopted.slice(0, 3).join(', ')}${adopted.length > 3 ? ' 외 ' + (adopted.length - 3) + '개' : ''}. 구간 가격을 확인하세요.`, 'info', { duration: 8000 });
@@ -1855,7 +1900,7 @@ const App = {
             this.showToast('가격 구간이 5단계로 바뀌었어요. 10kg 넘는 아이는 이제 1kg당 추가 요금으로 계산돼 예전 대형가와 달라질 수 있어요. 설정에서 구간과 가격을 확인하세요. <a href="#settings" onclick="try{sessionStorage.setItem(\'settings-open-tab\',\'operation\')}catch(e){}" style="font-weight:700;text-decoration:underline">설정 열기</a>', 'info', { html: true, duration: 15000 });
           }
         }
-        if (migrated > 0 || adopted.length > 0 || overOff.length + addonOff.length > 0) this._priceBandsCache = null;
+        if (migrated > 0 || adopted.length > 0 || addonOff.length > 0) this._priceBandsCache = null;
         return { migrated, adopted: adopted.length };
       } catch (e) {
         console.warn('price band migration failed', e);
@@ -1881,6 +1926,7 @@ const App = {
   // 메뉴(services)에서 이름으로 서비스 + 가격을 찾는다.
   // sizeOrWeight: 몸무게(숫자 kg) → 구간 계산, 'small'/'medium'/'large' → 사이즈 대표 구간, 없으면 needsWeight(구간 가격 서비스).
   // 반환: { service, price, hasSizePrices, bandId, bandLabel, needsWeight, bySize, base, over, fromPrice } 또는 null (메뉴에 없음)
+  // price: 가격을 안 적은 메뉴(또는 몸무게를 몰라 정해지지 않은 구간 가격)는 null — 0원과 구분. 무료 메뉴만 0
   async getMenuPrice(serviceName, sizeOrWeight, servicesCache) {
     const name = this.normalizeServiceName(serviceName);
     if (!name) return null;
@@ -1891,7 +1937,7 @@ const App = {
     const table = await this.getPriceBands();
     const r = this.calcServicePrice(svc, sizeOrWeight, table);
     return {
-      service: svc, price: r.price || 0, hasSizePrices: r.mode === 'weight',
+      service: svc, price: r.free ? 0 : (r.price > 0 ? r.price : null), hasSizePrices: r.mode === 'weight',
       bandId: r.bandId, bandLabel: r.bandLabel, needsWeight: r.needsWeight, bySize: r.bySize,
       base: r.base, over: r.over, fromPrice: r.fromPrice, mode: r.mode, free: !!r.free, fallback: r.fallback || null
     };

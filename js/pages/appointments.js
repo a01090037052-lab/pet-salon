@@ -1,6 +1,16 @@
 // ========== Appointments Page ==========
 App.pages.appointments = {
-  async render(container) {
+  // 마감 안 한 지난 예약: 최근 14일(오늘 제외) 중 아직 대기·확정·미용중인 예약.
+  // 홈의 '마감 안 한 지난 예약 N건' 줄과 이 화면의 #appointments/open 목록이 같은 기준을 쓴다.
+  OPEN_PAST_DAYS: 14,
+  isOpenPast(a, today) {
+    if (!a || !a.date || a.date >= today) return false;
+    const from = App.parseLocalDate(today); from.setDate(from.getDate() - this.OPEN_PAST_DAYS);
+    if (a.date < App.formatLocalDate(from)) return false;
+    return !a.status || ['pending', 'confirmed', 'in_progress'].includes(a.status);
+  },
+
+  async render(container, params) {
     // 휴무일 설정은 매 진입 시 재로드 (stale 방지)
     this._closedDays = null;
     const today = App.getToday();
@@ -11,8 +21,13 @@ App.pages.appointments = {
     const defaultTo = shiftDate(today, 30);
     let listRange = null;
     try { listRange = JSON.parse(sessionStorage.getItem('appt-range') || 'null'); } catch (_) {}
-    const listFrom = (listRange && listRange.from && listRange.from <= today) ? listRange.from : today;
-    const listTo = (listRange && listRange.to && listRange.to >= defaultTo) ? listRange.to : defaultTo;
+    // #appointments/open — 홈에서 '마감 안 한 지난 예약'을 눌러 들어온 경우: 최근 14일을 읽어 그 건들만 보여준다
+    const openMode = !!(params && params[0] === 'open');
+    this._openMode = openMode;
+    const listFrom = openMode ? shiftDate(today, -this.OPEN_PAST_DAYS)
+      : (listRange && listRange.from && listRange.from <= today) ? listRange.from : today;
+    const listTo = openMode ? defaultTo
+      : (listRange && listRange.to && listRange.to >= defaultTo) ? listRange.to : defaultTo;
     this._loadedFrom = listFrom;
     this._loadedTo = listTo;
     const [appointments, laterAppts, apptTotal] = await Promise.all([
@@ -110,6 +125,12 @@ App.pages.appointments = {
         </div>
       </div>` : ''}
 
+      ${openMode ? `<div class="safety-note warn" id="appt-open-note">
+        ${App.icon('alert')}
+        <div class="flex-1"><strong id="appt-open-count">마감 안 한 지난 예약 ${sorted.filter(a => this.isOpenPast(a, today)).length}건</strong><br><small>최근 ${this.OPEN_PAST_DAYS}일 · 미용했으면 '미용 완료', 안 왔으면 노쇼·취소로 바꿔 주세요</small></div>
+        <button class="btn btn-sm btn-secondary" id="btn-appt-open-reset">기본 보기로</button>
+      </div>` : ''}
+
       <div class="filter-bar" id="appt-filter-bar">
         <div class="quick-filters">
           <button class="quick-filter-btn active" data-filter="all">전체</button>
@@ -180,6 +201,7 @@ App.pages.appointments = {
                       ${multiGroomer ? `<td class="hide-mobile">${App.escapeHtml(a.groomer || '-')}</td>` : ''}
                       <td class="hide-mobile" style="max-width:120px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${App.escapeHtml(a.memo || '')}">${App.escapeHtml(a.memo || '-')}</td>
                       <td>
+                        ${a.status === 'completed' ? `<span class="badge badge-success">완료</span><div class="appt-result-compact">${resultOf(a)}</div>` : `
                         <select class="status-select appt-status-sel appt-status-sel-table" data-id="${a.id}" data-st="${a.status || 'pending'}" aria-label="예약 상태">
                           <option value="pending" ${a.status === 'pending' ? 'selected' : ''}>대기</option>
                           <option value="confirmed" ${a.status === 'confirmed' ? 'selected' : ''}>확정</option>
@@ -187,11 +209,10 @@ App.pages.appointments = {
                           <option value="completed" ${a.status === 'completed' ? 'selected' : ''}>완료</option>
                           <option value="cancelled" ${a.status === 'cancelled' ? 'selected' : ''}>취소</option>
                           <option value="noshow" ${a.status === 'noshow' ? 'selected' : ''}>노쇼</option>
-                        </select>
-                        ${a.status === 'completed' ? `<div class="appt-result-compact">${resultOf(a)}</div>` : ''}
+                        </select>`}
                       </td>
                       <td class="table-actions">
-                        <button class="btn-icon btn-reminder-appt" data-id="${a.id}" title="재확인 문자" aria-label="재확인 문자" style="color:var(--info)">${App.icon('send')}</button>
+                        <button class="btn-icon btn-reminder-appt" data-id="${a.id}" title="재확인 문자" aria-label="재확인 문자" style="color:var(--info)${['noshow', 'cancelled'].includes(a.status) ? ';display:none' : ''}">${App.icon('send')}</button>
                         <button class="btn-icon btn-edit-appt" data-id="${a.id}" title="수정" aria-label="수정">${App.icon('edit')}</button>
                         ${a.status !== 'completed' ? `<button class="btn-icon btn-complete-appt" data-id="${a.id}" title="미용 완료 · 기록 작성" aria-label="미용 완료 · 기록 작성" style="color:var(--success)${['noshow', 'cancelled'].includes(a.status) ? ';display:none' : ''}">${App.icon('check')}</button>` : ''}
                       </td>
@@ -235,21 +256,10 @@ App.pages.appointments = {
                   ${a.memo ? `<div style="font-size:0.8rem;color:var(--text-secondary);margin-top:4px">${App.icon('note')} ${App.escapeHtml(a.memo.length > 40 ? a.memo.slice(0, 40) + '...' : a.memo)}</div>` : ''}
                 </div>
                 ${a.status === 'completed' ? `
-                <!-- 끝난 예약: 결과 줄(금액·결제)만 크게, 전화·문자는 숨긴다 -->
+                <!-- 끝난 예약: 결과 줄(금액·결제 + 기록 보기)과 '수정'만. 상태 선택 상자는 두지 않는다 -->
                 <div class="mobile-card-actions" style="flex-direction:column;gap:8px">
                   ${resultOf(a)}
-                  <div style="display:flex;gap:6px;align-items:center">
-                    <!-- 상태는 이 선택 상자 하나로 보여주고 바꾼다 (예전엔 위 배지와 두 번 표시) -->
-                    <select class="status-select appt-status-sel" data-id="${a.id}" data-st="${a.status || 'pending'}" aria-label="예약 상태" style="flex:1;min-height:44px">
-                      <option value="pending" ${a.status === 'pending' ? 'selected' : ''}>대기</option>
-                      <option value="confirmed" ${a.status === 'confirmed' ? 'selected' : ''}>확정</option>
-                      <option value="in_progress" ${a.status === 'in_progress' ? 'selected' : ''}>미용중</option>
-                      <option value="completed" ${a.status === 'completed' ? 'selected' : ''}>완료</option>
-                      <option value="cancelled" ${a.status === 'cancelled' ? 'selected' : ''}>취소</option>
-                      <option value="noshow" ${a.status === 'noshow' ? 'selected' : ''}>노쇼</option>
-                    </select>
-                    <button class="btn btn-sm btn-secondary btn-edit-appt flex-1" data-id="${a.id}" style="min-height:44px">${App.icon('edit')} 수정</button>
-                  </div>
+                  <button class="btn btn-sm btn-secondary btn-edit-appt" data-id="${a.id}" style="min-height:44px;width:100%">${App.icon('edit')} 수정</button>
                 </div>` : `
                 <div class="mobile-card-actions" style="flex-direction:column;gap:8px">
                   <div style="display:flex;gap:6px;align-items:center">
@@ -267,7 +277,7 @@ App.pages.appointments = {
                   </div>
                   <div style="display:flex;gap:6px">
                     ${phoneDigits ? `<a class="btn btn-sm btn-secondary" href="tel:${phoneDigits}" style="flex:0 0 auto;min-width:44px;min-height:44px;display:inline-flex;align-items:center;justify-content:center" title="전화 걸기" aria-label="전화 걸기">${App.icon('phone')}</a>` : ''}
-                    <button class="btn btn-sm btn-info btn-reminder-appt flex-1" data-id="${a.id}" style="min-height:44px">${App.icon('send')} 재확인 문자</button>
+                    <button class="btn btn-sm btn-info btn-reminder-appt flex-1" data-id="${a.id}" style="min-height:44px${['noshow', 'cancelled'].includes(a.status) ? ';display:none' : ''}">${App.icon('send')} 재확인 문자</button>
                     <button class="btn btn-sm btn-secondary btn-edit-appt flex-1" data-id="${a.id}" style="min-height:44px">${App.icon('edit')} 수정</button>
                   </div>
                 </div>`}
@@ -280,9 +290,9 @@ App.pages.appointments = {
 
       <!-- 목록 범위 넓히기 (지난 예약은 필요할 때만) -->
       <div style="margin-top:12px;display:flex;gap:8px;flex-wrap:wrap;justify-content:center">
-        ${hasOlder ? `<button class="btn btn-secondary btn-sm" id="btn-appt-older" style="min-height:44px">${App.icon('chevron-left')} 이전 30일 보기</button>` : ''}
-        ${laterCount > 0 ? `<button class="btn btn-secondary btn-sm" id="btn-appt-later" style="min-height:44px">이후 30일 더 보기 (이후 ${laterCount}건) ${App.icon('chevron-right')}</button>` : ''}
-        ${(listFrom < today || listTo > defaultTo) ? `<button class="btn btn-ghost btn-sm" id="btn-appt-range-reset" style="min-height:44px">기본 범위로 (오늘~30일)</button>` : ''}
+        ${hasOlder && !openMode ? `<button class="btn btn-secondary btn-sm" id="btn-appt-older" style="min-height:44px">${App.icon('chevron-left')} 이전 30일 보기</button>` : ''}
+        ${laterCount > 0 && !openMode ? `<button class="btn btn-secondary btn-sm" id="btn-appt-later" style="min-height:44px">이후 30일 더 보기 (이후 ${laterCount}건) ${App.icon('chevron-right')}</button>` : ''}
+        ${!openMode && (listFrom < today || listTo > defaultTo) ? `<button class="btn btn-ghost btn-sm" id="btn-appt-range-reset" style="min-height:44px">기본 범위로 (오늘~30일)</button>` : ''}
       </div>
     `;
   },
@@ -508,6 +518,18 @@ App.pages.appointments = {
         this._keepCalMonth = false;
         this._closedDays = null;
         await this.renderCalendar();
+        if (this._openMode) {
+          // 마감 안 한 지난 예약만 — 날짜·상태·검색 필터는 비워 두고 open 기준으로만 거른다
+          const dateInput = document.getElementById('filter-date');
+          if (dateInput) dateInput.value = '';
+          const statusEl = document.getElementById('filter-status');
+          if (statusEl) statusEl.value = '';
+          const searchEl = document.getElementById('appt-search');
+          if (searchEl) searchEl.value = '';
+          document.querySelectorAll('.quick-filter-btn').forEach(b => b.classList.remove('active'));
+          this._selectedCalDate = null;
+          this.applyFilters();
+        } else {
         // 이전 선택 날짜 복원 또는 오늘 자동 선택
         const restoreDate = this._selectedCalDate || App.getToday();
         const dateInput = document.getElementById('filter-date');
@@ -520,7 +542,15 @@ App.pages.appointments = {
         const restoreCell = document.querySelector(`.calendar-cell[data-date="${restoreDate}"]`);
         if (restoreCell) restoreCell.classList.add('selected');
         await this._updateDateSummary(restoreDate);
+        }
     }
+
+    // 마감 안 한 지난 예약 보기 → 기본 범위(오늘~30일)로
+    document.getElementById('btn-appt-open-reset')?.addEventListener('click', () => {
+      sessionStorage.removeItem('appt-range');
+      this._selectedCalDate = null;
+      location.hash = '#appointments';
+    });
 
     // 목록 범위 넓히기
     document.getElementById('btn-appt-older')?.addEventListener('click', () => {
@@ -662,6 +692,8 @@ App.pages.appointments = {
     // Quick date filters
     document.querySelectorAll('.quick-filter-btn').forEach(btn => {
       btn.addEventListener('click', () => {
+        // 마감 안 한 지난 예약 보기 중이면 기본 보기로 나간다 (빠른 필터는 기본 범위 기준)
+        if (this._openMode) { sessionStorage.removeItem('appt-range'); location.hash = '#appointments'; return; }
         document.querySelectorAll('.quick-filter-btn').forEach(b => b.classList.remove('active'));
         btn.classList.add('active');
         const filter = btn.dataset.filter;
@@ -697,6 +729,7 @@ App.pages.appointments = {
     document.getElementById('filter-status')?.addEventListener('change', () => this.applyFilters());
     document.getElementById('filter-date')?.addEventListener('change', () => this.applyFilters());
     document.getElementById('btn-clear-filter')?.addEventListener('click', () => {
+      if (this._openMode) { sessionStorage.removeItem('appt-range'); location.hash = '#appointments'; return; }
       document.getElementById('appt-search').value = '';
       document.getElementById('filter-status').value = '';
       document.getElementById('filter-date').value = '';
@@ -755,12 +788,24 @@ App.pages.appointments = {
         if (newStatus === 'cancelled') { if (cancelReason) appt.cancelReason = cancelReason; }
         else delete appt.cancelReason;
         await DB.update('appointments', appt);
+        // 기록 없이 완료해도 방문은 한 것 — 반려견 마지막 방문일(lastVisitDate)을 앞으로 당겨 재방문 알림이 맞게 한다.
+        // (기록 저장 경로는 records._recalcPetLastVisit 이 기록 기준으로 계산한다. 기록이 없으니 여기서는 예약 날짜로)
+        if (completedWithoutRecord && appt.petId && appt.date && appt.date <= App.getToday()) {
+          try {
+            const pet = await DB.get('pets', Number(appt.petId));
+            if (pet && (!pet.lastVisitDate || pet.lastVisitDate < appt.date)) {
+              pet.lastVisitDate = appt.date;
+              if (!pet.firstVisitDate) pet.firstVisitDate = appt.date;
+              await DB.update('pets', pet);
+            }
+          } catch (err) { console.warn('lastVisitDate 갱신 실패:', err); }
+        }
         // Update row data-status for filtering
         const row = e.target.closest('tr');
         if (row) row.dataset.status = newStatus;
         // 노쇼·취소로 바꾸면 미용 완료 버튼을 숨기고, 다른 상태로 되돌리면 다시 보인다 (표·카드 모두)
         const hideComplete = newStatus === 'noshow' || newStatus === 'cancelled';
-        document.querySelectorAll(`.btn-complete-appt[data-id="${id}"]`).forEach(b => { b.style.display = hideComplete ? 'none' : ''; });
+        document.querySelectorAll(`.btn-complete-appt[data-id="${id}"], .btn-reminder-appt[data-id="${id}"]`).forEach(b => { b.style.display = hideComplete ? 'none' : ''; });
         // Update corresponding mobile card data-status and badge
         const card = document.querySelector(`#appt-card-list .mobile-card[data-id="${id}"]`);
         e.target.dataset.st = newStatus;
@@ -776,8 +821,11 @@ App.pages.appointments = {
           // 기록 없이 완료한 경우 버튼을 "기록 작성"으로 유지 (나중에라도 매출 기록 가능)
           const completeBtn = card.querySelector('.btn-complete-appt');
           if (completeBtn && completedWithoutRecord) completeBtn.innerHTML = App.icon('note') + ' 기록 작성';
+          else if (completeBtn && newStatus !== 'completed') completeBtn.innerHTML = App.icon('scissors') + ' 미용 완료';
         }
         App.showToast('예약 상태가 변경되었습니다.');
+        // 바뀐 상태로 지금 보기(지난 예약 보기면 그 기준)를 다시 적용한다
+        this.applyFilters();
         // 취소 건은 캘린더·요약에서 빠지므로 상태 변경 후 항상 다시 그린다
         await this.renderCalendar();
         const selDate = this._selectedCalDate;
@@ -958,13 +1006,17 @@ App.pages.appointments = {
   applyFilters(special) {
     // 검색·상태를 바꿔도 '이번주' 빠른 필터는 유지 (특정 날짜를 고르면 그 날짜가 우선)
     if (!special && !document.getElementById('filter-date')?.value && document.querySelector('.quick-filter-btn.active')?.dataset.filter === 'week') special = 'week';
+    // 마감 안 한 지난 예약 보기: 날짜를 따로 고르지 않았으면 그 건들만
+    if (!special && this._openMode && !document.getElementById('filter-date')?.value) special = 'open';
+    const openFrom = (() => { const d = App.parseLocalDate(App.getToday()); d.setDate(d.getDate() - this.OPEN_PAST_DAYS); return App.formatLocalDate(d); })();
+    const isOpenEl = (el) => el.dataset.date < App.getToday() && el.dataset.date >= openFrom && ['pending', 'confirmed', 'in_progress'].includes(el.dataset.status);
     const search = (document.getElementById('appt-search')?.value || '').toLowerCase();
     const status = document.getElementById('filter-status')?.value || '';
     const date = document.getElementById('filter-date')?.value || '';
     const today = App.getToday();
 
-    // Save filter state to sessionStorage
-    sessionStorage.setItem('appt-filter', JSON.stringify({
+    // Save filter state to sessionStorage (open 보기는 저장하지 않는다 — 다음에 예약 화면을 열 때 남지 않게)
+    if (!this._openMode) sessionStorage.setItem('appt-filter', JSON.stringify({
       search: document.getElementById('appt-search')?.value || '',
       status,
       date,
@@ -977,7 +1029,9 @@ App.pages.appointments = {
       const matchSearch = !search || (row.dataset.search || '').toLowerCase().includes(search);
       const matchStatus = !status || row.dataset.status === status;
       let matchDate = true;
-      if (special === 'week') {
+      if (special === 'open') {
+        matchDate = isOpenEl(row);
+      } else if (special === 'week') {
         matchDate = row.dataset.date >= today && row.dataset.date <= weekEnd;
       } else if (date) {
         matchDate = row.dataset.date === date;
@@ -994,13 +1048,22 @@ App.pages.appointments = {
       const matchSearch = !search || (card.dataset.search || '').toLowerCase().includes(search);
       const matchStatus = !status || card.dataset.status === status;
       let matchDate = true;
-      if (special === 'week') {
+      if (special === 'open') {
+        matchDate = isOpenEl(card);
+      } else if (special === 'week') {
         matchDate = card.dataset.date >= today && card.dataset.date <= weekEnd;
       } else if (date) {
         matchDate = card.dataset.date === date;
       }
       card.style.display = (matchSearch && matchStatus && matchDate) ? '' : 'none';
     });
+
+    // 지난 예약 보기: 상태를 바꿔 마감한 건은 빠지므로 위 'N건'도 다시 센다
+    const openCountEl = document.getElementById('appt-open-count');
+    if (this._openMode && openCountEl) {
+      const n = [...document.querySelectorAll('#appt-tbody tr[data-id], #appt-card-list .mobile-card[data-id]')].filter(isOpenEl).length;
+      openCountEl.textContent = `마감 안 한 지난 예약 ${n}건`;
+    }
   },
 
 
@@ -1059,7 +1122,7 @@ App.pages.appointments = {
     }
     const petOptions = await App.getPetOptions(appt.customerId, appt.petId);
     const initialPet = appt.petId ? await DB.get('pets', Number(appt.petId)) : null;
-    // 칩 가격 기준: 예약 때 적은 몸무게 → 반려견 몸무게 → 사이즈
+    // 칩 가격 기준: 예전 예약에 남은 몸무게(weightAtBooking) → 반려견 몸무게 → 사이즈. 예약 폼에 몸무게 칸은 없다 (기록 폼에서 잰다)
     const initialWeight = Number(appt.weightAtBooking) > 0 ? Number(appt.weightAtBooking) : (initialPet && Number(initialPet.weight) > 0 ? Number(initialPet.weight) : null);
     const initialBasis = initialWeight || App.getPetPriceBasis(initialPet);
     const serviceCheckboxes = await App.getServiceCheckboxes(appt.serviceIds || [], initialBasis);
@@ -1070,6 +1133,12 @@ App.pages.appointments = {
     if (id && appt.seriesId) {
       const all = await DB.getAll('appointments');
       seriesLeft = all.filter(a => a.seriesId === appt.seriesId && a.date >= appt.date && !['completed', 'cancelled', 'noshow'].includes(a.status));
+    }
+    // '기록 없이 완료'한 예약만 완료를 되돌릴 수 있다 (기록이 있는 완료 건은 기록을 지우면 예약이 되돌아간다)
+    let canUndoComplete = false;
+    if (id && appt.status === 'completed') {
+      const petRecs = appt.petId ? await DB.getByIndex('records', 'petId', Number(appt.petId)) : [];
+      canUndoComplete = !petRecs.some(r => String(r.appointmentId) === String(id));
     }
 
     App.showModal({
@@ -1107,10 +1176,6 @@ App.pages.appointments = {
         <div id="time-conflict-warning" style="display:none;background:var(--warning-light);border:1px solid var(--warning);border-radius:var(--radius);padding:8px 12px;font-size:0.82rem;color:var(--warning-text-strong);font-weight:600;margin-bottom:8px"></div>
         <!-- 선택사항 -->
         <div style="margin:12px 0 8px;padding-top:10px;border-top:1px dashed var(--border);font-size:0.82rem;color:var(--text-muted)">선택사항</div>
-        <div class="form-group">
-          <label class="form-label" for="f-appt-weight">몸무게 (kg) <span style="color:var(--text-muted);font-size:0.78rem;font-weight:400">(서비스 가격 구간 — 반려견 몸무게가 기본)</span></label>
-          <input type="number" id="f-appt-weight" value="${initialWeight ? App.formatKg(initialWeight) : ''}" placeholder="예: 5.2" min="0" max="120" step="0.1" inputmode="decimal" style="max-width:160px">
-        </div>
         <div class="form-group">
           <div id="f-services">
             ${serviceCheckboxes}
@@ -1174,6 +1239,7 @@ App.pages.appointments = {
         </div>
         ${id ? `<div style="margin-top:16px;padding-top:12px;border-top:1px dashed var(--border);display:flex;flex-direction:column;gap:6px;align-items:center">
           ${seriesLeft.length > 0 ? `<button type="button" class="btn btn-ghost" id="btn-cancel-series" style="min-height:44px;color:var(--warning)">이후 반복 예약 ${seriesLeft.length}건 모두 취소</button>` : ''}
+          ${canUndoComplete ? `<button type="button" class="btn btn-ghost" id="btn-undo-complete" style="min-height:44px;color:var(--warning)">완료 취소 (확정으로 되돌리기)</button>` : ''}
           <button type="button" class="btn btn-ghost text-danger" id="btn-delete-appt-form" style="min-height:44px">이 예약 삭제</button>
         </div>` : ''}
       `,
@@ -1226,15 +1292,13 @@ App.pages.appointments = {
     await this._appendMissingServiceChips(document.getElementById('f-services'), (appt.serviceIds || []).map(Number), initialBasis);
     bindServiceChips();
 
-    // 반려견·몸무게가 바뀌면 그 구간 가격으로 칩을 다시 그린다 (선택한 서비스는 유지)
+    // 반려견이 바뀌면 그 아이의 구간 가격으로 칩을 다시 그린다 (선택한 서비스는 유지)
     let chipRenderSeq = 0;
     let lastSizeType = initialBasis;
     let apptPet = initialPet;
-    const weightEl = document.getElementById('f-appt-weight');
     const rerenderChips = async () => {
       const seq = ++chipRenderSeq;
-      const w = parseFloat(weightEl?.value);
-      const sizeType = w > 0 ? w : App.getPetPriceBasis(apptPet);
+      const sizeType = App.getPetPriceBasis(apptPet);
       if (sizeType === lastSizeType) return;
       const checkedIds = Array.from(document.querySelectorAll('input[name="serviceIds"]:checked')).map(cb => Number(cb.value));
       const html = await App.getServiceCheckboxes(checkedIds, sizeType);
@@ -1249,11 +1313,8 @@ App.pages.appointments = {
     document.getElementById('f-petId')?.addEventListener('change', async (e) => {
       const petId = Number(e.target.value);
       apptPet = petId ? await DB.get('pets', petId) : null;
-      // 몸무게 칸을 새 반려견의 몸무게로 (없으면 비움)
-      if (weightEl) weightEl.value = apptPet && Number(apptPet.weight) > 0 ? App.formatKg(apptPet.weight) : '';
       rerenderChips();
     });
-    weightEl?.addEventListener('input', App.debounce(() => { if (weightEl.isConnected) rerenderChips(); }, 400));
 
     // 빠른 시간 칩
     const timeInput = document.getElementById('f-time');
@@ -1276,6 +1337,7 @@ App.pages.appointments = {
 
     // 수정 폼 하단 삭제
     document.getElementById('btn-delete-appt-form')?.addEventListener('click', () => this.deleteAppointment(id, { fromForm: true }));
+    document.getElementById('btn-undo-complete')?.addEventListener('click', () => this.undoComplete(id));
     document.getElementById('btn-cancel-series')?.addEventListener('click', () => this.cancelSeries(id));
 
     // 시간 겹침 실시간 경고
@@ -1461,22 +1523,24 @@ App.pages.appointments = {
       const svcNameMap = {}; (await DB.getAll('services')).forEach(s => { svcNameMap[s.id] = s.name; });
       const serviceNames = serviceIds.map(sid => svcNameMap[sid] || (this._formSvcNames && this._formSvcNames[sid]) || '');
       const data = { customerId, petId, date, time, duration, groomer, status, serviceIds, serviceNames, memo };
-      // 몸무게: 반려견 프로필과 다르게 적었을 때만 예약에 남긴다 (같으면 완료 때 반려견 최신 몸무게를 쓴다)
-      {
-        const w = parseFloat(document.getElementById('f-appt-weight')?.value);
-        const pet = petId ? await DB.get('pets', petId) : null;
-        const petW = pet ? Number(pet.weight) || 0 : 0;
-        data.weightAtBooking = (w > 0 && Math.abs(w - petW) > 0.001) ? Math.round(w * 10) / 10 : null;
-      }
+      // 몸무게 칸은 없앴다. 예전 예약의 weightAtBooking 은 그대로 둔다 (Object.assign 이 덮지 않음) — 반려견을 바꿨을 때만 지운다
 
       if (id) {
         const existing = await DB.get('appointments', id);
         if (!existing) { App.showToast('예약을 찾을 수 없습니다.', 'error'); return; }
         // 날짜·시간이 바뀌면 이전 일정에 대한 리마인더 발송 기록은 무효
         if (existing.date !== data.date || existing.time !== data.time) delete existing.reminderSentAt;
-        Object.assign(existing, data);
-        await DB.update('appointments', existing);
-        App.showToast('예약이 수정되었습니다.');
+        if (Number(existing.petId) !== petId) delete existing.weightAtBooking;
+        // 취소·노쇼 예약의 날짜·시간을 바꾸면 = 다시 잡은 예약. 원래 건(취소·노쇼 이력)은 그대로 두고 새 '대기' 예약으로 저장한다
+        if (['cancelled', 'noshow'].includes(existing.status) && (existing.date !== data.date || existing.time !== data.time)) {
+          const fresh = { ...data, status: 'pending' };
+          await DB.add('appointments', fresh);
+          App.showToast('새 예약으로 등록했어요');
+        } else {
+          Object.assign(existing, data);
+          await DB.update('appointments', existing);
+          App.showToast('예약이 수정되었습니다.');
+        }
       } else {
         // 반복 예약 생성
         const repeatCycleEl = document.getElementById('f-repeat-cycle');
@@ -1546,26 +1610,12 @@ App.pages.appointments = {
       App.closeModal();
       App.handleRoute();
       if (postSaveSms) {
-        // closeModal 의 history.back() 이 끝난 뒤 열어야 새 시트가 popstate 로 바로 닫히지 않는다
+        // 예전엔 '예약이 등록되었습니다 / 문자 보내기 / 닫기' 창이 한 번 더 떴다 → 토스트 한 줄 + '문자 보내기' 하나
         const { phone, msg, petName, when } = postSaveSms;
-        setTimeout(() => {
-          App.showModal({
-            title: '예약 완료',
-            hideFooter: true,
-            content: `
-              <div style="text-align:center;padding:4px 0">
-                <div style="font-weight:700;font-size:1rem;margin-bottom:4px">예약이 등록되었습니다</div>
-                <div style="color:var(--text-muted);font-size:0.88rem;margin-bottom:16px">${App.escapeHtml(petName)}${petName ? ' · ' : ''}${App.escapeHtml(when)}</div>
-                <button type="button" class="btn btn-primary" id="btn-post-save-sms" style="width:100%;min-height:48px">문자 보내기</button>
-                <button type="button" class="btn btn-secondary" id="btn-post-save-close" style="width:100%;min-height:44px;margin-top:8px">닫기</button>
-              </div>`
-          });
-          document.getElementById('btn-post-save-sms')?.addEventListener('click', () => {
-            App.openSms(phone, msg);
-            setTimeout(() => App.closeModal(), 300);
-          });
-          document.getElementById('btn-post-save-close')?.addEventListener('click', () => App.closeModal());
-        }, 180);
+        App.showToast(`예약 등록 · ${petName ? petName + ' ' : ''}${when}`, 'success', {
+          duration: 8000,
+          action: { label: '문자 보내기', onClick: () => App.openSms(phone, msg) }
+        });
       }
     } catch (err) {
       console.error('Save appointment error:', err);
@@ -1577,29 +1627,19 @@ App.pages.appointments = {
     try {
       const appt = await DB.get('appointments', id);
       if (!appt) return;
-      // 즉시 "미용중" 상태로 변경
-      const prevStatus = appt.status;
-      appt.status = 'in_progress';
-      await DB.update('appointments', appt);
-      // 기록 폼 열기 — 저장 시 records.saveRecord에서 completed로 변경
+      // 예약 상태는 여기서 바꾸지 않는다. 기록을 저장해야 records.saveRecord 가 completed 로 바꾼다.
+      // (예전엔 폼을 열 때 '미용중'으로 바꾸고 닫을 때 되돌렸는데, 폼이 열린 채 앱이 꺼지면 '미용중'이 계속 남았다)
       App.pages.records.showForm(null, appt);
-      // 모달 취소 시 원래 상태로 복원
       const _origClose = App._modalOnClose;
       App._modalOnClose = async () => {
         if (_origClose) _origClose();
         // 저장이든 취소든 홈 카드(예약 상태·미결제·오늘 매출)를 다시 그리게 한다.
         // 기록 저장 직후 records.saveRecord 가 handleRoute 를 부르는데, 대시보드의 5초 캐시 때문에
-        // 다시 그리지 않아 '미용중'·이전 매출이 새로고침 전까지 남던 문제.
+        // 다시 그리지 않아 이전 상태·매출이 새로고침 전까지 남던 문제.
         App._dashboardDirty = true;
-        // 기록이 저장되지 않았으면 (예약이 아직 in_progress) 원래 상태로
+        // 기록을 저장하지 않고 닫았으면 상태 선택 상자를 원래 값으로 (예약 자체는 바뀐 게 없다)
         const current = await DB.get('appointments', id);
-        if (current && current.status === 'in_progress') {
-          current.status = prevStatus;
-          await DB.update('appointments', current);
-          if (onCancel) onCancel();
-          // 홈에서 취소했으면 '미용중'이 남지 않게 다시 그린다
-          if (App.currentPage === 'dashboard') { App._dashboardDirty = true; App.handleRoute(); }
-        }
+        if (current && current.status !== 'completed' && onCancel) onCancel();
         App._modalOnClose = null;
       };
     } catch (err) {
@@ -1609,6 +1649,35 @@ App.pages.appointments = {
   },
 
   // 반복 예약 묶음 중 이 예약 날짜 이후의 미진행 건을 모두 '취소' 상태로 (삭제가 아니라 상태 변경 — 이력 보존, 되돌리기 가능)
+  // '기록 없이 완료'를 되돌린다 → 확정. 그때 당겨 둔 반려견 마지막 방문일이 이 예약 날짜면 기록 기준으로 다시 계산한다
+  async undoComplete(id) {
+    const appt = await DB.get('appointments', id);
+    if (!appt || appt.status !== 'completed') return;
+    const petRecs = appt.petId ? await DB.getByIndex('records', 'petId', Number(appt.petId)) : [];
+    if (petRecs.some(r => String(r.appointmentId) === String(id))) {
+      App.showToast('미용 기록이 있는 예약입니다. 기록을 삭제하면 예약이 되돌아갑니다.', 'warning');
+      return;
+    }
+    const ok = await App.confirm('완료를 취소하고 \'확정\'으로 되돌릴까요?', { okLabel: '완료 취소', cancelLabel: '닫기', danger: false });
+    if (!ok) return;
+    try {
+      appt.status = 'confirmed';
+      await DB.update('appointments', appt);
+      if (appt.petId) {
+        const pet = await DB.get('pets', Number(appt.petId));
+        if (pet && pet.lastVisitDate === appt.date) await App.pages.records._recalcPetLastVisit(Number(appt.petId));
+      }
+      App._dashboardDirty = true;
+      App.showToast('완료를 취소했습니다.');
+      await new Promise(r => setTimeout(r, 180)); // confirm 의 history.back() 처리 후 모달 닫기
+      App.closeModal();
+      App.handleRoute();
+    } catch (err) {
+      console.error('undoComplete error:', err);
+      App.showToast('처리 중 오류가 발생했습니다.', 'error');
+    }
+  },
+
   async cancelSeries(id) {
     const appt = await DB.get('appointments', id);
     if (!appt || !appt.seriesId) { App.showToast('반복 예약 정보를 찾을 수 없습니다.', 'error'); return; }

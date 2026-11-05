@@ -38,12 +38,12 @@ describe('구간 가격 변환 (migratePriceBands) — v182 데이터', () => {
     assert.deepEqual([s.priceSmall, s.priceMedium, s.priceLarge], [30000, 40000, 90000]);
   });
 
-  test('추가 요금 없는 목욕: 무거운 구간(10kg~) = 대형가 35,000원, 20kg 도 35,000원', async () => {
+  test('목욕(미용 코스)도 가게 기본: 10kg~ = 중형가 25,000원, 20kg = 25,000 + 10kg × 5,000 = 75,000원', async () => {
     const { db } = await migrated();
     const s = db.peek('services', 2);
-    assert.equal(s.pricing.overKgMode, 'off');
-    assert.equal(s.pricing.prices.b5, 35000);
-    assert.equal(s.priceLarge, 35000);
+    assert.equal(s.pricing.overKgMode, 'inherit');
+    assert.equal(s.pricing.prices.b5, 25000);
+    assert.equal(s.priceLarge, 75000);
   });
 
   test('세 값이 같은 추가 옵션은 단일가 5,000원', async () => {
@@ -70,13 +70,16 @@ describe('구간 가격 변환 (migratePriceBands) — v182 데이터', () => {
     assert.ok(s.priceChangedAt, '가격 변경 시각이 남아야 한다');
   });
 
-  test('pricing 은 있지만 overKgMode 가 없는 서비스(스파) → off 로 적고 알림', async () => {
-    const svc = { id: 9, name: '스파', category: 'grooming', pricing: { mode: 'weight', prices: { b1: 10000, b5: 20000 } } };
-    const db = createFakeDB({ stores: { services: [svc] }, settings: { priceBandsMigrated: 1 } });
+  test('pricing 은 있지만 overKgMode 가 없는 서비스: 미용 코스(스파) → inherit 조용히, 추가 옵션(보습팩) → off 로 적고 알림', async () => {
+    const spa = { id: 9, name: '스파', category: 'grooming', pricing: { mode: 'weight', prices: { b1: 10000, b5: 20000 } } };
+    const pack = { id: 10, name: '보습팩', category: 'addon', pricing: { mode: 'weight', prices: { b1: 10000, b5: 20000 } } };
+    const db = createFakeDB({ stores: { services: [spa, pack] }, settings: { priceBandsMigrated: 1 } });
     const { App, toasts } = loadApp({ db });
     await App.migratePriceBands();
-    assert.equal(db.peek('services', 9).pricing.overKgMode, 'off');
-    assert.ok(toasts.some(t => t.msg.includes('스파')));
+    assert.equal(db.peek('services', 9).pricing.overKgMode, 'inherit');
+    assert.equal(db.peek('services', 10).pricing.overKgMode, 'off');
+    assert.ok(toasts.some(t => t.msg.includes('보습팩')));
+    assert.ok(!toasts.some(t => t.msg.includes('스파')));
   });
 
   test('서버 모드에서는 아무것도 하지 않는다', async () => {

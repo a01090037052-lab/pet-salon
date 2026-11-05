@@ -207,7 +207,7 @@ App.pages.customers = {
     const unpaidRecords = records.filter(r => r.paymentMethod === 'unpaid');
     const unpaidBalance = unpaidRecords.reduce((sum, r) => sum + App.getUnpaidAmount(r), 0);
     const noshowCount = appointments.filter(a => a.status === 'noshow').length;
-    // 정액권 — 내역이 있는 손님만 칸이 보인다 (없으면 맨 아래 작은 '정액권 충전' 링크만)
+    // 정액권 — 반려견 칸 바로 아래 늘 보인다. 내역이 없으면 '정액권 잔액 0원 · 충전' 한 줄, 있으면 장부 전체
     const prepaidEntries = await Prepaid.listByCustomer(customerId);
     const prepaidBal = Prepaid.balanceOf(prepaidEntries);
 
@@ -270,7 +270,7 @@ App.pages.customers = {
         </div>
       </div>
 
-      ${prepaidEntries.length > 0 ? await this._prepaidSectionHtml(customer, prepaidEntries, prepaidBal, records) : ''}
+      ${await this._prepaidSectionHtml(customer, prepaidEntries, prepaidBal, records)}
 
       </div>
       <div class="cust-detail-col cust-detail-col-side">
@@ -312,7 +312,7 @@ App.pages.customers = {
                   <strong style="font-size:0.9rem">${App.formatDate(r.date)}</strong>
                   <strong style="color:var(--primary)">${App.formatCurrency(App.getRecordAmount(r))}</strong>
                 </div>
-                <div style="font-size:0.85rem;color:var(--text-secondary);display:flex;align-items:center;gap:8px"><span class="flex-1">${App.escapeHtml(pet?.name || '-')} · ${App.escapeHtml(serviceNames)} · ${App.escapeHtml(r.groomer || '-')} · ${App.pages.records.getPaymentLabel(r.paymentMethod, r)}</span><button type="button" class="btn btn-sm btn-ghost cust-rec-report" data-id="${r.id}" style="flex-shrink:0">${App.icon('image')} 리포트</button></div>
+                <div style="font-size:0.85rem;color:var(--text-secondary);display:flex;align-items:center;gap:8px"><span class="flex-1">${[pet?.name, serviceNames === '-' ? '' : serviceNames, r.groomer].filter(Boolean).map(v => App.escapeHtml(v)).concat([App.pages.records.getPaymentLabel(r.paymentMethod, r)].filter(v => v && v !== '-')).join(' · ')}</span><button type="button" class="btn btn-sm btn-ghost cust-rec-report" data-id="${r.id}" style="flex-shrink:0">${App.icon('image')} 리포트</button></div>
               </div>`;
             }).join('') + (records.length > 10 ? '<div style="text-align:center;padding:12px;font-size:0.82rem;color:var(--text-muted)">최근 10건 표시</div>' : '');
           }
@@ -371,7 +371,6 @@ App.pages.customers = {
       </div>
 
       <div style="display:flex;gap:8px;justify-content:flex-end;margin:24px 0 8px">
-        ${prepaidEntries.length === 0 ? `<button class="btn btn-ghost btn-prepaid-act" data-act="charge" data-customer-id="${customer.id}" style="min-height:44px;color:var(--text-muted);margin-right:auto">정액권 충전</button>` : ''}
         <button class="btn btn-ghost btn-delete-customer" data-id="${customer.id}" style="min-height:44px;color:var(--danger)">고객 삭제</button>
       </div>
     `;
@@ -781,13 +780,14 @@ App.pages.customers = {
           App.pages.records.showForm(null, { customerId: result.customerId, petId: result.petId || null, date: App.getToday() });
         }, 180);
       });
+      // closeModal()의 history.back()은 비동기 — 바로 이동하면 그 뒤로가기가 이동을 되돌려 홈에 남았다. 끝난 뒤에 이동·새 모달
       document.getElementById('post-cust-appt')?.addEventListener('click', () => {
         App.closeModal();
-        App.pages.appointments.showForm(null, result.customerId, result.petId ? { petId: result.petId } : undefined);
+        setTimeout(() => App.pages.appointments.showForm(null, result.customerId, result.petId ? { petId: result.petId } : undefined), 180);
       });
       document.getElementById('post-cust-detail')?.addEventListener('click', () => {
         App.closeModal();
-        App.navigate('customers/' + result.customerId);
+        setTimeout(() => App.navigate('customers/' + result.customerId), 180);
       });
       document.getElementById('post-cust-close')?.addEventListener('click', () => {
         App.closeModal();
@@ -931,6 +931,15 @@ App.pages.customers = {
 
   // ===== 정액권 =====
   async _prepaidSectionHtml(customer, entries, balance, records) {
+    // 내역이 없는 손님(대부분)은 한 줄만 — 정액권(예약금 포함)을 안 쓰는 가게에도 걸리적거리지 않게
+    if (!entries.length) {
+      return `
+      <div class="detail-section prepaid-section prepaid-empty" style="display:flex;align-items:center;gap:8px;padding-top:10px;padding-bottom:10px">
+        <span style="font-size:0.88rem;color:var(--text-secondary)">정액권 잔액 <strong>0원</strong></span>
+        <span style="color:var(--text-muted)">·</span>
+        <button type="button" class="btn btn-sm btn-ghost btn-prepaid-act" data-act="charge" data-customer-id="${customer.id}" style="min-height:36px">충전</button>
+      </div>`;
+    }
     const recMap = {}; (records || []).forEach(r => { recMap[r.id] = r; });
     // 다른 보호자로 옮긴 반려견의 기록은 이 손님 기록 목록에 없다 — 따로 읽는다
     for (const e of entries) {
@@ -1015,16 +1024,20 @@ App.pages.customers = {
         <div class="form-group"><label class="form-label">결제 방법</label>
           <div style="display:flex;gap:6px;flex-wrap:wrap">${methodChips((entry && entry.method) || 'card', [['card', '카드'], ['cash', '현금'], ['transfer', '계좌이체']])}</div></div>
         ${dateField}${memoField(false)}
+        ${entry ? '' : `<div style="display:flex;gap:6px;flex-wrap:wrap;margin:-6px 0 12px"><button type="button" class="payment-chip pp-memo-preset" data-memo="예약금">메모: 예약금</button></div>`}
         <div class="prepaid-preview" id="pp-preview"></div>${delBtn}`;
     } else if (type === 'refund') {
       title = entry ? '정액권 환불 수정' : '정액권 환불';
+      // 금액 칸 하나 = 잔액에서 빼고 돌려준 금액. 실제로 돌려준 돈이 다를 때(보너스를 빼고 돌려줌 등)만 접힌 칸을 연다
       const ded0 = entry ? -(Number(entry.credit) || 0) : Math.max(0, balance);
+      const paidDiffers = !!entry && Number(entry.amount) !== ded0;
       content = `
         <div style="font-size:0.88rem;color:var(--text-secondary);margin-bottom:10px">${who} · 지금 잔액 ${App.formatCurrency(balance)}</div>
-        <div class="form-group"><label class="form-label">잔액에서 뺄 금액 (원) <span class="required">*</span></label>
-          <input type="number" id="pp-deduct" inputmode="numeric" min="0" step="1000" value="${ded0 || ''}"></div>
-        <div class="form-group"><label class="form-label">돌려준 돈 (원) <span style="font-weight:400;color:var(--text-muted)">— 보너스를 빼고 돌려줬다면 줄여 적으세요</span></label>
-          <input type="number" id="pp-amount" inputmode="numeric" min="0" step="1000" value="${entry ? Number(entry.amount) || 0 : ded0 || ''}"></div>
+        <div class="form-group"><label class="form-label">환불 금액 (원) <span class="required">*</span></label>
+          <input type="number" id="pp-amount" inputmode="numeric" min="0" step="1000" value="${ded0 || ''}">
+          <button type="button" class="cf-more-toggle" id="pp-paid-toggle"${paidDiffers ? ' style="display:none"' : ''}>+ 실제 돌려준 금액이 다르면</button>
+          <div id="pp-paid-wrap"${paidDiffers ? '' : ' style="display:none"'}><label class="form-label" for="pp-paid" style="margin-top:8px">실제 돌려준 금액 (원) <span style="font-weight:400;color:var(--text-muted)">— 예: 보너스를 빼고 돌려줬을 때</span></label>
+          <input type="number" id="pp-paid" inputmode="numeric" min="0" step="1000" value="${paidDiffers ? Number(entry.amount) || 0 : ''}" placeholder="비우면 환불 금액과 같음"></div></div>
         <div class="form-group"><label class="form-label">돌려준 방법</label>
           <div style="display:flex;gap:6px;flex-wrap:wrap">${methodChips((entry && entry.method) || 'cash', [['cash', '현금'], ['transfer', '계좌이체'], ['card', '카드 취소']])}</div></div>
         ${dateField}${memoField(false)}
@@ -1034,7 +1047,8 @@ App.pages.customers = {
       title = entry ? '정액권 조정 수정' : '정액권 조정';
       const c0 = entry ? Number(entry.credit) || 0 : 0;
       content = `
-        <div style="font-size:0.88rem;color:var(--text-secondary);margin-bottom:10px">${who} · 지금 잔액 ${App.formatCurrency(balance)}<br><small style="color:var(--text-muted)">장부를 맞출 때만 쓰세요 (예: 종이 장부 잔액 옮기기). 돈이 오가면 충전·환불로.</small></div>
+        <div style="font-size:0.88rem;color:var(--text-secondary);margin-bottom:10px">${who} · 지금 잔액 ${App.formatCurrency(balance)}<br><small style="color:var(--text-muted)">장부를 맞출 때만 쓰세요 (예: 종이 장부 잔액 옮기기, 노쇼로 예약금을 돌려주지 않을 때). 돈이 오가면 충전·환불로.</small></div>
+        ${entry ? '' : `<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:12px"><button type="button" class="payment-chip pp-memo-preset" data-memo="노쇼 예약금" data-sign="minus">노쇼 예약금 (돌려주지 않음)</button></div>`}
         <div class="form-group"><label class="form-label">잔액을</label>
           <div style="display:flex;gap:6px">${methodChips(c0 < 0 ? 'minus' : 'plus', [['plus', '늘리기 +'], ['minus', '줄이기 −']])}</div></div>
         <div class="form-group"><label class="form-label">금액 (원) <span class="required">*</span></label>
@@ -1047,7 +1061,7 @@ App.pages.customers = {
     const method = () => document.querySelector('.pp-method.active')?.dataset.value || '';
     const newCredit = () => {
       if (type === 'charge') return num('pp-amount') + num('pp-bonus');
-      if (type === 'refund') return -num('pp-deduct');
+      if (type === 'refund') return -num('pp-amount');
       if (type === 'adjust') return method() === 'minus' ? -num('pp-amount') : num('pp-amount');
       return 0;
     };
@@ -1079,9 +1093,11 @@ App.pages.customers = {
           }
           Object.assign(data, { amount, bonus, credit, method: method() || 'card' });
         } else if (type === 'refund') {
-          const deduct = num('pp-deduct'), paid = num('pp-amount');
-          if (deduct <= 0) { App.showToast('잔액에서 뺄 금액을 입력해주세요.', 'error'); App.highlightField('pp-deduct'); return; }
-          if (deduct > baseBal) { App.showToast(`잔액(${App.formatCurrency(baseBal)})보다 많이 뺄 수 없습니다.`, 'error'); App.highlightField('pp-deduct'); return; }
+          const deduct = num('pp-amount');
+          const paidRaw = (document.getElementById('pp-paid')?.value || '').trim();
+          const paid = paidRaw === '' ? deduct : num('pp-paid');
+          if (deduct <= 0) { App.showToast('환불 금액을 입력해주세요.', 'error'); App.highlightField('pp-amount'); return; }
+          if (deduct > baseBal) { App.showToast(`잔액(${App.formatCurrency(baseBal)})보다 많이 환불할 수 없습니다.`, 'error'); App.highlightField('pp-amount'); return; }
           Object.assign(data, { amount: paid, bonus: 0, credit, method: method() || 'cash' });
         } else {
           if (!num('pp-amount')) { App.showToast('조정 금액을 입력해주세요.', 'error'); App.highlightField('pp-amount'); return; }
@@ -1122,14 +1138,24 @@ App.pages.customers = {
       document.getElementById('pp-bonus').value = Math.round(amt * Number(chip.dataset.pct) / 100);
       preview();
     }));
-    ['pp-amount', 'pp-bonus', 'pp-deduct'].forEach(elId => document.getElementById(elId)?.addEventListener('input', preview));
-    // 환불: 뺄 금액을 바꾸면 돌려준 돈도 같이 (따로 고치기 전까지)
-    const ded = document.getElementById('pp-deduct'), paidEl = document.getElementById('pp-amount');
-    if (type === 'refund' && ded && paidEl) {
-      let linked = !entry;
-      paidEl.addEventListener('input', () => { linked = false; });
-      ded.addEventListener('input', () => { if (linked) paidEl.value = ded.value; preview(); });
-    }
+    ['pp-amount', 'pp-bonus'].forEach(elId => document.getElementById(elId)?.addEventListener('input', preview));
+    document.getElementById('pp-paid-toggle')?.addEventListener('click', (e) => {
+      e.currentTarget.style.display = 'none';
+      const wrap = document.getElementById('pp-paid-wrap');
+      if (wrap) wrap.style.display = '';
+      document.getElementById('pp-paid')?.focus();
+    });
+    // 조정 빠른 선택 — 노쇼로 예약금(정액권으로 받아 둔 돈)을 돌려주지 않을 때: '줄이기' + 메모, 금액이 비었으면 남은 잔액
+    document.querySelectorAll('.pp-memo-preset').forEach(chip => chip.addEventListener('click', () => {
+      const memoEl = document.getElementById('pp-memo');
+      if (memoEl) memoEl.value = chip.dataset.memo;
+      if (chip.dataset.sign) {
+        document.querySelectorAll('.pp-method').forEach(c => c.classList.toggle('active', c.dataset.value === chip.dataset.sign));
+        const amtEl = document.getElementById('pp-amount');
+        if (amtEl && !amtEl.value && baseBal > 0) amtEl.value = baseBal;
+      }
+      preview();
+    }));
     preview();
 
     document.getElementById('pp-delete')?.addEventListener('click', async () => {

@@ -59,15 +59,15 @@ App.pages.revenue = {
     const { collected: monthCollected, charge: monthCharge, refund: monthRefund } = Prepaid.monthCollected(records, prepaidAll, thisMonth);
     const prepaidOutstanding = prepaidAll.reduce((s, e) => s + (Number(e.credit) || 0), 0);
 
-    // 결제 수단별 통계 (이번 달) — 정액권으로 낸 몫은 '정액권'으로 따로
-    const paymentStats = { cash: 0, card: 0, transfer: 0, prepaid: 0, unpaid: 0, none: 0 };
-    monthRecords.forEach(r => {
-      const sp = Prepaid.splitOf(r);
-      paymentStats.prepaid += sp.used;
-      if (!sp.rest) return;
-      const method = (r.paymentMethod === 'prepaid' ? null : r.paymentMethod) || 'none';
-      paymentStats[method] = (paymentStats[method] || 0) + sp.rest;
-    });
+    // 결제 수단별 (이번 달 실입금 기준) — 미용 결제 + 정액권 충전 − 환불. 합계가 위 '실제 받은 돈'과 같다 (Prepaid.monthByMethod, 테스트 있음)
+    // 정액권 사용·미수는 돈이 들어온 게 아니라 합계 밖 참고 줄로
+    const byMethod = Prepaid.monthByMethod(records, prepaidAll, thisMonth);
+    const methodName = { card: '카드', cash: '현금', transfer: '계좌이체', none: '수단 미선택' };
+    const methodColor = { card: 'var(--primary)', cash: 'var(--success)', transfer: 'var(--info)', none: 'var(--text-muted)' };
+    const payRows = [];
+    ['card', 'cash', 'transfer', 'none'].forEach(m => { if (byMethod.records[m]) payRows.push({ label: methodName[m], amount: byMethod.records[m], color: methodColor[m] }); });
+    ['card', 'cash', 'transfer', 'none'].forEach(m => { if (byMethod.charge[m]) payRows.push({ label: `정액권 충전 (${methodName[m]})`, amount: byMethod.charge[m], color: 'var(--warning)' }); });
+    ['card', 'cash', 'transfer', 'none'].forEach(m => { if (byMethod.refund[m]) payRows.push({ label: `정액권 환불 (${m === 'card' ? '카드 취소' : methodName[m]})`, amount: -byMethod.refund[m], color: 'var(--danger)' }); });
 
     // 오늘 결제 수단 요약 (건수 + 금액)
     const todayPayment = { cash: { count: 0, amount: 0 }, card: { count: 0, amount: 0 }, transfer: { count: 0, amount: 0 }, prepaid: { count: 0, amount: 0 }, unpaid: { count: 0, amount: 0 } };
@@ -175,9 +175,9 @@ App.pages.revenue = {
     }
     const currentWeekIdx = Math.floor((todayDay - 1) / 7);
 
-    const paymentLabels = { cash: '현금', card: '카드', transfer: '계좌이체', prepaid: '정액권', unpaid: '미결제', none: '미선택' };
-    const paymentColors = { cash: 'var(--success)', card: 'var(--primary)', transfer: 'var(--info)', prepaid: 'var(--warning)', unpaid: 'var(--danger)', none: 'var(--text-muted)' };
-    const monthPaymentTotal = Object.values(paymentStats).reduce((a, b) => a + b, 0) || 1;
+    const payBarBase = payRows.filter(r => r.amount > 0).reduce((a, r) => a + r.amount, 0) || 1;
+    // 첫 달(지난달 기록이 하나도 없으면) — 비교·손익 카드는 숨기고 한 줄 안내만
+    const hasPrevMonth = records.some(r => r.date && r.date < thisMonth + '-01');
 
     container.innerHTML = `
       <div class="page-header">
@@ -193,7 +193,7 @@ App.pages.revenue = {
       <!-- 매출 탭 분리 (기본: 이번 달). 요일별·월별 추이 같은 분석 차트는 분석 화면에만 둔다 -->
       <div class="revenue-tabs" style="display:flex;gap:4px;margin-bottom:16px;background:var(--bg-white);border-radius:var(--radius);padding:4px;box-shadow:var(--shadow-xs)">
         <button class="revenue-tab" data-tab="today" style="flex:1;padding:10px;border:none;border-radius:8px;font-weight:600;font-size:0.85rem;cursor:pointer;background:transparent;color:var(--text-secondary)">오늘</button>
-        <button class="revenue-tab active" data-tab="month" style="flex:1;padding:10px;border:none;border-radius:8px;font-weight:600;font-size:0.85rem;cursor:pointer;background:var(--primary);color:#fff">이번 달</button>
+        <button class="revenue-tab active" data-tab="month" style="flex:1;padding:10px;border:none;border-radius:8px;font-weight:600;font-size:0.85rem;cursor:pointer;background:var(--primary);color:var(--text-on-primary, #fff)">이번 달</button>
       </div>
 
       <!-- 오늘 탭 -->
@@ -321,7 +321,7 @@ App.pages.revenue = {
                 <div style="font-size:0.72rem;color:var(--text-muted);margin-top:2px">이번 달에 결제된 돈${prepaidAll.length ? ' · 정액권 충전 포함' : ''}</div>
               </div>
             </div>
-            ${prepaidAll.length ? `<div class="rev-prepaid-line">정액권: 이번 달 충전 ${App.formatCurrency(monthCharge)}${monthRefund ? ' · 환불 ' + App.formatCurrency(monthRefund) : ''} · 남은 잔액 합계 ${App.formatCurrency(prepaidOutstanding)}</div>` : ''}
+            ${prepaidAll.length ? `<div class="rev-prepaid-line">정액권: 이번 달 충전 ${App.formatCurrency(monthCharge)}${monthRefund ? ' · 환불 ' + App.formatCurrency(monthRefund) : ''}${byMethod.adjustOut ? ' · 조정으로 줄인 잔액 ' + App.formatCurrency(byMethod.adjustOut) + ' <span style="color:var(--text-muted)">(노쇼 예약금 등 — 돌려주지 않은 돈)</span>' : ''} · 남은 잔액 합계 ${App.formatCurrency(prepaidOutstanding)}</div>` : ''}
             ${monthComp > 0 ? `<div style="margin-top:10px;padding-top:8px;border-top:1px solid var(--border-light);display:flex;justify-content:space-between;font-size:0.8rem;color:var(--text-secondary)"><span>서비스로 제공한 금액 <span style="color:var(--text-muted)">(매출 제외)</span></span><span>${App.formatCurrency(monthComp)}</span></div>` : ''}
             ${unpaidRecs.length > 0 ? `
             <a href="#dashboard" style="display:flex;align-items:center;justify-content:space-between;gap:8px;margin-top:12px;padding-top:10px;border-top:1px solid var(--border-light);text-decoration:none;color:var(--danger);font-size:0.85rem;font-weight:700">
@@ -330,7 +330,8 @@ App.pages.revenue = {
             </a>` : ''}
           </div>
         </div>
-        <!-- 이번 달 페이스 -->
+        <!-- 이번 달 페이스 (지난달 기록이 있을 때만 — 첫 달엔 비교할 게 없다) -->
+        ${!hasPrevMonth ? `<p class="rev-first-month" style="margin:0 0 16px;padding:12px 16px;background:var(--bg-white);border-radius:var(--radius);box-shadow:var(--shadow-xs);font-size:0.85rem;color:var(--text-muted);text-align:center">지난달과 비교·손익은 지난달 데이터가 쌓이면 보여요</p>` : `
         <div class="card" style="margin-bottom:20px">
           <div class="card-header">
             <span class="card-title">${App.icon('run')} 이번 달 페이스 (${todayDay}일차)</span>
@@ -349,28 +350,36 @@ App.pages.revenue = {
               ${lastMonthPacing > 0 ? `<strong style="font-size:1.1rem;color:${pacingChange >= 0 ? 'var(--success)' : 'var(--danger)'}">${pacingChange >= 0 ? App.icon('arrow-up','ico-sm') : App.icon('arrow-down','ico-sm')} ${Math.abs(pacingChange)}% ${pacingChange >= 0 ? '앞서가는 중' : '뒤처지는 중'}</strong>` : '<span style="color:var(--text-muted)">비교 데이터 없음</span>'}
             </div>
           </div>
-        </div>
+        </div>`}
 
-        <!-- 이번 달 결제 수단별 -->
+        <!-- 이번 달 받은 돈 — 결제 수단별 (실입금 기준: 합계 = 위 '실제 받은 돈') -->
         <div class="card" style="margin-bottom:20px">
           <div class="card-header">
-            <span class="card-title">${App.icon('card')} 이번 달 결제 수단별</span>
+            <span class="card-title">${App.icon('card')} 이번 달 받은 돈 · 결제 수단별</span>
           </div>
           <div class="card-body">
+            <div style="font-size:0.75rem;color:var(--text-muted);margin:-4px 0 10px">실입금 기준 — 정액권 충전도 받은 날 들어온 돈으로 셉니다</div>
             <div style="display:flex;flex-direction:column;gap:10px">
-              ${Object.entries(paymentStats).filter(([k, v]) => v > 0).map(([method, amount]) => {
-                const pct = Math.round((amount / monthPaymentTotal) * 100);
+              ${payRows.map(row => {
+                const pct = row.amount > 0 ? Math.round((row.amount / payBarBase) * 100) : 0;
                 return `<div>
                   <div style="display:flex;justify-content:space-between;margin-bottom:4px">
-                    <span style="font-weight:600;font-size:0.88rem">${paymentLabels[method] || method}</span>
-                    <span style="font-weight:700;font-size:0.88rem">${App.formatCurrency(amount)} (${pct}%)</span>
+                    <span style="font-weight:600;font-size:0.88rem">${row.label}</span>
+                    <span style="font-weight:700;font-size:0.88rem${row.amount < 0 ? ';color:var(--danger)' : ''}">${row.amount < 0 ? '−' + App.formatCurrency(-row.amount) : App.formatCurrency(row.amount) + ' (' + pct + '%)'}</span>
                   </div>
-                  <div style="height:8px;background:var(--border-light);border-radius:4px;overflow:hidden">
-                    <div style="height:100%;width:${pct}%;background:${paymentColors[method] || 'var(--primary)'};border-radius:4px"></div>
-                  </div>
+                  ${row.amount > 0 ? `<div style="height:8px;background:var(--border-light);border-radius:4px;overflow:hidden">
+                    <div style="height:100%;width:${pct}%;background:${row.color};border-radius:4px"></div>
+                  </div>` : ''}
                 </div>`;
               }).join('')}
-              ${Object.values(paymentStats).every(v => v === 0) ? '<p style="color:var(--text-muted);text-align:center">이번 달 기록이 없습니다</p>' : ''}
+              ${payRows.length === 0 ? '<p style="color:var(--text-muted);text-align:center">이번 달 받은 돈이 없습니다</p>' : `
+              <div style="display:flex;justify-content:space-between;padding-top:8px;border-top:1px solid var(--border);font-weight:800">
+                <span>합계 (실제 받은 돈)</span><span>${App.formatCurrency(byMethod.total)}</span>
+              </div>`}
+              ${byMethod.used || monthUnpaid ? `<div style="font-size:0.8rem;color:var(--text-secondary);display:flex;flex-direction:column;gap:4px">
+                ${byMethod.used ? `<div style="display:flex;justify-content:space-between"><span>정액권 사용 <span style="color:var(--text-muted)">(매출엔 포함 · 돈은 충전 때 받음)</span></span><span>${App.formatCurrency(byMethod.used)}</span></div>` : ''}
+                ${monthUnpaid ? `<div style="display:flex;justify-content:space-between;color:var(--danger)"><span>미결제 <span style="color:var(--text-muted)">(아직 안 받음)</span></span><span>${App.formatCurrency(monthUnpaid)}</span></div>` : ''}
+              </div>` : ''}
             </div>
           </div>
         </div>
@@ -425,7 +434,8 @@ App.pages.revenue = {
           </div>
         </div>
 
-        <!-- 이번 달 손익 -->
+        <!-- 이번 달 손익 (첫 달엔 숨김 — 위 한 줄 안내) -->
+        ${hasPrevMonth ? `
         <div class="card rev-profit" style="margin-top:20px">
           <div class="card-header">
             <span class="card-title">${App.icon('chart')} 이번 달 손익</span>
@@ -482,7 +492,7 @@ App.pages.revenue = {
               </div>
             </div>
           </div>
-        </div>
+        </div>` : ''}
 
         <!-- 미용사별 매출 -->
         ${multiGroomer && groomerStatList.length > 0 ? `
@@ -534,7 +544,7 @@ App.pages.revenue = {
     // 탭 전환
     const activate = (tab) => {
       document.querySelectorAll('.revenue-tab').forEach(t => { t.style.background = 'transparent'; t.style.color = 'var(--text-secondary)'; t.classList.remove('active'); });
-      tab.style.background = 'var(--primary)'; tab.style.color = '#fff'; tab.classList.add('active');
+      tab.style.background = 'var(--primary)'; tab.style.color = 'var(--text-on-primary, #fff)'; tab.classList.add('active');
       document.querySelectorAll('.revenue-tab-content').forEach(c => c.style.display = 'none');
       const panel = document.getElementById('rev-tab-' + tab.dataset.tab);
       if (panel) panel.style.display = 'block';

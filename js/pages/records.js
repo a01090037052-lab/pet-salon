@@ -109,6 +109,8 @@ App.pages.records = {
     const headerHtml = (gLabel) => isMobile
       ? `<div class="record-group-header" data-group="${gLabel}">${gLabel}<span class="group-count">${groupCounts[gLabel]}건</span></div>`
       : `<tr class="record-group-header-row" data-group="${gLabel}"><td colspan="${colspan}" class="record-group-header-cell">${gLabel} <span style="color:var(--text-muted);font-weight:400;margin-left:6px">(${groupCounts[gLabel]}건)</span></td></tr>`;
+    // 합계 0원(서비스 제공 등)이고 미결제가 아니면 결제 수단 글자를 붙이지 않는다 — 받은 돈이 없는데 '카드'로 보였다
+    const zeroPaid = (r) => r.paymentMethod !== 'unpaid' && App.getRecordAmount(r) === 0;
     const rowHtml = (r) => {
       const customer = customerMap[r.customerId];
       const pet = petMap[r.petId];
@@ -121,12 +123,12 @@ App.pages.records = {
                         style="${r.paymentMethod === 'unpaid' ? 'background:var(--warning-light);border-left:3px solid var(--danger)' : ''}">
                       <td>${App.formatDate(r.date)}</td>
                       <td><a href="#pets/${r.petId}" style="color:var(--primary);font-weight:700" onclick="event.stopPropagation()">${App.escapeHtml(pet?.name || '-')}</a> <span style="color:var(--text-muted);font-size:0.75rem">${App.escapeHtml(App.getCustomerLabel(customer))}</span></td>
-                      <td class="hide-mobile"><span style="font-size:0.85rem">${App.escapeHtml(serviceNames)}</span>${Array.isArray(r.complimentary) && r.complimentary.length ? ' <span class="badge badge-success" style="font-size:0.7rem;padding:1px 6px">서비스</span>' : ''}</td>
+                      <td class="hide-mobile"><span style="font-size:0.85rem">${App.escapeHtml(serviceNames)}</span>${Array.isArray(r.complimentary) && r.complimentary.length ? ' <span class="badge badge-success" style="font-size:0.7rem;padding:1px 6px">서비스 제공</span>' : ''}</td>
                       <td><strong>${App.formatCurrency(App.getRecordAmount(r))}</strong>${r.discount || r.extraCharge ? `<div style="font-size:0.7rem;color:var(--text-muted)">${r.discount ? '-' + App.formatCurrency(r.discount) : ''}${r.extraCharge ? '+' + App.formatCurrency(r.extraCharge) : ''}</div>` : ''}</td>
                       ${showGroomer ? `<td class="hide-mobile">${App.escapeHtml(r.groomer || '-')}</td>` : ''}
-                      <td class="hide-mobile">${this.getPaymentLabel(r.paymentMethod, r)}${paidNote(r)}</td>
+                      <td class="hide-mobile">${zeroPaid(r) ? '' : this.getPaymentLabel(r.paymentMethod, r) + paidNote(r)}</td>
                       <td class="hide-mobile" style="max-width:150px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${App.escapeHtml(r.memo || '')}">
-                        ${App.escapeHtml(r.memo || '-')}
+                        ${App.escapeHtml(r.memo || '')}
                       </td>
                       <td class="table-actions">
                         <button class="btn-icon btn-report-record" data-id="${r.id}" title="보호자에게 보내기 (리포트 · 영수증)" aria-label="보호자에게 보내기" style="color:var(--info)">${App.icon('send')}</button>
@@ -155,9 +157,9 @@ App.pages.records = {
                   <div class="mobile-card-meta">
                     ${showGroomer ? `<span>${App.icon('scissors')} ${App.escapeHtml(r.groomer || '-')}</span>` : ''}
                     <!-- 미결제는 빨간 배지 하나만 (결제수단 글자 '미결제' + 배지가 겹쳐 '미결제 미결제'로 보였다) -->
-                    ${isUnpaid ? '' : `<span>${this.getPaymentLabel(r.paymentMethod, r)}${paidNote(r)}</span>`}
+                    ${isUnpaid || zeroPaid(r) ? '' : `<span>${this.getPaymentLabel(r.paymentMethod, r)}${paidNote(r)}</span>`}
                     ${App._recordHasPhoto(r) ? `<span>${App.icon('camera')} 사진</span>` : ''}
-                    ${Number(r.complimentaryTotal) > 0 || (Array.isArray(r.complimentary) && r.complimentary.length) ? `<span class="badge badge-success" style="font-size:0.72rem;padding:2px 8px" title="서비스(무료)로 제공: ${App.escapeHtml((r.complimentary || []).map(c => c.name).join(', '))}">서비스</span>` : ''}
+                    ${Number(r.complimentaryTotal) > 0 || (Array.isArray(r.complimentary) && r.complimentary.length) ? `<span class="badge badge-success" style="font-size:0.72rem;padding:2px 8px" title="서비스 제공: ${App.escapeHtml((r.complimentary || []).map(c => c.name).join(', '))}">서비스 제공</span>` : ''}
                     ${isUnpaid ? '<span class="badge badge-danger">미결제</span>' : ''}
                   </div>
                   ${r.memo ? `<div style="font-size:0.82rem;color:var(--text-secondary);margin-top:6px;padding-top:6px;border-top:1px dashed var(--border-light);white-space:nowrap;overflow:hidden;text-overflow:ellipsis" title="${App.escapeHtml(r.memo)}">${App.icon('note')} ${App.escapeHtml(r.memo.length > 60 ? r.memo.slice(0, 60) + '...' : r.memo)}</div>` : ''}
@@ -593,17 +595,30 @@ App.pages.records = {
     }
   },
 
-  // 추가 항목 태그: 이름 · [무료] · ×. data-price = 그 항목 메뉴 가격(모르면 0), data-free = 서비스로 제공
+  // 추가 항목 태그: 이름 · [서비스 제공] · ×. data-price = 그 항목 메뉴 가격(모르면 0), data-free = 서비스로 제공
+  // [서비스 제공] 토글은 '서비스로 제공' 링크를 눌러야 보인다 (#f-addon-tags.comp-open — css)
   _addonTagHtml(name, price, opts = {}) {
     const free = !!opts.free;
     return `<span class="badge badge-info addon-tag${free ? ' is-free' : ''}" data-name="${App.escapeHtml(name)}" data-price="${Number(price) || 0}"${opts.menu ? ' data-menu="1"' : ''}${free ? ' data-free="1"' : ''} style="cursor:pointer;padding:3px 4px 3px 10px;display:inline-flex;align-items:center;gap:2px" title="눌러서 빼기">`
       + `<span class="addon-tag-name">${App.escapeHtml(name)}</span>`
-      + `<button type="button" class="free-toggle${free ? ' on' : ''}" aria-pressed="${free ? 'true' : 'false'}" title="서비스(무료)로 제공"${free || Number(price) > 0 || opts.menu ? '' : ' hidden'}>무료</button>`
+      + `<span class="addon-tag-price" style="font-weight:400;opacity:0.85">${this._addonTagPriceText(price, free)}</span>`
+      + `<button type="button" class="free-toggle${free ? ' on' : ''}" aria-pressed="${free ? 'true' : 'false'}" title="금액에서 빼고 서비스로 제공"${free || Number(price) > 0 || opts.menu ? '' : ' hidden'}>서비스 제공</button>`
       + `<span aria-hidden="true" style="padding:0 6px;font-size:1rem">×</span></span>`;
   },
 
+  // 태그 금액 글자: ' · 3,000원' / 서비스 제공이면 ' · 서비스 제공' / 금액 모르면 없음
+  _addonTagPriceText(price, free) {
+    if (free) return ' · 서비스 제공';
+    return Number(price) > 0 ? ' · ' + App.formatCurrency(Number(price)) : '';
+  },
+
+  _syncAddonTagPrice(tag) {
+    const el = tag && tag.querySelector('.addon-tag-price');
+    if (el) el.textContent = this._addonTagPriceText(tag.dataset.price, tag.dataset.free === '1');
+  },
+
   _addonTagName(tag) {
-    return App.normalizeServiceName(tag.dataset.name || tag.textContent.replace(' ×', '').replace(/무료×?$/, ''));
+    return App.normalizeServiceName(tag.dataset.name || tag.textContent.replace(' ×', '').replace(/(무료|서비스 제공)×?$/, ''));
   },
 
   async showForm(id, fromAppointment) {
@@ -663,6 +678,13 @@ App.pages.records = {
         weightAtVisit: Number(fromAppointment.weightAtBooking) > 0 ? Number(fromAppointment.weightAtBooking) : undefined
       };
     }
+    // 고객만 정해진 새 기록(고객 상세 › + 미용 기록, 반려견 2마리 이상): 가장 최근에 온 아이를 미리 고른다 (없으면 첫 번째). 선택칸에서 바꿀 수 있다
+    if (!id && record.customerId && !record.petId) {
+      const cPets0 = (await DB.getByIndex('pets', 'customerId', Number(record.customerId))).filter(p => (p.petStatus || 'active') === 'active');
+      const recent = cPets0.filter(p => p.lastVisitDate).sort((a, b) => b.lastVisitDate.localeCompare(a.lastVisitDate))[0];
+      const pick = recent || cPets0[0];
+      if (pick) record.petId = pick.id;
+    }
     // 오늘 몸무게 칸 기본값: 기록에 적힌 값 → (새 기록이면) 반려견 마지막 몸무게
     let prefillWeight = Number(record.weightAtVisit) > 0 ? Number(record.weightAtVisit) : null;
     if (!prefillWeight && !id && record.petId) {
@@ -686,6 +708,11 @@ App.pages.records = {
     const registeredGroomers = (await DB.getSetting('groomers')) || [];
     const showGroomerField = registeredGroomers.length >= 2 || !!(record.groomer && !registeredGroomers.includes(record.groomer));
     const groomerFieldHTML = await App.getGroomerFieldHTML(record.groomer);
+    // 몸무게 구간 사용 안 함(가게 전체 단일가) — 오늘 몸무게 칸·구간 안내·몸무게 오타 확인을 쓰지 않는다
+    const formPriceTable = await App.getPriceBands();
+    const bandsOff = !!formPriceTable.bandsOff;
+    this._formBandsOff = bandsOff;
+    this._formPriceTable = formPriceTable; // 몸무게 오타 확인 기준(App.needsWeightConfirm)
 
     App.showModal({
       title: id ? '미용 기록 수정' : '새 미용 기록',
@@ -706,7 +733,7 @@ App.pages.records = {
           </div>
         </div>
         <!-- 이전 미용과 같음 (단골 손님 자동 채움) -->
-        <div id="f-copy-last-area" style="display:none;margin-bottom:12px">
+        <div id="f-copy-last-area" style="display:none;margin-bottom:12px"${id ? ' data-edit="1"' : ''}>
           <button type="button" id="btn-copy-last-record" style="width:100%;padding:10px 14px;background:var(--primary-light);color:var(--primary);border:1.5px dashed var(--primary);border-radius:var(--radius);font-weight:700;cursor:pointer;font-size:0.88rem;display:flex;align-items:center;justify-content:center;gap:8px;min-height:44px">
             ${App.icon('copy')} 이전 미용과 같음 <span id="copy-last-hint" style="font-weight:500;font-size:0.78rem;opacity:0.8"></span>
           </button>
@@ -715,8 +742,10 @@ App.pages.records = {
           <label class="form-label">날짜 <span class="required">*</span></label>
           <input type="date" id="f-date" value="${record.date || App.getToday()}">
         </div>
-        <!-- 오늘 몸무게 → 몸무게 구간 가격 (가격보다 먼저 — 몸무게로 기본가가 정해진다) -->
-        <div class="form-group">
+        <!-- 오늘 몸무게 → 몸무게 구간 가격 (가격보다 먼저 — 몸무게로 기본가가 정해진다)
+             구간 사용 안 함이면 숨긴다. 고른 서비스가 몸무게 가격이 아니고 반려견 몸무게가 있으면 '상세 옵션'으로 옮긴다 -->
+        <div id="f-weight-slot"></div>
+        <div class="form-group" id="f-weight-group"${bandsOff ? ' style="display:none"' : ''}>
           <label class="form-label" for="f-weightAtVisit">오늘 몸무게 (kg)</label>
           <input type="number" id="f-weightAtVisit" value="${prefillWeight || ''}" placeholder="예: 5.2" min="0" max="120" step="0.1" inputmode="decimal">
           <label id="f-update-pet-weight-wrap" style="display:none;align-items:center;gap:6px;margin-top:6px;font-size:0.85rem;cursor:pointer">
@@ -732,12 +761,19 @@ App.pages.records = {
             <div class="search-select-dropdown" id="service-dropdown" style="position:absolute;z-index:10;background:var(--bg-white);border:1px solid var(--border);border-radius:var(--radius);box-shadow:var(--shadow);max-height:min(45vh,360px);overflow-y:auto;display:none;width:100%"></div>
           </div>
           <div class="form-group" style="flex:1">
-            <div class="form-label" style="display:flex;align-items:center;gap:2px;flex-wrap:wrap"><label for="f-servicePrice">기본가</label> <span id="f-size-badge" class="badge badge-info" style="display:none;font-size:0.72rem;padding:2px 6px;vertical-align:middle"></span>
-              <button type="button" id="f-main-free" class="free-toggle${mainComp ? ' on' : ''}" aria-pressed="${mainComp ? 'true' : 'false'}" title="서비스(무료)로 제공">무료</button></div>
+            <label class="form-label" for="f-servicePrice">기본가</label>
             <input type="number" id="f-servicePrice" class="${mainComp ? 'is-free' : ''}" value="${mainComp ? (Number(mainComp.price) || '') : (record.servicePrice || record.totalPrice || '')}" placeholder="0" min="0" step="1000">
           </div>
         </div>
         <div id="f-band-info" style="margin:-6px 0 12px;font-size:0.8rem;color:var(--text-secondary);line-height:1.4"></div>
+        <!-- 서비스로 제공 (금액에서 빼기): 평소엔 작은 링크 하나. 누르면 기본가·추가 항목 토글이 보인다 -->
+        <div id="f-comp-area" style="margin:-8px 0 12px">
+          <button type="button" id="f-comp-reveal" style="background:none;border:none;padding:4px 0;color:var(--text-secondary);text-decoration:underline;cursor:pointer;font-size:0.8rem;min-height:32px${compList.length ? ';display:none' : ''}">서비스로 제공</button>
+          <div id="f-comp-row" style="${compList.length ? '' : 'display:none;'}font-size:0.82rem;color:var(--text-secondary)">
+            기본가 <button type="button" id="f-main-free" class="free-toggle${mainComp ? ' on' : ''}" aria-pressed="${mainComp ? 'true' : 'false'}" title="기본가를 금액에서 빼고 서비스로 제공">서비스 제공</button>
+            <span style="margin-left:6px">· 추가 항목은 상세 옵션에서 항목마다</span>
+          </div>
+        </div>
         <!-- 즉석 새 서비스 등록 (드롭다운에서 "+새 서비스 등록" 선택 시 표시) -->
         <div id="quickadd-service-form" style="display:none;background:var(--primary-light);border:1.5px solid var(--primary);border-radius:var(--radius);padding:12px;margin-bottom:12px">
           <div style="font-weight:700;font-size:0.88rem;color:var(--primary);margin-bottom:8px">${App.icon('sparkle')} 새 서비스 즉석 등록</div>
@@ -772,19 +808,19 @@ App.pages.records = {
         <div class="form-group">
           <label class="form-label">결제 수단</label>
           <div id="f-paymentMethod-chips" style="display:flex;gap:6px;flex-wrap:wrap">
+            <!-- 정액권: 잔액이 있는 손님(또는 이미 정액권으로 낸 기록)일 때만 보인다. 새 기록이면 잔액 있는 손님은 정액권이 기본 -->
+            <button type="button" class="payment-chip${pfMode ? ' active' : ''}" data-value="prepaid"${pfMode ? '' : ' hidden'}>정액권</button>
             <button type="button" class="payment-chip${!pfMode && ((!record.paymentMethod && !id) || record.paymentMethod === 'card') ? ' active' : ''}" data-value="card">카드</button>
             <button type="button" class="payment-chip${!pfMode && record.paymentMethod === 'cash' ? ' active' : ''}" data-value="cash">현금</button>
             <button type="button" class="payment-chip${!pfMode && record.paymentMethod === 'transfer' ? ' active' : ''}" data-value="transfer">계좌이체</button>
             <button type="button" class="payment-chip${!pfMode && record.paymentMethod === 'unpaid' ? ' active' : ''}" data-value="unpaid">미결제</button>
-            <!-- 정액권: 잔액이 있는 손님(또는 이미 정액권으로 낸 기록)일 때만 보인다 -->
-            <button type="button" class="payment-chip${pfMode ? ' active' : ''}" data-value="prepaid"${pfMode ? '' : ' hidden'}>정액권</button>
           </div>
           <input type="hidden" id="f-paymentMethod" value="${pfMode ? 'prepaid' : (!record.paymentMethod && !id) ? 'card' : (record.paymentMethod || 'card')}">
           <div id="f-prepaid-info" class="prepaid-form-info" style="display:none"></div>
           <div id="f-prepaid-rest" class="prepaid-rest" style="display:none">
             <div class="prepaid-rest-q"></div>
             <div style="display:flex;gap:6px;flex-wrap:wrap">
-              ${[['cash', '현금'], ['card', '카드'], ['transfer', '계좌이체'], ['unpaid', '미수']].map(([v, l]) => `<button type="button" class="payment-chip prepaid-rest-chip${pfRest0 === v ? ' active' : ''}" data-value="${v}">${l}</button>`).join('')}
+              ${[['card', '카드'], ['cash', '현금'], ['transfer', '계좌이체'], ['unpaid', '미결제']].map(([v, l]) => `<button type="button" class="payment-chip prepaid-rest-chip${pfRest0 === v ? ' active' : ''}" data-value="${v}">${l}</button>`).join('')}
             </div>
           </div>
           <input type="hidden" id="f-prepaidRest" value="${pfRest0}">
@@ -847,6 +883,7 @@ App.pages.records = {
 
         <!-- 상세 옵션 영역 -->
         <div class="form-detail-section">
+          <div id="f-weight-detail-slot"></div>
           <div class="form-group">
             <label class="form-label">스타일 <span style="color:var(--text-muted);font-size:0.78rem">(선택)</span></label>
             <input type="text" id="f-style" value="${App.escapeHtml(record.style || '')}" placeholder="예: 테디베어컷, 하이바+스포팅" autocomplete="off">
@@ -854,12 +891,12 @@ App.pages.records = {
           </div>
           <div class="form-group">
             <label class="form-label">추가 항목 <span style="color:var(--text-muted);font-size:0.78rem">(엉킴·약욕·스파 등)</span></label>
-            <div id="f-addon-tags" style="display:flex;gap:4px;flex-wrap:wrap;margin-bottom:6px">${(record.addons || []).map(a => {
+            <div id="f-addon-tags" class="${compList.length ? 'comp-open' : ''}" style="display:flex;gap:4px;flex-wrap:wrap;margin-bottom:6px">${(record.addons || []).map(a => {
               const nm = App.normalizeServiceName(a);
               const isFree = Object.prototype.hasOwnProperty.call(compAddon, nm);
               return this._addonTagHtml(a, isFree ? compAddon[nm] : (Number(prefillAddonPrices[a]) || 0), { menu: Object.prototype.hasOwnProperty.call(prefillAddonPrices, a), free: isFree });
             }).join('')}</div>
-            <div class="form-hint" style="margin-top:-2px;margin-bottom:6px">항목 옆 <strong>무료</strong>를 누르면 서비스로 제공 (금액에서 빠져요)</div>
+            <div class="form-hint" id="f-addon-comp-hint" style="margin-top:-2px;margin-bottom:6px${compList.length ? '' : ';display:none'}">항목 옆 <strong>서비스 제공</strong>을 누르면 금액에서 빠져요</div>
             <input type="text" id="f-addon-input" placeholder="추가 항목 입력 후 Enter" autocomplete="off">
             <div class="search-select-dropdown" id="addon-dropdown" style="position:absolute;z-index:10;background:var(--bg-white);border:1px solid var(--border);border-radius:var(--radius);box-shadow:var(--shadow);max-height:min(45vh,360px);overflow-y:auto;display:none;width:100%"></div>
           </div>
@@ -935,6 +972,15 @@ App.pages.records = {
 
     // 지금 고른 반려견 (몸무게 없을 때 사이즈 대표 구간, 프로필 몸무게 비교에 쓴다)
     let formPet = null;
+    // '반려견 몸무게도 업데이트' 기본값: 새 기록이고 날짜가 그 아이의 가장 최근 기록(없으면 오늘)보다 이전이 아닐 때만 체크.
+    // 지난 날짜 기록의 몸무게로 지금 프로필 몸무게를 덮어쓰지 않게. 수정은 기본 해제 그대로
+    const syncPetWeightDefault = () => {
+      const cb = document.getElementById('f-update-pet-weight');
+      if (!cb || id) return;
+      const d = document.getElementById('f-date')?.value || App.getToday();
+      const ref = (formPet && formPet.lastVisitDate) || App.getToday();
+      cb.checked = !(d < ref);
+    };
     // Pet change -> 오늘 몸무게 채움 + show pet notes + 마지막 기록 가져오기 버튼 표시
     document.getElementById('f-petId')?.addEventListener('change', async (e) => {
       const pid = Number(e.target.value);
@@ -949,6 +995,7 @@ App.pages.records = {
       if (pet) {
         // 오늘 몸무게 칸을 이 아이의 마지막 몸무게로 (없으면 비움 — 이전 반려견 값이 남지 않게) → 가격 다시 계산
         formPet = pet;
+        syncPetWeightDefault();
         const wEl = document.getElementById('f-weightAtVisit');
         if (wEl) {
           wEl.value = Number(pet.weight) > 0 ? App.formatKg(pet.weight) : '';
@@ -977,11 +1024,14 @@ App.pages.records = {
         await this._refreshLastRecordButton(record.petId, id);
       }
     }
+    syncPetWeightDefault();
+    document.getElementById('f-date')?.addEventListener('change', syncPetWeightDefault);
 
     // ===== 자동완성 드롭다운 헬퍼 =====
     // opts.onNoMatch: 입력값과 정확히 일치하는 항목 없을 때 드롭다운 하단에 추가할 액션 (예: "+ 새 서비스 등록")
     // opts.hintFor(v): 항목 옆에 붙일 보조 문구 (예: 가격). 선택 시 입력값에는 들어가지 않는다.
     // opts.onSelect(v): 선택 시 기본 동작(입력값 채움 + change) 대신 실행
+    // opts.allDbItems: 메뉴 항목(dbItems)은 모두 보이고, 10개 제한은 기록·기본 제안에만
     const setupAutocomplete = (inputId, dropdownId, historyKey, defaultSuggestions, opts = {}) => {
       const input = document.getElementById(inputId);
       const dropdown = document.getElementById(dropdownId);
@@ -996,7 +1046,11 @@ App.pages.records = {
         const filtered = queryLower ? all.filter(v => v.toLowerCase().includes(queryLower)) : all;
         const exactMatch = queryLower && all.some(v => v.toLowerCase() === queryLower);
 
-        let html = filtered.slice(0, 10).map(v => {
+        const dbSet = new Set(dbItems);
+        const shown = opts.allDbItems
+          ? [...filtered.filter(v => dbSet.has(v)), ...filtered.filter(v => !dbSet.has(v)).slice(0, 10)]
+          : filtered.slice(0, 10);
+        let html = shown.map(v => {
           const hint = opts.hintFor ? opts.hintFor(v) : '';
           return `<div class="search-select-option" data-action="select" data-value="${App.escapeHtml(v)}" style="padding:8px 12px;cursor:pointer;font-size:0.9rem;min-height:44px;display:flex;align-items:center;gap:6px">${App.escapeHtml(v)}${hint ? `<span style="color:var(--text-muted);font-size:0.8rem">· ${App.escapeHtml(hint)}</span>` : ''}</div>`;
         }).join('');
@@ -1037,7 +1091,8 @@ App.pages.records = {
     const defaultServices = activeMenu.length > 0
       ? [...activeMenu.filter(s => (s.category || 'grooming') === 'grooming'), ...activeMenu.filter(s => s.category === 'care')].map(s => App.normalizeServiceName(s.name))
       : ['전체미용', '목욕', '위생미용', '부분미용', '클리퍼컷', '스포팅'];
-    const defaultAddons = ['엉킴 제거', '약욕', '보습팩', '염색'];
+    // 메뉴에 추가 옵션·단독 케어가 하나라도 있으면 고정 제안은 숨긴다 (메뉴에 없는 이름이 섞여 보이지 않게)
+    const defaultAddons = activeMenu.some(s => s.category === 'addon' || s.category === 'care') ? [] : ['엉킴 제거', '약욕', '보습팩', '염색'];
     const defaultStyles = ['테디베어컷', '배냇컷', '라이언컷', '하이바컷', '머쉬룸컷', '스포팅컷', '자연컷', '클린페이스'];
     // 가격 기준: 오늘 몸무게(kg) → 없으면 반려견 사이즈(대표 구간) → 둘 다 없으면 null(구간 가격은 자동 입력 안 함)
     const weightInput = document.getElementById('f-weightAtVisit');
@@ -1066,6 +1121,10 @@ App.pages.records = {
         return list
           .filter(s => s.isActive !== false && s.category !== 'addon')
           .sort((a, b) => {
+            // 고른 반려견 견종에 맞는 서비스(예: '스포팅 (말티즈·푸들)')를 맨 위로
+            const breed = formPet && formPet.breed;
+            const ba = App.serviceMatchesBreed(a.name, breed), bb = App.serviceMatchesBreed(b.name, breed);
+            if (ba !== bb) return ba ? -1 : 1;
             const fa = !!a.favorite, fb = !!b.favorite;
             if (fa !== fb) return fa ? -1 : 1;
             if (catRank(a.category) !== catRank(b.category)) return catRank(a.category) - catRank(b.category);
@@ -1107,6 +1166,7 @@ App.pages.records = {
         return names;
       },
       hintFor: (v) => addonMenuHints[v] || '',
+      allDbItems: true,
       // 이미 넣은 항목은 목록에서 뺀다
       exclude: (v) => Array.from(addonTagsEl?.querySelectorAll('.addon-tag') || []).some(t => this._addonTagName(t) === App.normalizeServiceName(v)),
       onSelect: (v) => { addAddonTag(v); if (addonInput) addonInput.value = ''; }
@@ -1121,7 +1181,9 @@ App.pages.records = {
       if (m && (m.service.category === 'addon' || m.service.category === 'care') && tag.isConnected) {
         tag.dataset.menu = '1'; // 메뉴 항목 — 몸무게가 바뀌면 그 구간 가격으로 다시 맞춘다
         tag.dataset.price = String(m.price || 0);
+        this._syncAddonTagPrice(tag);
         if (m.price > 0) { adjustAddonPrice(m.price); const ft = tag.querySelector('.free-toggle'); if (ft) ft.hidden = false; }
+        if (isWeighted(m)) placeWeightField();
       }
     };
     addonInput?.addEventListener('keydown', (e) => {
@@ -1153,6 +1215,7 @@ App.pages.records = {
         tag.classList.toggle('is-free', on);
         btn.classList.toggle('on', on);
         btn.setAttribute('aria-pressed', on ? 'true' : 'false');
+        this._syncAddonTagPrice(tag);
         setAddon(on ? -p : p);
         return;
       }
@@ -1165,21 +1228,17 @@ App.pages.records = {
     // 서비스 선택 시 가격 자동 채움 (사이즈 변경 시에도 다시 계산)
     const serviceInput = document.getElementById('f-service');
     const servicePriceInput = document.getElementById('f-servicePrice');
-    const sizeBadge = document.getElementById('f-size-badge');
     const bandInfo = document.getElementById('f-band-info');
     let servicePriceManual = !!id; // 수정 모드면 자동채움 비활성
-    const hideSizeHint = () => {
-      if (sizeBadge) sizeBadge.style.display = 'none';
-    };
     // 구간 안내 줄: '5.2kg → 5~7kg 구간 50,000원' / 몸무게 없으면 안내
     const showBandInfo = (menu) => {
       if (!bandInfo) return;
-      if (!menu || (menu.mode !== 'weight' && !menu.over)) { bandInfo.textContent = ''; return; }
+      if (bandsOff || !menu || (menu.mode !== 'weight' && !menu.over)) { bandInfo.textContent = ''; return; }
       if (menu.needsWeight) { bandInfo.textContent = '몸무게를 입력하면 가격이 자동으로 들어가요'; bandInfo.style.color = 'var(--warning-text-strong, var(--text-secondary))'; return; }
       bandInfo.style.color = '';
       bandInfo.textContent = App.describeBandPrice(menu, currentWeight()) + (menu.bySize ? ' — 몸무게를 입력하면 정확해요' : '');
     };
-    servicePriceInput?.addEventListener('input', () => { servicePriceManual = true; hideSizeHint(); });
+    servicePriceInput?.addEventListener('input', () => { servicePriceManual = true; });
     // 자동으로 채운 기본가를 누르면 전체 선택 — 이어 쳐서 '30000' 뒤에 붙는 일 없이 새로 친 값으로 바뀐다
     servicePriceInput?.addEventListener('focus', () => {
       if (servicePriceManual || !servicePriceInput.value) return;
@@ -1199,12 +1258,12 @@ App.pages.records = {
       if (seq !== priceFillSeq || servicePriceManual || !servicePriceInput.isConnected) return;
       // 못 찾으면 이전 서비스 가격을 남기지 않는다 (몸무게가 필요한 구간 가격도 비워 둔다)
       servicePriceInput.value = price ? price : '';
-      if (menu && menu.hasSizePrices && price && menu.bandLabel) {
-        if (sizeBadge) { sizeBadge.textContent = menu.bandLabel; sizeBadge.style.display = 'inline-block'; }
-      } else {
-        hideSizeHint();
-      }
       showBandInfo(menu);
+      // 메뉴에서 '무료'로 정한 서비스 — 기본가를 서비스 제공으로 자동으로 켠다 (0원 확인창 없이, 서비스 제공 금액으로 남게).
+      // 자동으로 켠 것만 다른 서비스로 바꾸면 끈다 (사장님이 직접 켠 것은 그대로)
+      if (menu && menu.free) { if (!isMainFree()) { setMainFree(true); mainFreeAuto = true; } }
+      else if (mainFreeAuto) { setMainFree(false); mainFreeAuto = false; }
+      placeWeightField(menu);
       calcTotal();
     };
     const runPriceFill = () => {
@@ -1218,8 +1277,8 @@ App.pages.records = {
     // 몸무게 변경 → 기본가 다시 채움 + 메뉴 추가 항목 가격도 그 구간으로 맞춤
     const onWeightChange = async (ev) => {
       const w = currentWeight();
-      // 30kg 넘는 값은 오타(52 → 5.2)일 수 있어 한 번 묻는다 (직접 바꿨을 때만, 같은 값은 다시 묻지 않음)
-      if (ev && ev.isTrusted && w && w > 30 && weightInput.dataset.confirmedWeight !== App.formatKg(w)) {
+      // 구간표 기준보다 무겁거나 프로필 몸무게와 50% 넘게 다르면 오타(52 → 5.2)일 수 있어 한 번 묻는다 (직접 바꿨을 때만, 같은 값은 다시 묻지 않음)
+      if (!bandsOff && ev && ev.isTrusted && App.needsWeightConfirm(w, formPet && formPet.weight, formPriceTable) && weightInput.dataset.confirmedWeight !== App.formatKg(w)) {
         const asking = this._confirmBigWeight(weightInput, w);
         this._weightConfirmPending = asking;
         try { await asking; } finally { if (this._weightConfirmPending === asking) this._weightConfirmPending = null; }
@@ -1229,7 +1288,7 @@ App.pages.records = {
       if (wrap) {
         const cur = currentWeight();
         const petW = formPet ? Number(formPet.weight) || 0 : 0;
-        const differs = !!(formPet && cur && Math.abs(cur - petW) > 0.001);
+        const differs = !bandsOff && !!(formPet && cur && Math.abs(cur - petW) > 0.001);
         wrap.style.display = differs ? 'flex' : 'none';
         const lbl = document.getElementById('f-update-pet-weight-label');
         if (lbl && differs) lbl.textContent = `반려견 몸무게도 업데이트 (${petW ? App.formatKg(petW) + 'kg' : '미입력'} → ${App.formatKg(cur)}kg)`;
@@ -1240,6 +1299,7 @@ App.pages.records = {
         if (nm) {
           const menu = await App.getMenuPrice(nm, currentSize());
           showBandInfo(menu);
+          placeWeightField(menu);
           if (menu && !menu.needsWeight && menu.price > 0 && bandInfo && servicePriceInput
               && Number(servicePriceInput.value) !== menu.price && !document.getElementById('f-main-free')?.classList.contains('on')) {
             const a = document.createElement('button');
@@ -1259,26 +1319,70 @@ App.pages.records = {
         if (!old && tag.dataset.menu !== '1') continue; // 직접 입력 태그는 가격 정보 없음
         const m = await App.getMenuPrice(this._addonTagName(tag), currentSize());
         if (!m || !tag.isConnected) continue;
-        tag.dataset.price = String(m.price);
-        if (tag.dataset.free !== '1') adjustAddonPrice(m.price - old); // 무료 항목은 금액에 안 들어간다
+        const np = Number(m.price) || 0; // 가격 미입력 메뉴는 null
+        tag.dataset.price = String(np);
+        this._syncAddonTagPrice(tag);
+        if (tag.dataset.free !== '1') adjustAddonPrice(np - old); // 무료 항목은 금액에 안 들어간다
       }
     };
     weightInput?.addEventListener('change', onWeightChange);
-    // 입력 중 자동 계산 — 30kg 넘는 값은 확인(change)을 거친 뒤에만 반영
-    weightInput?.addEventListener('input', App.debounce(() => { if (weightInput.isConnected && !(currentWeight() > 30)) onWeightChange(); }, 500));
+    // 입력 중 자동 계산 — 확인이 필요한 값은 확인(change)을 거친 뒤에만 반영
+    weightInput?.addEventListener('input', App.debounce(() => {
+      if (!weightInput.isConnected) return;
+      const w = currentWeight();
+      if (App.needsWeightConfirm(w, formPet && formPet.weight, formPriceTable) && weightInput.dataset.confirmedWeight !== App.formatKg(w)) return;
+      onWeightChange();
+    }, 500));
 
     // 합계 자동 계산
     // 저장되는 finalPrice 와 같은 식이어야 한다 (예전엔 화면 합계에 추가요금이 빠져 손님께 말한 금액과 매출이 달랐다)
     const mainFreeBtn = document.getElementById('f-main-free');
     const isMainFree = () => !!mainFreeBtn?.classList.contains('on');
-    mainFreeBtn?.addEventListener('click', (e) => {
-      e.preventDefault();
-      const on = !isMainFree();
+    // '서비스로 제공' 링크 → 기본가 토글 줄 + 추가 항목별 토글을 보인다
+    const openComp = () => {
+      const row = document.getElementById('f-comp-row');
+      if (row) row.style.display = '';
+      const link = document.getElementById('f-comp-reveal');
+      if (link) link.style.display = 'none';
+      addonTagsEl?.classList.add('comp-open');
+      const hint = document.getElementById('f-addon-comp-hint');
+      if (hint) hint.style.display = '';
+    };
+    document.getElementById('f-comp-reveal')?.addEventListener('click', (e) => { e.preventDefault(); openComp(); });
+    const setMainFree = (on) => {
+      if (!mainFreeBtn) return;
       mainFreeBtn.classList.toggle('on', on);
       mainFreeBtn.setAttribute('aria-pressed', on ? 'true' : 'false');
       servicePriceInput?.classList.toggle('is-free', on);
+      if (on) openComp();
+    };
+    let mainFreeAuto = false; // 무료 메뉴라서 자동으로 켠 경우
+    // 오늘 몸무게 칸 자리: 고른 서비스(주 서비스·메뉴 추가 항목) 중 몸무게로 값이 정해지는 게 없고 반려견 몸무게가 이미 있으면
+    // '상세 옵션' 안으로 옮긴다 (거기서 고칠 수 있다). 몸무게 가격 서비스이거나 반려견 몸무게가 없으면 원래 자리.
+    const weightGroup = document.getElementById('f-weight-group');
+    const isWeighted = (m) => !!(m && (m.mode === 'weight' || m.over || m.needsWeight));
+    let placeSeq = 0;
+    const placeWeightField = async (menu) => {
+      if (!weightGroup || bandsOff) return;
+      const name = App.normalizeServiceName(serviceInput?.value);
+      if (!name) return; // 서비스를 고르기 전에는 그대로 둔다
+      const my = ++placeSeq;
+      let weighted = isWeighted(menu === undefined ? await App.getMenuPrice(name, currentSize()).catch(() => null) : menu);
+      if (!weighted && addonTagsEl) {
+        for (const tag of addonTagsEl.querySelectorAll('.addon-tag[data-menu="1"]')) {
+          if (isWeighted(await App.getMenuPrice(this._addonTagName(tag), currentSize()).catch(() => null))) { weighted = true; break; }
+        }
+      }
+      if (my !== placeSeq || !weightGroup.isConnected) return;
+      const toDetail = !weighted && !!(formPet && Number(formPet.weight) > 0);
+      const slot = document.getElementById(toDetail ? 'f-weight-detail-slot' : 'f-weight-slot');
+      if (slot && slot.nextElementSibling !== weightGroup) slot.after(weightGroup);
+    };
+    mainFreeBtn?.addEventListener('click', (e) => {
+      e.preventDefault();
+      setMainFree(!isMainFree());
+      mainFreeAuto = false;
       calcTotal();
-      if (on) App.showToast('기본가를 서비스(무료)로 제공해요. 영수증에 \'서비스\'로 찍혀요.', 'info');
     });
     const calcTotal = () => {
       const { finalPrice } = App.calcRecordTotals({
@@ -1299,7 +1403,7 @@ App.pages.records = {
         if (isMainFree()) items.push((App.normalizeServiceName(serviceInput?.value) || '기본가') + ' ' + App.formatCurrency(Number(servicePriceInput?.value) || 0));
         document.querySelectorAll('#f-addon-tags .addon-tag[data-free="1"]').forEach(t => items.push(this._addonTagName(t) + (Number(t.dataset.price) ? ' ' + App.formatCurrency(Number(t.dataset.price)) : '')));
         cs.style.display = items.length ? 'block' : 'none';
-        cs.textContent = items.length ? '서비스(무료)로 제공: ' + items.join(', ') : '';
+        cs.textContent = items.length ? '서비스 제공: ' + items.join(', ') : '';
       }
     };
     document.getElementById('f-servicePrice')?.addEventListener('input', calcTotal);
@@ -1319,7 +1423,9 @@ App.pages.records = {
     // 기록 수정: 가격은 그대로 두고 구간 설명만 보여 준다 (지금 메뉴와 다르면 그렇다고 적는다)
     if (id && serviceInput?.value) {
       App.getMenuPrice(serviceInput.value, currentSize()).then(menu => {
-        if (!menu || !bandInfo || !bandInfo.isConnected) return;
+        if (!bandInfo || !bandInfo.isConnected) return;
+        placeWeightField(menu);
+        if (!menu) return;
         showBandInfo(menu);
         const charged = isMainFree() ? Number(servicePriceInput?.value) || 0 : Number(record.servicePrice) || 0;
         if (bandInfo.textContent && !menu.needsWeight && charged && charged !== menu.price) bandInfo.textContent += ` (지금 메뉴 기준 — 이 기록은 ${App.formatCurrency(charged)})`;
@@ -1341,7 +1447,7 @@ App.pages.records = {
 
     // ===== 정액권 (잔액 있는 손님만 칩이 보인다) =====
     // 쓸 수 있는 금액 = 고른 고객의 잔액 (+ 이 기록이 이미 쓴 금액). 고객·합계가 바뀌면 다시 그린다
-    const pf = { avail: 0, cid: null, keepChip: pfMode, seq: 0 };
+    const pf = { avail: 0, cid: null, keepChip: pfMode, seq: 0, userPicked: false };
     const prepaidChip = document.querySelector('#f-paymentMethod-chips .payment-chip[data-value="prepaid"]');
     const pfInfo = document.getElementById('f-prepaid-info');
     const pfRestRow = document.getElementById('f-prepaid-rest');
@@ -1386,8 +1492,11 @@ App.pages.records = {
       if (cid !== Number(record.customerId)) pf.keepChip = false;
       pf.cid = cid; pf.avail = avail;
       if (this._prepaidRender) this._prepaidRender();
+      // 새 기록 + 잔액 있는 손님 → 정액권을 기본으로 (수정은 저장된 결제 수단 그대로, 직접 고른 뒤에는 건드리지 않는다).
+      // 잔액이 합계보다 적으면 아래 '나머지는?' 줄이 뜬다
+      if (!id && avail > 0 && !pf.userPicked && !pfSelected() && prepaidChip && !prepaidChip.hidden) prepaidChip.click();
     };
-    prepaidChip && paymentChips.forEach(chip => chip.addEventListener('click', () => { if (this._prepaidRender) this._prepaidRender(); }));
+    prepaidChip && paymentChips.forEach(chip => chip.addEventListener('click', (e) => { if (e.isTrusted) pf.userPicked = true; if (this._prepaidRender) this._prepaidRender(); }));
     document.querySelectorAll('#f-prepaid-rest .prepaid-rest-chip').forEach(chip => {
       chip.addEventListener('click', () => {
         document.querySelectorAll('#f-prepaid-rest .prepaid-rest-chip').forEach(c => c.classList.remove('active'));
@@ -1554,7 +1663,7 @@ App.pages.records = {
     this._formPhotos = {};
   },
 
-  // 30kg 넘는 몸무게 확인. 맞다고 하면 그 값을 확인된 값으로 표시, 아니면 칸을 비운다. 반환: 맞음 여부
+  // 큰(또는 프로필과 많이 다른) 몸무게 확인. 맞다고 하면 그 값을 확인된 값으로 표시, 아니면 칸을 비운다. 반환: 맞음 여부
   async _confirmBigWeight(input, w) {
     const ok = await App.confirm(`몸무게가 <strong>${App.formatKg(w)}kg</strong>예요. 맞나요?`, { okLabel: '맞아요', cancelLabel: '다시 입력', danger: false });
     if (ok) input.dataset.confirmedWeight = App.formatKg(w);
@@ -1564,12 +1673,12 @@ App.pages.records = {
 
   async saveRecord(id) {
     try {
-      // 몸무게 칸에 커서가 있는 채로 저장(Enter 등)하면 칸의 change(30kg 확인)가 저장 확인과 겹친다 → 먼저 칸을 벗어나 그쪽 확인을 띄운다
+      // 몸무게 칸에 커서가 있는 채로 저장(Enter 등)하면 칸의 change(몸무게 확인)가 저장 확인과 겹친다 → 먼저 칸을 벗어나 그쪽 확인을 띄운다
       if (document.activeElement && document.activeElement.id === 'f-weightAtVisit') {
         document.activeElement.blur();
         await new Promise(r => setTimeout(r, 50));
       }
-      // 몸무게 칸의 30kg 확인이 떠 있는 중에 저장을 누른 경우 — 답을 먼저 기다린다
+      // 몸무게 칸의 몸무게 확인이 떠 있는 중에 저장을 누른 경우 — 답을 먼저 기다린다
       if (this._weightConfirmPending) {
         let okField = true;
         try { okField = await this._weightConfirmPending; } catch (e) { /* ignore */ }
@@ -1619,13 +1728,14 @@ App.pages.records = {
       // 오늘 몸무게 (구간 가격 스냅샷 · 반려견 프로필 갱신)
       const weightRaw = parseFloat(document.getElementById('f-weightAtVisit')?.value);
       const weightAtVisit = weightRaw > 0 ? Math.round(weightRaw * 10) / 10 : null;
-      // 30kg 넘는 값이 아직 확인 안 됐으면(칸을 벗어나지 않고 바로 저장 등) 여기서 같은 확인을 한 번 묻는다
-      if (weightAtVisit && weightAtVisit > 30) {
+      // 확인이 필요한 몸무게가 아직 확인 안 됐으면(칸을 벗어나지 않고 바로 저장 등) 여기서 같은 확인을 한 번 묻는다
+      const profileW = petId ? Number((await DB.get('pets', petId).catch(() => null))?.weight) || 0 : 0;
+      if (!this._formBandsOff && App.needsWeightConfirm(weightAtVisit, profileW, this._formPriceTable)) {
         const wEl = document.getElementById('f-weightAtVisit');
         if (wEl && wEl.dataset.confirmedWeight !== App.formatKg(weightAtVisit)) {
           const okW = await this._confirmBigWeight(wEl, weightAtVisit);
           await new Promise(r => setTimeout(r, 180)); // 확인창이 닫히며 내는 history.back() 처리 뒤에 이어서 (다음 확인창·모달 닫기가 꼬이지 않게)
-          // 확인 전엔 30kg 넘는 값으로 가격을 계산하지 않았다 → 지금 값으로 다시 계산
+          // 확인 전엔 확인이 필요한 값으로 가격을 계산하지 않았다 → 지금 값으로 다시 계산
           wEl.dispatchEvent(new Event('change'));
           if (!okW) { App.highlightField('f-weightAtVisit'); return; }
           await new Promise(r => setTimeout(r, 50));
@@ -1649,16 +1759,12 @@ App.pages.records = {
       const earStatus = document.getElementById('f-earStatus')?.value || '';
       const mattingLevel = document.getElementById('f-mattingLevel')?.value || '';
 
-      // Auto-calculate nextVisitDate from pet's groomingCycle
+      // 다음 미용 추천일: 반려견 권장 주기 → 없으면 설정의 재방문 기준(기본 30일). 리포트·다음 예약 등록이 이 날짜를 쓴다
       let nextVisitDate = '';
       if (petId) {
         try {
           const pet = await DB.get('pets', petId);
-          if (pet && pet.groomingCycle) {
-            const baseDate = App.parseLocalDate(date || App.getToday()); // 'YYYY-MM-DD' 를 UTC 로 읽지 않게
-            baseDate.setDate(baseDate.getDate() + pet.groomingCycle);
-            nextVisitDate = App.formatLocalDate(baseDate);
-          }
+          nextVisitDate = App.calcNextVisitDate(date || App.getToday(), pet && pet.groomingCycle, await App.getRevisitDays());
         } catch (e) { /* ignore */ }
       }
 
@@ -1671,8 +1777,8 @@ App.pages.records = {
       if (money.negative) { App.showToast('할인이 금액보다 큽니다. 할인 금액을 확인해주세요.', 'error'); App.highlightField('f-discount'); return; }
       const compTotal0 = money.complimentaryTotal;
       if (finalPrice === 0 && paymentMethod !== 'unpaid' && !(mainFree || freeAddons.length)) {
-        // 예약→기록 흐름에서 가격이 비어 0원 매출이 조용히 쌓이던 문제. 무료 서비스는 확인 후 저장.
-        const okZero = await App.confirm('합계가 <strong>0원</strong>입니다. 무료 서비스로 저장할까요?', { okLabel: '0원으로 저장', danger: false });
+        // 예약→기록 흐름에서 가격이 비어 0원 매출이 조용히 쌓이던 문제. (메뉴의 무료 서비스는 '서비스 제공'이 자동으로 켜져 여기 오지 않는다)
+        const okZero = await App.confirm('합계가 <strong>0원</strong>입니다. 0원으로 저장할까요?', { okLabel: '0원으로 저장', danger: false });
         if (!okZero) { App.highlightField('f-servicePrice'); return; }
       }
       // 자동 채운 값 뒤에 이어 쳐서 3000030000원처럼 저장되던 문제 — 500만원이 넘으면 한 번 묻는다
@@ -1766,7 +1872,8 @@ App.pages.records = {
           }
         } catch (e) { /* 스냅샷 실패는 저장을 막지 않는다 */ }
       }
-      let newId = null; // 새 기록이면 저장 뒤 리포트 보내기에 쓴다
+      let newId = null;
+      let apptDone = false; // 연결된 예약을 완료 처리했는지
 
       // 자동완성 이력 업데이트
       if (service) App.addAutoHistory('serviceHistory', service);
@@ -1821,7 +1928,7 @@ App.pages.records = {
             if (appt) {
               appt.status = 'completed';
               await DB.update('appointments', appt);
-              App.showToast('연결된 예약이 완료 처리되었습니다.', 'info');
+              apptDone = true; // 저장 완료 토스트에 함께 적는다
             }
           } catch (e) {
             console.warn('Failed to update appointment status:', e);
@@ -1860,41 +1967,14 @@ App.pages.records = {
 
       App.closeModal();
 
-      // 신규 기록: 완료 모달 (다음 예약 + 문자 발송 버튼 통합)
+      // 신규 기록: 어느 길(빠른 추가·홈 '미용 완료'·고객 상세)로 와도 토스트 한 줄 + '문자 보내기' 링크 하나.
+      // 리포트·영수증은 기록 목록의 '보호자에게 보내기', 다음 예약은 기록 상세에서 연다
       if (!id) {
+        App.handleRoute();
         const customer = await DB.get('customers', customerId);
         const pet = await DB.get('pets', petId);
         const customerPhone = (customer?.phone || '').replace(/\D/g, '');
-
-        App.handleRoute();
-
-        const hasCondition = condition || skinStatus.length || earStatus || mattingLevel;
-        const savedRec = await DB.get('records', newId);
-        // 사진이나 상태 중 하나라도 있으면 리포트(이미지)가 맨 위 — 저장 직후 보내는 게 가장 자연스럽다 (Gingr 체크아웃 링크 방식)
-        const canReport = !!(hasCondition || (savedRec && App._recordHasPhoto(savedRec)));
-
-        App.showModal({
-          title: '미용 기록 저장 완료',
-          hideFooter: true,
-          content: `
-            <div style="text-align:center;padding:20px 0">
-              <div style="font-size:2.5rem;margin-bottom:12px;color:var(--success)">${App.icon('check-circle')}</div>
-              <div style="font-size:1.1rem;font-weight:700;margin-bottom:20px">미용 기록이 저장되었습니다</div>
-              <div style="display:flex;flex-direction:column;gap:10px;max-width:280px;margin:0 auto">
-                ${canReport ? `<button class="btn btn-primary" id="post-save-report">${App.icon('image')} 리포트 보내기 <small style="font-weight:400">사진 · 상태 · 관리법</small></button>` : ''}
-                ${customerPhone ? `<button class="btn ${canReport ? 'btn-secondary' : 'btn-success'}" id="post-save-sms">${App.icon('message')} 미용 완료 문자 보내기</button>` : ''}
-                <button class="btn ${canReport ? 'btn-secondary' : 'btn-primary'}" id="post-save-appt">${App.icon('calendar')} 다음 예약 등록${nextVisitDate ? ' (' + App.formatDate(nextVisitDate) + ')' : ''}</button>
-                <button class="btn btn-secondary" id="post-save-close">완료</button>
-              </div>
-            </div>
-          `
-        });
-
-        document.getElementById('post-save-appt')?.addEventListener('click', () => {
-          App.closeModal();
-          App.pages.appointments.showForm(null, customerId, { petId, date: nextVisitDate, groomer });
-        });
-        document.getElementById('post-save-sms')?.addEventListener('click', async () => {
+        const sendSms = async () => {
           const svcDisplay = [data.service, data.style].filter(Boolean).join(' / ');
           const msg = await App.buildSms('complete', {
             // 이름 없는 손님은 '보호자(1234)님'이 아니라 buildSms 의 '보호자님'으로
@@ -1904,17 +1984,9 @@ App.pages.records = {
             '금액': Number(finalPrice || 0).toLocaleString('ko-KR')
           });
           App.openSms(customerPhone, msg);
-          // Don't close modal - just update button to show sent
-          const btn = document.getElementById('post-save-sms');
-          if (btn) { btn.innerHTML = App.icon('check') + ' 발송됨'; btn.disabled = true; btn.style.opacity = '0.6'; }
-        });
-        document.getElementById('post-save-report')?.addEventListener('click', () => {
-          App.closeModal();
-          setTimeout(() => this.showReport(newId), 200);
-        });
-        document.getElementById('post-save-close')?.addEventListener('click', () => {
-          App.closeModal();
-        });
+        };
+        App.showToast('미용 기록 저장 완료' + (apptDone ? ' · 예약도 완료 처리했어요' : ''), 'success',
+          customerPhone ? { action: { label: '문자 보내기', onClick: sendSms } } : {});
         return;
       }
 
@@ -2323,7 +2395,8 @@ App.pages.records = {
     if (!copyArea) return;
     const last = await this._findLastRecordForPet(petId, excludeId);
     this._lastRecordForPet = last;
-    if (last) {
+    // 기록 수정 중에는 '이전 미용과 같음'을 보이지 않는다 (지금 기록을 덮어쓰게 된다)
+    if (last && copyArea.dataset.edit !== '1') {
       copyArea.style.display = 'block';
       const hint = document.getElementById('copy-last-hint');
       if (hint) hint.textContent = `(${App.formatDate(last.date)})`;
@@ -2348,6 +2421,8 @@ App.pages.records = {
       mainFreeBtn.setAttribute('aria-pressed', lastMainComp ? 'true' : 'false');
       document.getElementById('f-servicePrice')?.classList.toggle('is-free', !!lastMainComp);
     }
+    // 서비스 제공 항목이 있으면 토글을 보이게 (켜진 상태를 확인·끌 수 있게)
+    if (Array.isArray(last.complimentary) && last.complimentary.length) document.getElementById('f-comp-reveal')?.click();
     const freeAddon = {};
     (Array.isArray(last.complimentary) ? last.complimentary : []).filter(c => c && !c.main).forEach(c => { freeAddon[App.normalizeServiceName(c.name)] = Number(c.price) || 0; });
     setVal('f-style', last.style || '');
@@ -5038,6 +5113,8 @@ App.pages.records = {
                 <button type="button" class="btn btn-secondary" id="report-receipt">${App.icon('receipt')} 영수증</button>
               </div>
               ${customerPhone ? `<button class="btn btn-ghost" id="report-sms">${App.icon('message')} ${App.escapeHtml(App.getCustomerLabel(customer))} 번호로 문자 열기</button>` : ''}
+              <!-- 다음 예약: 저장 직후 창이 없어져서 여기서 연다 (다음 미용 추천일로) -->
+              ${record.customerId ? `<button class="btn btn-ghost" id="report-next-appt">${App.icon('calendar')} 다음 예약 등록${record.nextVisitDate ? ' (' + App.formatDate(record.nextVisitDate) + ')' : ''}</button>` : ''}
               <p class="card-done-hint">${isIOS ? '카톡으로 보내려면 <b>보호자에게 보내기 → 카카오톡</b>을 고르세요. 리포트는 앱에 저장되지 않아요.' : '보내기에서 카카오톡을 고르면 리포트 이미지가 바로 첨부돼요. 리포트는 앱에 저장되지 않아요.'}</p>
             </div>
           </div>
@@ -5061,6 +5138,10 @@ App.pages.records = {
       document.getElementById('report-receipt')?.addEventListener('click', () => {
         App.closeModal();
         setTimeout(() => this.showReceipt(record.id), 200); // 닫힘(뒤로가기 정리)이 끝난 뒤 연다
+      });
+      document.getElementById('report-next-appt')?.addEventListener('click', () => {
+        App.closeModal();
+        setTimeout(() => App.pages.appointments.showForm(null, record.customerId, { petId: record.petId, date: record.nextVisitDate || undefined, groomer: record.groomer || '' }), 200);
       });
       document.getElementById('report-copy')?.addEventListener('click', async () => {
         const t = reportText ?? await App.buildGroomingReport(record);
@@ -5305,7 +5386,7 @@ App.pages.records = {
       const category = resolveCategory(r);
       const dateNoDash = (r.date || '').replace(/-/g, '');
       const txId = dateNoDash ? `${dateNoDash}-${r.id}` : String(r.id);
-      const paymentLabel0 = { cash: '현금', card: '카드', transfer: '계좌이체', unpaid: '미수금', prepaid: '정액권' }[r.paymentMethod] || '';
+      const paymentLabel0 = { cash: '현금', card: '카드', transfer: '계좌이체', unpaid: '미결제', prepaid: '정액권' }[r.paymentMethod] || '';
       // 정액권(선불)은 충전 때가 아니라 미용한 날 매출로 잡는다 — 결제수단 칸에 정액권 몫을 적는다
       const pUsed = Number(r.prepaidUsed) || 0;
       const paymentLabel = pUsed > 0 && r.paymentMethod !== 'prepaid' ? `정액권 ${pUsed}+${paymentLabel0}` : paymentLabel0;

@@ -1498,7 +1498,7 @@ a.stat-card { display: flex; }
 }
 .service-chip-price:has(.service-chip-band) { text-align: right; }
 
-/* 기록 폼: 무료(서비스로 제공) 토글 */
+/* 기록 폼: 서비스 제공 토글 */
 .free-toggle {
   display: inline-flex; align-items: center; justify-content: center;
   min-height: 28px; padding: 2px 8px; margin-left: 4px;
@@ -1507,6 +1507,10 @@ a.stat-card { display: flex; }
   font-size: 0.72rem; font-weight: 700; cursor: pointer; vertical-align: middle;
 }
 .free-toggle.on { background: var(--success-light, #e7f7ee); border-color: var(--success, #16a34a); color: var(--success, #16a34a); }
+/* 추가 항목의 [서비스 제공] 토글은 '서비스로 제공' 링크를 누른 뒤에만 보인다 */
+#f-addon-tags:not(.comp-open) .free-toggle { display: none; }
+/* 서비스 제공 토글이 열려 있을 때는 태그 글자('· 서비스 제공')와 토글 버튼이 겹쳐 보이므로 글자 쪽을 숨김 */
+#f-addon-tags.comp-open .addon-tag.is-free .addon-tag-price { display: none; }
 .addon-tag.is-free .addon-tag-name { text-decoration: line-through; opacity: 0.75; }
 #f-servicePrice.is-free { text-decoration: line-through; color: var(--text-muted); }
 

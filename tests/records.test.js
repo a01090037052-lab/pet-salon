@@ -114,3 +114,34 @@ describe('영수증 금액 (showReceipt)', () => {
     assert.equal(r.get('소계'), '45,000원');
   });
 });
+
+describe('다음 미용 추천일 (calcNextVisitDate)', () => {
+  const { App } = loadApp();
+  test('반려견 권장 주기가 있으면 그 주기', () => assert.equal(App.calcNextVisitDate('2026-03-01', 28, 30), '2026-03-29'));
+  test('주기가 없으면 재방문 기준(fallback) 일수', () => assert.equal(App.calcNextVisitDate('2026-01-31', null, 30), '2026-03-02'));
+  test('월말·연말을 넘어도 로컬 날짜로', () => assert.equal(App.calcNextVisitDate('2026-12-20', 0, 14), '2027-01-03'));
+  test('주기·기준 모두 없거나 날짜가 없으면 빈 값', () => {
+    assert.equal(App.calcNextVisitDate('2026-03-01', 0, 0), '');
+    assert.equal(App.calcNextVisitDate('', 28, 30), '');
+  });
+});
+
+describe('가격 미입력 메뉴 (getMenuPrice)', () => {
+  const svcs = [
+    { id: 1, name: '위생미용', category: 'grooming', pricing: { mode: 'flat', flat: 0, overKgMode: 'inherit' } },
+    { id: 2, name: '서비스 양치', category: 'addon', pricing: { mode: 'flat', flat: 0, free: true, overKgMode: 'off' } },
+  ];
+  const env = () => loadApp({ db: createFakeDB({ stores: { services: svcs.map(s => ({ ...s })), records: [], pets: [] } }) });
+  test('가격을 안 적은 메뉴는 price null (0원 아님) — 기록 폼 기본가는 빈칸', async () => {
+    const { App } = env();
+    const m = await App.getMenuPrice('위생미용', 5);
+    assert.equal(m.price, null);
+    assert.equal(await App.getRecentServicePrice(null, '위생미용', 5), null);
+  });
+  test('무료로 정한 메뉴는 0원 + free', async () => {
+    const { App } = env();
+    const m = await App.getMenuPrice('서비스 양치', 5);
+    assert.equal(m.price, 0);
+    assert.equal(m.free, true);
+  });
+});

@@ -150,3 +150,46 @@ describe('이번 달 실입금 (monthCollected)', () => {
     assert.deepEqual(plain(Prepaid.monthCollected([], [], '2026-11')), { collected: 0, charge: 0, refund: 0 });
   });
 });
+
+describe('이번 달 실입금 결제 수단별 (monthByMethod) — 합계가 monthCollected 와 맞는다', () => {
+  const { Prepaid } = load();
+  const records = [
+    { date: '2026-11-03', finalPrice: 50000, paymentMethod: 'card' },                          // 카드 50,000
+    { date: '2026-11-04', finalPrice: 60000, prepaidUsed: 60000, paymentMethod: 'prepaid' },    // 정액권 사용 60,000
+    { date: '2026-11-04', finalPrice: 50000, prepaidUsed: 20000, paymentMethod: 'cash' },       // 정액권 20,000 + 현금 30,000
+    { date: '2026-11-05', finalPrice: 40000, paymentMethod: 'unpaid' },                         // 미수 → 0
+    { date: '2026-10-20', paidAt: '2026-11-02', finalPrice: 35000, paymentMethod: 'transfer' }, // 이번 달 수금 계좌 35,000
+    { date: '2026-11-06', finalPrice: 10000 },                                                  // 수단 미선택 10,000
+  ];
+  const entries = [
+    { customerId: 1, type: 'charge', amount: 100000, bonus: 10000, credit: 110000, method: 'card', date: '2026-11-01' },
+    { customerId: 2, type: 'charge', amount: 20000, bonus: 0, credit: 20000, method: 'transfer', date: '2026-11-02' }, // 예약금
+    { customerId: 1, type: 'refund', amount: 15000, credit: -20000, method: 'cash', date: '2026-11-03' },               // 돌려준 돈 15,000
+    { customerId: 2, type: 'adjust', amount: -20000, credit: -20000, memo: '노쇼 예약금', date: '2026-11-04' },
+    { customerId: 1, type: 'adjust', amount: 3000, credit: 3000, memo: '착오', date: '2026-11-04' },
+    { customerId: 1, type: 'charge', amount: 70000, credit: 70000, method: 'cash', date: '2026-10-31' },                // 지난달 → 제외
+  ];
+  const r = plain(Prepaid.monthByMethod(records, entries, '2026-11'));
+  test('기록 나머지: 카드 50,000 · 현금 30,000 · 계좌 35,000 · 미선택 10,000', () => {
+    assert.deepEqual(r.records, { card: 50000, cash: 30000, transfer: 35000, none: 10000 });
+  });
+  test('충전 받은 돈(보너스 제외): 카드 100,000 · 계좌 20,000 / 환불: 현금 15,000', () => {
+    assert.deepEqual(r.charge, { card: 100000, cash: 0, transfer: 20000, none: 0 });
+    assert.deepEqual(r.refund, { card: 0, cash: 15000, transfer: 0, none: 0 });
+  });
+  test('합계 125,000 + 120,000 − 15,000 = 230,000 = monthCollected', () => {
+    assert.equal(r.total, 230000);
+    assert.equal(r.total, Prepaid.monthCollected(records, entries, '2026-11').collected);
+  });
+  test('참고값: 정액권 사용 80,000 · 조정으로 줄인 잔액 20,000 · 늘린 잔액 3,000', () => {
+    assert.deepEqual([r.used, r.adjustOut, r.adjustIn], [80000, 20000, 3000]);
+  });
+  test('위 monthCollected 테스트 데이터로도 합계가 같다 (11월 145,000)', () => {
+    const recs = [
+      { date: '2026-11-03', finalPrice: 50000, paymentMethod: 'card' },
+      { date: '2026-11-04', finalPrice: 50000, prepaidUsed: 20000, paymentMethod: 'cash' },
+      { date: '2026-10-20', paidAt: '2026-11-02', finalPrice: 35000, paymentMethod: 'transfer' },
+    ];
+    assert.equal(Prepaid.monthByMethod(recs, LEDGER(), '2026-11').total, 145000);
+  });
+});

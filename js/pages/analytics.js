@@ -281,6 +281,10 @@ App.pages.analytics = {
       hours.push({ hour: h, label: `${h}시`, count: hourStats[h]?.count || 0 });
     }
     const hourMax = Math.max(...hours.map(h => h.count), 1);
+    // 표본이 5건 미만이면 차트 대신 한 줄 안내 (예약 2건으로 '인기 시간대'·기록 3건으로 '최다 요일'이 나오던 문제)
+    const MIN_SAMPLE = 5;
+    const hourSample = hours.reduce((s, h) => s + h.count, 0);
+    const dowSample = records.filter(r => r.date).length;
 
     // ===== 미용사 성과 =====
     // 미용사가 2명 이상 등록됐을 때만 표시 (1인 살롱·미설정이면 섹션 생략)
@@ -474,11 +478,12 @@ App.pages.analytics = {
       }
     }
 
-    // 12. 노쇼율
-    if (appts.length >= 5) {
-      const noshowCount = appts.filter(a => a.status === 'noshow').length;
-      const noshowRate = Math.round((noshowCount / appts.length) * 100);
-      if (noshowRate <= 3) insights.push({ type: 'good', text: `노쇼율 ${noshowRate}% — 우수 (예약 ${appts.length}건 중 ${noshowCount}건)` });
+    // 12. 노쇼율 — 분모에서 취소된 예약은 뺀다 (미리 취소한 건 노쇼 기회가 없었다)
+    const apptsForNoshow = appts.filter(a => a.status !== 'cancelled');
+    if (apptsForNoshow.length >= 5) {
+      const noshowCount = apptsForNoshow.filter(a => a.status === 'noshow').length;
+      const noshowRate = Math.round((noshowCount / apptsForNoshow.length) * 100);
+      if (noshowRate <= 3) insights.push({ type: 'good', text: `노쇼율 ${noshowRate}% — 우수 (예약 ${apptsForNoshow.length}건 중 ${noshowCount}건)` });
       else if (noshowRate <= 8) insights.push({ type: 'info', text: `노쇼율 ${noshowRate}% — 보통` });
       else insights.push({ type: 'warning', text: `노쇼율 ${noshowRate}% — 예약금/재확인 강화 검토` });
     }
@@ -872,7 +877,7 @@ App.pages.analytics = {
           <span class="card-title">요일별 평균 매출</span>
         </div>
         <div class="card-body">
-          ${dowData.every(d => d.avg === 0) ? '<p style="color:var(--text-muted);text-align:center">데이터가 쌓이면 표시됩니다</p>' :
+          ${dowSample < MIN_SAMPLE || dowData.every(d => d.avg === 0) ? '<p style="color:var(--text-muted);text-align:center;margin:0">미용 기록이 5건 이상 쌓이면 보여요</p>' :
             `<div style="display:flex;flex-direction:column;gap:8px">
               ${dowData.map((d, i) => {
                 const pct = Math.max(5, Math.round((d.avg / dowMax) * 100));
@@ -897,7 +902,7 @@ App.pages.analytics = {
           <span class="card-title">시간대별 예약 건수 <small style="font-weight:500;color:var(--text-muted)">(예약 시간 기준)</small></span>
         </div>
         <div class="card-body">
-          ${hours.every(h => h.count === 0) ? '<p style="color:var(--text-muted);text-align:center">데이터가 쌓이면 표시됩니다</p>' :
+          ${hourSample < MIN_SAMPLE ? '<p style="color:var(--text-muted);text-align:center;margin:0">지난 예약이 5건 이상 쌓이면 보여요</p>' :
             `<div style="display:flex;gap:4px;height:120px;position:relative">
               ${hours.map(h => {
                 const barH = h.count > 0 ? Math.max(6, Math.round((h.count / hourMax) * 90)) : 3;
