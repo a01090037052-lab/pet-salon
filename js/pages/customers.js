@@ -10,6 +10,7 @@ App.pages.customers = {
 
   async renderList(container) {
     const isMobile = window.matchMedia('(max-width: 768px)').matches;
+    const masterDetail = !isMobile && window.matchMedia('(min-width: 1280px)').matches;
     // 효율적 쿼리: 목록에서는 사진 등 큰 필드 제외
     const customers = await DB.getAll('customers');
     const pets = await DB.getAllLight('pets', ['photo', 'temperament', 'healthNotes', 'preferredStyle']);
@@ -87,8 +88,8 @@ App.pages.customers = {
       <div class="filter-bar">
         <div class="search-box" style="max-width:none;position:relative">
           <span class="search-icon">${App.icon('search')}</span>
-          <input type="text" id="customer-search" placeholder="고객·반려견 이름, 전화번호, 메모" style="width:100%;min-height:44px;padding-right:60px">
-          <span id="customer-search-count" style="display:none;position:absolute;right:14px;top:50%;transform:translateY(-50%);font-size:0.78rem;color:var(--text-muted);font-weight:700;pointer-events:none"></span>
+          <input type="text" id="customer-search" placeholder="이름·반려견·전화 뒷자리·초성(ㅊㅋ)" style="width:100%;min-height:44px;padding-right:60px">
+          <span id="customer-search-count" style="display:none;position:absolute;right:14px;top:50%;transform:translateY(-50%);font-size:0.93rem;color:var(--text-muted);font-weight:700;pointer-events:none"></span>
         </div>
         <div class="filter-bar-row">
           <select id="customer-visit-filter" style="flex:1;min-height:44px;font-size:max(16px,0.88rem)">
@@ -116,6 +117,7 @@ App.pages.customers = {
           </select>
         </div>
       </div>
+      ${masterDetail ? '<div class="cust-md"><div class="cust-md-list">' : ''}
       <div class="card">
         <div class="card-body no-padding">
           ${isMobile ? '' : `<div class="table-container">
@@ -168,8 +170,8 @@ App.pages.customers = {
                 const meta = groupMeta[gs];
                 return `<div style="margin:14px 2px 8px;display:flex;align-items:center;gap:8px">
                   <span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:${meta.color};flex-shrink:0"></span>
-                  <span style="font-size:0.88rem;font-weight:800;color:var(--text-primary)">${meta.label}</span>
-                  <span style="font-size:0.78rem;color:var(--text-muted)">${gp.length}명</span>
+                  <span style="font-size:0.93rem;font-weight:800;color:var(--text-primary)">${meta.label}</span>
+                  <span style="font-size:0.93rem;color:var(--text-muted)">${gp.length}명</span>
                 </div>` + gp.map(c => this._renderCustomerCard(c, petCount, lastVisit, petsByCustomer)).join('');
               }).join('');
             })() : sorted.map(c => this._renderCustomerCard(c, petCount, lastVisit, petsByCustomer)).join(''))}
@@ -178,11 +180,33 @@ App.pages.customers = {
           <div class="empty-state" id="customer-filter-empty" style="display:none">
             <div class="empty-state-icon">${App.icon('search', 'ico-xl')}</div>
             <div class="empty-state-text">검색 결과가 없어요</div>
-            <div style="font-size:0.85rem;color:var(--text-muted);margin-top:4px;line-height:1.5">이름 일부나 전화번호 뒷자리로 다시 찾아보세요.<br>방문 상태·분류 필터가 켜져 있으면 풀어 보세요.</div>
+            <div style="font-size:0.93rem;color:var(--text-muted);margin-top:4px;line-height:1.5">이름 일부나 전화번호 뒷자리로 다시 찾아보세요.<br>방문 상태·분류 필터가 켜져 있으면 풀어 보세요.</div>
           </div>
         </div>
       </div>
+      ${masterDetail ? `</div>
+        <aside class="cust-pane" id="cust-pane" aria-label="고객 상세">
+          <div class="cust-pane-empty">${App.icon('user', 'ico-xl')}<div>목록에서 고객을 누르면 여기에 자세히 보여요</div></div>
+        </aside></div>` : ''}
     `;
+  },
+
+  // 넓은 화면(1280px+): 목록 옆 칸에 고객 상세를 그린다 (상세 화면과 같은 renderDetail HTML). 좁으면 예전처럼 상세 화면으로 이동
+  _isMasterDetail() {
+    return window.matchMedia('(min-width: 1280px)').matches && !!document.getElementById('cust-pane');
+  },
+  async _showPane(id) {
+    const pane = document.getElementById('cust-pane');
+    if (!pane) return;
+    const customer = await DB.get('customers', id);
+    if (!customer) { this._paneId = null; try { sessionStorage.removeItem('cust-pane-id'); } catch (_) {} return; }
+    await this.renderDetail(pane, id);
+    this._paneId = id;
+    try { sessionStorage.setItem('cust-pane-id', String(id)); } catch (_) {}
+    document.querySelectorAll('#customer-table .clickable-row').forEach(r => r.classList.toggle('is-selected', Number(r.dataset.id) === id));
+    pane.scrollTop = 0;
+    this._bindDetail(pane, true);
+    App.setupPhoneInputs?.();
   },
 
   async renderDetail(container, customerId) {
@@ -227,7 +251,7 @@ App.pages.customers = {
             <span>${App.formatPhoneHtml(customer.phone)}</span>
             <span>방문 ${visitCount}회</span>
             <span>총 ${App.formatCurrency(totalSpend)}</span>
-            ${unpaidBalance > 0 ? `<span style="color:var(--danger);font-weight:700">미수금 ${App.formatCurrency(unpaidBalance)}</span>` : ''}
+            ${unpaidBalance > 0 ? `<span style="color:var(--danger);font-weight:700">미결제 ${App.formatCurrency(unpaidBalance)}</span>` : ''}
             ${noshowCount > 0 ? `<span style="color:var(--danger);font-weight:700">노쇼 ${noshowCount}회</span>` : ''}
             ${prepaidBal !== 0 ? `<span class="prepaid-meta">정액권 ${App.formatCurrency(prepaidBal)}</span>` : ''}
           </div>
@@ -263,7 +287,7 @@ App.pages.customers = {
                 <div>
                   <div class="pet-name">${App.escapeHtml(p.name)}</div>
                   <div class="pet-breed">${App.escapeHtml(p.breed || '견종 미입력')} | ${p.weight ? p.weight + 'kg' : '체중 미입력'}</div>
-                  ${petNotes.length > 0 ? `<div style="font-size:0.78rem;color:var(--danger);margin-top:4px;line-height:1.3">${App.icon('alert', 'ico-sm')} ${petNotes.map(n => App.escapeHtml(n)).join(', ')}</div>` : ''}
+                  ${petNotes.length > 0 ? `<div style="font-size:0.93rem;color:var(--danger);margin-top:4px;line-height:1.3">${App.icon('alert', 'ico-sm')} ${petNotes.map(n => App.escapeHtml(n)).join(', ')}</div>` : ''}
                 </div>
               </div>
             `}).join('')}
@@ -285,9 +309,9 @@ App.pages.customers = {
           if (upcoming.length === 0) return '<p style="color:var(--text-muted)">예정된 예약 없음</p>';
           return upcoming.map(a => `
             <div class="cust-upcoming-appt" data-appt-id="${a.id}" style="display:flex;align-items:center;gap:10px;min-height:44px;padding:0 4px;border-bottom:1px solid var(--border-light);cursor:pointer">
-              <strong style="font-size:0.9rem;white-space:nowrap">${App.formatDate(a.date)}${a.date === today ? ' (오늘)' : ''}</strong>
-              <span style="font-size:0.9rem;color:var(--primary);font-weight:700;white-space:nowrap">${App.escapeHtml(a.time || '')}</span>
-              <span style="font-size:0.85rem;color:var(--text-secondary);flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${App.escapeHtml(petNameMap[a.petId] || '')}</span>
+              <strong style="font-size:0.93rem;white-space:nowrap">${App.formatDate(a.date)}${a.date === today ? ' (오늘)' : ''}</strong>
+              <span style="font-size:0.93rem;color:var(--primary);font-weight:700;white-space:nowrap">${App.escapeHtml(a.time || '')}</span>
+              <span style="font-size:0.93rem;color:var(--text-secondary);flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${App.escapeHtml(petNameMap[a.petId] || '')}</span>
               <span style="color:var(--text-muted)">&#x203A;</span>
             </div>`).join('');
         })()}
@@ -309,12 +333,12 @@ App.pages.customers = {
               const serviceNames = (r.serviceNames && r.serviceNames.length > 0) ? r.serviceNames.join(', ') : (r.serviceIds || []).map(id => serviceMap[id] || '').filter(Boolean).join(', ') || '-';
               return `<div class="cust-rec-row${r.paymentMethod === 'unpaid' ? ' is-unpaid-card' : ''}" data-id="${r.id}" role="button" tabindex="0" style="padding:12px 0;border-bottom:1px solid var(--border-light);cursor:pointer${r.paymentMethod === 'unpaid' ? ';border-left:4px solid var(--danger);padding-left:12px' : ''}">
                 <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px">
-                  <strong style="font-size:0.9rem">${App.formatDate(r.date)}</strong>
+                  <strong style="font-size:0.93rem">${App.formatDate(r.date)}</strong>
                   <strong style="color:var(--primary)">${App.formatCurrency(App.getRecordAmount(r))}</strong>
                 </div>
-                <div style="font-size:0.85rem;color:var(--text-secondary);display:flex;align-items:center;gap:8px"><span class="flex-1">${[pet?.name, serviceNames === '-' ? '' : serviceNames, r.groomer].filter(Boolean).map(v => App.escapeHtml(v)).concat([App.pages.records.getPaymentLabel(r.paymentMethod, r)].filter(v => v && v !== '-')).join(' · ')}</span><button type="button" class="btn btn-sm btn-ghost cust-rec-report" data-id="${r.id}" style="flex-shrink:0">${App.icon('image')} 리포트</button></div>
+                <div style="font-size:0.93rem;color:var(--text-secondary);display:flex;align-items:center;gap:8px"><span class="flex-1">${[pet?.name, serviceNames === '-' ? '' : serviceNames, r.groomer].filter(Boolean).map(v => App.escapeHtml(v)).concat([App.pages.records.getPaymentLabel(r.paymentMethod, r)].filter(v => v && v !== '-')).join(' · ')}</span><button type="button" class="btn btn-sm btn-ghost cust-rec-report" data-id="${r.id}" style="flex-shrink:0">${App.icon('image')} 리포트</button></div>
               </div>`;
-            }).join('') + (records.length > 10 ? '<div style="text-align:center;padding:12px;font-size:0.82rem;color:var(--text-muted)">최근 10건 표시</div>' : '');
+            }).join('') + (records.length > 10 ? '<div style="text-align:center;padding:12px;font-size:0.93rem;color:var(--text-muted)">최근 10건 표시</div>' : '');
           }
           return `
           <div class="table-container">
@@ -331,7 +355,7 @@ App.pages.customers = {
                     <td><strong>${App.formatCurrency(App.getRecordAmount(r))}</strong></td>
                     <td>${App.escapeHtml(r.groomer || '-')}</td>
                     <td>${App.pages.records.getPaymentLabel(r.paymentMethod, r)}</td>
-                    <td class="table-actions"><button type="button" class="btn-icon cust-rec-report" data-id="${r.id}" title="미용 리포트" aria-label="미용 리포트" style="color:var(--info)">${App.icon('image')}</button><button type="button" class="btn-icon cust-rec-edit" data-id="${r.id}" title="수정" aria-label="수정">${App.icon('edit')}</button></td>
+                    <td class="table-actions"><button type="button" class="btn-icon cust-rec-report" data-id="${r.id}" title="미용 리포트" aria-label="미용 리포트" style="color:var(--info)">${App.icon('image')}<span class="btn-icon-label">리포트</span></button><button type="button" class="btn-icon cust-rec-edit" data-id="${r.id}" title="수정" aria-label="수정">${App.icon('edit')}<span class="btn-icon-label">수정</span></button></td>
                   </tr>`;
                 }).join('')}
               </tbody>
@@ -452,6 +476,7 @@ App.pages.customers = {
     document.querySelectorAll('.clickable-row').forEach(row => {
       row.addEventListener('click', (e) => {
         if (e.target.closest('.table-actions')) return;
+        if (this._isMasterDetail()) { this._showPane(Number(row.dataset.id)); return; }
         App.navigate('customers/' + row.dataset.id);
       });
     });
@@ -472,46 +497,62 @@ App.pages.customers = {
       });
     });
 
+    this._bindDetail(document);
+
+    // 목록 옆 상세 칸: 수정·추가 뒤 목록이 다시 그려져도 보던 고객을 다시 띄운다
+    if (this._isMasterDetail()) {
+      let keep = null;
+      try { keep = Number(sessionStorage.getItem('cust-pane-id')) || null; } catch (_) {}
+      if (keep) this._showPane(keep);
+    }
+  },
+
+  // 고객 상세 안의 버튼·줄 연결. root = 상세 화면이면 document, 목록 옆 칸이면 그 칸 (withEditDelete: 칸 안의 수정·삭제도 연결)
+  _bindDetail(root, withEditDelete) {
+    if (withEditDelete) {
+      root.querySelectorAll('.btn-edit-customer').forEach(btn => btn.addEventListener('click', (e) => { e.stopPropagation(); this.showForm(Number(btn.dataset.id)); }));
+      root.querySelectorAll('.btn-delete-customer').forEach(btn => btn.addEventListener('click', (e) => { e.stopPropagation(); this.deleteCustomer(Number(btn.dataset.id)); }));
+    }
     // Add pet for customer (detail view)
-    document.getElementById('btn-add-pet-for-customer')?.addEventListener('click', (e) => {
+    root.querySelector('#btn-add-pet-for-customer')?.addEventListener('click', (e) => {
       const customerId = Number(e.target.dataset.customerId);
       App.pages.pets.showForm(null, customerId);
     });
 
     // New appointment for customer (detail view)
-    document.getElementById('btn-new-appt-for-customer')?.addEventListener('click', (e) => {
+    root.querySelector('#btn-new-appt-for-customer')?.addEventListener('click', (e) => {
       const customerId = Number(e.target.dataset.customerId);
       App.pages.appointments.showForm(null, customerId);
     });
 
     // 워크인 미용 기록 (상세에서 바로) — 기록 탭 → 새 기록 → 검색 → 선택의 5탭을 1탭으로
-    document.getElementById('btn-new-record-for-customer')?.addEventListener('click', async (e) => {
+    root.querySelector('#btn-new-record-for-customer')?.addEventListener('click', async (e) => {
       const customerId = Number(e.target.dataset.customerId);
       const cPets = (await DB.getByIndex('pets', 'customerId', customerId)).filter(p => (p.petStatus || 'active') === 'active');
       App.pages.records.showForm(null, { customerId, petId: cPets.length === 1 ? cPets[0].id : null, date: App.getToday() });
     });
 
     // 예정된 예약 (detail view) → 예약 수정
-    document.querySelectorAll('.cust-upcoming-appt').forEach(row => {
+    root.querySelectorAll('.cust-upcoming-appt').forEach(row => {
       row.addEventListener('click', () => App.pages.appointments.showForm(Number(row.dataset.apptId)));
     });
     // 최근 미용 기록 (detail view) → 줄을 누르면 수정, 리포트 버튼은 리포트 (예전엔 눌리지 않아 기록 화면으로 가야 했다)
-    document.querySelectorAll('.cust-rec-row').forEach(row => {
+    root.querySelectorAll('.cust-rec-row').forEach(row => {
       row.addEventListener('click', (e) => {
         if (e.target.closest('.cust-rec-report')) return;
         App.pages.records.showForm(Number(row.dataset.id));
       });
       row.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); row.click(); } });
     });
-    document.querySelectorAll('.cust-rec-report').forEach(btn => {
+    root.querySelectorAll('.cust-rec-report').forEach(btn => {
       btn.addEventListener('click', (e) => { e.stopPropagation(); App.pages.records.showReport(Number(btn.dataset.id)); });
     });
 
     // 정액권 (detail view) — 충전·환불·조정 버튼, 내역 줄 누르면 수정(사용 줄은 그 미용 기록)
-    document.querySelectorAll('.btn-prepaid-act').forEach(btn => {
+    root.querySelectorAll('.btn-prepaid-act').forEach(btn => {
       btn.addEventListener('click', () => this.showPrepaidForm(Number(btn.dataset.customerId), btn.dataset.act));
     });
-    document.querySelectorAll('.prepaid-row').forEach(row => {
+    root.querySelectorAll('.prepaid-row').forEach(row => {
       const open = () => {
         if (row.dataset.recordId) App.pages.records.showForm(Number(row.dataset.recordId));
         else this.showPrepaidForm(Number(row.dataset.customerId), row.dataset.type, Number(row.dataset.id));
@@ -519,13 +560,13 @@ App.pages.customers = {
       row.addEventListener('click', open);
       row.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); open(); } });
     });
-    document.getElementById('btn-prepaid-more')?.addEventListener('click', (e) => {
-      document.querySelectorAll('.prepaid-row.is-more').forEach(r => r.classList.remove('is-more'));
+    root.querySelector('#btn-prepaid-more')?.addEventListener('click', (e) => {
+      root.querySelectorAll('.prepaid-row.is-more').forEach(r => r.classList.remove('is-more'));
       e.currentTarget.remove();
     });
 
     // Send message (detail view)
-    document.getElementById('btn-send-message')?.addEventListener('click', (e) => {
+    root.querySelector('#btn-send-message')?.addEventListener('click', (e) => {
       const customerId = Number(e.target.dataset.customerId);
       this.showMessageModal(customerId);
     });
@@ -767,6 +808,7 @@ App.pages.customers = {
             <div style="display:flex;flex-direction:column;gap:8px;max-width:260px;margin:0 auto">
               <button class="btn btn-primary" id="post-cust-record">지금 미용 기록</button>
               <button class="btn btn-secondary" id="post-cust-appt">${App.icon('calendar')} 예약 등록</button>
+              <button class="btn btn-secondary" id="post-cust-pet">${App.icon('paw')} ${result.petId ? '반려견 더 추가' : '반려견 추가'}</button>
               <button class="btn btn-secondary" id="post-cust-detail">${App.icon('note')} 상세 보기</button>
               <button class="btn btn-secondary" id="post-cust-close" style="opacity:0.7">완료</button>
             </div>
@@ -784,6 +826,11 @@ App.pages.customers = {
       document.getElementById('post-cust-appt')?.addEventListener('click', () => {
         App.closeModal();
         setTimeout(() => App.pages.appointments.showForm(null, result.customerId, result.petId ? { petId: result.petId } : undefined), 180);
+      });
+      // 한 보호자가 여러 마리를 키우는 경우 — 보호자가 정해진 반려견 등록 폼을 바로 연다
+      document.getElementById('post-cust-pet')?.addEventListener('click', () => {
+        App.closeModal();
+        setTimeout(() => App.pages.pets.showForm(null, result.customerId), 180);
       });
       document.getElementById('post-cust-detail')?.addEventListener('click', () => {
         App.closeModal();
@@ -823,7 +870,7 @@ App.pages.customers = {
         await new Promise(r => setTimeout(r, 180));
         const second = await App.confirm(
           `삭제되는 데이터:<br>반려견 <strong>${pets.length}</strong>마리 · 예약 <strong>${appointments.length}</strong>건 · 미용 기록 <strong>${records.length}</strong>건 (매출 ${App.formatCurrency(revenueSum)})` +
-          (unpaidSum > 0 ? `<br><span style="color:var(--danger)">미수금 ${App.formatCurrency(unpaidSum)}도 함께 사라집니다.</span>` : '') +
+          (unpaidSum > 0 ? `<br><span style="color:var(--danger)">미결제 ${App.formatCurrency(unpaidSum)}도 함께 사라집니다.</span>` : '') +
           `<br><small style="color:var(--text-muted)">매출·분석 숫자가 과거 기간까지 바뀝니다. 손님만 더 안 오는 경우라면 삭제 대신 그대로 두세요.</small>`,
           { okLabel: '모두 삭제' });
         if (!second) return;
@@ -849,7 +896,8 @@ App.pages.customers = {
       ];
       await DB.deleteCascade(ops);
       App.showToast('고객이 삭제되었습니다.');
-      App.navigate('customers');
+      // 목록 화면(옆 칸 포함)에서 지웠으면 주소가 같아 hashchange 가 안 난다 → 직접 다시 그린다
+      if (location.hash === '#customers') App.handleRoute(); else App.navigate('customers');
     } catch (err) {
       console.error('Delete customer error:', err);
       App.showToast('삭제 중 오류가 발생했습니다.', 'error');
@@ -861,19 +909,19 @@ App.pages.customers = {
     const displayName = App.getCustomerLabel(c, cPets);
     const initial = c.name ? App.escapeHtml(c.name.charAt(0)) : App.icon('user');
     const vs = this._customerVisitStatus?.[c.id] || 'normal';
-    const visitBadge = vs !== 'normal' ? `<span class="badge ${App.getVisitStatusBadge(vs)}" style="margin-left:6px;font-size:0.72rem;padding:3px 8px">${App.getVisitStatusLabel(vs)}</span>` : '';
+    const visitBadge = vs !== 'normal' ? `<span class="badge ${App.getVisitStatusBadge(vs)}" style="margin-left:6px;font-size:0.93rem;padding:3px 8px">${App.getVisitStatusLabel(vs)}</span>` : '';
     const tagLabelMap = { vip: 'VIP', 'new': '신규', normal: '일반', regular: '단골', caution: '주의' };
     const tagText = (c.tags || []).map(t => tagLabelMap[t] || t).join(' ');
     const pBal = (this._prepaidBal && this._prepaidBal[c.id]) || 0;
     const prepaidBadge = pBal > 0 ? `<span class="prepaid-badge" title="정액권 잔액">정액권 ${pBal.toLocaleString('ko-KR')}</span>` : '';
     const searchText = ((c.name || '') + ' ' + (c.phone || '') + ' ' + (c.phone || '').replace(/\D/g, '') + ' ' + (c.memo || '') + ' ' + tagText + (pBal > 0 ? ' 정액권' : '') + ' ' + cPets.map(p => (p.name || '') + ' ' + (p.breed || '')).join(' ')).toLowerCase();
     return `<tr data-id="${c.id}" data-tags="${(c.tags || []).join(',')}" data-visit-status="${vs}" data-search="${App.escapeHtml(searchText)}" class="clickable-row" style="cursor:pointer">
-      <td><div style="display:flex;align-items:center;gap:10px"><div style="width:34px;height:34px;border-radius:10px;background:linear-gradient(135deg,var(--primary-light),var(--primary-lighter));display:flex;align-items:center;justify-content:center;font-weight:800;color:var(--primary);font-size:0.85rem;flex-shrink:0">${initial}</div><strong>${App.escapeHtml(displayName)}</strong>${this.getTagBadges(c.tags)}${visitBadge}${prepaidBadge}</div></td>
+      <td><div style="display:flex;align-items:center;gap:10px"><div style="width:34px;height:34px;border-radius:10px;background:linear-gradient(135deg,var(--primary-light),var(--primary-lighter));display:flex;align-items:center;justify-content:center;font-weight:800;color:var(--primary);font-size:0.93rem;flex-shrink:0">${initial}</div><strong>${App.escapeHtml(displayName)}</strong>${this.getTagBadges(c.tags)}${visitBadge}${prepaidBadge}</div></td>
       <td><a href="tel:${App.escapeHtml(App.phoneDigits(c.phone))}" style="color:var(--primary)" onclick="event.stopPropagation()">${App.formatPhoneHtml(c.phone)}</a></td>
       <td><span class="badge badge-info">${petCount[c.id] || 0}마리</span></td>
       <td>${lastVisit[c.id] ? App.getRelativeTime(lastVisit[c.id]) : '-'}</td>
       <td>${App.formatDate(c.createdAt)}</td>
-      <td class="table-actions"><button class="btn-icon btn-edit-customer" data-id="${c.id}" title="수정" aria-label="수정">${App.icon('edit')}</button><button class="btn-icon btn-delete-customer text-danger" data-id="${c.id}" title="삭제" aria-label="삭제">${App.icon('trash')}</button></td>
+      <td class="table-actions"><button class="btn-icon btn-edit-customer" data-id="${c.id}" title="수정" aria-label="수정">${App.icon('edit')}<span class="btn-icon-label">수정</span></button><button class="btn-icon btn-delete-customer text-danger" data-id="${c.id}" title="삭제" aria-label="삭제">${App.icon('trash')}<span class="btn-icon-label">삭제</span></button></td>
     </tr>`;
   },
 
@@ -892,19 +940,19 @@ App.pages.customers = {
     // 우측 상태 칩 (정상은 숨김)
     let rightChip = '';
     if (vs === 'new') {
-      rightChip = `<span style="font-size:0.7rem;padding:3px 9px;background:var(--bg);color:var(--text-muted);border:1px solid var(--border);border-radius:11px;font-weight:600;flex-shrink:0;white-space:nowrap">방문 전</span>`;
+      rightChip = `<span style="font-size:0.93rem;padding:3px 9px;background:var(--bg);color:var(--text-muted);border:1px solid var(--border);border-radius:11px;font-weight:600;flex-shrink:0;white-space:nowrap">방문 전</span>`;
     } else if (vs === 'at-risk') {
-      rightChip = `<span style="font-size:0.7rem;padding:3px 9px;background:var(--danger-bg-soft);color:var(--danger-text-strong);border:1px solid var(--danger-border-soft);border-radius:11px;font-weight:700;flex-shrink:0;white-space:nowrap">많이 늦음</span>`;
+      rightChip = `<span style="font-size:0.93rem;padding:3px 9px;background:var(--danger-bg-soft);color:var(--danger-text-strong);border:1px solid var(--danger-border-soft);border-radius:11px;font-weight:700;flex-shrink:0;white-space:nowrap">많이 늦음</span>`;
     } else if (vs === 'remind') {
-      rightChip = `<span style="font-size:0.7rem;padding:3px 9px;background:var(--warning-bg-soft);color:var(--warning-text-strong);border:1px solid var(--warning-border-soft);border-radius:11px;font-weight:700;flex-shrink:0;white-space:nowrap">올 때 됨</span>`;
+      rightChip = `<span style="font-size:0.93rem;padding:3px 9px;background:var(--warning-bg-soft);color:var(--warning-text-strong);border:1px solid var(--warning-border-soft);border-radius:11px;font-weight:700;flex-shrink:0;white-space:nowrap">올 때 됨</span>`;
     } else if (vs === 'churned') {
-      rightChip = `<span style="font-size:0.7rem;padding:3px 9px;background:var(--bg);color:var(--text-secondary);border:1px solid var(--border);border-radius:11px;font-weight:600;flex-shrink:0;white-space:nowrap">오래 안 옴</span>`;
+      rightChip = `<span style="font-size:0.93rem;padding:3px 9px;background:var(--bg);color:var(--text-secondary);border:1px solid var(--border);border-radius:11px;font-weight:600;flex-shrink:0;white-space:nowrap">오래 안 옴</span>`;
     }
 
     // 태그 뱃지 (작게) — 상세 화면과 같은 옅은 배지 (흰 글자 + 노랑 바탕은 다크·라이트 모두 잘 안 읽혔다)
     const tagBadges = (c.tags || []).map(t => {
       const tagColors = { vip: 'badge-warning', 'new': 'badge-info', normal: 'badge-secondary', regular: 'badge-success', caution: 'badge-danger' };
-      return `<span class="badge ${tagColors[t] || 'badge-secondary'}" style="font-size:0.72rem;padding:2px 7px">${tagLabelMap[t] || t}</span>`;
+      return `<span class="badge ${tagColors[t] || 'badge-secondary'}" style="font-size:0.93rem;padding:2px 7px">${tagLabelMap[t] || t}</span>`;
     }).join('');
 
     const lastVisitText = lastVisit[c.id] ? App.getRelativeTime(lastVisit[c.id]) + ' 방문' : '방문 없음';
@@ -920,7 +968,7 @@ App.pages.customers = {
         ${pBal > 0 ? `<span class="prepaid-badge">정액권 ${pBal.toLocaleString('ko-KR')}</span>` : ''}
         ${rightChip}
       </div>
-      <div style="font-size:0.82rem;color:var(--text-secondary);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">
+      <div style="font-size:0.93rem;color:var(--text-secondary);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">
         ${c.phone ? `<a href="tel:${App.escapeHtml(App.phoneDigits(c.phone))}" style="color:var(--primary);font-weight:600" onclick="event.stopPropagation()">${phoneText}</a>` : '<span style="color:var(--text-muted)">전화 없음</span>'}
         <span style="color:var(--border)">·</span>
         <span style="color:var(--text-muted)">${lastVisitText}</span>
@@ -935,9 +983,9 @@ App.pages.customers = {
     if (!entries.length) {
       return `
       <div class="detail-section prepaid-section prepaid-empty" style="display:flex;align-items:center;gap:8px;padding-top:10px;padding-bottom:10px">
-        <span style="font-size:0.88rem;color:var(--text-secondary)">정액권 잔액 <strong>0원</strong></span>
+        <span style="font-size:0.93rem;color:var(--text-secondary)">정액권 잔액 <strong>0원</strong></span>
         <span style="color:var(--text-muted)">·</span>
-        <button type="button" class="btn btn-sm btn-ghost btn-prepaid-act" data-act="charge" data-customer-id="${customer.id}" style="min-height:36px">충전</button>
+        <button type="button" class="btn btn-sm btn-ghost btn-prepaid-act" data-act="charge" data-customer-id="${customer.id}" style="min-height:44px">충전</button>
       </div>`;
     }
     const recMap = {}; (records || []).forEach(r => { recMap[r.id] = r; });
@@ -1012,7 +1060,7 @@ App.pages.customers = {
     } else if (type === 'charge') {
       title = entry ? '정액권 충전 수정' : '정액권 충전';
       content = `
-        <div style="font-size:0.88rem;color:var(--text-secondary);margin-bottom:10px">${who} · 지금 잔액 ${App.formatCurrency(balance)}</div>
+        <div style="font-size:0.93rem;color:var(--text-secondary);margin-bottom:10px">${who} · 지금 잔액 ${App.formatCurrency(balance)}</div>
         <div class="form-group"><label class="form-label">받은 금액 (원) <span class="required">*</span></label>
           <input type="number" id="pp-amount" inputmode="numeric" min="0" step="10000" value="${entry ? Number(entry.amount) || '' : ''}" placeholder="예: 300000"></div>
         <div class="form-group"><label class="form-label">보너스 (원) <span style="font-weight:400;color:var(--text-muted)">(선택 — 덤으로 더 넣어 주는 금액)</span></label>
@@ -1032,7 +1080,7 @@ App.pages.customers = {
       const ded0 = entry ? -(Number(entry.credit) || 0) : Math.max(0, balance);
       const paidDiffers = !!entry && Number(entry.amount) !== ded0;
       content = `
-        <div style="font-size:0.88rem;color:var(--text-secondary);margin-bottom:10px">${who} · 지금 잔액 ${App.formatCurrency(balance)}</div>
+        <div style="font-size:0.93rem;color:var(--text-secondary);margin-bottom:10px">${who} · 지금 잔액 ${App.formatCurrency(balance)}</div>
         <div class="form-group"><label class="form-label">환불 금액 (원) <span class="required">*</span></label>
           <input type="number" id="pp-amount" inputmode="numeric" min="0" step="1000" value="${ded0 || ''}">
           <button type="button" class="cf-more-toggle" id="pp-paid-toggle"${paidDiffers ? ' style="display:none"' : ''}>+ 실제 돌려준 금액이 다르면</button>
@@ -1047,7 +1095,7 @@ App.pages.customers = {
       title = entry ? '정액권 조정 수정' : '정액권 조정';
       const c0 = entry ? Number(entry.credit) || 0 : 0;
       content = `
-        <div style="font-size:0.88rem;color:var(--text-secondary);margin-bottom:10px">${who} · 지금 잔액 ${App.formatCurrency(balance)}<br><small style="color:var(--text-muted)">장부를 맞출 때만 쓰세요 (예: 종이 장부 잔액 옮기기, 노쇼로 예약금을 돌려주지 않을 때). 돈이 오가면 충전·환불로.</small></div>
+        <div style="font-size:0.93rem;color:var(--text-secondary);margin-bottom:10px">${who} · 지금 잔액 ${App.formatCurrency(balance)}<br><small style="color:var(--text-muted)">장부를 맞출 때만 쓰세요 (예: 종이 장부 잔액 옮기기, 노쇼로 예약금을 돌려주지 않을 때). 돈이 오가면 충전·환불로.</small></div>
         ${entry ? '' : `<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:12px"><button type="button" class="payment-chip pp-memo-preset" data-memo="노쇼 예약금" data-sign="minus">노쇼 예약금 (돌려주지 않음)</button></div>`}
         <div class="form-group"><label class="form-label">잔액을</label>
           <div style="display:flex;gap:6px">${methodChips(c0 < 0 ? 'minus' : 'plus', [['plus', '늘리기 +'], ['minus', '줄이기 −']])}</div></div>
@@ -1177,7 +1225,7 @@ App.pages.customers = {
     if (!tags || tags.length === 0) return '';
     const tagLabels = { vip: 'VIP', 'new': '신규', normal: '일반', regular: '단골', caution: '주의' };
     const tagColors = { vip: 'badge-warning', 'new': 'badge-info', normal: 'badge-secondary', regular: 'badge-success', caution: 'badge-danger' };
-    return tags.map(t => `<span class="badge ${tagColors[t] || 'badge-secondary'}" style="font-size:0.7rem;margin-left:4px;padding:3px 8px">${tagLabels[t] || t}</span>`).join('');
+    return tags.map(t => `<span class="badge ${tagColors[t] || 'badge-secondary'}" style="font-size:0.93rem;margin-left:4px;padding:3px 8px">${tagLabels[t] || t}</span>`).join('');
   },
 
   _searchQuery: '',
@@ -1186,8 +1234,7 @@ App.pages.customers = {
 
   applyFilters() {
     const q = (this._searchQuery || '').trim().toLowerCase();
-    // 전화번호처럼 생긴 검색어는 숫자만 비교한다 ('010 1111'·'0101111'·'010-1111' 모두 같은 결과 — 예약 화면 고객 검색과 같은 규칙)
-    const qDigits = /^[\d\s\-+().]+$/.test(q) ? q.replace(/\D/g, '') : '';
+    // 검색어 맞추기는 App.searchMatch — 초성(ㅊㅋ)·전화 숫자(하이픈 무시)·띄어 쓴 여러 낱말 모두 맞아야
     const tag = this._tagFilter || '';
     const visit = this._visitFilter || '';
 
@@ -1200,7 +1247,7 @@ App.pages.customers = {
     }));
 
     const matchesFilter = (el) => {
-      const textMatch = !q || (qDigits ? (el.dataset.search || '').replace(/[^\d ]/g, '').includes(qDigits) : (el.dataset.search || '').includes(q));
+      const textMatch = !q || App.searchMatch(el.dataset.search || '', q);
       const tagMatch = !tag || (el.dataset.tags || '').split(',').includes(tag);
       const visitMatch = !visit || (el.dataset.visitStatus || '') === visit;
       return textMatch && tagMatch && visitMatch;

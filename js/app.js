@@ -25,6 +25,10 @@ const App = {
       this.setupMobileKeyboard();
       this.handleRoute();
       window.addEventListener('hashchange', () => this.handleRoute());
+      // 저장 안 한 변경이 있는 화면(App.leaveGuardDirty)에서 새로고침·닫기 → 브라우저가 한 번 묻는다
+      window.addEventListener('beforeunload', (e) => {
+        if (this.leaveGuardDirty) { e.preventDefault(); e.returnValue = ''; }
+      });
       // 기기 간 동기화 (켜져 있을 때만 동작, 앱 시작을 막지 않는다)
       this.setupSyncDot();
       if (typeof Sync !== 'undefined') {
@@ -92,8 +96,9 @@ const App = {
   },
 
   setupModal() {
-    document.getElementById('modal-close').addEventListener('click', () => this.closeModal());
-    document.getElementById('modal-cancel').addEventListener('click', () => this.closeModal());
+    // ×·닫기 버튼도 바깥 누름과 같이 — 작성 중이면 한 번 묻는다
+    document.getElementById('modal-close').addEventListener('click', () => this.requestCloseModal());
+    document.getElementById('modal-cancel').addEventListener('click', () => this.requestCloseModal());
     document.getElementById('modal-overlay').addEventListener('click', (e) => {
       if (e.target === e.currentTarget) this.requestCloseModal();
     });
@@ -147,13 +152,28 @@ const App = {
           this.closeConfirm(false);
         } else if (Array.from(document.querySelectorAll('#modal-body .search-select-dropdown')).some(d => d.style.display !== 'none' && d.offsetParent !== null)) {
           // 자동완성 목록이 열려 있으면 목록만 닫는다 (창을 닫거나 '작성 중' 확인을 띄우지 않는다)
-          document.querySelectorAll('#modal-body .search-select-dropdown').forEach(d => { d.style.display = 'none'; });
+          // 고객 고르기 목록은 .open 클래스로, 기록 폼 자동완성은 style.display 로 열고 닫는다 — 둘 다 같은 방식으로 닫아야
+          // (예전엔 고객 목록에 display:none 을 박아 두어, 그 뒤로는 칸을 눌러도 목록이 다시 안 열렸다)
+          document.querySelectorAll('#modal-body .search-select-dropdown').forEach(d => {
+            if (d.classList.contains('open')) { d.classList.remove('open', 'search-select-dropdown-form'); this._quickCustFormOpen = false; }
+            if (d.style.display) d.style.display = 'none';
+          });
         } else if (!document.getElementById('modal-overlay').classList.contains('hidden')) {
           this.requestCloseModal();
         }
       }
+      // 창(모달·확인)이 열려 있으면 찾기를 열지 않는다 — 찾기를 닫을 때 뒤로가기가 그 창까지 닫는다
+      const overOpen = ['modal-overlay', 'confirm-overlay'].some(id => !document.getElementById(id)?.classList.contains('hidden'));
+      // Ctrl/Cmd+K — 어디서든 찾기 (입력 중이어도)
+      if (!overOpen && (e.ctrlKey || e.metaKey) && !e.altKey && (e.key === 'k' || e.key === 'K')) {
+        e.preventDefault();
+        const so = document.getElementById('global-search-overlay');
+        if (so && so.classList.contains('hidden')) this.openSearch();
+        else document.getElementById('global-search-input')?.focus();
+        return;
+      }
       // "/" shortcut to open search (when not in input/textarea/select)
-      if (e.key === '/' && !e.ctrlKey && !e.metaKey && !e.altKey) {
+      if (!overOpen && e.key === '/' && !e.ctrlKey && !e.metaKey && !e.altKey) {
         const tag = document.activeElement?.tagName;
         if (tag !== 'INPUT' && tag !== 'TEXTAREA' && tag !== 'SELECT') {
           e.preventDefault();
@@ -412,6 +432,25 @@ const App = {
 
   // 모바일 키패드 올라올 때 모달/오버레이 높이 조정
   setupMobileKeyboard() {
+    // 이미 키패드가 올라온 채 다음 칸(예: 서비스 수정의 가격)을 누르면 viewport resize 가 안 나서 칸이 키패드 밑에 숨었다.
+    // → 모달 안 입력 칸에 포커스가 오면 잠시 뒤 한 번만, 화면 아래쪽에 있을 때만 가운데로 올린다.
+    //   그 사이 사용자가 직접 스크롤(터치 이동)하면 건드리지 않는다.
+    let userMoved = false;
+    document.addEventListener('touchmove', () => { userMoved = true; }, { passive: true });
+    document.addEventListener('focusin', (e) => {
+      const el = e.target;
+      if (!el || !el.matches || !el.matches('input:not([type="checkbox"]):not([type="radio"]):not([type="hidden"]), select, textarea')) return;
+      if (!el.closest('#modal-overlay')) return;
+      userMoved = false;
+      setTimeout(() => {
+        if (userMoved || document.activeElement !== el) return;
+        const vh = window.visualViewport ? window.visualViewport.height + window.visualViewport.offsetTop : window.innerHeight;
+        const r = el.getBoundingClientRect();
+        if (r.bottom > vh * 0.6 || r.top < 0) {
+          try { el.scrollIntoView({ block: 'center', behavior: 'smooth' }); } catch (_) { el.scrollIntoView(); }
+        }
+      }, 300);
+    });
     if (!window.visualViewport) return;
     let pending = false;
     const onResize = () => {
@@ -452,7 +491,7 @@ const App = {
   setupOfflineIndicator() {
     const banner = document.createElement('div');
     banner.id = 'offline-banner';
-    banner.style.cssText = 'display:none;position:fixed;top:0;left:0;right:0;z-index:10000;background:var(--danger,#e74c3c);color:#fff;text-align:center;padding:6px;font-size:0.82rem;font-weight:600';
+    banner.style.cssText = 'display:none;position:fixed;top:0;left:0;right:0;z-index:10000;background:var(--danger,#e74c3c);color:#fff;text-align:center;padding:6px;font-size:0.93rem;font-weight:600';
     banner.textContent = '오프라인 상태입니다';
     document.body.prepend(banner);
     const update = () => {
@@ -465,8 +504,24 @@ const App = {
     update();
   },
 
+  // 화면 떠나기 확인 (leaveGuard) 약속:
+  //  - App.leaveGuard = async (nextHash) => boolean. 다른 화면(해시가 바뀜)으로 갈 때 라우터가 먼저 부른다.
+  //    false → 주소를 지금 화면으로 되돌리고(다시 그리지 않음) 멈춘다. true(또는 오류) → 지우고 이동한다.
+  //  - App.leaveGuardDirty = true 이면 새로고침·앱 닫기 때 브라우저가 한 번 묻는다 (beforeunload).
+  //  - 실제로 다른 화면으로 넘어가면 둘 다 자동으로 지워진다 (화면이 다시 설정할 것).
+  //  - 같은 화면 새로고침(handleRoute() 직접 호출)은 묻지 않는다. App.navigate 도 hashchange 를 거치므로 같은 길.
   handleRoute() {
     const hash = window.location.hash.slice(1) || 'dashboard';
+    const prevHash = this._routeHash;
+    // 떠나기 거절 후 history.back()/forward() 로 되돌린 hashchange — 지금 화면 그대로 둔다
+    if (this._leaveRestoring && hash === prevHash) { this._leaveRestoring = false; return; }
+    if (prevHash != null && hash !== prevHash) {
+      if (typeof this.leaveGuard === 'function') return this._runLeaveGuard(hash, prevHash);
+      this.leaveGuard = null;
+      this.leaveGuardDirty = false;
+    }
+    this._routeHash = hash;
+    this._stampRouteIdx();
     const [page, ...params] = hash.split('/');
     this.currentPage = page;
 
@@ -525,14 +580,60 @@ const App = {
           <div class="empty-state">
             <div class="empty-state-icon">${this.icon('alert', 'ico-xl')}</div>
             <div class="empty-state-text">페이지를 불러오는 중 오류가 발생했습니다.</div>
-            <div style="font-size:0.82rem;color:var(--text-muted);margin:8px 0">${App.escapeHtml(err?.message || '')}</div>
+            <div style="font-size:0.93rem;color:var(--text-muted);margin:8px 0">${App.escapeHtml(err?.message || '')}</div>
             <div style="display:flex;gap:8px;justify-content:center">
               <button class="btn btn-primary" onclick="App.navigate('${page}')">다시 시도</button>
-              <button class="btn btn-secondary" onclick="App.navigate('dashboard')">대시보드로 이동</button>
+              <button class="btn btn-secondary" onclick="App.navigate('dashboard')">홈으로</button>
             </div>
           </div>`;
       }
     }
+  },
+
+  // 화면 이동마다 history 항목에 순번(routeIdx)을 붙여 둔다 — 떠나기 거절 때 뒤로/앞으로 중 어느 쪽으로 왔는지 알려고.
+  // 모달·확인창이 쌓은 항목(modalOpen/confirmOpen)에는 붙이지 않는다.
+  _stampRouteIdx() {
+    const st = history.state;
+    if (st && st.routeIdx != null) { this._curRouteIdx = st.routeIdx; return; }
+    if (st && (st.modalOpen || st.confirmOpen)) return;
+    const idx = (this._curRouteIdx || 0) + 1;
+    try { history.replaceState(Object.assign({}, st || {}, { routeIdx: idx }), ''); } catch (_) {}
+    this._curRouteIdx = idx;
+  },
+
+  async _runLeaveGuard(nextHash, prevHash) {
+    if (this._leaveGuardBusy) return; // 묻는 중에 또 바뀐 주소는 답을 받은 뒤 현재 주소 기준으로 처리
+    this._leaveGuardBusy = true;
+    // 확인창이 history 를 쌓기 전에 방향을 읽는다: 순번 없음 = 새로 연 주소(앞으로 쌓임), 작으면 뒤로가기, 크면 앞으로가기
+    const arrivedIdx = history.state && history.state.routeIdx;
+    const cameBack = arrivedIdx != null && this._curRouteIdx != null && arrivedIdx < this._curRouteIdx;
+    let ok = true;
+    try { ok = (await this.leaveGuard(nextHash)) !== false; }
+    catch (err) { console.warn('leaveGuard 오류 (이동 허용):', err); ok = true; }
+    // 확인창이 닫히며 낸 history.back() 이 끝난 뒤에 주소를 만져야 엉뚱한 항목을 바꾸지 않는다
+    const t0 = Date.now();
+    while (history.state && history.state.confirmOpen && Date.now() - t0 < 600) {
+      await new Promise(r => setTimeout(r, 30));
+    }
+    this._leaveGuardBusy = false;
+    if (!ok) {
+      // 들어온 이동을 되감는다 (주소만 바꿔 치우면 같은 항목이 두 번 남거나 앞 화면이 지워져 뒤로가기가 꼬였다)
+      if (cameBack) {
+        // 뒤로가기로 왔으면: 확인창의 pushState 가 앞 항목(지금 화면)을 이미 지웠다 → forward() 로는 못 돌아간다.
+        // 지금 화면 주소를 같은 순번으로 다시 쌓는다 (pushState 는 hashchange 를 내지 않아 다시 묻거나 그리지 않는다)
+        history.pushState({ routeIdx: this._curRouteIdx }, '', '#' + prevHash);
+      } else {
+        // 새로 연 주소·앞으로가기로 왔으면: 한 칸 뒤로 — 그 hashchange 는 _leaveRestoring 으로 다시 묻거나 그리지 않는다
+        this._leaveRestoring = true;
+        clearTimeout(this._leaveRestoreTimer);
+        this._leaveRestoreTimer = setTimeout(() => { this._leaveRestoring = false; }, 1000);
+        history.back();
+      }
+      return; // leaveGuard 는 그대로 — 다음 이동 때도 다시 묻는다
+    }
+    this.leaveGuard = null;
+    this.leaveGuardDirty = false;
+    this.handleRoute();
   },
 
   navigate(page) {
@@ -569,10 +670,15 @@ const App = {
     const { title, content, onSave, size, hideFooter, saveText, noAutoFocus } = options;
     this._modalDirty = false;
     document.getElementById('modal-title').textContent = title;
-    document.getElementById('modal-body').innerHTML = content;
+    const modalBodyEl = document.getElementById('modal-body');
+    modalBodyEl.innerHTML = content;
 
     const modal = document.getElementById('modal');
     modal.classList.toggle('modal-lg', size === 'lg');
+    // 새로 여는 창은 항상 맨 위부터 — 앞 창(예: 미용 기록)에서 내려 둔 스크롤 위치가 남아 중간부터 보였다
+    const resetModalScroll = () => { modalBodyEl.scrollTop = 0; modal.scrollTop = 0; };
+    resetModalScroll();
+    requestAnimationFrame(resetModalScroll); // 내용이 그린 직후 높이가 바뀌는 창도 맨 위로
 
     const footer = document.getElementById('modal-footer');
     footer.style.display = hideFooter ? 'none' : 'flex';
@@ -736,7 +842,8 @@ const App = {
       const okBtn = document.getElementById('confirm-ok');
       const cancelBtn = document.getElementById('confirm-cancel');
       okBtn.textContent = options.okLabel || '확인';
-      if (cancelBtn) cancelBtn.textContent = options.cancelLabel || '취소';
+      // 기본 '돌아가기' — '취소'는 '예약 취소'와 헷갈린다
+      if (cancelBtn) cancelBtn.textContent = options.cancelLabel || '돌아가기';
       // danger 옵션이면 빨강 강조 (default도 btn-danger지만 명시적 처리)
       okBtn.classList.toggle('btn-danger', options.danger !== false);
       okBtn.classList.toggle('btn-primary', options.danger === false);
@@ -757,7 +864,7 @@ const App = {
   choose(message, choices, opts = {}) {
     let picked = null;
     return this.confirm(message, {
-      cancelLabel: opts.cancelLabel || '취소', danger: false,
+      cancelLabel: opts.cancelLabel || '돌아가기', danger: false,
       onOpen: (body, okBtn) => {
         okBtn.style.display = 'none';
         const wrap = document.createElement('div');
@@ -977,13 +1084,14 @@ const App = {
       if (!open && !pay && !write) return;
       e.preventDefault();
       e.stopPropagation();
-      if (open) this.pages.records?.showForm(Number(open.dataset.recordId));
+      // '기록 보기'는 읽기 전용 영수증 화면으로 연다 (수정 폼이 열려 실수로 고칠 수 있었다)
+      if (open) this.pages.records?.showReceipt(Number(open.dataset.recordId));
       else if (pay) this.showPayUnpaid(Number(pay.dataset.id));
       else this.pages.appointments?.completeToRecord(Number(write.dataset.id));
     }, true);
   },
 
-  // 미결제 기록 결제 처리 (대시보드 미수금·예약 카드 공용)
+  // 미결제 기록 결제 처리 (홈 미결제·예약 카드 공용) — 기록 폼 결제 칩과 같은 순서·기본값(카드)
   showPayUnpaid(recordId) {
     this.showModal({
       title: '결제 완료 처리',
@@ -991,8 +1099,8 @@ const App = {
         <div class="form-group">
           <label class="form-label">결제 수단을 선택하세요</label>
           <select id="f-pay-method">
+            <option value="card" selected>카드</option>
             <option value="cash">현금</option>
-            <option value="card">카드</option>
             <option value="transfer">계좌이체</option>
           </select>
         </div>
@@ -2781,13 +2889,13 @@ const App = {
 
     let html = `
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
-        <span style="font-weight:700;font-size:0.85rem;color:var(--text-secondary)">서비스 선택</span>
+        <span style="font-weight:700;font-size:0.93rem;color:var(--text-secondary)">서비스 선택</span>
         <button type="button" class="btn btn-sm btn-ghost" id="btn-toggle-services">전체 선택</button>
       </div>
     `;
     for (const cat of catOrder) {
       if (!grouped[cat] || grouped[cat].length === 0) continue;
-      html += `<div style="font-size:0.78rem;font-weight:700;color:var(--primary);margin:8px 0 4px;padding-bottom:2px;border-bottom:1px solid var(--primary-lighter)">${catLabels[cat] || cat}</div>`;
+      html += `<div style="font-size:0.93rem;font-weight:700;color:var(--primary);margin:8px 0 4px;padding-bottom:2px;border-bottom:1px solid var(--primary-lighter)">${catLabels[cat] || cat}</div>`;
       html += '<div class="service-select-grid">';
       html += grouped[cat].map(s => {
         const checked = selectedIds.includes(s.id);
@@ -3002,6 +3110,44 @@ const App = {
     }
   },
 
+  // ========== 찾기 공통: 검색어 맞추기 ==========
+  // searchMatch(대상, 검색어) — 화면 없이 쓰는 순수 함수 (전체 찾기·고객/반려견/기록/예약 목록 검색 공용)
+  //  · 대소문자 무시, 띄어 쓴 낱말은 모두 맞아야 한다 (AND)
+  //  · 초성만 친 낱말(ㅊㅋ)은 글자의 첫소리로 맞춘다 — 'ㅊㅋ' → 초코, 'ㅂㄷㅈ' → 박도준
+  //  · 숫자 낱말은 하이픈·점을 빼고 맞춘다 — '4444', '010-1234' → 010-1234-4444 (띄어 친 '010 1234'는 낱말 두 개로 AND)
+  //  대상은 문자열 또는 문자열 배열 (null 은 건너뜀)
+  _CHOSUNG: ['ㄱ','ㄲ','ㄴ','ㄷ','ㄸ','ㄹ','ㅁ','ㅂ','ㅃ','ㅅ','ㅆ','ㅇ','ㅈ','ㅉ','ㅊ','ㅋ','ㅌ','ㅍ','ㅎ'],
+  toChosung(str) {
+    let out = '';
+    for (const ch of String(str || '')) {
+      const c = ch.charCodeAt(0);
+      out += (c >= 0xAC00 && c <= 0xD7A3) ? this._CHOSUNG[Math.floor((c - 0xAC00) / 588)] : ch;
+    }
+    return out;
+  },
+  searchMatch(haystack, query) {
+    const tokens = String(query || '').trim().toLowerCase().split(/\s+/).filter(Boolean);
+    if (tokens.length === 0) return true;
+    const text = (Array.isArray(haystack) ? haystack.filter(v => v != null && v !== '').join('\n') : String(haystack == null ? '' : haystack)).toLowerCase();
+    let cho = null, digitsText = null;
+    return tokens.every(t => {
+      if (text.includes(t)) return true;
+      if (/^[ㄱ-ㅎ]+$/.test(t)) {
+        if (cho === null) cho = this.toChosung(text);
+        return cho.includes(t);
+      }
+      if (/\d/.test(t) && /^[\d\s\-.()+]+$/.test(t)) {
+        const d = t.replace(/\D/g, '');
+        if (!d) return false;
+        // 숫자 사이의 하이픈·점만 지운다 (배열 항목은 줄바꿈으로 이어 서로 붙지 않게)
+        // 띄어쓰기는 잇지 않는다 — 목록 검색은 칸들을 띄어쓰기로 이어 붙여서 '전화 뒷자리 + 메모 숫자'가 붙어 맞았다
+        if (digitsText === null) digitsText = text.replace(/(\d)[\-.]+(?=\d)/g, '$1');
+        return digitsText.includes(d);
+      }
+      return false;
+    });
+  },
+
   // ========== Global Quick Search ==========
   _searchData: null,
   _searchDebounceTimer: null,
@@ -3015,6 +3161,10 @@ const App = {
     if (!btn || !overlay) return;
 
     btn.addEventListener('click', () => this.openSearch());
+    // 폰: 화면 맨 위 오른쪽 돋보기 (데스크톱 떠 있는 버튼은 폰에서 숨김)
+    document.getElementById('mobile-search-btn')?.addEventListener('click', () => this.openSearch());
+    // 컴퓨터·태블릿: 왼쪽 메뉴 맨 위 '찾기' (href="#" 이라 주소가 바뀌지 않게 막는다)
+    document.getElementById('sidebar-search-btn')?.addEventListener('click', (e) => { e.preventDefault(); this.openSearch(); });
     closeBtn.addEventListener('click', () => this.closeSearch());
 
     // Close on background click
@@ -3039,10 +3189,12 @@ const App = {
     // Preload data for instant search (lightweight - no photo/memo fields)
     try {
       // 기록은 미리 읽지 않는다 — 고객 카드를 열 때 그 고객 기록만 읽는다 (기록 전체를 읽으면 몇 년 뒤 검색이 느려진다)
-      const [customers, pets, services] = await Promise.all([
+      // 오늘부터 앞으로의 예약만 (지난 예약은 읽지 않는다 — 가볍게)
+      const [customers, pets, services, upcoming] = await Promise.all([
         DB.getAll('customers'),
         DB.getAllLight('pets', ['photo', 'preferredStyle']),
-        DB.getAll('services')
+        DB.getAll('services'),
+        DB.getByDateRange('appointments', 'date', this.getToday(), null).catch(() => [])
       ]);
       const records = [];
 
@@ -3069,7 +3221,12 @@ const App = {
       const petMap = {};
       pets.forEach(p => { petMap[p.id] = p; });
 
-      this._searchData = { customers, petsByCustomer, recordsByCustomer, serviceMap, petMap };
+      const apptsByCustomer = {};
+      (upcoming || []).filter(a => !['cancelled', 'noshow', 'completed'].includes(a.status))
+        .sort((a, b) => ((a.date || '') + (a.time || '')).localeCompare((b.date || '') + (b.time || '')))
+        .forEach(a => { (apptsByCustomer[a.customerId] = apptsByCustomer[a.customerId] || []).push(a); });
+
+      this._searchData = { customers, petsByCustomer, recordsByCustomer, serviceMap, petMap, apptsByCustomer };
     } catch (err) {
       console.error('Search data load error:', err);
       this._searchData = null;
@@ -3115,21 +3272,10 @@ const App = {
       return;
     }
 
-    const { customers, petsByCustomer } = this._searchData;
-    const q = query.toLowerCase();
-    const qDigits = query.replace(/\D/g, '');
-
-    const matched = customers.filter(c => {
-      // Match by name
-      if ((c.name || '').toLowerCase().includes(q)) return true;
-      // Match by phone (including partial - last digits)
-      const phoneDigits = (c.phone || '').replace(/\D/g, '');
-      if (qDigits.length >= 3 && phoneDigits.includes(qDigits)) return true;
-      // Match by pet name
-      const cPets = petsByCustomer[c.id] || [];
-      if (cPets.some(p => (p.name || '').toLowerCase().includes(q))) return true;
-      return false;
-    });
+    const { customers, petsByCustomer, apptsByCustomer } = this._searchData;
+    // 이름·전화·반려견 이름·품종을 한데 묶어 맞춘다 (초성·전화 뒷자리·띄어 쓴 여러 낱말 — searchMatch)
+    const matched = customers.filter(c => this.searchMatch(
+      [c.name, c.phone, ...(petsByCustomer[c.id] || []).flatMap(p => [p.name, p.breed])], query));
 
     if (matched.length === 0) {
       resultsContainer.innerHTML = `
@@ -3163,8 +3309,13 @@ const App = {
       return;
     }
 
-    // Multiple results - show list
-    resultsContainer.innerHTML = matched.slice(0, 20).map(c => {
+    // Multiple results - show list (맞은 손님의 다가오는 예약을 맨 위에 — 누르면 그 예약이 열린다)
+    const apptRows = matched.flatMap(c => (apptsByCustomer?.[c.id] || []).map(a => ({ a, c })))
+      .sort((x, y) => ((x.a.date || '') + (x.a.time || '')).localeCompare((y.a.date || '') + (y.a.time || '')))
+      .slice(0, 5);
+    resultsContainer.innerHTML = (apptRows.length ? `<div class="gs-section-label">${this.icon('calendar')} 다가오는 예약</div>` +
+      apptRows.map(({ a, c }) => this._searchApptRow(a, c)).join('') +
+      `<div class="gs-section-label">${this.icon('users')} 고객</div>` : '') + matched.slice(0, 20).map(c => {
       const cPets = petsByCustomer[c.id] || [];
       const petNames = cPets.map(p => p.name).join(', ');
       const label = App.getCustomerLabel(c, cPets);
@@ -3182,8 +3333,9 @@ const App = {
         </div>`;
     }).join('');
 
+    this._bindSearchApptRows(resultsContainer);
     // Click handler for result items
-    resultsContainer.querySelectorAll('.gs-result-item').forEach(item => {
+    resultsContainer.querySelectorAll('.gs-result-item[data-customer-id]').forEach(item => {
       item.addEventListener('click', () => {
         const cid = Number(item.dataset.customerId);
         const customer = matched.find(c => c.id === cid);
@@ -3191,6 +3343,35 @@ const App = {
           this._renderSearchCard(resultsContainer, customer);
         }
       });
+    });
+  },
+
+  // 찾기 결과의 예약 한 줄 — '11/7(금) 14:00 · 초코 · 전체미용'
+  _searchApptRow(a, c) {
+    const pet = this._searchData?.petMap?.[a.petId];
+    const svc = this.apptServiceNames ? this.apptServiceNames(a, this._searchData?.serviceMap || {}) : '';
+    const when = (a.date === this.getToday() ? '오늘' : this.formatDate(a.date)) + (a.time ? ' ' + a.time : '');
+    const who = pet ? pet.name : this.getCustomerLabel(c, this._searchData?.petsByCustomer?.[c.id] || []);
+    return `
+      <div class="gs-result-item gs-appt-row" tabindex="0" role="button" data-appt-id="${a.id}">
+        <div class="gs-result-avatar">${this.icon('calendar')}</div>
+        <div class="gs-result-info" style="flex:1">
+          <div class="gs-result-name">${this.escapeHtml(when)} · ${this.escapeHtml(who)}</div>
+          ${svc && svc !== '-' ? `<div class="gs-result-pets">${this.escapeHtml(svc)}</div>` : ''}
+        </div>
+        <div class="gs-result-arrow">${this.icon('chevron-right')}</div>
+      </div>`;
+  },
+  _bindSearchApptRows(container) {
+    container.querySelectorAll('.gs-appt-row').forEach(row => {
+      const open = () => {
+        const id = Number(row.dataset.apptId);
+        this.closeSearch();
+        // closeSearch 의 history.back() 이 끝난 뒤 연다
+        setTimeout(() => this.pages.appointments?.showForm(id), 150);
+      };
+      row.addEventListener('click', open);
+      row.addEventListener('keydown', (e) => { if (e.key === 'Enter') open(); });
     });
   },
 
@@ -3249,9 +3430,11 @@ const App = {
         <div class="gs-card-section">
           <div class="gs-card-section-title">${this.icon('scissors')} 최근 미용 기록</div>
           ${recentRecords.map(r => {
-            const sNames = (r.serviceIds || []).map(id => serviceMap[id] || '').filter(Boolean).join(', ') || '-';
+            // 요즘 기록은 메뉴 이름이 r.service·addons 에 있다 (serviceIds 만 보면 '콩이 | -' 로 나왔다)
+            const shown = this.getRecordServiceDisplay(r, serviceMap);
+            const sNames = shown && shown !== '-' ? shown : '';
             const pet = petMap[r.petId];
-            const petLabel = pet ? pet.name + ' | ' : '';
+            const petLabel = pet ? pet.name + (sNames ? ' | ' : '') : '';
             return `
               <div class="gs-record-item">
                 <span class="gs-record-date">${this.formatDate(r.date)}</span>
@@ -3268,18 +3451,26 @@ const App = {
       unpaidHtml = `
         <div class="gs-card-section">
           <div class="gs-unpaid">
-            <span class="gs-unpaid-label">${this.icon('coins')} 미수금</span>
+            <span class="gs-unpaid-label">${this.icon('coins')} 미결제</span>
             <span class="gs-unpaid-amount">${this.formatCurrency(unpaidBalance)}</span>
           </div>
         </div>`;
     } else {
       unpaidHtml = `
         <div class="gs-card-section">
-          <div style="display:flex;align-items:center;gap:6px;font-size:0.9rem;color:var(--success);font-weight:600">
-            ${this.icon('coins')} 미수금: 0원
+          <div style="display:flex;align-items:center;gap:6px;font-size:0.93rem;color:var(--success);font-weight:600">
+            ${this.icon('coins')} 미결제: 0원
           </div>
         </div>`;
     }
+
+    // 다가오는 예약 (있을 때만)
+    const cAppts = (this._searchData.apptsByCustomer?.[customer.id] || []).slice(0, 3);
+    const apptsHtml = cAppts.length ? `
+        <div class="gs-card-section">
+          <div class="gs-card-section-title">${this.icon('calendar')} 다가오는 예약</div>
+          ${cAppts.map(a => this._searchApptRow(a, customer)).join('')}
+        </div>` : '';
 
     // Memo section
     let memoHtml = '';
@@ -3302,6 +3493,7 @@ const App = {
           <a href="tel:${this.escapeHtml(phoneClean)}" class="gs-card-phone">${this.formatPhoneHtml(customer.phone)}</a>
         </div>
         <div class="gs-card-body">
+          ${apptsHtml}
           ${petsHtml}
           ${recordsHtml}
           ${unpaidHtml}
@@ -3336,6 +3528,7 @@ const App = {
         </div>
       </div>`;
 
+    this._bindSearchApptRows(container);
     // Back button
     document.getElementById('gs-back-btn')?.addEventListener('click', () => {
       const q = document.getElementById('global-search-input')?.value.trim();
@@ -3379,7 +3572,8 @@ const App = {
     // Detail button
     document.getElementById('gs-action-detail')?.addEventListener('click', () => {
       this.closeSearch();
-      this.navigate('customers/' + customer.id);
+      // closeSearch 의 history.back() 이 끝난 뒤 이동 — 바로 바꾸면 뒤로가기가 이동을 되돌렸다
+      setTimeout(() => this.navigate('customers/' + customer.id), 150);
     });
   },
 

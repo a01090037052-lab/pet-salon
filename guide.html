@@ -439,9 +439,94 @@
     table.guide-table th {
       background: #F3F4F6;
     }
+
+    /* 상단 고정 줄: 앱으로 돌아가기 + 찾기 (body padding 바깥까지 가득) */
+    .guide-topbar {
+      position: sticky;
+      top: 0;
+      z-index: 900;
+      margin: -20px -20px 20px;
+      padding: calc(8px + env(safe-area-inset-top, 0px)) 16px 10px;
+      background: rgba(255, 255, 255, 0.97);
+      border-bottom: 1px solid #E9D5FF;
+      box-shadow: 0 2px 10px rgba(124, 58, 237, 0.08);
+    }
+    .guide-topbar-inner {
+      max-width: 900px;
+      margin: 0 auto;
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+    .guide-back {
+      align-self: flex-start;
+      display: inline-flex;
+      align-items: center;
+      min-height: 44px;
+      padding: 0 12px 0 4px;
+      color: #7C3AED;
+      font-weight: 700;
+      font-size: 1rem;
+      text-decoration: none;
+    }
+    .guide-search-wrap { position: relative; }
+    .guide-search-wrap input {
+      width: 100%;
+      min-height: 46px;
+      padding: 10px 92px 10px 14px;
+      font-size: 16px; /* 16px 미만이면 아이폰이 확대한다 */
+      border: 1.5px solid #D8B4FE;
+      border-radius: 10px;
+      background: #fff;
+      color: #333;
+      -webkit-appearance: none;
+      appearance: none;
+    }
+    .guide-search-wrap input:focus { outline: none; border-color: #A855F7; box-shadow: 0 0 0 3px rgba(168, 85, 247, 0.18); }
+    .guide-search-count {
+      position: absolute;
+      right: 12px;
+      top: 50%;
+      transform: translateY(-50%);
+      font-size: 0.875rem;
+      font-weight: 700;
+      color: #7C3AED;
+      pointer-events: none;
+    }
+    .guide-no-results {
+      display: none;
+      padding: 24px 16px;
+      margin-bottom: 24px;
+      text-align: center;
+      background: #F9F5FF;
+      border-radius: 12px;
+      color: #6B21A8;
+    }
+    mark.guide-hit { background: #FDE68A; color: inherit; padding: 0 1px; border-radius: 3px; }
+    .guide-hidden { display: none !important; }
+    section, details.appendix, h3[id], h4[id] { scroll-margin-top: 130px; }
+
+    @media (max-width: 768px) {
+      body { padding: 0; font-size: 16px; line-height: 1.6; }
+      .guide-topbar { margin: 0; }
+      .container { border-radius: 0; box-shadow: none; }
+      main { padding: 20px 16px; }
+      p, li, td, th, .feature-desc, .menu-text small, details.appendix > .appendix-body, table.guide-table { font-size: max(15px, 1em); line-height: 1.6; }
+      p { line-height: 1.7; }
+      footer { font-size: 15px; }
+    }
   </style>
 </head>
 <body>
+  <div class="guide-topbar">
+    <div class="guide-topbar-inner">
+      <a href="./index.html" class="guide-back" id="guide-back">← 앱으로 돌아가기</a>
+      <div class="guide-search-wrap">
+        <input type="search" id="guide-search" placeholder="찾기 (예: 정액권, 백업, 미결제)" autocomplete="off" enterkeyhint="search" aria-label="가이드에서 찾기">
+        <span class="guide-search-count" id="guide-search-count" aria-live="polite"></span>
+      </div>
+    </div>
+  </div>
   <div class="container">
     <header>
       <h1>펫살롱</h1>
@@ -449,6 +534,7 @@
     </header>
 
     <main>
+      <div class="guide-no-results" id="guide-no-results">찾는 내용이 없어요. 다른 낱말로 찾아보세요 (예: '예약' 대신 '예약금').</div>
       <div class="table-of-contents">
         <h2>목차</h2>
         <ul>
@@ -485,7 +571,7 @@
             <strong>가격 구간 · 서비스 메뉴</strong>
             <p>설정 → <strong>운영 설정</strong> → 가격 구간 카드의 <strong>[구간 편집]</strong>에서 몸무게 구간(기본 ~3 / 3~5 / 5~7 / 7~10 / 10kg~)을 확인합니다. 몸무게와 상관없이 같은 가격을 받으면 맨 위 "몸무게 구간 사용 안 함"을 체크하세요.</p>
             <p>다음으로 더보기 → <strong>서비스 메뉴</strong>에서 <strong>[+ 새 서비스]</strong>로 만듭니다 (메뉴가 비어 있을 때는 <strong>[기본 서비스 등록]</strong>으로 기본 메뉴를 골라 넣을 수 있음). 구간 가격은 접힌 "한 번에 채우기"를 열어 첫 구간 가격을 넣고 [채우기]를 누르면 빠릅니다. → <a href="#price-bands">가격 구간 자세히</a></p>
-            <p>소·중·대 3단계, 견종별 가격, 목욕 전문, 고양이 등 가게 유형별 설정은 <a href="#shop-types">샵 유형별 설정 요령</a>을 보세요.</p>
+            <p>소·중·대 3단계, 견종별 가격, 목욕 전문, 고양이 등 매장 유형별 설정은 <a href="#shop-types">샵 유형별 설정 요령</a>을 보세요.</p>
           </div>
         </div>
 
@@ -519,7 +605,7 @@
 
         <h3>예약 받기</h3>
         <ol>
-          <li>전화가 오면 손님을 찾습니다. 휴대폰은 하단 <strong>고객</strong> 탭 검색창, 컴퓨터는 오른쪽 아래 돋보기나 <span class="keyboard-key">/</span> 키. 이름·반려견 이름·전화번호 뒷자리 4개("9876") 모두 됩니다.</li>
+          <li>전화가 오면 손님을 찾습니다. 휴대폰은 화면 오른쪽 위 돋보기, 컴퓨터는 왼쪽 메뉴의 <strong>찾기</strong>나 <span class="keyboard-key">/</span> 키(또는 Ctrl+K). 이름·반려견 이름·전화번호 뒷자리 4개("9876")·초성("ㅊㅋ" → 초코) 모두 됩니다.</li>
           <li>기존 손님이면 결과에서 <strong>예약</strong>을 누릅니다.</li>
           <li>새 손님이면 고객 탭의 <strong>[+ 새 고객(반려견)]</strong> (또는 [+] → 새 고객 · 반려견). <strong>반려견 이름</strong>과 <strong>연락처</strong>(필수)만 넣고 저장 → 이어서 나오는 <strong>[예약 등록]</strong>을 누릅니다 ([상세 보기]로 나머지 정보를 넣어도 됨).</li>
           <li>날짜부터 정하려면 <strong>예약</strong> 탭 달력에서 날짜를 누르고 <strong>[+ 이 날짜에 예약 추가]</strong>.</li>
@@ -548,7 +634,7 @@
         <h3>마감 정산</h3>
         <ol>
           <li>더보기 → <strong>매출</strong> → <strong>오늘</strong> 탭에서 오늘 매출과 결제 수단별 합계를 봅니다.</li>
-          <li>미수금이 있으면 홈의 <strong>미결제 현황</strong> 카드에서 처리합니다 (<a href="#money">돈 관리</a>).</li>
+          <li>미결제이 있으면 홈의 <strong>미결제 현황</strong> 카드에서 처리합니다 (<a href="#money">돈 관리</a>).</li>
           <li>종이로 남기려면 <strong>[일일 정산표]</strong>를 누릅니다.</li>
         </ol>
       </section>
@@ -570,7 +656,7 @@
         </ul>
         <p>문자·전화를 누르면 "연락함"으로 표시되고 잠시 목록에서 내려갑니다. 앞으로 예약이 잡힌 손님은 자동으로 빠집니다.</p>
 
-        <h3>미수금 문자</h3>
+        <h3>미결제 문자</h3>
         <p>홈 <strong>미결제 현황</strong> 카드의 [문자]를 누르면 반려견 이름·날짜·금액이 들어간 정중한 안내 문구가 채워집니다. 돈을 받으면 같은 줄의 <strong>[결제]</strong>를 누르세요.</p>
 
         <h3>생일 문자</h3>
@@ -579,7 +665,7 @@
         <h3>문자 문구 고치기</h3>
         <ol>
           <li>설정 → 운영 설정 → <strong>메시지 템플릿</strong>.</li>
-          <li>고칠 문구(예약 확인·미용 완료·미수금 안내 등 10가지)를 고릅니다.</li>
+          <li>고칠 문구(예약 확인·미용 완료·미결제 안내 등 10가지)를 고릅니다.</li>
           <li><code>{반려견명}</code> 같은 변수는 수정 화면의 변수 버튼으로 넣습니다. 보낼 때 실제 이름·날짜로 바뀝니다.</li>
         </ol>
         <p>문구 10가지와 변수 목록은 <a href="#screens">부록 › 화면별 상세 설명</a>에 있습니다.</p>
@@ -589,23 +675,23 @@
       <section id="money">
         <h2>4. 돈 관리</h2>
 
-        <h3>매출과 실입금</h3>
+        <h3>매출과 받은 돈</h3>
         <p>더보기 → 매출 → <strong>이번 달</strong> 탭 맨 위에 두 숫자가 나란히 나옵니다.</p>
         <ul>
-          <li><strong>이번 달 매출</strong> — 미용한 날 기준, 미수금 포함 (세금 신고 기준)</li>
-          <li><strong>실제 받은 돈(실입금)</strong> — 이번 달에 실제로 들어온 돈 (정액권 충전 포함)</li>
+          <li><strong>이번 달 매출</strong> — 미용한 날 기준, 미결제 포함 (세금 신고 기준)</li>
+          <li><strong>받은 돈</strong> — 이번 달에 실제로 들어온 돈 (정액권 충전 포함)</li>
         </ul>
-        <p>그 아래 <strong>이번 달 받은 돈 · 결제 수단별</strong> 표는 실입금 기준이라 정액권 충전·환불이 수단별 줄로 들어갑니다. 정액권 사용과 미결제는 합계 밖 참고 줄입니다.</p>
-        <p>설정 → 운영 설정에 <strong>매출 목표</strong>와 <strong>고정비</strong>를 넣으면 목표 진행률과 순이익(실입금 기준)이 나옵니다. 지난달 데이터가 없으면 페이스·손익 카드 대신 한 줄 안내만 나옵니다. 요일별·월별 추이는 매출 화면 맨 아래 "자세한 분석 보기"에서 봅니다.</p>
+        <p>그 아래 <strong>이번 달 받은 돈 · 결제 수단별</strong> 표는 받은 돈 기준이라 정액권 충전·환불이 수단별 줄로 들어갑니다. 정액권 사용과 미결제는 합계 밖 참고 줄입니다.</p>
+        <p>설정 → 운영 설정에 <strong>매출 목표</strong>와 <strong>고정비</strong>를 넣으면 목표 진행률과 순이익(받은 돈 기준)이 나옵니다. 지난달 데이터가 없으면 페이스·손익 카드 대신 한 줄 안내만 나옵니다. 요일별·월별 추이는 매출 화면 맨 아래 "자세한 분석 보기"에서 봅니다.</p>
 
-        <h3>미수금</h3>
-        <p>결제 수단을 "미결제"로 저장한 기록이 미수금입니다. 홈 <strong>미결제 현황</strong> 카드에 5건까지 보이고, 더 있으면 "전체 N건 보기 →"로 미용 기록 목록에서 다 봅니다. [문자]로 안내하고, 받으면 <strong>[결제]</strong>로 결제 수단을 정합니다. 이번 달 탭의 "미수금 N건"을 눌러도 홈으로 갑니다.</p>
+        <h3>미결제</h3>
+        <p>결제 수단을 "미결제"로 저장한 기록은 아직 돈을 받지 않은 것으로 남습니다. 홈 <strong>미결제 현황</strong> 카드에 5건까지 보이고, 더 있으면 "전체 N건 보기 →"로 미용 기록 목록에서 다 봅니다. [문자]로 안내하고, 받으면 <strong>[결제]</strong>로 결제 수단을 정합니다. 이번 달 탭의 "미결제 N건"을 눌러도 홈으로 갑니다.</p>
 
         <h3 id="prepaid">정액권 (선불 충전)</h3>
         <p>손님이 미리 돈을 맡기고 미용할 때마다 차감하는 금액형 정액권입니다. 한 보호자의 잔액을 그 집 반려견이 함께 씁니다. 쓰지 않으면 화면에 아무것도 늘어나지 않습니다.</p>
         <ol>
           <li><strong>충전:</strong> 고객 상세의 반려견 아래 '정액권' 칸에서 <strong>[충전]</strong> (내역이 없으면 "정액권 잔액 0원 · 충전" 한 줄). 받은 금액, 보너스([+5%]·[+10%]), 결제 방법을 고르면 충전 후 잔액이 보입니다. 예: 30만원 + 보너스 3만원 → 잔액 33만원.</li>
-          <li><strong>사용:</strong> 잔액이 있는 손님은 미용 기록의 결제 수단에 <strong>[정액권]</strong>이 자동으로 골라집니다. 합계만큼(모자라면 잔액만큼) 차감되고, 모자라면 "잔액 N원 — 나머지 M원은?"에서 현금·카드·계좌이체·미수 중 고릅니다. 영수증에 '정액권 사용 -N원 (잔액 M원)'이 찍힙니다.</li>
+          <li><strong>사용:</strong> 잔액이 있는 손님은 미용 기록의 결제 수단에 <strong>[정액권]</strong>이 자동으로 골라집니다. 합계만큼(모자라면 잔액만큼) 차감되고, 모자라면 "잔액 N원 — 나머지 M원은?"에서 현금·카드·계좌이체·미결제 중 고릅니다. 영수증에 '정액권 사용 -N원 (잔액 M원)'이 찍힙니다.</li>
           <li><strong>환불:</strong> '환불 금액' 한 칸만 적습니다. 보너스를 빼고 돌려줬을 때처럼 실제 돌려준 금액이 다르면 접힌 '실제 돌려준 금액이 다르면'을 열어 적습니다.</li>
           <li><strong>조정:</strong> 종이 장부 잔액을 옮길 때처럼 돈이 오가지 않을 때만. 이유(메모)를 꼭 적습니다.</li>
         </ol>
@@ -613,7 +699,7 @@
           <li>기록 금액을 고치거나 고객을 바꾸면 저장할 때 차감액을 다시 계산하고, 기록을 지우면 쓴 금액이 잔액으로 돌아갑니다.</li>
           <li>내역 줄을 누르면 고치거나 지울 수 있습니다 ('사용' 줄은 그 미용 기록이 열림).</li>
           <li>잔액이 남은 손님은 삭제할 수 없습니다. 먼저 환불(또는 조정)로 0원을 만드세요. 반려견을 다른 보호자에게 옮겨도 잔액·내역은 원래 보호자에게 남습니다.</li>
-          <li><strong>매출</strong>은 미용한 날 기준이라 정액권으로 낸 미용도 그날 매출입니다 (충전한 날은 매출이 아님). <strong>실입금</strong>은 충전한 날 받은 돈을 더하고, 환불은 빼고, 정액권으로 낸 몫은 뺍니다.</li>
+          <li><strong>매출</strong>은 미용한 날 기준이라 정액권으로 낸 미용도 그날 매출입니다 (충전한 날은 매출이 아님). <strong>받은 돈</strong>은 충전한 날 받은 돈을 더하고, 환불은 빼고, 정액권으로 낸 몫은 뺍니다.</li>
           <li>이번 달 탭에 '정액권: 이번 달 충전 N원 · 남은 잔액 합계 M원' 줄이 보입니다 (정액권을 쓴 적이 있을 때만). 결제 수단별 표에는 충전·환불이 수단별 줄로 들어갑니다.</li>
           <li>백업·복원·동기화에 정액권 장부도 들어갑니다. 정액권 이전의 옛 백업을 복원하면 내역이 비워지고, 동기화하는 다른 기기도 앱을 최신으로 업데이트해야 정액권이 보입니다.</li>
         </ul>
@@ -795,7 +881,7 @@
         <details class="appendix" id="price-bands">
           <summary>가격 구간 · 서비스 가격 자세히</summary>
           <div class="appendix-body">
-            <p>서비스 가격은 가게 공통 <strong>몸무게 구간표</strong> 하나를 따릅니다. 설정 → 운영 설정 → 가격 구간 카드의 [구간 편집], 또는 서비스 메뉴 위의 [몸무게 구간] 줄로 엽니다. 열 때 숫자 키패드가 바로 올라오지 않습니다.</p>
+            <p>서비스 가격은 매장 공통 <strong>몸무게 구간표</strong> 하나를 따릅니다. 설정 → 운영 설정 → 가격 구간 카드의 [구간 편집], 또는 서비스 메뉴 위의 [몸무게 구간] 줄로 엽니다. 열 때 숫자 키패드가 바로 올라오지 않습니다.</p>
 
             <h4 id="shop-types">샵 유형별 설정 요령</h4>
             <ul>
@@ -821,13 +907,13 @@
             </ul>
 
             <h4>몸무게 구간 사용 안 함 (모든 서비스 단일가)</h4>
-            <p>구간표 맨 위를 체크하면 구간 칸이 모든 화면에서 숨겨지고 새 서비스는 단일가로 만들어집니다. 이미 구간 가격으로 적은 서비스는 단일가가 적혀 있으면 그 값, 없으면 <strong>첫(가장 가벼운) 구간 가격</strong>을 받습니다. 켤 때 "전체미용 4만~6만 → 40,000원 단일가"처럼 바뀌는 가격을 보여 주고 확인합니다. 구간 가격은 지우지 않고 보관하므로 다시 켜면 그대로 돌아옵니다. 이 상태에서는 가게 기본 kg당 요금을 쓰지 않습니다 (서비스별 "이 서비스만 따로" 요금은 계속 붙고, 확인 화면에 그렇게 표시됨).</p>
+            <p>구간표 맨 위를 체크하면 구간 칸이 모든 화면에서 숨겨지고 새 서비스는 단일가로 만들어집니다. 이미 구간 가격으로 적은 서비스는 단일가가 적혀 있으면 그 값, 없으면 <strong>첫(가장 가벼운) 구간 가격</strong>을 받습니다. 켤 때 "전체미용 4만~6만 → 40,000원 단일가"처럼 바뀌는 가격을 보여 주고 확인합니다. 구간 가격은 지우지 않고 보관하므로 다시 켜면 그대로 돌아옵니다. 이 상태에서는 매장 기본 kg당 요금을 쓰지 않습니다 (서비스별 "이 서비스만 따로" 요금은 계속 붙고, 확인 화면에 그렇게 표시됨).</p>
 
             <h4>큰 아이 추가 요금 (서비스별)</h4>
             <ul>
-              <li>서비스 수정 창의 "더 보기"에서 <strong>가게 기본</strong>(구간표의 kg당 요금) / <strong>추가 요금 없음</strong> / <strong>이 서비스만 따로</strong>(예: 10kg 넘으면 1kg당 +7,000원) 중 고릅니다.</li>
-              <li>처음 값은 분류로만 정해집니다: 미용 코스는 가게 기본, 추가 옵션·단독 케어는 없음. 이름은 보지 않습니다.</li>
-              <li>단일가 서비스에는 가게 기본 추가 요금이 붙지 않습니다. 큰 아이에게 더 받으려면 "이 서비스만 따로"를 고르세요.</li>
+              <li>서비스 수정 창의 "더 보기"에서 <strong>매장 기본</strong>(구간표의 kg당 요금) / <strong>추가 요금 없음</strong> / <strong>이 서비스만 따로</strong>(예: 10kg 넘으면 1kg당 +7,000원) 중 고릅니다.</li>
+              <li>처음 값은 분류로만 정해집니다: 미용 코스는 매장 기본, 추가 옵션·단독 케어는 없음. 이름은 보지 않습니다.</li>
+              <li>단일가 서비스에는 매장 기본 추가 요금이 붙지 않습니다. 큰 아이에게 더 받으려면 "이 서비스만 따로"를 고르세요.</li>
               <li>요금이 붙는 서비스만 목록 카드 셋째 줄에 "10kg 넘으면 1kg당 +7,000원"처럼 보입니다.</li>
             </ul>
 
@@ -974,7 +1060,7 @@
             <h4>메뉴 · 검색</h4>
             <ul>
               <li>휴대폰 더보기: 미용 기록(맨 위) · 매출 · 사진 카드 · 분석 · 서비스 메뉴 · 설정. 반려견 목록은 고객 탭 위쪽 "반려견 목록" 버튼 (컴퓨터는 왼쪽 메뉴).</li>
-              <li>검색: 휴대폰은 떠 있는 돋보기가 없고 고객 탭 검색창을 씁니다. 컴퓨터 돋보기 검색에서 결과가 없으면 "+ 새 반려견 등록"이 나오고 검색어가 반려견 이름에 들어갑니다. 전화번호는 숫자만 비교합니다 ("0101111"처럼 하이픈 없이 쳐도 찾음). 결과를 누르면 전화·문자·예약·미용 기록, 미수금·최근 기록을 한 카드에서 봅니다.</li>
+              <li>검색: 휴대폰은 화면 오른쪽 위 돋보기, 컴퓨터는 왼쪽 메뉴의 찾기를 씁니다. 초성("ㅂㄷㅈ")과 띄어 쓴 여러 단어("초코 4444")도 됩니다. 검색에서 결과가 없으면 "+ 새 반려견 등록"이 나오고 검색어가 반려견 이름에 들어갑니다. 전화번호는 숫자만 비교합니다 ("0101111"처럼 하이픈 없이 쳐도 찾음). 결과를 누르면 전화·문자·예약·미용 기록, 미결제·최근 기록을 한 카드에서 봅니다. 넓은 컴퓨터 화면(1280px 이상)에서는 고객·미용 기록 목록을 누르면 오른쪽에 내용이 바로 열립니다.</li>
               <li>새 고객 등록: 반려견 이름을 비워 두면 "보호자만 등록할까요?"라고 묻고, 이미 등록된 연락처면 바로 안내합니다. 보호자 이름·견종·몸무게는 나중에 넣어도 됩니다.</li>
             </ul>
 
@@ -1015,7 +1101,7 @@
             <h4>고객 · 반려견</h4>
             <ul>
               <li>고객 목록: 이름순·최근방문순·등록일순·방문횟수순. 검색하면 제목이 "검색 결과 N명 / 전체 N명"으로 바뀌고, 없으면 "검색 결과가 없어요". 방문 상태 필터는 홈과 같은 말(정상·올 때 됨·많이 늦음·오래 안 옴)을 씁니다.</li>
-              <li>고객 상세: 방문 통계, 반려견, 정액권(반려견 아래 늘 있음), 미용 기록, 미수금, 메모, 전화·문자 버튼. 태그: VIP·신규·단골·주의.</li>
+              <li>고객 상세: 방문 통계, 반려견, 정액권(반려견 아래 늘 있음), 미용 기록, 미결제, 메모, 전화·문자 버튼. 태그: VIP·신규·단골·주의.</li>
               <li>반려견 등록·수정 폼: 이름·보호자·견종·몸무게·성별·나이·생일만 보이고, 중성화·사진·성격·건강·알러지·스타일·권장 주기·상태(활동중·사망·양도)는 "+ 더 보기"에 있습니다. 사이즈 칸은 몸무게 구간표를 쓰는 동안 보이지 않습니다. 생일을 넣으면 나이를 생일로 계산합니다.</li>
               <li>반려견 상세: 다음 미용일(D-N)·최근 방문·최근 컨디션·협조도 5회 추이를 보여 주는 응대 카드, 알러지·건강 특이사항이 있으면 위에 빨간 경고, 전체 미용 이력(컨디션·협조도 색 점). 기록의 몸무게가 2개 이상이면 "최근 몸무게 5.2 → 5.4 → 5.6kg" 한 줄이 보입니다. 권장 주기를 안 넣으면 실제 평균 방문 주기로 다음 미용일을 계산합니다.</li>
               <li>반려견 목록: 왼쪽 색 띠와 상태 칩(많이 늦음·올 때 됨·정상·오래 안 옴). 정렬을 '상태별'로 하면 상태마다 묶여 나옵니다.</li>
@@ -1023,9 +1109,9 @@
 
             <h4>매출 · 분석</h4>
             <ul>
-              <li>매출 탭: 오늘(목표 진행률, 미수금 경고, 오늘 내역·결제 수단, 이번 주 일별 차트) / 이번 달(지난달 같은 날짜까지와 비교, 받은 돈 결제 수단별, 일별 차트와 주별 합계, 손익 — 고정비·변동비 입력 → 순이익). 지난달 데이터가 없으면 페이스·손익 카드 대신 한 줄 안내. 미용사별 매출은 미용사 2명 이상일 때만.</li>
+              <li>매출 탭: 오늘(목표 진행률, 미결제 경고, 오늘 내역·결제 수단, 이번 주 일별 차트) / 이번 달(지난달 같은 날짜까지와 비교, 받은 돈 결제 수단별, 일별 차트와 주별 합계, 손익 — 고정비·변동비 입력 → 순이익). 지난달 데이터가 없으면 페이스·손익 카드 대신 한 줄 안내. 미용사별 매출은 미용사 2명 이상일 때만.</li>
               <li>분석 차트: 최근 6개월 월별 매출(기간 선택과 무관), 객단가 추이, 요일별 평균 매출, 시간대별 예약 건수, 미용사 성과(2명 이상일 때). 요일별·시간대별 그래프는 5건 미만이면 안 보입니다.</li>
-              <li>분석 "오늘 점검할 것": 미수금 N건(누르면 명단 → 결제 수단 바로 변경), 많이 늦음 N마리, 올 때 됨 N마리(3마리 이상일 때), VIP 손님 N명 ○○일 이상 미방문(설정 › 매장 관리 › 재방문 알림 기준, 기본 30일). 누르면 카드 아래 5건 명단 + "전체 N건 보기 →", 이름을 누르면 상세로, 번호를 누르면 전화.</li>
+              <li>분석 "오늘 점검할 것": 미결제 N건(누르면 명단 → 결제 수단 바로 변경), 많이 늦음 N마리, 올 때 됨 N마리(3마리 이상일 때), VIP 손님 N명 ○○일 이상 미방문(설정 › 매장 관리 › 재방문 알림 기준, 기본 30일). 누르면 카드 아래 5건 명단 + "전체 N건 보기 →", 이름을 누르면 상세로, 번호를 누르면 전화.</li>
               <li>분석 "이번 기간 분석": 재방문율, 매출 전 기간 대비, 평균 방문 주기, 견종 매출 비중, 가장 바쁜 요일, 인기 시간대, 객단가 변화, 신규 고객 추세, 노쇼율(취소 건은 빼고 계산), 협조도 까다로움 비율.</li>
             </ul>
 
@@ -1064,7 +1150,7 @@
               <tr><td>많이 늦음</td><td>연락할 손님 중 주기가 많이 지난 손님</td></tr>
               <tr><td>오래 안 옴</td><td>연락할 손님의 오래 안 옴 탭</td></tr>
               <tr><td>생일 축하</td><td>홈의 생일 알림</td></tr>
-              <tr><td>미수금 안내</td><td>홈 미결제 현황 카드의 문자</td></tr>
+              <tr><td>미결제 안내</td><td>홈 미결제 현황 카드의 문자</td></tr>
             </table>
             <p>변수 (문구마다 쓸 수 있는 것이 다르며 수정 화면의 변수 버튼에 표시): <code>{매장명}</code> <code>{고객명}</code> <code>{반려견명}</code> <code>{경과일수}</code>(마지막 미용 후 지난 일수) <code>{날짜}</code> <code>{시간}</code> <code>{시점}</code>(예: 내일) <code>{서비스}</code> <code>{금액}</code> <code>{담당}</code>("담당: 이름." 형태, 없으면 빠짐) <code>{다음방문일}</code> <code>{마지막방문일}</code> <code>{리뷰링크}</code>(비우면 빠짐) <code>{전화번호}</code>(매장 전화).</p>
 
@@ -1151,6 +1237,117 @@
         if (a && a.getAttribute('href') === location.hash) setTimeout(openTarget, 0);
       });
       if (location.hash) openTarget();
+    })();
+
+    // 앱으로 돌아가기 — 앱에서 열었으면 뒤로(보던 설정 화면 그대로), 아니면 앱 첫 화면
+    (function(){
+      var back = document.getElementById('guide-back');
+      if (!back) return;
+      var fromApp = false;
+      try { fromApp = !!document.referrer && new URL(document.referrer).origin === location.origin; } catch (e) {}
+      if (fromApp) back.setAttribute('href', './index.html#settings');
+      back.addEventListener('click', function(e){
+        if (fromApp && history.length > 1) { e.preventDefault(); history.back(); }
+      });
+    })();
+
+    // 가이드 찾기 — 입력하면 맞는 칸만 남기고 낱말을 칠한다 (대소문자 무시)
+    (function(){
+      var input = document.getElementById('guide-search');
+      var countEl = document.getElementById('guide-search-count');
+      var noRes = document.getElementById('guide-no-results');
+      var main = document.querySelector('main');
+      if (!input || !main) return;
+      var sections = Array.prototype.slice.call(main.querySelectorAll(':scope > section'));
+      var others = Array.prototype.slice.call(main.children).filter(function(el){ return el.tagName !== 'SECTION' && el !== noRes; });
+      // 섹션 안을 작은 칸으로 나눈다: h3 · 자주 묻는 질문 · 부록(접힌 칸)마다 새 칸, h2는 머리
+      var groups = sections.map(function(sec){
+        var head = null, blocks = [], cur = null;
+        Array.prototype.forEach.call(sec.children, function(el){
+          if (el.tagName === 'H2') { head = el; return; }
+          if (!cur || el.tagName === 'H3' || el.matches('.faq-item, details')) { cur = []; blocks.push(cur); }
+          cur.push(el);
+        });
+        return { sec: sec, head: head, blocks: blocks };
+      });
+      var detailsAll = Array.prototype.slice.call(main.querySelectorAll('details'));
+      var openBefore = null; // 찾기 전 펼침 상태 — 지우면 되돌린다
+
+      function clearMarks(){
+        Array.prototype.forEach.call(main.querySelectorAll('mark.guide-hit'), function(m){
+          var parent = m.parentNode;
+          parent.replaceChild(document.createTextNode(m.textContent), m);
+          parent.normalize();
+        });
+      }
+      function markIn(root, q){
+        var walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT, null);
+        var nodes = [], n;
+        while ((n = walker.nextNode())) { if (n.nodeValue.toLowerCase().indexOf(q) !== -1) nodes.push(n); }
+        nodes.forEach(function(node){
+          var text = node.nodeValue, lower = text.toLowerCase(), frag = document.createDocumentFragment(), i = 0, j;
+          while ((j = lower.indexOf(q, i)) !== -1) {
+            if (j > i) frag.appendChild(document.createTextNode(text.slice(i, j)));
+            var m = document.createElement('mark');
+            m.className = 'guide-hit';
+            m.textContent = text.slice(j, j + q.length);
+            frag.appendChild(m);
+            i = j + q.length;
+          }
+          if (i < text.length) frag.appendChild(document.createTextNode(text.slice(i)));
+          node.parentNode.replaceChild(frag, node);
+        });
+      }
+      function hasText(els, q){
+        return els.some(function(el){ return (el.textContent || '').toLowerCase().indexOf(q) !== -1; });
+      }
+      function run(){
+        var q = input.value.trim().toLowerCase();
+        clearMarks();
+        if (!q) {
+          groups.forEach(function(g){
+            g.sec.classList.remove('guide-hidden');
+            g.blocks.forEach(function(b){ b.forEach(function(el){ el.classList.remove('guide-hidden'); }); });
+          });
+          others.forEach(function(el){ el.classList.remove('guide-hidden'); });
+          if (openBefore) { detailsAll.forEach(function(d, i){ d.open = openBefore[i]; }); openBefore = null; }
+          noRes.style.display = 'none';
+          countEl.textContent = '';
+          return;
+        }
+        if (!openBefore) openBefore = detailsAll.map(function(d){ return d.open; });
+        others.forEach(function(el){ el.classList.add('guide-hidden'); });
+        var found = 0;
+        groups.forEach(function(g){
+          var headHit = g.head && hasText([g.head], q);
+          var any = false;
+          g.blocks.forEach(function(b){
+            // 섹션 제목이 맞으면 그 섹션은 통째로 보여 준다
+            var hit = headHit || hasText(b, q);
+            b.forEach(function(el){ el.classList.toggle('guide-hidden', !hit); });
+            if (hit) { any = true; if (!headHit) found++; }
+          });
+          if (headHit) { any = true; found++; }
+          g.sec.classList.toggle('guide-hidden', !any);
+        });
+        markIn(main, q);
+        // 맞는 낱말이 들어 있는 접힌 칸은 펼친다
+        detailsAll.forEach(function(d, i){ d.open = d.querySelector('mark.guide-hit') ? true : openBefore[i]; });
+        countEl.textContent = found ? found + '개 찾음' : '';
+        noRes.style.display = found ? 'none' : 'block';
+      }
+      var timer = null;
+      input.addEventListener('input', function(){ clearTimeout(timer); timer = setTimeout(run, 150); });
+      input.addEventListener('search', run); // 지우기(x) 버튼
+      input.addEventListener('keydown', function(e){
+        if (e.key === 'Escape') { input.value = ''; run(); }
+        if (e.key === 'Enter') {
+          e.preventDefault();
+          input.blur(); // 아이폰 키보드를 내려 결과를 보이게
+          var first = main.querySelector('mark.guide-hit');
+          if (first) first.scrollIntoView({ block: 'center' });
+        }
+      });
     })();
   </script>
 </body>

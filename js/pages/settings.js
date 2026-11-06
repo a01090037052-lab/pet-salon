@@ -25,7 +25,7 @@ const SMS_TEMPLATE_META = [
   { key: 'atRisk', label: '많이 늦음', when: '홈 \'연락할 손님\'(올 때 됨·늦음) 중 주기가 많이 지난 손님', vars: ['고객명', '반려견명', '경과일수', '마지막방문일', '매장명', '전화번호'] },
   { key: 'churned', label: '오래 안 옴', when: '홈 \'연락할 손님\'(오래 안 옴)', vars: ['고객명', '반려견명', '경과일수', '마지막방문일', '매장명', '전화번호'] },
   { key: 'birthday', label: '생일 축하', when: '홈의 생일 알림', vars: ['고객명', '반려견명', '매장명', '전화번호'] },
-  { key: 'unpaid', label: '미수금 안내', when: '홈 \'미수금\' 카드의 문자 버튼', vars: ['고객명', '반려견명', '날짜', '금액', '매장명', '전화번호'] }
+  { key: 'unpaid', label: '미결제 안내', when: '홈 \'미결제\' 카드의 문자 버튼', vars: ['고객명', '반려견명', '날짜', '금액', '매장명', '전화번호'] }
 ];
 
 App.pages.settings = {
@@ -85,7 +85,7 @@ App.pages.settings = {
           <p class="page-subtitle">매장 정보 및 데이터 관리</p>
         </div>
         <div class="page-actions">
-          <a href="./guide.html" target="_blank" class="btn btn-secondary">${App.icon('book')} 사용 가이드</a>
+          <a href="./guide.html" class="btn btn-secondary">${App.icon('book')} 사용 가이드</a>
         </div>
       </div>
 
@@ -119,14 +119,14 @@ App.pages.settings = {
                 <input type="text" id="s-shopAddress" value="${App.escapeHtml(shopAddress)}" placeholder="매장 주소">
               </div>
               <div class="form-group">
-                <label class="form-label">리뷰 링크 <span style="font-size:0.78rem;color:var(--text-muted);font-weight:400">(선택)</span></label>
+                <label class="form-label">리뷰 링크 <span style="font-size:0.93rem;color:var(--text-muted);font-weight:400">(선택)</span></label>
                 <input type="url" id="s-shopReviewLink" value="${App.escapeHtml(shopReviewLink)}" placeholder="https://naver.me/... (네이버 플레이스·카카오맵 리뷰 주소)" inputmode="url">
                 <div class="form-hint">넣으면 미용 리포트 하단에 "리뷰 남겨주시면 큰 힘이 돼요"가 붙고, 문자 템플릿의 {리뷰링크}에 들어가요. 비우면 둘 다 빠져요.</div>
               </div>
               <div class="form-group">
-                <label class="form-label">매장 로고 <span style="font-size:0.78rem;color:var(--text-muted);font-weight:400">(사진 카드·미용 리포트에 표시)</span></label>
+                <label class="form-label">매장 로고 <span style="font-size:0.93rem;color:var(--text-muted);font-weight:400">(사진 카드·미용 리포트에 표시)</span></label>
                 <div style="display:flex;align-items:center;gap:12px">
-                  <div id="s-logo-preview" style="width:48px;height:48px;border-radius:8px;border:1.5px solid var(--border);display:flex;align-items:center;justify-content:center;overflow:hidden;flex-shrink:0">${await (async () => { const logo = await DB.getSetting('shopLogo'); return logo ? `<img src="${logo}" style="width:100%;height:100%;object-fit:contain">` : '<span style="color:var(--text-muted);font-size:0.75rem">없음</span>'; })()}</div>
+                  <div id="s-logo-preview" style="width:48px;height:48px;border-radius:8px;border:1.5px solid var(--border);display:flex;align-items:center;justify-content:center;overflow:hidden;flex-shrink:0">${await (async () => { const logo = await DB.getSetting('shopLogo'); return logo ? `<img src="${logo}" style="width:100%;height:100%;object-fit:contain">` : '<span style="color:var(--text-muted);font-size:0.93rem">없음</span>'; })()}</div>
                   <input type="file" id="s-logo-file" accept="image/*" style="display:none">
                   <button type="button" class="btn btn-sm btn-secondary" id="s-logo-upload">로고 선택</button>
                   <button type="button" class="btn btn-sm btn-danger" id="s-logo-remove" style="display:${await DB.getSetting('shopLogo') ? '' : 'none'}">제거</button>
@@ -136,7 +136,7 @@ App.pages.settings = {
               <div class="form-group">
                 <label class="form-label">재방문 알림 기준 (일)</label>
                 <input type="number" id="s-revisitDays" value="${revisitDays}" min="1" max="365" placeholder="30">
-                <div class="form-hint">마지막 미용 후 이 기간이 지나면 대시보드에 알림이 표시됩니다</div>
+                <div class="form-hint">마지막 미용 후 이 기간이 지나면 홈에 알림이 표시됩니다</div>
               </div>
             </div>
           </div>
@@ -148,7 +148,7 @@ App.pages.settings = {
             </div>
             <div class="card-body">
               <div class="form-group">
-                <label class="form-label">등록된 미용사 <span style="font-size:0.78rem;color:var(--text-muted);font-weight:400">(선택)</span></label>
+                <label class="form-label">등록된 미용사 <span style="font-size:0.93rem;color:var(--text-muted);font-weight:400">(선택)</span></label>
                 <div class="form-hint" style="margin-bottom:8px">혼자 운영하면 비워두거나 본인 1명만 적으세요. 직원을 2명 이상 등록하면 예약 화면에 담당 미용사·미용사별 타임테이블이, 매출·분석 화면에 미용사별 실적이 나타납니다.</div>
                 <div id="groomer-list" style="display:flex;flex-direction:column;gap:8px;margin-bottom:12px">
                   ${(groomers || []).map((g, i) => `
@@ -220,7 +220,7 @@ App.pages.settings = {
         <div class="card" style="margin-top:16px">
           <div class="card-header">
             <span class="card-title">${App.icon('image')} 내 프레임 라이브러리</span>
-            <span style="font-size:0.78rem;color:var(--text-muted)" id="frame-lib-count"></span>
+            <span style="font-size:0.93rem;color:var(--text-muted)" id="frame-lib-count"></span>
           </div>
           <div class="card-body">
             <div id="frame-library-list" style="display:flex;flex-direction:column;gap:8px;margin-bottom:12px"></div>
@@ -276,7 +276,7 @@ App.pages.settings = {
               <div class="form-group">
                 <label class="form-label">월 매출 목표 (원)</label>
                 <input type="number" id="s-monthlyGoal" value="${(await DB.getSetting('monthlyGoal')) || ''}" placeholder="예: 5000000 (500만원)" min="0" step="100000">
-                <div class="form-hint">매출 페이지와 대시보드에 목표 달성률이 표시됩니다</div>
+                <div class="form-hint">매출 페이지와 홈에 목표 달성률이 표시됩니다</div>
               </div>
             </div>
           </div>
@@ -300,10 +300,10 @@ App.pages.settings = {
         <!-- 메시지 템플릿 (접이식) — 수정된 템플릿 있으면 자동 펼침 -->
         <div class="card" style="margin-top:20px">
           <div class="card-header" style="cursor:pointer" onclick="this.parentElement.querySelector('.card-body').classList.toggle('hidden');this.querySelector('.toggle-icon').style.transform=this.parentElement.querySelector('.card-body').classList.contains('hidden')?'rotate(-90deg)':''">
-            <span class="card-title">${App.icon('message')} 메시지 템플릿 <span class="toggle-icon" style="font-size:0.75rem;display:inline-block;transition:transform .15s${hasCustomTemplate ? '' : ';transform:rotate(-90deg)'}">${App.icon('chevron-down')}</span></span>
+            <span class="card-title">${App.icon('message')} 메시지 템플릿 <span class="toggle-icon" style="font-size:0.93rem;display:inline-block;transition:transform .15s${hasCustomTemplate ? '' : ';transform:rotate(-90deg)'}">${App.icon('chevron-down')}</span></span>
           </div>
           <div class="card-body${hasCustomTemplate ? '' : ' hidden'}">
-            <p style="color:var(--text-secondary);font-size:0.85rem;margin-bottom:12px">
+            <p style="color:var(--text-secondary);font-size:0.93rem;margin-bottom:12px">
               문자를 보낼 때 쓰는 문구입니다. 아래 버튼을 누르면 손님마다 바뀌는 값(반려견 이름 등)이 커서 자리에 들어갑니다. 고치면 바로 저장됩니다.
             </p>
             <div class="tpl-tabs" role="tablist">
@@ -337,24 +337,24 @@ App.pages.settings = {
             <div class="grid-2" style="gap:24px">
               <div>
                 <h4 style="margin-bottom:8px">백업 (내보내기)</h4>
-                <p style="color:var(--text-secondary);font-size:0.9rem;margin-bottom:12px">
+                <p style="color:var(--text-secondary);font-size:0.93rem;margin-bottom:12px">
                   데이터를 JSON 파일로 저장합니다. 사진 제외 시 파일 크기가 대폭 줄어 빠르고 안전합니다.
                 </p>
                 <div style="display:flex;flex-direction:column;gap:8px">
                   <button class="btn btn-success" id="btn-export">${App.icon('download')} 백업 (사진 제외 · 권장)</button>
-                  <button class="btn btn-secondary" id="btn-export-full" style="font-size:0.85rem">${App.icon('camera')} 사진 포함 백업 (용량 주의)</button>
+                  <button class="btn btn-secondary" id="btn-export-full" style="font-size:0.93rem">${App.icon('camera')} 사진 포함 백업 (용량 주의)</button>
                 </div>
               </div>
               <div>
                 <h4 style="margin-bottom:8px">복원 (가져오기)</h4>
-                <p style="color:var(--text-secondary);font-size:0.9rem;margin-bottom:12px">
+                <p style="color:var(--text-secondary);font-size:0.93rem;margin-bottom:12px">
                   백업 파일에서 데이터를 복원합니다. 기존 데이터는 덮어쓰기되고, 동기화가 켜져 있으면 다른 기기에도 그대로 반영됩니다.
                 </p>
                 <input type="file" id="import-file" accept=".json" style="display:none">
                 <button class="btn btn-warning" id="btn-import">${App.icon('upload')} 데이터 복원하기</button>
                 ${undoMeta && undoMeta.date ? `
                 <div id="undo-import-box" style="margin-top:12px;padding:10px 12px;border:1px solid var(--border);border-radius:8px;background:var(--bg)">
-                  <div style="font-size:0.85rem;color:var(--text-secondary);margin-bottom:8px">
+                  <div style="font-size:0.93rem;color:var(--text-secondary);margin-bottom:8px">
                     ${App.formatDateTime(undoMeta.date)} 복원 직전 상태가 보관되어 있습니다.<br>
                     <span style="color:var(--text-muted)">고객 ${undoMeta.customers ?? '-'}명 · 기록 ${undoMeta.records ?? '-'}건 · 사진 제외</span>
                     ${undoMeta.photosReplaced ? `<br><span style="color:var(--danger)">복원 파일에 사진이 포함되어 있어 기기 사진은 이미 교체됐습니다. 되돌려도 사진은 복구되지 않습니다.</span>` : ''}
@@ -399,7 +399,7 @@ App.pages.settings = {
                   <span>서비스 메뉴</span><span><strong>${services}개</strong> <span style="color:var(--text-muted);margin-left:6px">&rsaquo;</span></span>
                 </a>
                 ${prepaidSummary ? `<div style="display:flex;justify-content:space-between;align-items:center;padding:10px 4px">
-                  <span>정액권</span><span><strong>${prepaidSummary.rows}건</strong> <span style="color:var(--text-muted);font-size:0.85rem">· 잔액 ${prepaidSummary.holders}명 ${App.formatCurrency(prepaidSummary.total)}</span></span>
+                  <span>정액권</span><span><strong>${prepaidSummary.rows}건</strong> <span style="color:var(--text-muted);font-size:0.93rem">· 잔액 ${prepaidSummary.holders}명 ${App.formatCurrency(prepaidSummary.total)}</span></span>
                 </div>` : ''}
               </div>
             </div>
@@ -411,7 +411,7 @@ App.pages.settings = {
               <span class="card-title">${App.icon('file')} 세무 자료 내보내기</span>
             </div>
             <div class="card-body">
-              <p style="color:var(--text-secondary);font-size:0.9rem;margin-bottom:12px">
+              <p style="color:var(--text-secondary);font-size:0.93rem;margin-bottom:12px">
                 기간별 매출 내역을 CSV 파일로 내보냅니다. 세무사에게 제출하거나 엑셀에서 열 수 있습니다.
               </p>
               <button class="btn btn-success" id="btn-export-revenue-csv">${App.icon('file')} 세무 자료 내보내기</button>
@@ -425,7 +425,7 @@ App.pages.settings = {
             <span class="card-title">${App.icon('sparkle')} 저장 공간 최적화</span>
           </div>
           <div class="card-body">
-            <p style="color:var(--text-secondary);font-size:0.9rem;margin-bottom:12px">
+            <p style="color:var(--text-secondary);font-size:0.93rem;margin-bottom:12px">
               사진 데이터를 최적화하여 저장 공간을 확보합니다. 반려견·기록에 저장된 큰 사진을 압축 분리합니다.
             </p>
             <button class="btn btn-primary" id="btn-optimize-storage">${App.icon('sparkle')} 저장 공간 최적화</button>
@@ -440,7 +440,7 @@ App.pages.settings = {
                 미용 기록의 전·후 사진은 반려견마다 최근 몇 회만 남기고 오래된 사진을 자동으로 지웁니다 (글 기록은 남습니다).
                 폰과 데스크탑이 같은 기준을 쓰고, 사진은 600px 축소본으로 기기 간에 함께 보입니다.
               </small>
-              <div id="record-photo-keep-result" style="margin-top:6px;font-size:0.85rem"></div>
+              <div id="record-photo-keep-result" style="margin-top:6px;font-size:0.93rem"></div>
             </div>
           </div>
         </div>
@@ -451,7 +451,7 @@ App.pages.settings = {
             <span class="card-title text-danger">${App.icon('alert')} 위험 영역</span>
           </div>
           <div class="card-body">
-            <p style="color:var(--text-secondary);font-size:0.9rem;margin-bottom:12px">
+            <p style="color:var(--text-secondary);font-size:0.93rem;margin-bottom:12px">
               모든 데이터를 삭제합니다. 이 작업은 되돌릴 수 없으니 반드시 백업 후 실행해주세요.
             </p>
             <button class="btn btn-danger" id="btn-clear-all">${App.icon('trash')} 전체 데이터 초기화</button>
@@ -466,15 +466,15 @@ App.pages.settings = {
             <span class="card-title">${App.icon('lock')} 마스터 코드 잠금</span>
           </div>
           <div class="card-body">
-            <p style="color:var(--text-secondary);font-size:0.9rem;margin-bottom:14px">
+            <p style="color:var(--text-secondary);font-size:0.93rem;margin-bottom:14px">
               <strong>처음 보는 기기에서 앱을 열면 코드를 묻는 가림막</strong>이에요. 앱 주소를 알게 된 사람이 바로 들어오지 못하게 막는 정도이고, 데이터를 암호화하지는 않아요.<br>
-              <span style="font-size:0.84rem;color:var(--text-muted)">고객 데이터를 실제로 지켜 주는 건 기기마다 따로 저장되는 구조와 Google 로그인(클라우드 백업)이에요. 휴대폰 자체 잠금도 꼭 켜 두세요.</span>
+              <span style="font-size:0.93rem;color:var(--text-muted)">고객 데이터를 실제로 지켜 주는 건 기기마다 따로 저장되는 구조와 Google 로그인(클라우드 백업)이에요. 휴대폰 자체 잠금도 꼭 켜 두세요.</span>
             </p>
             <div style="display:flex;align-items:center;gap:12px;padding:12px;background:var(--bg);border-radius:var(--radius);margin-bottom:16px">
               <span style="font-size:1.4rem">${App.icon(isLockOn ? 'lock' : 'unlock')}</span>
               <div class="flex-1">
                 <div style="font-weight:700">${isLockOn ? '마스터 코드 잠금 사용 중' : isOffHereOnly ? '이 기기에서는 꺼짐' : '잠금 비활성'}</div>
-                <div style="font-size:0.82rem;color:var(--text-muted)">${isLockOn ? `${sec.pinLength}자리 코드 · 등록된 기기만 사용` : isOffHereOnly ? '새 기기 잠금은 GitHub 설정에 남아 있음' : '누구나 접근 가능'}</div>
+                <div style="font-size:0.93rem;color:var(--text-muted)">${isLockOn ? `${sec.pinLength}자리 코드 · 등록된 기기만 사용` : isOffHereOnly ? '새 기기 잠금은 GitHub 설정에 남아 있음' : '누구나 접근 가능'}</div>
               </div>
               ${isLockOn
                 ? `<button class="btn btn-danger btn-sm" id="btn-sec-disable">잠금 해제</button>`
@@ -528,7 +528,7 @@ App.pages.settings = {
 
         <div class="card" style="margin-top:16px">
           <div class="card-body">
-            <div style="font-size:0.85rem;color:var(--text-secondary);line-height:1.6">
+            <div style="font-size:0.93rem;color:var(--text-secondary);line-height:1.6">
               <div style="font-weight:700;color:var(--text-primary);margin-bottom:6px">${App.icon('info')} 운영 안내 — 마스터 코드 사용법</div>
               <ul style="margin:0;padding-left:18px">
                 <li><strong>코드 비공개</strong>: 마스터 코드는 사장님만 알고 있어야 합니다</li>
@@ -550,16 +550,16 @@ App.pages.settings = {
   // 이메일·비밀번호 로그인/설정 모달 (아이폰 Safari 등 구글 로그인이 막히는 기기용)
   // ========== 가격 구간 (몸무게) ==========
   _priceBandSummaryHtml(table) {
-    const chips = table.bands.map((b, i) => `<span class="badge badge-info" style="padding:6px 10px;font-size:0.85rem">${App.escapeHtml(App.getBandLabel(table, i))}</span>`).join(' ');
+    const chips = table.bands.map((b, i) => `<span class="badge badge-info" style="padding:6px 10px;font-size:0.93rem">${App.escapeHtml(App.getBandLabel(table, i))}</span>`).join(' ');
     const ok = table.overKg;
     if (table.bandsOff) return `
-      <div style="font-size:0.85rem;color:var(--text-secondary);margin-bottom:10px"><strong>몸무게 구간 사용 안 함</strong> — 모든 서비스를 단일가로 받아요. 예전에 적은 구간 가격은 지우지 않고 보관해요 (다시 켜면 그대로 돌아와요).</div>
+      <div style="font-size:0.93rem;color:var(--text-secondary);margin-bottom:10px"><strong>몸무게 구간 사용 안 함</strong> — 모든 서비스를 단일가로 받아요. 예전에 적은 구간 가격은 지우지 않고 보관해요 (다시 켜면 그대로 돌아와요).</div>
       <button type="button" class="btn btn-secondary" id="btn-edit-price-bands" style="min-height:44px">${App.icon('edit')} 구간 설정</button>
       <a href="#services" class="btn btn-ghost" style="min-height:44px">서비스 가격 보기</a>`;
     return `
-      <div style="font-size:0.85rem;color:var(--text-secondary);margin-bottom:10px">서비스 가격을 몸무게 구간별로 정해요. 경계 몸무게는 아래 구간에 들어가요 (예: 5kg → 3~5kg).</div>
+      <div style="font-size:0.93rem;color:var(--text-secondary);margin-bottom:10px">서비스 가격을 몸무게 구간별로 정해요. 경계 몸무게는 아래 구간에 들어가요 (예: 5kg → 3~5kg).</div>
       <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px">${chips}</div>
-      <div style="font-size:0.85rem;margin-bottom:12px">${ok
+      <div style="font-size:0.93rem;margin-bottom:12px">${ok
         ? `큰 아이 추가 요금: <strong>${App.escapeHtml(App.describeOverKgRule({ from: App.overKgFrom(table), perKg: ok.perKg }))}</strong> <span style="color:var(--text-muted)">(소수 kg 올림 · 서비스마다 바꿀 수 있음)</span>`
         : '<span style="color:var(--text-muted)">초과 kg 추가 요금 꺼짐</span>'} · 반올림 ${App.formatCurrency(table.rounding)}</div>
       <button type="button" class="btn btn-secondary" id="btn-edit-price-bands" style="min-height:44px">${App.icon('edit')} 구간 편집</button>
@@ -608,7 +608,7 @@ App.pages.settings = {
           </div>
         </div>
         <div class="form-group">
-          <label class="form-label">구간 <span style="color:var(--text-muted);font-size:0.78rem;font-weight:400">(각 구간의 최대 몸무게 kg — 그 몸무게까지 포함)</span></label>
+          <label class="form-label">구간 <span style="color:var(--text-muted);font-size:0.93rem;font-weight:400">(각 구간의 최대 몸무게 kg — 그 몸무게까지 포함)</span></label>
           <div id="pb-rows"></div>
           <button type="button" class="btn btn-secondary btn-sm" id="pb-add" style="margin-top:8px;min-height:44px">+ 구간 추가</button>
         </div>
@@ -616,15 +616,15 @@ App.pages.settings = {
           <label class="checkbox-label" style="font-weight:700">
             <input type="checkbox" id="pb-over-on" ${state.overKg ? 'checked' : ''}> 큰 아이 초과 kg 추가 요금
           </label>
-          <div id="pb-over-fields" style="display:${state.overKg ? 'flex' : 'none'};gap:8px;align-items:center;flex-wrap:wrap;margin-top:8px;font-size:0.9rem">
+          <div id="pb-over-fields" style="display:${state.overKg ? 'flex' : 'none'};gap:8px;align-items:center;flex-wrap:wrap;margin-top:8px;font-size:0.93rem">
             <input type="number" id="pb-over-from" value="${lastOverKg.from}" min="1" step="0.5" inputmode="decimal" style="width:80px"> kg 넘으면
             1kg당 + <input type="number" id="pb-over-per" value="${lastOverKg.perKg}" min="0" step="1000" inputmode="numeric" style="width:110px"> 원
           </div>
-          <div class="form-hint" style="margin-top:6px">소수 kg 은 올려서 계산해요 (10.3kg → 1kg 추가). 서비스마다 '가게 기본 / 없음 / 따로'를 고를 수 있어요 (서비스 › 더 보기).</div>
+          <div class="form-hint" style="margin-top:6px">소수 kg 은 올려서 계산해요 (10.3kg → 1kg 추가). 서비스마다 '매장 기본 / 없음 / 따로'를 고를 수 있어요 (서비스 › 더 보기).</div>
         </div>
         </div>
         <div class="form-group">
-          <label class="form-label">반올림 단위 <span style="color:var(--text-muted);font-size:0.78rem;font-weight:400">(초과 요금·일괄 조정·자동 채움)</span></label>
+          <label class="form-label">반올림 단위 <span style="color:var(--text-muted);font-size:0.93rem;font-weight:400">(초과 요금·일괄 조정·자동 채움)</span></label>
           <select id="pb-rounding">
             ${[100, 500, 1000, 5000, 10000].map(v => `<option value="${v}" ${state.rounding === v ? 'selected' : ''}>${v.toLocaleString('ko-KR')}원</option>`).join('')}
           </select>
@@ -649,7 +649,7 @@ App.pages.settings = {
         const isLast = i === state.bands.length - 1;
         return `<div class="pb-row" data-i="${i}" style="display:flex;align-items:center;gap:8px;padding:6px 0;border-bottom:1px solid var(--border-light)">
           <span style="flex:1;font-weight:700">${App.escapeHtml(labelOf(i) || '-')}</span>
-          ${isLast ? '<span style="color:var(--text-muted);font-size:0.85rem;width:110px;text-align:right">그 이상 전부</span>'
+          ${isLast ? '<span style="color:var(--text-muted);font-size:0.93rem;width:110px;text-align:right">그 이상 전부</span>'
                    : `<span style="display:flex;align-items:center;gap:4px"><input type="number" class="pb-upto" data-i="${i}" value="${b.upTo ?? ''}" min="0.5" step="0.5" inputmode="decimal" style="width:80px"> kg 까지</span>`}
           <button type="button" class="btn btn-ghost btn-sm pb-del" data-i="${i}" ${state.bands.length <= 1 ? 'disabled' : ''} aria-label="구간 삭제" style="min-width:44px;min-height:44px">${App.icon('trash')}</button>
         </div>`;
@@ -791,9 +791,9 @@ App.pages.settings = {
         const rule = App.getOverKgRule(s, offTable, p);
         const before = p.free ? '무료' : App.formatServicePrice(s, orig);
         const after = r.free ? '무료' : r.price > 0 ? App.formatCurrency(r.price) + ' 단일가' : '가격 미입력';
-        return `<div style="padding:3px 0;border-bottom:1px solid var(--border-light);font-size:0.82rem"><strong>${App.escapeHtml(s.name)}</strong> ${App.escapeHtml(before)} → <strong>${App.escapeHtml(after)}</strong>${rule ? `<div style="color:var(--warning-text-strong, #b45309);font-size:0.75rem">+ 이 서비스만 따로: ${App.escapeHtml(App.describeOverKgRule(rule))} (계속 붙어요)</div>` : ''}</div>`;
+        return `<div style="padding:3px 0;border-bottom:1px solid var(--border-light);font-size:0.93rem"><strong>${App.escapeHtml(s.name)}</strong> ${App.escapeHtml(before)} → <strong>${App.escapeHtml(after)}</strong>${rule ? `<div style="color:var(--warning-text-strong, #b45309);font-size:0.93rem">+ 이 서비스만 따로: ${App.escapeHtml(App.describeOverKgRule(rule))} (계속 붙어요)</div>` : ''}</div>`;
       }).join('');
-      const ok = await App.confirm(`모든 서비스를 단일가로 받아요. 가격은 이렇게 바뀌어요:<div style="max-height:40vh;overflow-y:auto;margin:8px 0;text-align:left">${rows || '<div style="color:var(--text-muted)">서비스가 아직 없어요</div>'}</div><small style="color:var(--text-muted)">구간 가격은 보관돼요 — 다시 켜면 돌아와요. 가게 기본 kg당 요금은 쓰지 않아요.</small>`, { okLabel: '단일가로 바꾸기', cancelLabel: '취소', danger: false });
+      const ok = await App.confirm(`모든 서비스를 단일가로 받아요. 가격은 이렇게 바뀌어요:<div style="max-height:40vh;overflow-y:auto;margin:8px 0;text-align:left">${rows || '<div style="color:var(--text-muted)">서비스가 아직 없어요</div>'}</div><small style="color:var(--text-muted)">구간 가격은 보관돼요 — 다시 켜면 돌아와요. 매장 기본 kg당 요금은 쓰지 않아요.</small>`, { okLabel: '단일가로 바꾸기', danger: false });
       if (!ok) return;
     }
     const table = App.normalizePriceBands({ version: 1, nextId: state.nextId, bands: bands.map(b => ({ id: b.id, upTo: b.upTo })), overKg, rounding, bandsOff });
@@ -843,8 +843,8 @@ App.pages.settings = {
       }).filter(Boolean);
       if (changed.length) {
         const labels = (t) => t.bands.map((b, i) => App.escapeHtml(App.getBandLabel(t, i))).join(' / ');
-        const rows = changed.map(c => `<div style="padding:3px 0;border-bottom:1px solid var(--border-light);font-size:0.82rem"><strong>${App.escapeHtml(c.name)}</strong> ${App.escapeHtml(c.before)} → <strong>${App.escapeHtml(c.after)}</strong>${c.inv.length ? `<div style="color:var(--danger);font-size:0.75rem">${App.icon('alert')} 무거운 구간이 더 싸져요: ${App.escapeHtml(c.inv.join(', '))}</div>` : ''}</div>`).join('');
-        const ok = await App.confirm(`서비스 ${changed.length}개의 구간 가격이 이렇게 바뀌어요:<div style="font-size:0.75rem;color:var(--text-muted);margin-top:6px;text-align:left">이전 구간: ${labels(onOrig)}<br>이후 구간: ${labels(table)}</div><div style="max-height:40vh;overflow-y:auto;margin:8px 0;text-align:left">${rows}</div><small style="color:var(--text-muted)">새 구간은 바로 앞(더 가벼운) 구간 가격으로 시작해요. 저장 뒤 서비스 메뉴에서 고칠 수 있어요.</small>`, { okLabel: '구간 저장', cancelLabel: '취소', danger: false });
+        const rows = changed.map(c => `<div style="padding:3px 0;border-bottom:1px solid var(--border-light);font-size:0.93rem"><strong>${App.escapeHtml(c.name)}</strong> ${App.escapeHtml(c.before)} → <strong>${App.escapeHtml(c.after)}</strong>${c.inv.length ? `<div style="color:var(--danger);font-size:0.93rem">${App.icon('alert')} 무거운 구간이 더 싸져요: ${App.escapeHtml(c.inv.join(', '))}</div>` : ''}</div>`).join('');
+        const ok = await App.confirm(`서비스 ${changed.length}개의 구간 가격이 이렇게 바뀌어요:<div style="font-size:0.93rem;color:var(--text-muted);margin-top:6px;text-align:left">이전 구간: ${labels(onOrig)}<br>이후 구간: ${labels(table)}</div><div style="max-height:40vh;overflow-y:auto;margin:8px 0;text-align:left">${rows}</div><small style="color:var(--text-muted)">새 구간은 바로 앞(더 가벼운) 구간 가격으로 시작해요. 저장 뒤 서비스 메뉴에서 고칠 수 있어요.</small>`, { okLabel: '구간 저장', danger: false });
         if (!ok) return;
       }
     }
@@ -890,7 +890,7 @@ App.pages.settings = {
       title,
       saveText: mode === 'set' ? '비밀번호 저장' : '로그인',
       content: `
-        <p style="font-size:0.88rem;color:var(--text-secondary);margin:0 0 12px">${hint}</p>
+        <p style="font-size:0.93rem;color:var(--text-secondary);margin:0 0 12px">${hint}</p>
         ${mode === 'set' ? '' : `<div class="form-group"><label class="form-label">이메일</label>
           <input type="email" id="sync-pw-email" autocomplete="username" autocapitalize="off" value="${App.escapeHtml(st.email || '')}" placeholder="example@gmail.com"></div>`}
         <div class="form-group"><label class="form-label">비밀번호</label>
@@ -935,14 +935,14 @@ App.pages.settings = {
     else if (st.state === 'signin' || (st.state === 'error' && !st.signedIn)) actions = btn('btn-sync-signin', 'user', '구글로 다시 로그인', 'btn-primary') + btn('btn-sync-signin-pw', 'lock', '이메일·비밀번호로 로그인') + btn('btn-sync-disable', 'close', '동기화 끄기');
     else actions = btn('btn-sync-now', 'refresh', '지금 동기화', 'btn-primary') + btn('btn-sync-resync', 'copy', '전체 다시 맞추기') + btn('btn-sync-setpw', 'lock', st.hasPassword ? '다른 기기용 비밀번호 변경' : '다른 기기용 비밀번호 설정') + btn('btn-sync-disable', 'close', '동기화 끄기');
     return `
-      <p style="color:var(--text-secondary);font-size:0.9rem;margin-bottom:12px">
+      <p style="color:var(--text-secondary);font-size:0.93rem;margin-bottom:12px">
         휴대폰과 컴퓨터에서 같은 예약·고객·기록을 봅니다. 기록 사진은 600px 축소본으로 함께 보이고, 원본은 찍은 기기에만 남습니다.
       </p>
       ${st.state === 'off' ? `<p class="sync-owner-note">동기화는 등록된 매장 계정만 사용할 수 있습니다. 동기화 없이도 이 기기에서 모든 기능을 쓸 수 있으며, 데이터는 이 기기에만 저장되니 정기 백업을 해주세요.</p>` : ''}
       <div class="sync-status-line"><span class="sync-dot ${dotCls}"></span>${App.escapeHtml(label)}</div>
-      ${st.error ? `<div style="color:var(--danger);font-size:0.85rem;margin-bottom:6px">${App.escapeHtml(st.error)}</div>` : ''}
-      ${st.enabled && st.email ? `<div style="color:var(--text-muted);font-size:0.85rem">계정: ${App.escapeHtml(st.email)}</div>` : ''}
-      ${st.enabled && st.lastSyncAt ? `<div style="color:var(--text-muted);font-size:0.85rem">마지막 동기화: ${App.escapeHtml(App.formatDateTime(new Date(st.lastSyncAt).toISOString()))}</div>` : ''}
+      ${st.error ? `<div style="color:var(--danger);font-size:0.93rem;margin-bottom:6px">${App.escapeHtml(st.error)}</div>` : ''}
+      ${st.enabled && st.email ? `<div style="color:var(--text-muted);font-size:0.93rem">계정: ${App.escapeHtml(st.email)}</div>` : ''}
+      ${st.enabled && st.lastSyncAt ? `<div style="color:var(--text-muted);font-size:0.93rem">마지막 동기화: ${App.escapeHtml(App.formatDateTime(new Date(st.lastSyncAt).toISOString()))}</div>` : ''}
       <div class="sync-actions">${actions}</div>
     `;
   },
@@ -994,6 +994,15 @@ App.pages.settings = {
   },
 
   async init() {
+    // 그려진 직후 값을 '저장된 값'으로 기억 — 나갈 때(다른 메뉴·홈·탭) 비교한다
+    this._saved = {};
+    this._markSaved('shop');
+    this._markSaved('operation');
+    App.leaveGuard = async () => {
+      if (!document.getElementById('settings-tabs')) { App.leaveGuardDirty = false; return true; } // 이미 다른 화면
+      const dirty = this._dirtyTabs();
+      return !dirty.length || this._confirmUnsaved(dirty);
+    };
     this.bindSyncCard();
     document.getElementById('btn-edit-price-bands')?.addEventListener('click', () => this.showPriceBandEditor());
     // Tab switching with unsaved changes warning
@@ -1002,10 +1011,9 @@ App.pages.settings = {
         // 현재 보이는 탭 감지 — getComputedStyle로 견고하게
         const currentTab = Array.from(document.querySelectorAll('.settings-tab-content'))
           .find(el => getComputedStyle(el).display !== 'none');
-        if (currentTab && currentTab._modified) {
-          const proceed = await App.confirm('저장하지 않은 변경사항이 있습니다. 이동하시겠습니까?');
-          if (!proceed) return;
-          currentTab._modified = false;
+        const curKey = currentTab ? currentTab.id.replace('tab-', '') : '';
+        if (curKey && curKey !== tab.dataset.tab && this._dirtyTabs().includes(curKey)) {
+          if (!(await this._confirmUnsaved([curKey]))) return;
         }
         document.querySelectorAll('.settings-tab').forEach(t => t.classList.remove('active'));
         document.querySelectorAll('.settings-tab-content').forEach(c => c.style.display = 'none');
@@ -1023,19 +1031,17 @@ App.pages.settings = {
       }
     } catch (e) { /* ignore */ }
 
-    // Mark tab as modified when any input changes (input이면 change도 커버)
-    document.querySelectorAll('.settings-tab-content input, .settings-tab-content select, .settings-tab-content textarea').forEach(el => {
-      const handler = () => {
-        const tabContent = el.closest('.settings-tab-content');
-        if (tabContent) tabContent._modified = true;
-      };
-      // select는 input 이벤트가 없으므로 change도 동시 바인딩 필요
-      el.addEventListener('input', handler);
-      if (el.tagName === 'SELECT') el.addEventListener('change', handler);
+    // 저장 안 한 입력 추적 — 저장된 값(스냅샷)과 지금 값을 비교한다.
+    // 코드가 값을 넣는 건 이벤트가 안 뜨고, 고쳤다가 되돌리면 다시 '깨끗함'이 된다.
+    ['tab-shop', 'tab-operation'].forEach(id => {
+      const el = document.getElementById(id);
+      if (!el) return;
+      el.addEventListener('input', () => this._updateDirty());
+      el.addEventListener('change', () => this._updateDirty());
     });
 
-    // Tab 1: 매장 관리 전체 저장
-    document.getElementById('btn-save-tab-shop')?.addEventListener('click', async () => {
+    // Tab 1: 매장 관리 전체 저장 (취소하면 false)
+    const saveShop = async () => {
       // 매장 정보
       await DB.setSetting('shopName', document.getElementById('s-shopName').value.trim());
       await DB.setSetting('shopPhone', document.getElementById('s-shopPhone').value.trim());
@@ -1052,8 +1058,8 @@ App.pages.settings = {
         const records = await DB.getAllLight('records', ['photoBefore', 'photoAfter', 'memo']);
         const usedRemoved = removed.filter(g => records.some(r => r.groomer === g));
         if (usedRemoved.length > 0) {
-          const ok = await App.confirm(`"${App.escapeHtml(usedRemoved.join(', '))}" 미용사가 기존 기록에 사용 중입니다.<br>삭제해도 기존 기록에는 이름이 유지됩니다. 계속할까요?`);
-          if (!ok) return;
+          const ok = await App.confirm(`"${App.escapeHtml(usedRemoved.join(', '))}" 미용사가 기존 기록에 사용 중입니다.<br>목록에서 빼도 기존 기록에는 이름이 남아요.`, { okLabel: '빼고 저장', danger: false });
+          if (!ok) return false;
         }
       }
       await DB.setSetting('groomers', groomers);
@@ -1067,10 +1073,11 @@ App.pages.settings = {
         await DB.setSetting('themeColor', activeColor.dataset.color);
         App.applyTheme(activeColor.dataset.color);
       }
-      const currentTabShop = document.getElementById('tab-shop');
-      if (currentTabShop) currentTabShop._modified = false;
+      this._markSaved('shop');
       App.showToast('매장 관리 설정이 저장되었습니다.');
-    });
+      return true;
+    };
+    document.getElementById('btn-save-tab-shop')?.addEventListener('click', () => saveShop());
 
     // 로고 업로드/제거
     document.getElementById('s-logo-upload')?.addEventListener('click', () => document.getElementById('s-logo-file')?.click());
@@ -1097,7 +1104,7 @@ App.pages.settings = {
     document.getElementById('s-logo-remove')?.addEventListener('click', async () => {
       await DB.setSetting('shopLogo', null);
       const preview = document.getElementById('s-logo-preview');
-      if (preview) preview.innerHTML = '<span style="color:var(--text-muted);font-size:0.75rem">없음</span>';
+      if (preview) preview.innerHTML = '<span style="color:var(--text-muted);font-size:0.93rem">없음</span>';
       document.getElementById('s-logo-remove').style.display = 'none';
       App.showToast('로고가 제거되었습니다.');
     });
@@ -1118,6 +1125,7 @@ App.pages.settings = {
       input.value = '';
       // Re-bind remove buttons
       this.bindGroomerRemove();
+      this._updateDirty();
     });
 
     this.bindGroomerRemove();
@@ -1127,11 +1135,12 @@ App.pages.settings = {
       btn.addEventListener('click', () => {
         document.querySelectorAll('.theme-color-btn').forEach(b => b.classList.remove('active'));
         btn.classList.add('active');
+        this._updateDirty();
       });
     });
 
     // Tab 2: 운영 설정 전체 저장
-    document.getElementById('btn-save-tab-operation')?.addEventListener('click', async () => {
+    const saveOperation = async () => {
       // 알림 설정
       const enabled = document.getElementById('s-notifEnabled').checked;
       const minutes = Number(document.getElementById('s-notifMinutes').value) || 30;
@@ -1161,10 +1170,12 @@ App.pages.settings = {
           fcEl.dataset.original = String(fixedCostMan);
         }
       }
-      const currentTabOp = document.getElementById('tab-operation');
-      if (currentTabOp) currentTabOp._modified = false;
+      this._markSaved('operation');
       App.showToast('운영 설정이 저장되었습니다.');
-    });
+      return true;
+    };
+    document.getElementById('btn-save-tab-operation')?.addEventListener('click', () => saveOperation());
+    this._tabSavers = { shop: saveShop, operation: saveOperation };
 
     // Reset templates to defaults
     document.getElementById('btn-reset-templates')?.addEventListener('click', async () => {
@@ -1205,13 +1216,13 @@ App.pages.settings = {
       try {
         const { migratedCount, savedMB } = await DB.optimizeStorage();
         if (migratedCount === 0) {
-          result.innerHTML = '<div style="color:var(--success);font-size:0.88rem">이미 최적화되어 있습니다.</div>';
+          result.innerHTML = '<div style="color:var(--success);font-size:0.93rem">이미 최적화되어 있습니다.</div>';
         } else {
-          result.innerHTML = `<div style="color:var(--success);font-size:0.88rem;font-weight:600">${App.icon('check-circle')} ${migratedCount}장 사진 최적화 완료 (약 ${savedMB}MB 절약)</div>`;
+          result.innerHTML = `<div style="color:var(--success);font-size:0.93rem;font-weight:600">${App.icon('check-circle')} ${migratedCount}장 사진 최적화 완료 (약 ${savedMB}MB 절약)</div>`;
         }
       } catch (e) {
         console.error('Storage optimize error:', e);
-        result.innerHTML = '<div style="color:var(--danger);font-size:0.88rem">최적화 중 오류가 발생했습니다.</div>';
+        result.innerHTML = '<div style="color:var(--danger);font-size:0.93rem">최적화 중 오류가 발생했습니다.</div>';
       }
       btn.disabled = false;
       btn.innerHTML = App.icon('sparkle') + ' 저장 공간 최적화';
@@ -1225,7 +1236,7 @@ App.pages.settings = {
     // Export (directBackup 재사용으로 중복 제거)
     document.getElementById('btn-export')?.addEventListener('click', () => this.directBackup(false));
     document.getElementById('btn-export-full')?.addEventListener('click', async () => {
-      const ok = await App.confirm('사진 포함 백업은 파일 크기가 매우 클 수 있습니다 (수백 MB).<br>기기 저장 공간을 확인해주세요.<br>계속하시겠습니까?');
+      const ok = await App.confirm('사진까지 넣은 백업 파일을 만듭니다.<br>파일이 매우 클 수 있어요 (수백 MB). 기기 저장 공간을 확인해 주세요.', { okLabel: '백업 만들기', danger: false });
       if (ok) this.directBackup(true);
     });
 
@@ -1238,7 +1249,7 @@ App.pages.settings = {
       const file = e.target.files[0];
       if (!file) return;
 
-      const confirmed = await App.confirm('데이터를 복원하면 현재 데이터가 모두 덮어쓰기됩니다.<br>복원 전 현재 데이터가 자동 백업됩니다. <small style="color:var(--text-muted)">(사진 제외)</small><br>계속하시겠습니까?');
+      const confirmed = await App.confirm('고른 백업 파일로 <strong>지금 데이터를 모두 바꿉니다.</strong><br>바꾸기 전에 지금 데이터를 자동으로 따로 보관해요. <small style="color:var(--text-muted)">(사진 제외)</small>', { okLabel: '복원' });
       if (!confirmed) {
         e.target.value = '';
         return;
@@ -1287,7 +1298,7 @@ App.pages.settings = {
         });
       } catch (backupErr) {
         console.warn('Auto-backup before import failed:', backupErr);
-        const proceed = await App.confirm('자동 백업에 실패했습니다. 그래도 복원을 진행하시겠습니까?<br><small style="color:var(--text-muted)">이번 복원은 되돌릴 수 없습니다.</small>');
+        const proceed = await App.confirm('지금 데이터를 따로 보관하지 못했어요. 그래도 복원하면 <strong>되돌릴 수 없어요.</strong>', { okLabel: '그래도 복원' });
         if (!proceed) { e.target.value = ''; return; }
         // 이전 복원의 사본이 남아 있으면 '방금 복원 직전'으로 오해되므로 지운다
         try { await DB.delete('settings', '_autoBackupBeforeImport'); await DB.delete('settings', '_autoBackupBeforeImportMeta'); } catch (_) {}
@@ -1315,7 +1326,7 @@ App.pages.settings = {
         } else {
           const autoBackup = await DB.getSetting('_autoBackupBeforeImport');
           if (autoBackup && autoBackup.data) {
-            const restore = await App.confirm('복원에 실패했고 자동 복구도 되지 않았습니다. 복원 직전 사본으로 되돌리시겠습니까?<br><small style="color:var(--text-muted)">사진 스토어는 건드리지 않습니다.</small>');
+            const restore = await App.confirm('복원에 실패했고 자동 복구도 되지 않았습니다. 복원 직전 사본으로 되돌립니다.<br><small style="color:var(--text-muted)">사진은 건드리지 않습니다.</small>', { okLabel: '직전 상태로 되돌리기', danger: false });
             if (restore) await this._undoImport(autoBackup);
           } else {
             App.showToast(err.message || '복원 중 오류가 발생했습니다. 파일을 확인해주세요.', 'error');
@@ -1330,7 +1341,7 @@ App.pages.settings = {
       const meta = await DB.getSetting('_autoBackupBeforeImportMeta');
       const when = meta && meta.date ? App.formatDateTime(meta.date) : '보관 시점';
       const syncOn = typeof Sync !== 'undefined' && Sync.isEnabled && Sync.isEnabled();
-      const ok = await App.confirm(`현재 데이터를 지우고 <strong>${App.escapeHtml(when)} 상태</strong>로 되돌립니다.<br><strong style="color:var(--danger)">그 뒤에 추가·수정한 예약과 기록은 사라집니다${syncOn ? ' (동기화 중이라 다른 기기에서도 사라집니다)' : ''}.</strong><br><small style="color:var(--text-muted)">사진 스토어는 건드리지 않습니다.</small>`, { okLabel: '되돌리기' });
+      const ok = await App.confirm(`현재 데이터를 지우고 <strong>${App.escapeHtml(when)} 상태</strong>로 되돌립니다.<br><strong style="color:var(--danger)">그 뒤에 추가·수정한 예약과 기록은 사라집니다${syncOn ? ' (동기화 중이라 다른 기기에서도 사라집니다)' : ''}.</strong><br><small style="color:var(--text-muted)">사진은 건드리지 않습니다.</small>`, { okLabel: '되돌리기' });
       if (!ok) return;
       const autoBackup = await DB.getSetting('_autoBackupBeforeImport');
       if (!autoBackup || !autoBackup.data) { App.showToast('보관된 사본이 없습니다.', 'error'); return; }
@@ -1339,7 +1350,7 @@ App.pages.settings = {
 
     // Clear all
     document.getElementById('btn-clear-all')?.addEventListener('click', async () => {
-      const confirmed = await App.confirm('정말로 이 기기의 모든 데이터를 삭제하시겠습니까?<br><strong>이 작업은 되돌릴 수 없습니다!</strong><br><small style="color:var(--text-muted)">지우기 전에 위의 백업을 먼저 받아 두세요.</small>', { okLabel: '계속' });
+      const confirmed = await App.confirm('이 기기의 모든 데이터를 지웁니다.<br><strong>되돌릴 수 없습니다!</strong><br><small style="color:var(--text-muted)">지우기 전에 위의 백업을 먼저 받아 두세요.</small>', { okLabel: '다음 (마지막 확인)' });
       if (!confirmed) return;
 
       const doubleConfirm = await App.confirm('마지막 확인입니다. 이 기기에서 아래가 모두 지워집니다.<br>' +
@@ -1364,6 +1375,103 @@ App.pages.settings = {
     // ========== 프레임 라이브러리 ==========
     await this._renderFrameLibrary();
     document.getElementById('btn-add-frame')?.addEventListener('click', () => this._showFrameEditor());
+  },
+
+  // ========== 저장 안 한 입력 ==========
+  // 저장 버튼이 있는 탭(매장 관리·운영 설정)만 본다 — 데이터·보안 탭은 누르면 바로 반영되고,
+  // 문자 템플릿(tpl-*)은 입력하면 자동 저장된다.
+  _UNSAVED_FIELDS: {
+    shop: ['s-shopName', 's-shopPhone', 's-shopAddress', 's-shopReviewLink', 's-revisitDays'],
+    operation: ['s-notifEnabled', 's-notifMinutes', 's-monthlyGoal', 's-fixedCost']
+  },
+  _UNSAVED_TAB_LABELS: { shop: '매장 관리', operation: '운영 설정' },
+
+  _formState(tab) {
+    const fields = {};
+    (this._UNSAVED_FIELDS[tab] || []).forEach(id => {
+      const el = document.getElementById(id);
+      if (el) fields[id] = el.type === 'checkbox' ? el.checked : String(el.value).trim();
+    });
+    if (tab !== 'shop') return { fields };
+    return {
+      fields,
+      groomers: Array.from(document.querySelectorAll('#groomer-list .groomer-input')).map(i => i.value.trim()),
+      closedDays: Array.from(document.querySelectorAll('input[name="closedDay"]')).map(cb => cb.checked),
+      theme: document.querySelector('.theme-color-btn.active')?.dataset.color || ''
+    };
+  },
+
+  _markSaved(tab) {
+    if (!this._saved) this._saved = {};
+    const state = this._formState(tab);
+    this._saved[tab] = { state, key: JSON.stringify(state) };
+    this._updateDirty();
+  },
+
+  _dirtyTabs() {
+    if (!this._saved) return [];
+    return Object.keys(this._UNSAVED_FIELDS).filter(t =>
+      this._saved[t] && document.getElementById('tab-' + t) && JSON.stringify(this._formState(t)) !== this._saved[t].key);
+  },
+
+  _updateDirty() {
+    App.leaveGuardDirty = this._dirtyTabs().length > 0;
+  },
+
+  // 화면을 저장된 값으로 되돌린다 ('저장하지 않고 나가기' — 탭만 바꿀 때 고친 값이 남아 헷갈리지 않게)
+  _restoreSaved(tab) {
+    const saved = this._saved && this._saved[tab];
+    if (!saved) return;
+    const st = saved.state;
+    Object.entries(st.fields).forEach(([id, v]) => {
+      const el = document.getElementById(id);
+      if (!el) return;
+      if (el.type === 'checkbox') el.checked = v; else el.value = v;
+    });
+    if (tab === 'shop') {
+      const list = document.getElementById('groomer-list');
+      if (list) {
+        list.innerHTML = st.groomers.map((g, i) => `
+          <div style="display:flex;align-items:center;gap:8px">
+            <input type="text" class="groomer-input flex-1" value="${App.escapeHtml(g)}">
+            <button class="btn btn-sm btn-danger btn-remove-groomer" data-index="${i}">삭제</button>
+          </div>`).join('');
+        this.bindGroomerRemove();
+      }
+      document.querySelectorAll('input[name="closedDay"]').forEach((cb, i) => { cb.checked = !!st.closedDays[i]; });
+      document.querySelectorAll('.theme-color-btn').forEach(b => b.classList.toggle('active', b.dataset.color === st.theme));
+    }
+    this._updateDirty();
+  },
+
+  // 저장 안 한 탭이 있을 때: 저장하고 나가기 / 저장하지 않고 나가기 / 돌아가기(머무름). 나가도 되면 true
+  async _confirmUnsaved(tabs) {
+    const names = tabs.map(t => this._UNSAVED_TAB_LABELS[t]).join(', ');
+    const pick = await App.choose(
+      `<strong>${App.escapeHtml(names)}</strong>에 저장하지 않은 내용이 있어요.`,
+      [{ value: 'save', label: '저장하고 나가기' }, { value: 'discard', label: '저장하지 않고 나가기' }],
+      { cancelLabel: '돌아가기' }
+    );
+    if (pick === 'save') {
+      // 고르기 창을 닫는 history.back() 이 끝나기 전에 저장 중 확인창(미용사 빼기 등)을 열면 그 창이 바로 닫힌다
+      await new Promise(r => setTimeout(r, 180));
+      for (const t of tabs) {
+        const saver = this._tabSavers && this._tabSavers[t];
+        let ok = false;
+        try { ok = saver ? await saver() : true; } catch (err) {
+          console.error('settings save error:', err);
+          App.showToast('저장하지 못했어요. 다시 눌러 주세요.', 'error');
+        }
+        if (!ok) return false;
+      }
+      return true;
+    }
+    if (pick === 'discard') {
+      tabs.forEach(t => this._restoreSaved(t));
+      App.leaveGuardDirty = false;
+      return true;
+    }
+    return false;
   },
 
   // ========== 메시지 템플릿 편집 ==========
@@ -1443,7 +1551,7 @@ App.pages.settings = {
         <div style="text-align:center;padding:28px 16px;background:var(--bg);border-radius:var(--radius);border:2px dashed var(--border)">
           <div style="font-size:2rem;margin-bottom:8px">${App.icon('image')}</div>
           <div style="font-weight:700;font-size:0.95rem;margin-bottom:4px">등록된 프레임이 없습니다</div>
-          <div style="font-size:0.82rem;color:var(--text-muted);line-height:1.5">시즌·이벤트별 프레임을 만들면<br>사진 카드 생성 시 1탭으로 선택 가능합니다</div>
+          <div style="font-size:0.93rem;color:var(--text-muted);line-height:1.5">시즌·이벤트별 프레임을 만들면<br>사진 카드 생성 시 1탭으로 선택 가능합니다</div>
         </div>
       `;
       return;
@@ -1457,14 +1565,14 @@ App.pages.settings = {
           <div style="font-weight:800;font-size:1rem;color:var(--text-primary);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-bottom:4px">${App.escapeHtml(f.name)}${f.mode === 'overlay' ? ' <small style="font-weight:600;color:var(--text-muted)">· 덮기</small>' : ''}</div>
           <div style="display:flex;align-items:center;gap:6px;margin-bottom:4px">
             <span style="display:inline-block;width:14px;height:14px;border-radius:50%;background:${f.accentColor || 'var(--border)'};border:1px solid var(--border-light);flex-shrink:0"></span>
-            <span style="font-size:0.75rem;color:var(--text-muted)">${f.accentColor || '-'}</span>
+            <span style="font-size:0.93rem;color:var(--text-muted)">${f.accentColor || '-'}</span>
           </div>
-          <label class="frame-toggle-label" data-id="${App.escapeHtml(f.id)}" style="display:inline-flex;align-items:center;gap:5px;white-space:nowrap;font-size:0.75rem;color:${f.enabled === false ? 'var(--text-muted)' : 'var(--success)'};font-weight:700;cursor:pointer">
+          <label class="frame-toggle-label" data-id="${App.escapeHtml(f.id)}" style="display:inline-flex;align-items:center;gap:5px;white-space:nowrap;font-size:0.93rem;color:${f.enabled === false ? 'var(--text-muted)' : 'var(--success)'};font-weight:700;cursor:pointer">
             <input type="checkbox" class="frame-toggle-cb" data-id="${App.escapeHtml(f.id)}" ${f.enabled !== false ? 'checked' : ''} onclick="event.stopPropagation()" style="cursor:pointer">
             ${f.enabled === false ? '비활성' : '활성'}
           </label>
         </div>
-        <button type="button" class="frame-delete-btn" data-id="${App.escapeHtml(f.id)}" title="삭제" aria-label="삭제" style="flex-shrink:0;background:none;border:none;cursor:pointer;font-size:1.2rem;color:var(--danger);padding:8px;width:40px;height:40px;border-radius:8px">${App.icon('trash')}</button>
+        <button type="button" class="frame-delete-btn" data-id="${App.escapeHtml(f.id)}" title="삭제" aria-label="삭제" style="flex-shrink:0;background:none;border:none;cursor:pointer;font-size:1.2rem;color:var(--danger);padding:8px;width:44px;height:44px;border-radius:8px">${App.icon('trash')}</button>
       </div>
     `).join('');
     // 행 전체 클릭 = 편집 (자식 버튼은 stopPropagation)
@@ -1511,7 +1619,7 @@ App.pages.settings = {
         </div>
         <div class="form-group">
           <label class="form-label">배경 이미지 <span style="color:var(--text-muted);font-weight:400">(피그마·캔바로 만든 PNG/JPG)</span></label>
-          <div id="f-frame-preview" style="margin-bottom:8px">${frame.image ? `<img src="${frame.image}" style="max-width:200px;border-radius:8px;border:1px solid var(--border)">` : '<div style="color:var(--text-muted);font-size:0.85rem">이미지 미선택</div>'}</div>
+          <div id="f-frame-preview" style="margin-bottom:8px">${frame.image ? `<img src="${frame.image}" style="max-width:200px;border-radius:8px;border:1px solid var(--border)">` : '<div style="color:var(--text-muted);font-size:0.93rem">이미지 미선택</div>'}</div>
           <input type="file" id="f-frame-image" accept="image/*">
           <div class="form-hint">카드 크기: 피드 1080×1350 · 스토리 1080×1920 · 네컷 1080×3267. 배경은 JPG, 덮기는 투명 PNG.</div>
         </div>
@@ -1638,7 +1746,7 @@ App.pages.settings = {
     const frames = (await DB.getSetting('customFrames')) || [];
     const frame = frames.find(f => f.id === frameId);
     if (!frame) return;
-    const ok = await App.confirm(`"${App.escapeHtml(frame.name)}" 프레임을 삭제하시겠습니까?`, { okLabel: '삭제' });
+    const ok = await App.confirm(`"${App.escapeHtml(frame.name)}" 프레임을 삭제할까요?`, { okLabel: '삭제' });
     if (!ok) return;
     await DB.setSetting('customFrames', frames.filter(f => f.id !== frameId));
     App.showToast('프레임이 삭제되었습니다.');
@@ -1662,7 +1770,7 @@ App.pages.settings = {
       saveText: '닫기',
       onSave: () => { App.closeModal(); },
       content: `
-        <div style="font-size:0.88rem;color:var(--text-secondary);line-height:1.6;margin-bottom:14px">
+        <div style="font-size:0.93rem;color:var(--text-secondary);line-height:1.6;margin-bottom:14px">
           ${isOff ? `<strong style="color:var(--danger)">${App.icon('alert')} 이 기기에서는 잠금이 꺼졌어요. 하지만 GitHub 설정에 잠금이 남아 있어서, 새 기기에서는 여전히 코드를 물어요.</strong><br>
           모든 기기에서 끄려면 아래 내용으로 GitHub 의 master-config.js 를 바꿔 주세요.`
           : mode === 'recovery' ? `<strong style="color:var(--danger)">${App.icon('alert')} 새 복구 코드는 지금은 이 기기에만 저장됐어요.</strong><br>
@@ -1680,7 +1788,7 @@ App.pages.settings = {
         <div style="margin-bottom:14px">
           <div style="font-weight:700;margin-bottom:6px">2단계 — GitHub에서 편집</div>
           <a href="${repoEditUrl}" target="_blank" rel="noopener" class="btn btn-primary btn-sm" style="width:100%;text-decoration:none;display:block;text-align:center">${App.icon('edit')} GitHub 편집 페이지 열기</a>
-          <div style="font-size:0.8rem;color:var(--text-muted);margin-top:6px">
+          <div style="font-size:0.93rem;color:var(--text-muted);margin-top:6px">
             • 페이지 열림 → 기존 내용 전체 지우기 → 복사한 내용 붙여넣기<br>
             • 우측 상단 [Commit changes] → 메시지 "마스터 코드 업데이트" → Commit
           </div>
@@ -1688,13 +1796,13 @@ App.pages.settings = {
 
         <div style="margin-bottom:14px">
           <div style="font-weight:700;margin-bottom:6px">3단계 — sw.js 캐시 버전 bump (선택, 빠른 반영)</div>
-          <div style="font-size:0.8rem;color:var(--text-muted)">
+          <div style="font-size:0.93rem;color:var(--text-muted)">
             <code>sw.js</code>의 <code>CACHE_NAME</code> 값에서 v92 → v93 같이 숫자 1 올림.<br>
             안 해도 1~2일 안에 자동 반영되지만 즉시 반영하려면 함께 commit.
           </div>
         </div>
 
-        <div style="background:var(--bg);padding:10px;border-radius:6px;font-size:0.82rem;color:var(--text-secondary)">
+        <div style="background:var(--bg);padding:10px;border-radius:6px;font-size:0.93rem;color:var(--text-secondary)">
           <strong>적용 후</strong>: 1~2분 안에 GitHub Pages 배포 → ${isOff ? '새 기기에서도 잠금 화면이 뜨지 않습니다.' : '모든 디바이스에서 잠금 화면 표시됩니다.'}
         </div>
       `
@@ -1726,11 +1834,11 @@ App.pages.settings = {
       content: `
         <div style="text-align:center">
           <div style="background:var(--warning-light);border:2px solid var(--warning);border-radius:var(--radius);padding:20px;margin-bottom:16px">
-            <div style="font-size:0.85rem;color:var(--text-secondary);margin-bottom:8px">마스터 코드 분실 시 사용할 복구 코드</div>
+            <div style="font-size:0.93rem;color:var(--text-secondary);margin-bottom:8px">마스터 코드 분실 시 사용할 복구 코드</div>
             <div id="recovery-code-display" style="font-size:1.6rem;font-weight:800;letter-spacing:2px;font-family:monospace;color:var(--danger);margin-bottom:12px">${code}</div>
             <button class="btn btn-secondary btn-sm" id="recovery-copy">${App.icon('copy')} 복사</button>
           </div>
-          <div style="font-size:0.85rem;color:var(--text-secondary);text-align:left;background:var(--bg);padding:12px;border-radius:var(--radius)">
+          <div style="font-size:0.93rem;color:var(--text-secondary);text-align:left;background:var(--bg);padding:12px;border-radius:var(--radius)">
             <div style="font-weight:700;margin-bottom:4px">${App.icon('alert')} 중요</div>
             <ul style="margin:0;padding-left:18px;line-height:1.6">
               <li>이 코드는 다시 표시되지 않습니다</li>
@@ -1779,7 +1887,7 @@ App.pages.settings = {
             <label class="form-label">코드 확인</label>
             <input type="password" id="prompt-pin2" inputmode="numeric" maxlength="8" placeholder="다시 입력" style="text-align:center;letter-spacing:6px;font-size:1.2rem">
           </div>` : ''}
-          <div id="prompt-pin-error" style="color:var(--danger);font-size:0.85rem;margin-top:6px;display:none"></div>
+          <div id="prompt-pin-error" style="color:var(--danger);font-size:0.93rem;margin-top:6px;display:none"></div>
         `,
         onSave: () => {
           const pin = document.getElementById('prompt-pin').value.trim();
@@ -1834,7 +1942,7 @@ App.pages.settings = {
 
     // 마스터 코드 변경
     document.getElementById('btn-sec-change-pin')?.addEventListener('click', async () => {
-      const warn = await App.confirm('마스터 코드를 변경하면 <strong>다른 모든 등록 디바이스</strong>가 다음 접속 시 새 코드로 재등록해야 합니다. 계속할까요?');
+      const warn = await App.confirm('마스터 코드를 바꾸면 <strong>다른 모든 등록 기기</strong>에서 다음에 열 때 새 코드를 입력해야 해요.', { okLabel: '코드 변경', danger: false });
       if (!warn) return;
       const currentPin = await this._promptPin('마스터 코드 변경 — 현재 코드', '현재 마스터 코드를 입력하세요', { requireConfirm: false });
       if (!currentPin) return;
@@ -1883,7 +1991,7 @@ App.pages.settings = {
 
     // 이 기기 등록 해제
     document.getElementById('btn-sec-untrust-this')?.addEventListener('click', async () => {
-      const ok = await App.confirm('이 디바이스의 등록을 해제하면 다음 접속 시 마스터 코드를 다시 입력해야 합니다. 계속할까요?');
+      const ok = await App.confirm('이 기기의 등록을 해제하면 다음에 열 때 마스터 코드를 다시 입력해야 해요.', { okLabel: '등록 해제' });
       if (!ok) return;
       Security.clearTrust();
       App.showToast('이 기기 등록 해제됨. 다음 접속 시 마스터 코드 필요');
@@ -1891,7 +1999,7 @@ App.pages.settings = {
 
     // 잠금 해제 (마스터 코드 비활성화)
     document.getElementById('btn-sec-disable')?.addEventListener('click', async () => {
-      const warn = await App.confirm('마스터 코드 잠금을 완전히 해제하면 <strong>URL을 아는 누구나</strong> 앱을 사용할 수 있습니다. 정말 해제할까요?');
+      const warn = await App.confirm('마스터 코드 잠금을 완전히 해제하면 <strong>주소(URL)를 아는 누구나</strong> 앱을 열 수 있어요.', { okLabel: '잠금 해제' });
       if (!warn) return;
       const currentPin = await this._promptPin('잠금 해제 — 현재 마스터 코드 확인', '마스터 코드 확인 후 잠금을 해제합니다', { requireConfirm: false });
       if (!currentPin) return;
@@ -1937,12 +2045,11 @@ App.pages.settings = {
         const input = btn.parentElement.querySelector('.groomer-input');
         const name = input?.value?.trim();
         if (name) {
-          const ok = await App.confirm(`"${App.escapeHtml(name)}" 미용사를 목록에서 제거하시겠습니까?<br><small style="color:var(--text-muted)">저장 전까지는 실제 삭제되지 않습니다.</small>`);
+          const ok = await App.confirm(`"${App.escapeHtml(name)}" 미용사를 목록에서 뺄까요?<br><small style="color:var(--text-muted)">아래 저장 버튼을 눌러야 실제로 빠져요.</small>`, { okLabel: '빼기' });
           if (!ok) return;
         }
         btn.parentElement.remove();
-        const tabShop = document.getElementById('tab-shop');
-        if (tabShop) tabShop._modified = true;
+        this._updateDirty();
       };
     });
   },
@@ -1959,7 +2066,7 @@ App.pages.settings = {
             `사진 ${photoCount}장을 포함한 백업은 약 ${estimatedMB}MB 이상이 됩니다.<br>` +
             `폰 메모리 부담으로 실패할 수 있어요.<br><br>` +
             `<strong>권장:</strong> 사진 제외 백업을 정기적으로, 사진 포함은 가끔만.`,
-            { okLabel: '계속 진행' }
+            { okLabel: '백업 만들기', danger: false }
           );
           if (!ok) return;
         }

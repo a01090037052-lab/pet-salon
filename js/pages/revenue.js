@@ -140,7 +140,7 @@ App.pages.revenue = {
     // 손익 데이터
     const fixedCost = Number(await DB.getSetting('monthlyFixedCost')) || 0;
     const variableCosts = await DB.getSetting('variableCosts') || {};
-    const variableCost = variableCosts[thisMonth] || 0;
+    const variableCost = Number(variableCosts[thisMonth]) || 0; // 예전 저장값이 문자열이면 고정비와 이어붙지 않게 숫자로
     const totalCost = fixedCost + variableCost;
     const profit = monthRevenue - totalCost;
     const profitMargin = monthRevenue > 0 ? Math.round((profit / monthRevenue) * 100) : 0;
@@ -149,7 +149,7 @@ App.pages.revenue = {
     const lastMonthDate = new Date(year, month - 1, 1);
     const lastMonth = `${lastMonthDate.getFullYear()}-${String(lastMonthDate.getMonth() + 1).padStart(2, '0')}`;
     const lastMonthRevenue = monthlyRevMap[lastMonth] || 0;
-    const lastMonthVariableCost = variableCosts[lastMonth] || 0;
+    const lastMonthVariableCost = Number(variableCosts[lastMonth]) || 0;
     const lastMonthProfit = lastMonthRevenue - fixedCost - lastMonthVariableCost;
     // 손익 카드의 '전월 대비'도 페이스 카드와 같은 정의(지난달 같은 일차까지)를 쓴다.
     // 예전엔 '이번 달 지금까지 vs 지난달 전체'라 5일엔 -85%, 상단엔 +10% 가 동시에 보였다.
@@ -192,8 +192,8 @@ App.pages.revenue = {
 
       <!-- 매출 탭 분리 (기본: 이번 달). 요일별·월별 추이 같은 분석 차트는 분석 화면에만 둔다 -->
       <div class="revenue-tabs" style="display:flex;gap:4px;margin-bottom:16px;background:var(--bg-white);border-radius:var(--radius);padding:4px;box-shadow:var(--shadow-xs)">
-        <button class="revenue-tab" data-tab="today" style="flex:1;padding:10px;border:none;border-radius:8px;font-weight:600;font-size:0.85rem;cursor:pointer;background:transparent;color:var(--text-secondary)">오늘</button>
-        <button class="revenue-tab active" data-tab="month" style="flex:1;padding:10px;border:none;border-radius:8px;font-weight:600;font-size:0.85rem;cursor:pointer;background:var(--primary);color:var(--text-on-primary, #fff)">이번 달</button>
+        <button class="revenue-tab" data-tab="today" style="flex:1;padding:10px;border:none;border-radius:8px;font-weight:600;font-size:0.93rem;cursor:pointer;background:transparent;color:var(--text-secondary)">오늘</button>
+        <button class="revenue-tab active" data-tab="month" style="flex:1;padding:10px;border:none;border-radius:8px;font-weight:600;font-size:0.93rem;cursor:pointer;background:var(--primary);color:var(--text-on-primary, #fff)">이번 달</button>
       </div>
 
       <!-- 오늘 탭 -->
@@ -204,9 +204,9 @@ App.pages.revenue = {
           // 미수금이 있으면 실입금액을 함께 보여준다 — 달성률은 청구 기준이라
           // 100% 여도 통장에 다 들어온 게 아닐 수 있다.
           const unpaidNote = monthUnpaid > 0
-            ? '<div style="margin-top:6px;font-size:0.8rem;color:var(--text-muted);display:flex;justify-content:space-between"><span>이번 달 받은 돈 ' + App.formatCurrency(monthCollected) + '</span><span style="color:var(--danger)">미수 ' + App.formatCurrency(monthUnpaid) + '</span></div>'
+            ? '<div style="margin-top:6px;font-size:0.93rem;color:var(--text-muted);display:flex;justify-content:space-between;gap:8px"><span>이번 달 받은 돈 ' + App.formatCurrency(monthCollected) + '</span><span style="color:var(--danger)">미결제 ' + App.formatCurrency(monthUnpaid) + '</span></div>'
             : '';
-          return '<div class="card" style="margin-bottom:16px"><div class="card-body" style="padding:16px 20px"><div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px"><span style="font-weight:700">이번 달 매출 목표</span><span style="font-weight:800;color:' + barColor + '">' + pct + '%</span></div><div style="height:10px;background:var(--border-light);border-radius:5px;overflow:hidden"><div style="height:100%;width:' + pct + '%;background:' + barColor + ';border-radius:5px;transition:width 0.3s"></div></div><div style="display:flex;justify-content:space-between;margin-top:6px;font-size:0.82rem;color:var(--text-secondary)"><span>' + App.formatCurrency(monthRevenue) + '</span><span>목표: ' + App.formatCurrency(monthlyGoal) + '</span></div>' + unpaidNote + '</div></div>';
+          return '<div class="card" style="margin-bottom:16px"><div class="card-body" style="padding:16px 20px"><div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px"><span style="font-weight:700">이번 달 매출 목표</span><span style="font-weight:800;color:' + barColor + '">' + pct + '%</span></div><div style="height:10px;background:var(--border-light);border-radius:5px;overflow:hidden"><div style="height:100%;width:' + pct + '%;background:' + barColor + ';border-radius:5px;transition:width 0.3s"></div></div><div style="display:flex;justify-content:space-between;margin-top:6px;font-size:0.93rem;color:var(--text-secondary)"><span>' + App.formatCurrency(monthRevenue) + '</span><span>목표: ' + App.formatCurrency(monthlyGoal) + '</span></div>' + unpaidNote + '</div></div>';
         })() : ''}
 
         ${unpaidRecs.length > 0 ? `
@@ -214,10 +214,10 @@ App.pages.revenue = {
           <div class="card-body" style="padding:16px 20px;display:flex;align-items:center;gap:14px;background:linear-gradient(135deg,var(--danger-light),var(--danger-bg-soft))">
             <span style="font-size:1.5rem">${App.icon('cash')}</span>
             <div class="flex-1">
-              <div style="font-weight:800;color:var(--danger);font-size:1rem">미수금 경고</div>
-              <div style="font-size:0.88rem;color:var(--danger-text-strong);margin-top:2px">총 ${unpaidRecs.length}건 &middot; ${App.formatCurrency(unpaidTotal)}</div>
+              <div style="font-weight:800;color:var(--danger);font-size:1rem">미결제</div>
+              <div style="font-size:0.93rem;color:var(--danger-text-strong);margin-top:2px">총 ${unpaidRecs.length}건 &middot; ${App.formatCurrency(unpaidTotal)}</div>
             </div>
-            <a href="#records" style="color:var(--danger);font-weight:600;font-size:0.85rem">기록에서 확인 &rarr;</a>
+            <a href="#records" style="color:var(--danger);font-weight:600;font-size:0.93rem">기록에서 확인 &rarr;</a>
           </div>
         </div>
         ` : ''}
@@ -236,17 +236,17 @@ App.pages.revenue = {
                 const time = r.createdAt ? new Date(r.createdAt).toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' }) : '-';
                 const isUnpaid = r.paymentMethod === 'unpaid';
                 return `<div style="display:flex;align-items:center;gap:10px;padding:10px 0;border-bottom:1px solid var(--border-light)${isUnpaid ? ';border-left:3px solid var(--danger);padding-left:10px' : ''}">
-                  <span style="font-weight:700;color:var(--primary);min-width:42px;font-size:0.88rem">${time}</span>
+                  <span style="font-weight:700;color:var(--primary);min-width:42px;font-size:0.93rem">${time}</span>
                   <div style="flex:1;min-width:0">
-                    <div style="font-size:0.9rem;font-weight:600">${App.escapeHtml(p?.name || '-')} <span style="color:var(--text-muted);font-weight:400;font-size:0.82rem">${App.escapeHtml(App.getCustomerLabel(c))}</span></div>
+                    <div style="font-size:0.93rem;font-weight:600">${App.escapeHtml(p?.name || '-')} <span style="color:var(--text-muted);font-weight:400;font-size:0.93rem">${App.escapeHtml(App.getCustomerLabel(c))}</span></div>
                   </div>
                   <div style="text-align:right;flex-shrink:0">
-                    <div style="font-weight:700;font-size:0.9rem">${App.formatCurrency(App.getRecordAmount(r))}</div>
-                    <div style="font-size:0.75rem;color:${isUnpaid ? 'var(--danger)' : 'var(--text-muted)'}">${Number(r.prepaidUsed) > 0 && r.paymentMethod !== 'prepaid' ? '정액권+' : ''}${payLabel[r.paymentMethod] || '-'}</div>
+                    <div style="font-weight:700;font-size:0.93rem">${App.formatCurrency(App.getRecordAmount(r))}</div>
+                    <div style="font-size:0.93rem;color:${isUnpaid ? 'var(--danger)' : 'var(--text-muted)'}">${Number(r.prepaidUsed) > 0 && r.paymentMethod !== 'prepaid' ? '정액권+' : ''}${payLabel[r.paymentMethod] || '-'}</div>
                   </div>
                 </div>`;
               }).join('') +
-              (todayRecords.length > 10 ? '<div style="text-align:center;padding:8px;font-size:0.82rem;color:var(--text-muted)">최근 10건 표시 중</div>' : '')}
+              (todayRecords.length > 10 ? '<div style="text-align:center;padding:8px;font-size:0.93rem;color:var(--text-muted)">최근 10건 표시 중</div>' : '')}
           </div>
         </div>
 
@@ -254,11 +254,11 @@ App.pages.revenue = {
         ${todayRecords.length > 0 ? `
         <div class="card" style="margin-bottom:16px">
           <div class="card-body" style="padding:12px 20px;display:flex;gap:14px;justify-content:center;flex-wrap:wrap">
-            ${todayPayment.card.count > 0 ? `<span style="font-size:0.88rem"><strong style="color:var(--primary)">카드</strong> ${todayPayment.card.count}건 · ${App.formatCurrency(todayPayment.card.amount)}</span>` : ''}
-            ${todayPayment.cash.count > 0 ? `<span style="font-size:0.88rem"><strong style="color:var(--success)">현금</strong> ${todayPayment.cash.count}건 · ${App.formatCurrency(todayPayment.cash.amount)}</span>` : ''}
-            ${todayPayment.transfer.count > 0 ? `<span style="font-size:0.88rem"><strong style="color:var(--info)">계좌이체</strong> ${todayPayment.transfer.count}건 · ${App.formatCurrency(todayPayment.transfer.amount)}</span>` : ''}
-            ${todayPayment.prepaid.count > 0 ? `<span style="font-size:0.88rem"><strong style="color:var(--warning)">정액권</strong> ${todayPayment.prepaid.count}건 · ${App.formatCurrency(todayPayment.prepaid.amount)}</span>` : ''}
-            ${todayPayment.unpaid.count > 0 ? `<span style="font-size:0.88rem"><strong style="color:var(--danger)">미결제</strong> ${todayPayment.unpaid.count}건 · ${App.formatCurrency(todayPayment.unpaid.amount)}</span>` : ''}
+            ${todayPayment.card.count > 0 ? `<span style="font-size:0.93rem"><strong style="color:var(--primary)">카드</strong> ${todayPayment.card.count}건 · ${App.formatCurrency(todayPayment.card.amount)}</span>` : ''}
+            ${todayPayment.cash.count > 0 ? `<span style="font-size:0.93rem"><strong style="color:var(--success)">현금</strong> ${todayPayment.cash.count}건 · ${App.formatCurrency(todayPayment.cash.amount)}</span>` : ''}
+            ${todayPayment.transfer.count > 0 ? `<span style="font-size:0.93rem"><strong style="color:var(--info)">계좌이체</strong> ${todayPayment.transfer.count}건 · ${App.formatCurrency(todayPayment.transfer.amount)}</span>` : ''}
+            ${todayPayment.prepaid.count > 0 ? `<span style="font-size:0.93rem"><strong style="color:var(--warning)">정액권</strong> ${todayPayment.prepaid.count}건 · ${App.formatCurrency(todayPayment.prepaid.amount)}</span>` : ''}
+            ${todayPayment.unpaid.count > 0 ? `<span style="font-size:0.93rem"><strong style="color:var(--danger)">미결제</strong> ${todayPayment.unpaid.count}건 · ${App.formatCurrency(todayPayment.unpaid.amount)}</span>` : ''}
           </div>
         </div>
         ` : ''}
@@ -280,8 +280,8 @@ App.pages.revenue = {
               const weekAvgOpenAvg = weekAvgOpen.length > 0 ? Math.round(weekAvgSum / weekAvgOpen.length) : 0;
               const avgPct = weekAvg > 0 ? Math.round((weekAvg / gMax) * 90) : 0;
               return `<div style="position:relative;height:200px;padding:0 4px;margin-left:32px">
-                <div style="position:absolute;left:0;right:0;bottom:45%;border-bottom:1px dashed var(--border-light)"><span style="position:absolute;left:-34px;top:-8px;font-size:0.72rem;color:var(--text-muted)">${Math.round(gMax * 0.5 / 10000)}만</span></div>
-                <div style="position:absolute;left:0;right:0;bottom:90%;border-bottom:1px dashed var(--border-light)"><span style="position:absolute;left:-34px;top:-8px;font-size:0.72rem;color:var(--text-muted)">${Math.round(gMax / 10000)}만</span></div>
+                <div style="position:absolute;left:0;right:0;bottom:45%;border-bottom:1px dashed var(--border-light)"><span style="position:absolute;left:-34px;top:-8px;font-size:0.86rem;color:var(--text-muted)">${Math.round(gMax * 0.5 / 10000)}만</span></div>
+                <div style="position:absolute;left:0;right:0;bottom:90%;border-bottom:1px dashed var(--border-light)"><span style="position:absolute;left:-34px;top:-8px;font-size:0.86rem;color:var(--text-muted)">${Math.round(gMax / 10000)}만</span></div>
                 <div style="display:flex;gap:6px;height:160px;position:relative;z-index:1">
                   ${weekData.map(d => {
                     const barH = d.rev > 0 ? Math.max(8, Math.round((d.rev / gMax) * 130)) : 4;
@@ -289,14 +289,14 @@ App.pages.revenue = {
                     const barBg = d.rev === 0 ? 'var(--border-light)' : isToday ? 'linear-gradient(to top,var(--success),#34D399)' : 'linear-gradient(to top,var(--primary),#818CF8)';
                     const label = d.rev >= 10000 ? Math.round(d.rev / 10000) + '만' : d.rev > 0 ? App.formatCurrency(d.rev) : '';
                     return `<div style="flex:1;position:relative;text-align:center;min-width:0">
-                      <span style="font-size:0.72rem;color:${isToday ? 'var(--success)' : 'var(--text-secondary)'};font-weight:800;position:absolute;top:0;left:0;right:0;overflow:hidden;text-overflow:clip;white-space:nowrap">${label}</span>
+                      <span style="font-size:0.86rem;color:${isToday ? 'var(--success)' : 'var(--text-secondary)'};font-weight:800;position:absolute;top:0;left:0;right:0;overflow:hidden;text-overflow:clip;white-space:nowrap">${label}</span>
                       <div style="position:absolute;bottom:20px;left:8%;right:8%;height:${barH}px;background:${barBg};border-radius:6px 6px 0 0"></div>
-                      <span style="font-size:0.82rem;font-weight:${isToday ? '800' : '600'};color:${isToday ? 'var(--primary)' : 'var(--text-muted)'};position:absolute;bottom:0;left:0;right:0">${d.label}</span>
+                      <span style="font-size:0.93rem;font-weight:${isToday ? '800' : '600'};color:${isToday ? 'var(--primary)' : 'var(--text-muted)'};position:absolute;bottom:0;left:0;right:0">${d.label}</span>
                     </div>`;
                   }).join('')}
                 </div>
               </div>
-              ${weekAvg > 0 ? `<div style="text-align:center;margin-top:10px;padding-top:8px;border-top:1px solid var(--border-light);font-size:0.85rem;color:var(--text-secondary)">하루 평균 <strong style="color:var(--warning)">${App.formatCurrency(weekAvg)}</strong> <span style="color:var(--text-muted)">· 영업한 ${weekAvgOpen.length}일 평균 ${App.formatCurrency(weekAvgOpenAvg)}</span></div>` : ''}`;
+              ${weekAvg > 0 ? `<div style="text-align:center;margin-top:10px;padding-top:8px;border-top:1px solid var(--border-light);font-size:0.93rem;color:var(--text-secondary)">하루 평균 <strong style="color:var(--warning)">${App.formatCurrency(weekAvg)}</strong> <span style="color:var(--text-muted)">· 영업한 ${weekAvgOpen.length}일 평균 ${App.formatCurrency(weekAvgOpenAvg)}</span></div>` : ''}`;
             })()}
           </div>
         </div>
@@ -311,27 +311,27 @@ App.pages.revenue = {
           <div class="card-body" style="padding:14px 16px">
             <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
               <div>
-                <div style="font-size:0.8rem;color:var(--text-secondary);font-weight:600">이번 달 매출</div>
+                <div style="font-size:0.93rem;color:var(--text-secondary);font-weight:600">이번 달 매출</div>
                 <div style="font-size:1.25rem;font-weight:800;margin-top:2px">${App.formatCurrency(monthRevenue)}</div>
-                <div style="font-size:0.72rem;color:var(--text-muted);margin-top:2px">미용한 날 기준 · 미수금 포함</div>
+                <div style="font-size:0.93rem;color:var(--text-muted);margin-top:2px">미용한 날 기준 · 미결제 포함</div>
               </div>
               <div>
-                <div style="font-size:0.8rem;color:var(--text-secondary);font-weight:600">실제 받은 돈 (실입금)</div>
+                <div style="font-size:0.93rem;color:var(--text-secondary);font-weight:600">받은 돈</div>
                 <div style="font-size:1.25rem;font-weight:800;margin-top:2px">${App.formatCurrency(monthCollected)}</div>
-                <div style="font-size:0.72rem;color:var(--text-muted);margin-top:2px">이번 달에 결제된 돈${prepaidAll.length ? ' · 정액권 충전 포함' : ''}</div>
+                <div style="font-size:0.93rem;color:var(--text-muted);margin-top:2px">이번 달에 들어온 돈${prepaidAll.length ? ' · 정액권 충전 포함' : ''}</div>
               </div>
             </div>
             ${prepaidAll.length ? `<div class="rev-prepaid-line">정액권: 이번 달 충전 ${App.formatCurrency(monthCharge)}${monthRefund ? ' · 환불 ' + App.formatCurrency(monthRefund) : ''}${byMethod.adjustOut ? ' · 조정으로 줄인 잔액 ' + App.formatCurrency(byMethod.adjustOut) + ' <span style="color:var(--text-muted)">(노쇼 예약금 등 — 돌려주지 않은 돈)</span>' : ''} · 남은 잔액 합계 ${App.formatCurrency(prepaidOutstanding)}</div>` : ''}
-            ${monthComp > 0 ? `<div style="margin-top:10px;padding-top:8px;border-top:1px solid var(--border-light);display:flex;justify-content:space-between;font-size:0.8rem;color:var(--text-secondary)"><span>서비스로 제공한 금액 <span style="color:var(--text-muted)">(매출 제외)</span></span><span>${App.formatCurrency(monthComp)}</span></div>` : ''}
+            ${monthComp > 0 ? `<div style="margin-top:10px;padding-top:8px;border-top:1px solid var(--border-light);display:flex;justify-content:space-between;font-size:0.93rem;color:var(--text-secondary)"><span>서비스로 제공한 금액 <span style="color:var(--text-muted)">(매출 제외)</span></span><span>${App.formatCurrency(monthComp)}</span></div>` : ''}
             ${unpaidRecs.length > 0 ? `
-            <a href="#dashboard" style="display:flex;align-items:center;justify-content:space-between;gap:8px;margin-top:12px;padding-top:10px;border-top:1px solid var(--border-light);text-decoration:none;color:var(--danger);font-size:0.85rem;font-weight:700">
-              <span>${App.icon('alert')} 미수금 ${unpaidRecs.length}건 · ${App.formatCurrency(unpaidTotal)}</span>
+            <a href="#dashboard" style="display:flex;align-items:center;justify-content:space-between;gap:8px;margin-top:12px;padding-top:10px;border-top:1px solid var(--border-light);text-decoration:none;color:var(--danger);font-size:0.93rem;font-weight:700">
+              <span>${App.icon('alert')} 미결제 ${unpaidRecs.length}건 · ${App.formatCurrency(unpaidTotal)}</span>
               <span style="font-weight:600">홈에서 보기 &rarr;</span>
             </a>` : ''}
           </div>
         </div>
         <!-- 이번 달 페이스 (지난달 기록이 있을 때만 — 첫 달엔 비교할 게 없다) -->
-        ${!hasPrevMonth ? `<p class="rev-first-month" style="margin:0 0 16px;padding:12px 16px;background:var(--bg-white);border-radius:var(--radius);box-shadow:var(--shadow-xs);font-size:0.85rem;color:var(--text-muted);text-align:center">지난달과 비교·손익은 지난달 데이터가 쌓이면 보여요</p>` : `
+        ${!hasPrevMonth ? `<p class="rev-first-month" style="margin:0 0 16px;padding:12px 16px;background:var(--bg-white);border-radius:var(--radius);box-shadow:var(--shadow-xs);font-size:0.93rem;color:var(--text-muted);text-align:center">지난달과 비교·손익은 지난달 데이터가 쌓이면 보여요</p>` : `
         <div class="card" style="margin-bottom:20px">
           <div class="card-header">
             <span class="card-title">${App.icon('run')} 이번 달 페이스 (${todayDay}일차)</span>
@@ -346,7 +346,7 @@ App.pages.revenue = {
               <strong>${App.formatCurrency(lastMonthPacing)}</strong>
             </div>
             <div style="display:flex;justify-content:space-between;padding:14px 0;align-items:center">
-              <span style="font-weight:700">전월 동일 시점 대비</span>
+              <span style="font-weight:700">지난달 이맘때보다</span>
               ${lastMonthPacing > 0 ? `<strong style="font-size:1.1rem;color:${pacingChange >= 0 ? 'var(--success)' : 'var(--danger)'}">${pacingChange >= 0 ? App.icon('arrow-up','ico-sm') : App.icon('arrow-down','ico-sm')} ${Math.abs(pacingChange)}% ${pacingChange >= 0 ? '앞서가는 중' : '뒤처지는 중'}</strong>` : '<span style="color:var(--text-muted)">비교 데이터 없음</span>'}
             </div>
           </div>
@@ -358,14 +358,14 @@ App.pages.revenue = {
             <span class="card-title">${App.icon('card')} 이번 달 받은 돈 · 결제 수단별</span>
           </div>
           <div class="card-body">
-            <div style="font-size:0.75rem;color:var(--text-muted);margin:-4px 0 10px">실입금 기준 — 정액권 충전도 받은 날 들어온 돈으로 셉니다</div>
+            <div style="font-size:0.93rem;color:var(--text-muted);margin:-4px 0 10px">돈을 받은 날 기준 — 정액권 충전도 충전한 날 받은 돈으로 셉니다</div>
             <div style="display:flex;flex-direction:column;gap:10px">
               ${payRows.map(row => {
                 const pct = row.amount > 0 ? Math.round((row.amount / payBarBase) * 100) : 0;
                 return `<div>
                   <div style="display:flex;justify-content:space-between;margin-bottom:4px">
-                    <span style="font-weight:600;font-size:0.88rem">${row.label}</span>
-                    <span style="font-weight:700;font-size:0.88rem${row.amount < 0 ? ';color:var(--danger)' : ''}">${row.amount < 0 ? '−' + App.formatCurrency(-row.amount) : App.formatCurrency(row.amount) + ' (' + pct + '%)'}</span>
+                    <span style="font-weight:600;font-size:0.93rem">${row.label}</span>
+                    <span style="font-weight:700;font-size:0.93rem${row.amount < 0 ? ';color:var(--danger)' : ''}">${row.amount < 0 ? '−' + App.formatCurrency(-row.amount) : App.formatCurrency(row.amount) + ' (' + pct + '%)'}</span>
                   </div>
                   ${row.amount > 0 ? `<div style="height:8px;background:var(--border-light);border-radius:4px;overflow:hidden">
                     <div style="height:100%;width:${pct}%;background:${row.color};border-radius:4px"></div>
@@ -374,9 +374,9 @@ App.pages.revenue = {
               }).join('')}
               ${payRows.length === 0 ? '<p style="color:var(--text-muted);text-align:center">이번 달 받은 돈이 없습니다</p>' : `
               <div style="display:flex;justify-content:space-between;padding-top:8px;border-top:1px solid var(--border);font-weight:800">
-                <span>합계 (실제 받은 돈)</span><span>${App.formatCurrency(byMethod.total)}</span>
+                <span>합계 (받은 돈)</span><span>${App.formatCurrency(byMethod.total)}</span>
               </div>`}
-              ${byMethod.used || monthUnpaid ? `<div style="font-size:0.8rem;color:var(--text-secondary);display:flex;flex-direction:column;gap:4px">
+              ${byMethod.used || monthUnpaid ? `<div style="font-size:0.93rem;color:var(--text-secondary);display:flex;flex-direction:column;gap:4px">
                 ${byMethod.used ? `<div style="display:flex;justify-content:space-between"><span>정액권 사용 <span style="color:var(--text-muted)">(매출엔 포함 · 돈은 충전 때 받음)</span></span><span>${App.formatCurrency(byMethod.used)}</span></div>` : ''}
                 ${monthUnpaid ? `<div style="display:flex;justify-content:space-between;color:var(--danger)"><span>미결제 <span style="color:var(--text-muted)">(아직 안 받음)</span></span><span>${App.formatCurrency(monthUnpaid)}</span></div>` : ''}
               </div>` : ''}
@@ -390,7 +390,7 @@ App.pages.revenue = {
             <span class="card-title">${App.icon('calendar')} 이번 달 일별 매출 (${year}년 ${month + 1}월)</span>
           </div>
           ${weeklyData.length > 0 ? `
-          <div style="padding:8px 14px;background:var(--bg);border-bottom:1px solid var(--border-light);font-size:0.78rem;color:var(--text-secondary);overflow-x:auto;white-space:nowrap;-webkit-overflow-scrolling:touch">
+          <div style="padding:8px 14px;background:var(--bg);border-bottom:1px solid var(--border-light);font-size:0.93rem;color:var(--text-secondary);overflow-x:auto;white-space:nowrap;-webkit-overflow-scrolling:touch">
             ${weeklyData.map((w, i) => {
               const isCurrent = i === currentWeekIdx;
               const labelTxt = w.rev >= 10000 ? Math.round(w.rev / 10000) + '만' : (w.rev > 0 ? App.formatCurrency(w.rev) : '0');
@@ -411,8 +411,8 @@ App.pages.revenue = {
               const todayDayNum = (monthData.find(d => d.date === today) || {}).day || 0;
               const mAvgPct = mAvg > 0 ? Math.round((mAvg / mMax) * 90) : 0;
               return `<div style="position:relative;height:200px;padding:0;overflow-x:auto;margin-left:32px">
-                <div style="position:absolute;left:0;right:0;bottom:45%;border-bottom:1px dashed var(--border-light)"><span style="position:absolute;left:-34px;top:-8px;font-size:0.72rem;color:var(--text-muted)">${Math.round(mMax * 0.5 / 10000)}만</span></div>
-                <div style="position:absolute;left:0;right:0;bottom:90%;border-bottom:1px dashed var(--border-light)"><span style="position:absolute;left:-34px;top:-8px;font-size:0.72rem;color:var(--text-muted)">${Math.round(mMax / 10000)}만</span></div>
+                <div style="position:absolute;left:0;right:0;bottom:45%;border-bottom:1px dashed var(--border-light)"><span style="position:absolute;left:-34px;top:-8px;font-size:0.86rem;color:var(--text-muted)">${Math.round(mMax * 0.5 / 10000)}만</span></div>
+                <div style="position:absolute;left:0;right:0;bottom:90%;border-bottom:1px dashed var(--border-light)"><span style="position:absolute;left:-34px;top:-8px;font-size:0.86rem;color:var(--text-muted)">${Math.round(mMax / 10000)}만</span></div>
                 <div style="display:flex;gap:2px;height:160px;position:relative;z-index:1">
                   ${monthData.map(d => {
                     const barH = d.rev > 0 ? Math.max(4, Math.round((d.rev / mMax) * 140)) : 2;
@@ -424,12 +424,12 @@ App.pages.revenue = {
                     const barBg = d.rev === 0 ? 'var(--border-light)' : isToday ? 'linear-gradient(to top,var(--success),#34D399)' : 'linear-gradient(to top,var(--primary),#818CF8)';
                     return `<div style="flex:1;min-width:10px;position:relative${isWeekStart ? ';border-left:1px dashed var(--border);margin-left:2px;padding-left:2px' : ''}" title="${d.date}: ${App.formatCurrency(d.rev)}">
                       <div style="position:absolute;bottom:16px;left:1px;right:1px;height:${barH}px;background:${barBg};border-radius:3px 3px 0 0"></div>
-                      <span style="font-size:0.72rem;color:${isToday ? 'var(--primary)' : 'var(--text-muted)'};font-weight:${isToday ? '800' : '500'};position:absolute;bottom:-2px;left:50%;transform:translateX(-50%);white-space:nowrap">${showLabel ? d.day : ''}</span>
+                      <span style="font-size:0.86rem;color:${isToday ? 'var(--primary)' : 'var(--text-muted)'};font-weight:${isToday ? '800' : '500'};position:absolute;bottom:-2px;left:50%;transform:translateX(-50%);white-space:nowrap">${showLabel ? d.day : ''}</span>
                     </div>`;
                   }).join('')}
                 </div>
               </div>
-              ${mAvg > 0 ? `<div style="text-align:center;margin-top:10px;padding-top:8px;border-top:1px solid var(--border-light);font-size:0.85rem;color:var(--text-secondary)">하루 평균 <strong style="color:var(--warning)">${App.formatCurrency(mAvg)}</strong> <span style="color:var(--text-muted)">· 영업한 ${mAvgOpen.length}일 평균 ${App.formatCurrency(mAvgOpenAvg)}</span></div>` : ''}`;
+              ${mAvg > 0 ? `<div style="text-align:center;margin-top:10px;padding-top:8px;border-top:1px solid var(--border-light);font-size:0.93rem;color:var(--text-secondary)">하루 평균 <strong style="color:var(--warning)">${App.formatCurrency(mAvg)}</strong> <span style="color:var(--text-muted)">· 영업한 ${mAvgOpen.length}일 평균 ${App.formatCurrency(mAvgOpenAvg)}</span></div>` : ''}`;
             })()}
           </div>
         </div>
@@ -452,11 +452,12 @@ App.pages.revenue = {
             <div style="display:flex;justify-content:space-between;align-items:center;padding:10px 0;border-bottom:1px solid var(--border)">
               <span>변동비 (이번 달)</span>
               <div style="display:flex;align-items:center;gap:6px">
-                <input type="number" id="r-variableCost" value="${variableCost}"
-                  placeholder="0" min="0" step="10000"
-                  style="width:90px;text-align:right;padding:4px 8px;font-size:0.85rem"
+                <!-- 비어 있으면 '입력 안 함'(계산은 0원) — 예전엔 빈 칸 옆에 '원'만 보였다 -->
+                <input type="number" id="r-variableCost" value="${variableCost > 0 ? variableCost : ''}"
+                  placeholder="입력 안 함" min="0" step="10000" inputmode="numeric" aria-label="이번 달 변동비 (원)"
+                  style="width:120px;min-height:44px;text-align:right;padding:4px 8px;font-size:1rem"
                   onchange="App.pages.revenue.saveVariableCost(this.value)">
-                <span style="font-size:0.8rem;color:var(--text-muted)">원</span>
+                <span style="font-size:0.93rem;color:var(--text-muted)">원</span>
               </div>
             </div>
             <div style="display:flex;justify-content:space-between;padding:14px 0 ${monthUnpaid > 0 ? '4px' : '14px'};font-size:1.1rem">
@@ -466,28 +467,28 @@ App.pages.revenue = {
               </strong>
             </div>
             ${monthUnpaid > 0 ? `
-            <div style="display:flex;justify-content:space-between;padding:0 0 12px;font-size:0.82rem;color:var(--text-muted)">
-              <span>실입금 기준</span>
+            <div style="display:flex;justify-content:space-between;padding:0 0 12px;font-size:0.93rem;color:var(--text-muted)">
+              <span>받은 돈 기준</span>
               <span>${(monthCollected - totalCost) >= 0 ? '+' : ''}${App.formatCurrency(monthCollected - totalCost)}</span>
             </div>` : ''}
             <div style="background:var(--bg);border-radius:20px;height:28px;overflow:hidden;margin-top:8px;position:relative">
               <div style="height:100%;width:${Math.min(100, Math.max(0, profitMargin))}%;background:${profit >= 0 ? 'var(--success)' : 'var(--danger)'};border-radius:20px;transition:width 0.3s"></div>
-              <span style="position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);font-size:0.8rem;font-weight:700">
+              <span style="position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);font-size:0.93rem;font-weight:700">
                 이익률 ${profitMargin}%
               </span>
             </div>
             <!-- 지난달 비교 -->
             <div style="display:flex;gap:12px;margin-top:12px">
               <div style="flex:1;background:var(--bg);border-radius:var(--radius);padding:12px;text-align:center">
-                <div style="font-size:0.8rem;color:var(--text-muted)">지난달 매출</div>
+                <div style="font-size:0.93rem;color:var(--text-muted)">지난달 매출</div>
                 <div style="font-weight:700">${App.formatCurrency(lastMonthRevenue)}</div>
               </div>
               <div style="flex:1;background:var(--bg);border-radius:var(--radius);padding:12px;text-align:center">
-                <div style="font-size:0.8rem;color:var(--text-muted)">지난달 순이익</div>
+                <div style="font-size:0.93rem;color:var(--text-muted)">지난달 순이익</div>
                 <div style="font-weight:700">${App.formatCurrency(lastMonthProfit)}</div>
               </div>
               <div style="flex:1;background:var(--bg);border-radius:var(--radius);padding:12px;text-align:center">
-                <div style="font-size:0.8rem;color:var(--text-muted)">전월 동기 대비</div>
+                <div style="font-size:0.93rem;color:var(--text-muted)">지난달 이맘때보다</div>
                 <div style="font-weight:700;color:${monthChange === null ? 'var(--text-muted)' : monthChange >= 0 ? 'var(--success)' : 'var(--danger)'}">${monthChange === null ? '-' : (monthChange >= 0 ? App.icon('arrow-up','ico-sm') : App.icon('arrow-down','ico-sm')) + ' ' + Math.abs(monthChange) + '%'}</div>
               </div>
             </div>
@@ -514,7 +515,7 @@ App.pages.revenue = {
                   <div style="height:8px;background:var(--border-light);border-radius:4px;overflow:hidden;margin-bottom:8px">
                     <div style="height:100%;width:${pct}%;background:linear-gradient(90deg,var(--primary),#818CF8);border-radius:4px"></div>
                   </div>
-                  <div style="display:flex;gap:16px;font-size:0.82rem;color:var(--text-secondary)">
+                  <div style="display:flex;gap:16px;font-size:0.93rem;color:var(--text-secondary)">
                     <span>${App.icon('scissors')} ${stats.count}건</span>
                     <span>비율 ${sharePct}%</span>
                   </div>
@@ -526,11 +527,11 @@ App.pages.revenue = {
 
         </div>
         <!-- 분석 화면·세무 자료 바로가기 (요일별·월별 추이는 분석 화면, 내보내기는 설정 > 데이터 한 곳에서) -->
-        <a href="#analytics" style="display:block;text-align:center;padding:16px;background:var(--bg-white);border-radius:var(--radius);box-shadow:var(--shadow-xs);color:var(--primary);font-weight:700;font-size:0.9rem;text-decoration:none;margin:20px 0 8px">
+        <a href="#analytics" style="display:block;text-align:center;padding:16px;background:var(--bg-white);border-radius:var(--radius);box-shadow:var(--shadow-xs);color:var(--primary);font-weight:700;font-size:0.93rem;text-decoration:none;margin:20px 0 8px">
           ${App.icon('chart')} 요일별·월별 추이 등 자세한 분석 보기 &rarr;
         </a>
         <div style="text-align:center;margin-bottom:20px">
-          <a href="#settings" onclick="try{sessionStorage.setItem('settings-open-tab','data')}catch(e){}" style="font-size:0.82rem;color:var(--text-muted)">세무 자료 내보내기는 설정 &rsaquo; 데이터에서</a>
+          <a href="#settings" onclick="try{sessionStorage.setItem('settings-open-tab','data')}catch(e){}" style="font-size:0.93rem;color:var(--text-muted)">세무 자료 내보내기는 설정 &rsaquo; 데이터에서</a>
         </div>
       </div>
     `;

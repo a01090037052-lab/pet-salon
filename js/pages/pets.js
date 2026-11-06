@@ -53,11 +53,11 @@ App.pages.pets = {
         <div>
           <h1 class="page-title">반려견 관리</h1>
           <p class="page-subtitle">
-            총 ${pets.length}마리${inactiveCount > 0 ? ` <a href="#" id="pet-toggle-inactive" style="color:var(--primary);text-decoration:underline;font-size:0.85rem;margin-left:4px">${showInactive ? '비활성 숨기기' : `비활성 ${inactiveCount}마리 보기`}</a>` : ''}
+            총 ${pets.length}마리${inactiveCount > 0 ? ` <a href="#" id="pet-toggle-inactive" style="color:var(--primary);text-decoration:underline;font-size:0.93rem;margin-left:4px">${showInactive ? '비활성 숨기기' : `비활성 ${inactiveCount}마리 보기`}</a>` : ''}
           </p>
         </div>
         <div class="page-actions">
-          <select id="pet-sort" style="width:auto;min-width:100px;font-size:max(16px,0.88rem);padding:10px 12px;min-height:40px">
+          <select id="pet-sort" style="width:auto;min-width:100px;font-size:max(16px,0.88rem);padding:10px 12px;min-height:44px">
             ${sortOptions.map(o => `<option value="${o.v}"${sortKey === o.v ? ' selected' : ''}>${o.l}</option>`).join('')}
           </select>
           <button class="btn btn-primary" id="btn-add-pet">+ 등록</button>
@@ -65,7 +65,7 @@ App.pages.pets = {
       </div>
       <div class="search-box" style="margin-bottom:12px;max-width:none">
         <span class="search-icon">${App.icon('search')}</span>
-        <input type="text" id="pet-search" placeholder="이름, 견종, 보호자 검색..." style="width:100%">
+        <input type="text" id="pet-search" placeholder="이름·견종·보호자·초성(ㅊㅋ)" style="width:100%">
       </div>
 
       ${sorted.length === 0 ? `
@@ -94,27 +94,27 @@ App.pages.pets = {
           // 우측 칩
           let rightChip = '';
           if (isInactive) {
-            rightChip = `<span style="font-size:0.72rem;padding:4px 10px;background:var(--border-light);color:var(--text-muted);border-radius:12px;font-weight:600;flex-shrink:0;white-space:nowrap">${inactiveLabel}</span>`;
+            rightChip = `<span style="font-size:0.93rem;padding:4px 10px;background:var(--border-light);color:var(--text-muted);border-radius:12px;font-weight:600;flex-shrink:0;white-space:nowrap">${inactiveLabel}</span>`;
           } else if (vs === 'at-risk') {
-            rightChip = `<span style="font-size:0.72rem;padding:4px 10px;background:var(--danger-light);color:var(--danger-text-strong);border-radius:12px;font-weight:700;flex-shrink:0;white-space:nowrap">많이 늦음</span>`;
+            rightChip = `<span style="font-size:0.93rem;padding:4px 10px;background:var(--danger-light);color:var(--danger-text-strong);border-radius:12px;font-weight:700;flex-shrink:0;white-space:nowrap">많이 늦음</span>`;
           } else if (vs === 'remind') {
-            rightChip = `<span style="font-size:0.72rem;padding:4px 10px;background:var(--warning-light);color:var(--warning-text-strong);border-radius:12px;font-weight:700;flex-shrink:0;white-space:nowrap">올 때 됨</span>`;
+            rightChip = `<span style="font-size:0.93rem;padding:4px 10px;background:var(--warning-light);color:var(--warning-text-strong);border-radius:12px;font-weight:700;flex-shrink:0;white-space:nowrap">올 때 됨</span>`;
           } else if (vs === 'churned') {
-            rightChip = `<span style="font-size:0.72rem;padding:4px 10px;background:var(--bg);color:var(--text-secondary);border:1px solid var(--border-light);border-radius:12px;font-weight:600;flex-shrink:0;white-space:nowrap">오래 안 옴</span>`;
+            rightChip = `<span style="font-size:0.93rem;padding:4px 10px;background:var(--bg);color:var(--text-secondary);border:1px solid var(--border-light);border-radius:12px;font-weight:600;flex-shrink:0;white-space:nowrap">오래 안 옴</span>`;
           } else if (vs === 'new') {
-            rightChip = `<span style="font-size:0.72rem;padding:4px 10px;background:var(--bg);color:var(--text-muted);border:1px solid var(--border);border-radius:12px;font-weight:600;flex-shrink:0;white-space:nowrap">방문 전</span>`;
+            rightChip = `<span style="font-size:0.93rem;padding:4px 10px;background:var(--bg);color:var(--text-muted);border:1px solid var(--border);border-radius:12px;font-weight:600;flex-shrink:0;white-space:nowrap">방문 전</span>`;
           } else if (p.groomingCycle && (p.lastVisitDate || lastVisit)) {
             // 자정 기준 정수 일수 (예전엔 '지금'과 자정의 차를 내림해 하루 전에 '오늘', 당일에 '1일 초과'로 표시됐다)
             const next = App.parseLocalDate(p.lastVisitDate || lastVisit); next.setDate(next.getDate() + p.groomingCycle);
             const days = App.daysUntil(App.formatLocalDate(next));
             const label = days < 0 ? Math.abs(days) + '일 초과' : days === 0 ? '오늘' : 'D-' + days;
             const cColor = days < 0 ? 'var(--danger)' : 'var(--success)';
-            rightChip = `<span style="font-size:0.72rem;padding:4px 10px;background:var(--bg);color:${cColor};border-radius:12px;font-weight:700;flex-shrink:0;white-space:nowrap;border:1px solid ${cColor}33">${label}</span>`;
+            rightChip = `<span style="font-size:0.93rem;padding:4px 10px;background:var(--bg);color:${cColor};border-radius:12px;font-weight:700;flex-shrink:0;white-space:nowrap;border:1px solid ${cColor}33">${label}</span>`;
           }
 
           // 알러지/건강 주의 아이콘
           const hasWarn = App.hasPetNote(p.allergies) || App.hasPetNote(p.healthNotes);
-          const warnIcon = hasWarn ? `<span style="color:var(--danger);font-size:0.85rem;font-weight:700;line-height:1" title="알러지/건강 주의">${App.icon('alert', 'ico-sm')}</span>` : '';
+          const warnIcon = hasWarn ? `<span style="color:var(--danger);font-size:0.93rem;font-weight:700;line-height:1" title="알러지/건강 주의">${App.icon('alert', 'ico-sm')}</span>` : '';
 
           // 사진
           const photo = (p.photoThumb || p.photo)
@@ -131,8 +131,8 @@ App.pages.pets = {
                 <strong style="font-size:1.05rem;font-weight:800;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${App.escapeHtml(p.name)}</strong>
                 ${warnIcon}
               </div>
-              <div style="font-size:0.82rem;color:var(--text-secondary);margin-bottom:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${App.escapeHtml(breedWeight)} · ${App.escapeHtml(App.getCustomerLabel(owner))}</div>
-              <div style="font-size:0.78rem;color:var(--text-muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${lastVisit ? App.getRelativeTime(lastVisit) + ' 방문' : '방문 없음'}</div>
+              <div style="font-size:0.93rem;color:var(--text-secondary);margin-bottom:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${App.escapeHtml(breedWeight)} · ${App.escapeHtml(App.getCustomerLabel(owner))}</div>
+              <div style="font-size:0.93rem;color:var(--text-muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${lastVisit ? App.getRelativeTime(lastVisit) + ' 방문' : '방문 없음'}</div>
             </div>
             ${rightChip}
           </div>`;
@@ -158,8 +158,8 @@ App.pages.pets = {
             const meta = groupMeta[gs];
             return `<div class="pet-group-head" style="margin:14px 0 8px;display:flex;align-items:center;gap:8px;padding:0 2px">
               <span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:${meta.color};flex-shrink:0"></span>
-              <span style="font-size:0.88rem;font-weight:800;color:var(--text-primary)">${meta.label}</span>
-              <span style="font-size:0.78rem;color:var(--text-muted)">${gp.length}마리</span>
+              <span style="font-size:0.93rem;font-weight:800;color:var(--text-primary)">${meta.label}</span>
+              <span style="font-size:0.93rem;color:var(--text-muted)">${gp.length}마리</span>
             </div>` + gp.map(renderCard).join('');
           }).join('') + '</div>';
         }
@@ -248,9 +248,9 @@ App.pages.pets = {
       <div style="background:var(--danger-bg-soft);border:1.5px solid var(--danger);border-radius:var(--radius);padding:12px 14px;margin-bottom:16px;display:flex;gap:10px;align-items:flex-start">
         <span style="font-size:1.1rem;color:var(--danger);font-weight:800;flex-shrink:0;line-height:1.3">${App.icon('alert')}</span>
         <div style="flex:1;min-width:0">
-          <div style="font-weight:800;color:var(--danger);font-size:0.9rem;margin-bottom:4px">미용 전 확인</div>
-          ${hasAllergy ? `<div style="font-size:0.85rem;color:var(--danger-text-strong)"><strong>알러지:</strong> ${App.escapeHtml(pet.allergies)}</div>` : ''}
-          ${hasHealth ? `<div style="font-size:0.85rem;color:var(--danger-text-strong);margin-top:2px"><strong>건강:</strong> ${App.escapeHtml(pet.healthNotes)}</div>` : ''}
+          <div style="font-weight:800;color:var(--danger);font-size:0.93rem;margin-bottom:4px">미용 전 확인</div>
+          ${hasAllergy ? `<div style="font-size:0.93rem;color:var(--danger-text-strong)"><strong>알러지:</strong> ${App.escapeHtml(pet.allergies)}</div>` : ''}
+          ${hasHealth ? `<div style="font-size:0.93rem;color:var(--danger-text-strong);margin-top:2px"><strong>건강:</strong> ${App.escapeHtml(pet.healthNotes)}</div>` : ''}
         </div>
       </div>`;
       })()}
@@ -299,24 +299,24 @@ App.pages.pets = {
       <!-- 응대 카드 (단골 응대 핵심 정보) — 폰은 2칸, 넓은 화면은 4칸 한 줄 (CSS .pet-glance) -->
       <div class="pet-glance" style="display:grid;grid-template-columns:repeat(2,1fr);gap:8px;margin-bottom:16px">
         <div style="padding:14px 12px;background:var(--bg-white);border:1px solid var(--border);border-radius:var(--radius);min-width:0">
-          <div style="font-size:0.72rem;color:var(--text-muted);margin-bottom:4px">다음 미용 권장</div>
+          <div style="font-size:0.93rem;color:var(--text-muted);margin-bottom:4px">다음 미용 권장</div>
           <div style="font-size:1rem;font-weight:800;color:${isOverdue ? 'var(--danger)' : 'var(--primary)'};white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${nextDays != null ? (isOverdue ? Math.abs(nextDays) + '일 초과' : nextDays === 0 ? '오늘' : 'D-' + nextDays) : '데이터 부족'}</div>
-          <div style="font-size:0.7rem;color:var(--text-secondary);margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${nextStr ? App.formatDate(nextStr) + (cycleSourceLabel === '평균' ? ' · 평균 ' + avgCycleNum + '일' : '') : (records.length < 2 ? '기록 부족' : '주기 미설정')}</div>
+          <div style="font-size:0.93rem;color:var(--text-secondary);margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${nextStr ? App.formatDate(nextStr) + (cycleSourceLabel === '평균' ? ' · 평균 ' + avgCycleNum + '일' : '') : (records.length < 2 ? '기록 부족' : '주기 미설정')}</div>
         </div>
         <div style="padding:14px 12px;background:var(--bg-white);border:1px solid var(--border);border-radius:var(--radius);min-width:0">
-          <div style="font-size:0.72rem;color:var(--text-muted);margin-bottom:4px">최근 방문</div>
+          <div style="font-size:0.93rem;color:var(--text-muted);margin-bottom:4px">최근 방문</div>
           <div style="font-size:1rem;font-weight:800;color:var(--info);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${lastDays != null ? (lastDays === 0 ? '오늘' : lastDays + '일 전') : '없음'}</div>
-          <div style="font-size:0.7rem;color:var(--text-secondary);margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${lastVisitDate ? App.formatDate(lastVisitDate) : '-'}</div>
+          <div style="font-size:0.93rem;color:var(--text-secondary);margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${lastVisitDate ? App.formatDate(lastVisitDate) : '-'}</div>
         </div>
         <div style="padding:14px 12px;background:var(--bg-white);border:1px solid var(--border);border-radius:var(--radius);min-width:0">
-          <div style="font-size:0.72rem;color:var(--text-muted);margin-bottom:4px">최근 컨디션</div>
+          <div style="font-size:0.93rem;color:var(--text-muted);margin-bottom:4px">최근 컨디션</div>
           <div style="font-size:1rem;font-weight:800;color:${lastCondition ? dotColor(lastCondition.condition) : 'var(--text-muted)'};white-space:nowrap">${lastCondition ? condLabels[lastCondition.condition] : '기록 없음'}</div>
-          <div style="font-size:0.7rem;color:var(--text-secondary);margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${lastCondition ? App.formatDate(lastCondition.date) : '-'}</div>
+          <div style="font-size:0.93rem;color:var(--text-secondary);margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${lastCondition ? App.formatDate(lastCondition.date) : '-'}</div>
         </div>
         <div style="padding:14px 12px;background:var(--bg-white);border:1px solid var(--border);border-radius:var(--radius);min-width:0">
-          <div style="font-size:0.72rem;color:var(--text-muted);margin-bottom:4px">미용 협조도</div>
+          <div style="font-size:0.93rem;color:var(--text-muted);margin-bottom:4px">미용 협조도</div>
           <div style="font-size:1rem;font-weight:800;color:${lastCoop ? dotColor(lastCoop.cooperativeness) : 'var(--text-muted)'};white-space:nowrap">${lastCoop ? coopLabels[lastCoop.cooperativeness] : '기록 없음'}</div>
-          <div style="margin-top:3px;line-height:1">${coopTrendDots || `<span style="font-size:0.7rem;color:var(--text-secondary)">-</span>`}</div>
+          <div style="margin-top:3px;line-height:1">${coopTrendDots || `<span style="font-size:0.93rem;color:var(--text-secondary)">-</span>`}</div>
         </div>
       </div>
 
@@ -353,12 +353,12 @@ App.pages.pets = {
               const coopDot = r.cooperativeness ? `<span style="display:inline-flex;align-items:center;gap:4px"><span style="display:inline-block;width:7px;height:7px;border-radius:50%;background:${dotColor(r.cooperativeness)}"></span>협조 ${coopLabels[r.cooperativeness]}</span>` : '';
               return `<div style="padding:12px 0;border-bottom:1px solid var(--border-light)${r.paymentMethod === 'unpaid' ? ';border-left:4px solid var(--danger);padding-left:12px' : ''}">
                 <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px">
-                  <strong style="font-size:0.9rem">${App.formatDate(r.date)}</strong>
+                  <strong style="font-size:0.93rem">${App.formatDate(r.date)}</strong>
                   <strong style="color:var(--primary)">${App.formatCurrency(App.getRecordAmount(r))}</strong>
                 </div>
-                <div style="font-size:0.85rem;color:var(--text-secondary)">${App.escapeHtml(serviceNames)} · ${App.escapeHtml(r.groomer || '-')} · ${App.pages.records.getPaymentLabel(r.paymentMethod)}</div>
-                ${(condDot || coopDot) ? `<div style="display:flex;gap:12px;flex-wrap:wrap;margin-top:5px;font-size:0.74rem;color:var(--text-muted)">${condDot}${coopDot}</div>` : ''}
-                ${r.memo ? `<div style="font-size:0.82rem;color:var(--text-muted);margin-top:4px">${App.escapeHtml(r.memo.length > 60 ? r.memo.slice(0, 60) + '...' : r.memo)}</div>` : ''}
+                <div style="font-size:0.93rem;color:var(--text-secondary)">${App.escapeHtml(serviceNames)} · ${App.escapeHtml(r.groomer || '-')} · ${App.pages.records.getPaymentLabel(r.paymentMethod)}</div>
+                ${(condDot || coopDot) ? `<div style="display:flex;gap:12px;flex-wrap:wrap;margin-top:5px;font-size:0.93rem;color:var(--text-muted)">${condDot}${coopDot}</div>` : ''}
+                ${r.memo ? `<div style="font-size:0.93rem;color:var(--text-muted);margin-top:4px">${App.escapeHtml(r.memo.length > 60 ? r.memo.slice(0, 60) + '...' : r.memo)}</div>` : ''}
               </div>`;
             };
             this._petRecs = { records, shown: PET_REC_STEP, step: PET_REC_STEP, itemHtml, listId: 'pet-rec-list' };
@@ -460,7 +460,7 @@ App.pages.pets = {
     const _debouncedPetFilter = App.debounce((val) => {
       const q = (val || '').toLowerCase();
       document.querySelectorAll('.pet-list-item').forEach(item => {
-        item.style.display = !q || (item.dataset.search || '').toLowerCase().includes(q) ? '' : 'none';
+        item.style.display = App.searchMatch(item.dataset.search || '', q) ? '' : 'none'; // 초성·전화 숫자·여러 낱말
       });
     }, 300);
     document.getElementById('pet-search')?.addEventListener('input', (e) => _debouncedPetFilter(e.target.value));
@@ -623,7 +623,7 @@ App.pages.pets = {
             <option value="42" ${pet.groomingCycle == 42 ? 'selected' : ''}>6주 (42일)</option>
             <option value="56" ${pet.groomingCycle == 56 ? 'selected' : ''}>8주 (56일)</option>
           </select>
-          <div class="form-hint">개별 미용 주기를 설정하면 대시보드 재방문 알림에 반영됩니다</div>
+          <div class="form-hint">개별 미용 주기를 설정하면 홈 재방문 알림에 반영됩니다</div>
         </div>
         ${id ? `<div class="form-group">
           <label class="form-label">상태</label>
@@ -908,7 +908,7 @@ App.pages.pets = {
         `"${App.escapeHtml(pet.name)}"을(를) 삭제하시겠습니까?<br>` +
         `예약 <strong>${appointments.length}</strong>건 · 지난 미용 기록 <strong>${records.length}</strong>건과 사진이 함께 삭제됩니다.` +
         (revenueSum > 0 ? `<br><span style="color:var(--danger)">이 아이의 매출 ${App.formatCurrency(revenueSum)}도 매출 통계에서 빠집니다.</span>` : '') +
-        (unpaidSum > 0 ? `<br><span style="color:var(--danger)">미수금 ${App.formatCurrency(unpaidSum)}도 사라집니다.</span>` : '') +
+        (unpaidSum > 0 ? `<br><span style="color:var(--danger)">미결제 ${App.formatCurrency(unpaidSum)}도 사라집니다.</span>` : '') +
         (prepaidBack > 0 ? `<br>정액권으로 낸 ${App.formatCurrency(prepaidBack)}은 보호자 잔액으로 돌아갑니다.` : '') +
         `<br><small style="color:var(--text-muted)">되돌릴 수 없어요. 지우기 전에 설정 &gt; 데이터에서 백업을 먼저 받아 두세요.<br>사망·양도라면 삭제 대신 수정에서 상태를 바꾸세요 — 기록은 남고 알림에서만 빠집니다.</small>`,
         { okLabel: '삭제' });

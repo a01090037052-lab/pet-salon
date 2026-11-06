@@ -145,3 +145,39 @@ describe('가격 미입력 메뉴 (getMenuPrice)', () => {
     assert.equal(m.free, true);
   });
 });
+
+// ---------- 예약 → 기록: 미용 코스 2개는 주 서비스로 합친다 (추가 옵션으로 세지 않게) ----------
+describe('예약 서비스 나누기 (_splitAppointmentServices · _splitCourseName)', () => {
+  const { App } = loadApp({ files: ['js/app.js', 'js/pages/records.js'] });
+  const R = App.pages.records;
+  const full = { id: 1, name: '전체미용', category: 'grooming' };
+  const hyg = { id: 4, name: '위생미용', category: 'grooming' };
+  const nail = { id: 2, name: '발톱', category: 'addon' };
+  const bath = { id: 5, name: '목욕', category: 'care' };
+  const plain = (x) => JSON.parse(JSON.stringify(x)); // 앱 쪽(vm) 배열·객체를 비교용으로
+  test('미용 코스 2개 + 추가 옵션 → 코스 2개는 주 서비스, 추가 옵션만 추가 항목', () => {
+    const r = R._splitAppointmentServices([full, nail, hyg]);
+    assert.deepEqual(plain(r.courses.map(s => s.name)), ['전체미용', '위생미용']);
+    assert.deepEqual(plain(r.extras.map(s => s.name)), ['발톱']);
+  });
+  test('미용 코스가 없으면 첫 번째가 주 서비스', () => {
+    const r = R._splitAppointmentServices([bath, nail]);
+    assert.deepEqual(plain(r.courses.map(s => s.name)), ['목욕']);
+    assert.deepEqual(plain(r.extras.map(s => s.name)), ['발톱']);
+  });
+  test('빈 목록', () => assert.deepEqual(plain(R._splitAppointmentServices([])), { courses: [], extras: [] }));
+  test('합친 이름은 코스별로 다시 나뉜다', () => {
+    assert.deepEqual(plain(R._splitCourseName('전체미용' + R._COURSE_SEP + '위생미용')), ['전체미용', '위생미용']);
+    assert.deepEqual(plain(R._splitCourseName(' 전체미용 ')), ['전체미용']);
+    assert.deepEqual(plain(R._splitCourseName('')), []);
+  });
+});
+
+describe('사진 카드 기본 틀 (_defaultCardLayout)', () => {
+  const { App } = loadApp({ files: ['js/app.js', 'js/pages/records.js'] });
+  const R = App.pages.records;
+  test('1장 폴라로이드 · 2장 2컷 · 3~4장 네컷', () => {
+    assert.deepEqual([1, 2, 3, 4].map(n => R._defaultCardLayout(n)), ['single', 'strip2', 'photobooth', 'photobooth']);
+    for (const k of ['single', 'strip2', 'photobooth']) assert.ok(R._CARD_LAYOUTS[k], k);
+  });
+});

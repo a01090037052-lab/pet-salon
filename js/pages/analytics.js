@@ -323,25 +323,27 @@ App.pages.analytics = {
 
     // 1. 재방문율 평가
     if (periodCustomerIds.length >= 3) {
-      if (returnRatePct >= 70) insights.push({ type: 'good', text: `재방문율 ${returnRatePct}% — 단골 충성도 매우 높음` });
-      else if (returnRatePct >= 50) insights.push({ type: 'good', text: `재방문율 ${returnRatePct}% — 양호한 단골 충성도` });
-      else if (returnRatePct >= 30) insights.push({ type: 'info', text: `재방문율 ${returnRatePct}% — 신규 손님 비중 높음` });
-      else insights.push({ type: 'warning', text: `재방문율 ${returnRatePct}% — 단골 확보 노력 권장` });
+      if (returnRatePct >= 70) insights.push({ type: 'good', text: `재방문율 ${returnRatePct}% — 단골이 아주 많음` });
+      else if (returnRatePct >= 50) insights.push({ type: 'good', text: `재방문율 ${returnRatePct}% — 단골이 꽤 많음` });
+      else if (returnRatePct >= 30) insights.push({ type: 'info', text: `재방문율 ${returnRatePct}% — 처음 온 손님 비중 높음` });
+      else insights.push({ type: 'warning', text: `재방문율 ${returnRatePct}% — 다시 오게 할 방법 고민 권장` });
     }
 
     // 2. 매출 전 기간 대비
     if (prevTotalRev > 0) {
       const pct = Math.round(((totalRev - prevTotalRev) / prevTotalRev) * 100);
       const diff = Math.abs(totalRev - prevTotalRev);
-      if (pct >= 10) insights.push({ type: 'good', text: `매출 전 기간 대비 +${pct}% (${App.formatCurrency(diff)} 증가)` });
-      else if (pct <= -10) insights.push({ type: 'warning', text: `매출 전 기간 대비 ${pct}% (${App.formatCurrency(diff)} 감소)` });
+      if (pct >= 10) insights.push({ type: 'good', text: `매출 지난 기간보다 +${pct}% (${App.formatCurrency(diff)} 증가)` });
+      else if (pct <= -10) insights.push({ type: 'warning', text: `매출 지난 기간보다 ${pct}% (${App.formatCurrency(diff)} 감소)` });
     }
 
     // 3. 평균 방문 주기 vs 권장
     if (avgCycle > 0) {
-      if (avgCycle <= revisitDaysSetting + 5) insights.push({ type: 'good', text: `평균 방문 주기 ${avgCycle}일 — 권장 ${revisitDaysSetting}일 내 잘 유지` });
-      else if (avgCycle <= revisitDaysSetting * 1.5) insights.push({ type: 'info', text: `평균 방문 주기 ${avgCycle}일 — 권장보다 ${avgCycle - revisitDaysSetting}일 늦음` });
-      else insights.push({ type: 'warning', text: `평균 방문 주기 ${avgCycle}일 — 손님 간격 김, 재방문 메시지 권장` });
+      // 권장 이내 → 잘 유지 / +5일 이내 → 조금 김 / 1.5배 이내 → N일 늦음 / 그 이상 → 경고 (예전엔 +5일도 '권장 내'라고 적었다)
+      if (avgCycle <= revisitDaysSetting) insights.push({ type: 'good', text: `평균 방문 주기 ${avgCycle}일 — 권장 ${revisitDaysSetting}일 안에서 잘 유지` });
+      else if (avgCycle <= revisitDaysSetting + 5) insights.push({ type: 'info', text: `평균 방문 주기 ${avgCycle}일 — 권장 ${revisitDaysSetting}일보다 조금 김` });
+      else if (avgCycle <= revisitDaysSetting * 1.5) insights.push({ type: 'info', text: `평균 방문 주기 ${avgCycle}일 — 권장 ${revisitDaysSetting}일보다 ${avgCycle - revisitDaysSetting}일 늦음` });
+      else insights.push({ type: 'warning', text: `평균 방문 주기 ${avgCycle}일 — 권장 ${revisitDaysSetting}일보다 많이 김, 재방문 문자 권장` });
     }
 
     // 4. 최대 견종 비중
@@ -378,7 +380,7 @@ App.pages.analytics = {
       });
       insights.push({
         type: unpaidRecs.length >= 5 ? 'warning' : 'info',
-        text: `미수금 ${unpaidRecs.length}건 (${App.formatCurrency(unpaidTotal)}) — 회수 검토`,
+        text: `미결제 ${unpaidRecs.length}건 (${App.formatCurrency(unpaidTotal)}) — 받을 돈 확인`,
         link: { page: 'records', list: unpaidList, totalCount: unpaidRecs.length }
       });
     }
@@ -408,14 +410,14 @@ App.pages.analytics = {
     if (atRiskPets.length > 0) {
       insights.push({
         type: 'warning',
-        text: `많이 늦음 ${atRiskPets.length}마리 — 재방문 메시지 권장`,
+        text: `많이 늦음 ${atRiskPets.length}마리 — 재방문 문자 권장`,
         link: { page: 'pets', petSort: 'status', list: buildPetList(atRiskPets), totalCount: atRiskPets.length }
       });
     }
     if (remindPets.length >= 3) {
       insights.push({
         type: 'info',
-        text: `올 때 됨 ${remindPets.length}마리 — 재방문 시점 도래`,
+        text: `올 때 됨 ${remindPets.length}마리 — 재방문 문자 보낼 때`,
         link: { page: 'pets', petSort: 'status', list: buildPetList(remindPets), totalCount: remindPets.length }
       });
     }
@@ -459,8 +461,8 @@ App.pages.analytics = {
     const prevAvgPrice = prevVisitCount > 0 ? Math.round(prevTotalRev / prevVisitCount) : 0;
     if (prevAvgPrice > 0 && records.length >= 5) {
       const pricePct = Math.round(((avgPrice - prevAvgPrice) / prevAvgPrice) * 100);
-      if (pricePct >= 10) insights.push({ type: 'good', text: `객단가 ${App.formatCurrency(avgPrice)} (전 기간 +${pricePct}%)` });
-      else if (pricePct <= -10) insights.push({ type: 'warning', text: `객단가 ${App.formatCurrency(avgPrice)} (전 기간 ${pricePct}%)` });
+      if (pricePct >= 10) insights.push({ type: 'good', text: `1회 평균 금액(객단가) ${App.formatCurrency(avgPrice)} (지난 기간 +${pricePct}%)` });
+      else if (pricePct <= -10) insights.push({ type: 'warning', text: `1회 평균 금액(객단가) ${App.formatCurrency(avgPrice)} (지난 기간 ${pricePct}%)` });
     }
 
     // 11. 신규 고객 추세 — 첫 방문일 기준 (위 '신규 고객' 카드와 같은 숫자)
@@ -469,12 +471,12 @@ App.pages.analytics = {
     const newPrev = custIdsAll.filter(cid => { const fv = firstVisitOf(cid); return fv && fv >= prevStart && fv <= prevEnd; }).length;
     if (newThis > 0 || newPrev > 0) {
       if (newPrev === 0 && newThis > 0) {
-        insights.push({ type: 'good', text: `신규 고객 ${newThis}명 (전 기간 0명)` });
+        insights.push({ type: 'good', text: `신규 고객 ${newThis}명 (지난 기간 0명)` });
       } else if (newPrev > 0) {
         const pct = Math.round(((newThis - newPrev) / newPrev) * 100);
-        if (pct >= 20) insights.push({ type: 'good', text: `신규 고객 ${newThis}명 (전 기간 ${newPrev}명, +${pct}%)` });
-        else if (pct <= -30) insights.push({ type: 'warning', text: `신규 고객 ${newThis}명 (전 기간 ${newPrev}명, ${pct}%)` });
-        else insights.push({ type: 'info', text: `신규 고객 ${newThis}명 (전 기간 ${newPrev}명)` });
+        if (pct >= 20) insights.push({ type: 'good', text: `신규 고객 ${newThis}명 (지난 기간 ${newPrev}명, +${pct}%)` });
+        else if (pct <= -30) insights.push({ type: 'warning', text: `신규 고객 ${newThis}명 (지난 기간 ${newPrev}명, ${pct}%)` });
+        else insights.push({ type: 'info', text: `신규 고객 ${newThis}명 (지난 기간 ${newPrev}명)` });
       }
     }
 
@@ -485,7 +487,7 @@ App.pages.analytics = {
       const noshowRate = Math.round((noshowCount / apptsForNoshow.length) * 100);
       if (noshowRate <= 3) insights.push({ type: 'good', text: `노쇼율 ${noshowRate}% — 우수 (예약 ${apptsForNoshow.length}건 중 ${noshowCount}건)` });
       else if (noshowRate <= 8) insights.push({ type: 'info', text: `노쇼율 ${noshowRate}% — 보통` });
-      else insights.push({ type: 'warning', text: `노쇼율 ${noshowRate}% — 예약금/재확인 강화 검토` });
+      else insights.push({ type: 'warning', text: `노쇼율 ${noshowRate}% — 예약금·재확인 문자 검토` });
     }
 
     // 12. 협조도 까다로움 비율 (이번 세션 추가 필드)
@@ -495,7 +497,7 @@ App.pages.analytics = {
     if (totalCoop >= 5) {
       const difficultPct = Math.round((coopCounts.difficult / totalCoop) * 100);
       if (difficultPct >= 30) {
-        insights.push({ type: 'info', text: `미용 협조도 까다로움 ${difficultPct}% — 시간 견적 여유 권장` });
+        insights.push({ type: 'info', text: `미용 협조도 까다로움 ${difficultPct}% — 예약 시간 넉넉히 잡기 권장` });
       }
     }
 
@@ -507,7 +509,7 @@ App.pages.analytics = {
     const periodInsights = insights.filter(i => !i.link || !i.link.list).sort(sortByPriority);
     const orderedInsights = [...realtimeInsights, ...periodInsights];
     if (orderedInsights.length === 0) {
-      orderedInsights.push({ type: 'info', text: '데이터가 더 쌓이면 인사이트가 표시됩니다' });
+      orderedInsights.push({ type: 'info', text: '기록이 더 쌓이면 여기에 요약이 보입니다' });
       periodInsights.push(orderedInsights[0]);
     }
     // 클릭 핸들러용 — init에서 idx로 link 접근
@@ -522,7 +524,7 @@ App.pages.analytics = {
       const sign = diff > 0 ? '+' : '';
       const color = diff > 0 ? 'var(--success)' : 'var(--danger)';
       const arrow = diff > 0 ? App.icon('arrow-up','ico-sm') : App.icon('arrow-down','ico-sm');
-      return `<span style="font-size:0.7rem;color:${color};font-weight:700;margin-left:4px">${sign}${pct}% ${arrow}</span>`;
+      return `<span style="font-size:0.93rem;color:${color};font-weight:700;margin-left:4px">${sign}${pct}% ${arrow}</span>`;
     };
     const cmpCorner = (current, prev) => {
       if (!prev || prev === 0) return '';
@@ -532,7 +534,7 @@ App.pages.analytics = {
       const sign = diff > 0 ? '+' : '';
       const color = diff > 0 ? 'var(--success)' : 'var(--danger)';
       const arrow = diff > 0 ? App.icon('arrow-up','ico-sm') : App.icon('arrow-down','ico-sm');
-      return `<span style="position:absolute;top:6px;right:8px;font-size:0.72rem;color:${color};font-weight:700;line-height:1">${sign}${pct}%${arrow}</span>`;
+      return `<span style="position:absolute;top:6px;right:8px;font-size:0.86rem;color:${color};font-weight:700;line-height:1">${sign}${pct}%${arrow}</span>`;
     };
 
     // ===== 렌더링 =====
@@ -546,11 +548,11 @@ App.pages.analytics = {
 
       <!-- 기간 선택 -->
       <div style="display:flex;gap:4px;margin-bottom:8px;background:var(--bg-white);border-radius:var(--radius);padding:4px;box-shadow:var(--shadow-xs)">
-        <button class="analytics-period${period === '1month' ? ' active' : ''}" data-period="1month" style="flex:1;padding:10px;border:none;border-radius:8px;font-weight:600;font-size:0.85rem;cursor:pointer;min-height:44px;background:${period === '1month' ? 'var(--primary)' : 'transparent'};color:${period === '1month' ? '#fff' : 'var(--text-secondary)'}">1달</button>
-        <button class="analytics-period${period === '3months' ? ' active' : ''}" data-period="3months" style="flex:1;padding:10px;border:none;border-radius:8px;font-weight:600;font-size:0.85rem;cursor:pointer;min-height:44px;background:${period === '3months' ? 'var(--primary)' : 'transparent'};color:${period === '3months' ? '#fff' : 'var(--text-secondary)'}">3달</button>
-        <button class="analytics-period${period === '6months' ? ' active' : ''}" data-period="6months" style="flex:1;padding:10px;border:none;border-radius:8px;font-weight:600;font-size:0.85rem;cursor:pointer;min-height:44px;background:${period === '6months' ? 'var(--primary)' : 'transparent'};color:${period === '6months' ? '#fff' : 'var(--text-secondary)'}">6달</button>
-        <button class="analytics-period${period === '1year' ? ' active' : ''}" data-period="1year" style="flex:1;padding:10px;border:none;border-radius:8px;font-weight:600;font-size:0.85rem;cursor:pointer;min-height:44px;background:${period === '1year' ? 'var(--primary)' : 'transparent'};color:${period === '1year' ? '#fff' : 'var(--text-secondary)'}">1년</button>
-        <button class="analytics-period${period === 'custom' ? ' active' : ''}" data-period="custom" style="flex:1;padding:10px;border:none;border-radius:8px;font-weight:600;font-size:0.85rem;cursor:pointer;min-height:44px;background:${period === 'custom' ? 'var(--primary)' : 'transparent'};color:${period === 'custom' ? '#fff' : 'var(--text-secondary)'}">직접</button>
+        <button class="analytics-period${period === '1month' ? ' active' : ''}" data-period="1month" style="flex:1;padding:10px;border:none;border-radius:8px;font-weight:600;font-size:0.93rem;cursor:pointer;min-height:44px;background:${period === '1month' ? 'var(--primary)' : 'transparent'};color:${period === '1month' ? '#fff' : 'var(--text-secondary)'}">1달</button>
+        <button class="analytics-period${period === '3months' ? ' active' : ''}" data-period="3months" style="flex:1;padding:10px;border:none;border-radius:8px;font-weight:600;font-size:0.93rem;cursor:pointer;min-height:44px;background:${period === '3months' ? 'var(--primary)' : 'transparent'};color:${period === '3months' ? '#fff' : 'var(--text-secondary)'}">3달</button>
+        <button class="analytics-period${period === '6months' ? ' active' : ''}" data-period="6months" style="flex:1;padding:10px;border:none;border-radius:8px;font-weight:600;font-size:0.93rem;cursor:pointer;min-height:44px;background:${period === '6months' ? 'var(--primary)' : 'transparent'};color:${period === '6months' ? '#fff' : 'var(--text-secondary)'}">6달</button>
+        <button class="analytics-period${period === '1year' ? ' active' : ''}" data-period="1year" style="flex:1;padding:10px;border:none;border-radius:8px;font-weight:600;font-size:0.93rem;cursor:pointer;min-height:44px;background:${period === '1year' ? 'var(--primary)' : 'transparent'};color:${period === '1year' ? '#fff' : 'var(--text-secondary)'}">1년</button>
+        <button class="analytics-period${period === 'custom' ? ' active' : ''}" data-period="custom" style="flex:1;padding:10px;border:none;border-radius:8px;font-weight:600;font-size:0.93rem;cursor:pointer;min-height:44px;background:${period === 'custom' ? 'var(--primary)' : 'transparent'};color:${period === 'custom' ? '#fff' : 'var(--text-secondary)'}">직접</button>
       </div>
       ${period === 'custom' ? `
       <div style="display:flex;align-items:center;gap:8px;margin-bottom:12px;justify-content:center;flex-wrap:wrap">
@@ -560,7 +562,7 @@ App.pages.analytics = {
         <button class="btn btn-sm btn-primary" id="analytics-custom-apply">적용</button>
       </div>` : ''}
 
-      <div style="font-size:0.82rem;color:var(--text-muted);margin-bottom:16px;text-align:center">${periodLabels[period]} (${periodStart} ~ ${periodEnd}) &middot; 총 ${records.length}건${cmpBadge(records.length, prevVisitCount)}</div>
+      <div style="font-size:0.93rem;color:var(--text-muted);margin-bottom:16px;text-align:center">${periodLabels[period]} (${periodStart} ~ ${periodEnd}) &middot; 총 ${records.length}건${cmpBadge(records.length, prevVisitCount)}</div>
 
       <!-- 핵심 인사이트 (자동 생성, 두 섹션 분리) -->
       ${(() => {
@@ -572,19 +574,19 @@ App.pages.analytics = {
           const cursor = expandable ? 'cursor:pointer;' : '';
           const arrow = expandable ? `<span class="insight-toggle" data-insight-idx="${idx}" style="margin-left:auto;color:var(--text-muted);font-size:0.95rem;flex-shrink:0;transition:transform 0.2s;display:inline-block">&rsaquo;</span>` : '';
           const detail = expandable ? `
-            <div class="insight-detail" data-insight-detail-idx="${idx}" style="display:none;padding:6px 14px 10px;background:var(--bg);border-radius:8px;margin:-2px 0 6px;font-size:0.85rem;max-height:220px;overflow-y:auto;-webkit-overflow-scrolling:touch;overscroll-behavior:contain">
+            <div class="insight-detail" data-insight-detail-idx="${idx}" style="display:none;padding:6px 14px 10px;background:var(--bg);border-radius:8px;margin:-2px 0 6px;font-size:0.93rem;max-height:220px;overflow-y:auto;-webkit-overflow-scrolling:touch;overscroll-behavior:contain">
               ${i.link.list.map(item => {
                 const phoneClean = item.phone ? App.phoneDigits(item.phone) : '';
-                const phoneLink = item.phone ? `<a href="tel:${phoneClean}" onclick="event.stopPropagation()" style="color:var(--primary);font-weight:700;text-decoration:none;font-size:0.78rem;flex-shrink:0">${App.formatPhoneHtml(item.phone)}</a>` : '';
-                const subRow = (item.sublabel || phoneLink) ? `<div style="font-size:0.78rem;color:var(--text-muted);margin-top:3px;display:flex;align-items:center;gap:8px;flex-wrap:wrap"><span>${App.escapeHtml(item.sublabel || '')}</span>${phoneLink}</div>` : '';
-                return `<div class="insight-detail-item" data-page="${item.page}"${item.id != null ? ` data-id="${item.id}"` : ''} style="padding:10px 0;border-bottom:1px solid var(--border-light);cursor:pointer;color:var(--text-primary);min-height:40px">
+                const phoneLink = item.phone ? `<a href="tel:${phoneClean}" onclick="event.stopPropagation()" style="color:var(--primary);font-weight:700;text-decoration:none;font-size:0.93rem;flex-shrink:0;display:inline-flex;align-items:center;min-height:44px">${App.formatPhoneHtml(item.phone)}</a>` : '';
+                const subRow = (item.sublabel || phoneLink) ? `<div style="font-size:0.93rem;color:var(--text-muted);margin-top:3px;display:flex;align-items:center;gap:8px;flex-wrap:wrap"><span>${App.escapeHtml(item.sublabel || '')}</span>${phoneLink}</div>` : '';
+                return `<div class="insight-detail-item" data-page="${item.page}"${item.id != null ? ` data-id="${item.id}"` : ''} style="padding:10px 0;border-bottom:1px solid var(--border-light);cursor:pointer;color:var(--text-primary);min-height:44px">
                   <div>${App.escapeHtml(item.label)}</div>
                   ${subRow}
                 </div>`;
               }).join('')}
               ${i.link.totalCount > i.link.list.length ? `
-                <div class="insight-detail-all" data-insight-all-idx="${idx}" style="padding:10px 0 4px;text-align:center;color:var(--primary);font-weight:700;cursor:pointer;font-size:0.85rem">전체 ${i.link.totalCount}건 보기 &rarr;</div>
-              ` : `<div class="insight-detail-all" data-insight-all-idx="${idx}" style="padding:10px 0 4px;text-align:center;color:var(--primary);font-weight:700;cursor:pointer;font-size:0.85rem">${i.link.page === 'pets' ? '반려견 페이지' : i.link.page === 'customers' ? '고객 페이지' : '기록 페이지'}로 이동 &rarr;</div>`}
+                <div class="insight-detail-all" data-insight-all-idx="${idx}" style="padding:12px 0;text-align:center;color:var(--primary);font-weight:700;cursor:pointer;font-size:0.93rem">전체 ${i.link.totalCount}건 보기 &rarr;</div>
+              ` : `<div class="insight-detail-all" data-insight-all-idx="${idx}" style="padding:12px 0;text-align:center;color:var(--primary);font-weight:700;cursor:pointer;font-size:0.93rem">${i.link.page === 'pets' ? '반려견 페이지' : i.link.page === 'customers' ? '고객 페이지' : '기록 페이지'}로 이동 &rarr;</div>`}
             </div>
           ` : '';
           return `<div class="analytics-insight-item ${cls}" ${linkAttr} style="${cursor}">
@@ -599,20 +601,20 @@ App.pages.analytics = {
         <div class="card analytics-insights" style="margin-bottom:16px">
           <div class="card-body" style="padding:14px 16px">
             <!-- 오늘 점검할 것 (실시간, 매일 변동) -->
-            <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;font-weight:800;font-size:0.92rem;color:var(--text-primary)">
+            <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;font-weight:800;font-size:0.93rem;color:var(--text-primary)">
               <span style="display:inline-block;width:7px;height:7px;border-radius:50%;background:${realtimeInsights.length > 0 ? 'var(--danger)' : 'var(--success)'}"></span>
               오늘 점검할 것
             </div>
             <div class="analytics-insights-list" style="margin-bottom:14px">
               ${realtimeInsights.length === 0 ? `
-                <div style="display:flex;align-items:center;justify-content:center;gap:6px;padding:10px 0;color:var(--success);font-size:0.88rem;font-weight:600">
+                <div style="display:flex;align-items:center;justify-content:center;gap:6px;padding:10px 0;color:var(--success);font-size:0.93rem;font-weight:600">
                   <span>${App.icon('check')}</span> 점검할 사항 없음 &mdash; 양호
                 </div>
               ` : realtimeInsights.map((i, localIdx) => renderItem(i, rtOffset + localIdx)).join('')}
             </div>
             ${periodInsights.length > 0 ? `
             <!-- 이번 기간 분석 (기간 의존, 트렌드) -->
-            <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;font-weight:800;font-size:0.92rem;color:var(--text-primary);border-top:1px solid var(--border-light);padding-top:14px">
+            <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;font-weight:800;font-size:0.93rem;color:var(--text-primary);border-top:1px solid var(--border-light);padding-top:14px">
               <span style="display:inline-block;width:7px;height:7px;border-radius:50%;background:var(--primary)"></span>
               이번 기간 분석
             </div>
@@ -624,27 +626,27 @@ App.pages.analytics = {
         </div>`;
       })()}
 
-      <!-- 매출 / 방문 / 고객 요약 (전 기간 대비 비교) -->
+      <!-- 매출 / 방문 / 고객 요약 (지난 기간 대비 비교) -->
       <div class="card" style="margin-bottom:16px">
         <div class="card-body">
           <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px">
             <div style="text-align:center;padding:14px 8px 10px;background:var(--bg);border-radius:var(--radius);position:relative;min-width:0">
               ${cmpCorner(totalRev, prevTotalRev)}
               <div style="font-size:${this._compactWon(totalRev).length > 9 ? '0.84rem' : this._compactWon(totalRev).length > 7 ? '0.95rem' : '1.1rem'};font-weight:800;color:var(--primary);line-height:1.2;white-space:nowrap" title="${App.formatCurrency(totalRev)}">${this._compactWon(totalRev)}</div>
-              <div style="font-size:0.78rem;color:var(--text-secondary);margin-top:4px;white-space:nowrap">매출</div>
+              <div style="font-size:0.93rem;color:var(--text-secondary);margin-top:4px;white-space:nowrap">매출</div>
             </div>
             <div style="text-align:center;padding:14px 8px 10px;background:var(--bg);border-radius:var(--radius);position:relative;min-width:0">
               ${cmpCorner(records.length, prevVisitCount)}
               <div style="font-size:1.1rem;font-weight:800;color:var(--info);line-height:1.2;white-space:nowrap">${records.length.toLocaleString('ko-KR')}건</div>
-              <div style="font-size:0.78rem;color:var(--text-secondary);margin-top:4px;white-space:nowrap">방문</div>
+              <div style="font-size:0.93rem;color:var(--text-secondary);margin-top:4px;white-space:nowrap">방문</div>
             </div>
             <div style="text-align:center;padding:14px 8px 10px;background:var(--bg);border-radius:var(--radius);position:relative;min-width:0">
               ${cmpCorner(periodCustomerIds.length, prevCustomerCount)}
               <div style="font-size:1.1rem;font-weight:800;color:var(--success);line-height:1.2;white-space:nowrap">${periodCustomerIds.length.toLocaleString('ko-KR')}명</div>
-              <div style="font-size:0.78rem;color:var(--text-secondary);margin-top:4px;white-space:nowrap">고객</div>
+              <div style="font-size:0.93rem;color:var(--text-secondary);margin-top:4px;white-space:nowrap">고객</div>
             </div>
           </div>
-          ${totalComp > 0 ? `<div style="margin-top:10px;display:flex;justify-content:space-between;font-size:0.8rem;color:var(--text-secondary)"><span>서비스로 제공한 금액 <span style="color:var(--text-muted)">(매출 제외)</span></span><span>${App.formatCurrency(totalComp)}</span></div>` : ''}
+          ${totalComp > 0 ? `<div style="margin-top:10px;display:flex;justify-content:space-between;font-size:0.93rem;color:var(--text-secondary)"><span>서비스로 제공한 금액 <span style="color:var(--text-muted)">(매출 제외)</span></span><span>${App.formatCurrency(totalComp)}</span></div>` : ''}
         </div>
       </div>
 
@@ -659,15 +661,15 @@ App.pages.analytics = {
           <div style="display:flex;gap:12px;margin-bottom:16px">
             <div style="flex:1;text-align:center;padding:14px;background:var(--bg);border-radius:var(--radius)">
               <div style="font-size:1.4rem;font-weight:800;color:var(--info)">${newCount}</div>
-              <div style="font-size:0.82rem;color:var(--text-secondary)">신규 (첫 방문)</div>
+              <div style="font-size:0.93rem;color:var(--text-secondary)">신규 (첫 방문)</div>
             </div>
             <div style="flex:1;text-align:center;padding:14px;background:var(--bg);border-radius:var(--radius)">
               <div style="font-size:1.4rem;font-weight:800;color:var(--success)">${returnCount}</div>
-              <div style="font-size:0.82rem;color:var(--text-secondary)">재방문 고객</div>
+              <div style="font-size:0.93rem;color:var(--text-secondary)">재방문 고객</div>
             </div>
             <div style="flex:1;text-align:center;padding:14px;background:var(--bg);border-radius:var(--radius)">
               <div style="font-size:1.4rem;font-weight:800;color:var(--primary)">${periodCustomerIds.length > 0 ? Math.round((returnCount / periodCustomerIds.length) * 100) : 0}%</div>
-              <div style="font-size:0.82rem;color:var(--text-secondary)">재방문율</div>
+              <div style="font-size:0.93rem;color:var(--text-secondary)">재방문율</div>
             </div>
           </div>
           ${periodCustomerIds.length > 0 ? `
@@ -675,10 +677,10 @@ App.pages.analytics = {
             <div style="width:${100 - Math.round((returnCount / periodCustomerIds.length) * 100)}%;background:var(--info)"></div>
             <div style="width:${Math.round((returnCount / periodCustomerIds.length) * 100)}%;background:var(--success)"></div>
           </div>
-          <div style="display:flex;justify-content:space-between;font-size:0.75rem;color:var(--text-muted);margin-bottom:4px">
+          <div style="display:flex;justify-content:space-between;gap:8px;font-size:0.93rem;color:var(--text-muted);margin-bottom:4px">
             <span>한 번만 온 손님 ${periodCustomerIds.length - returnCount}명</span><span>다시 온 손님 ${returnCount}명</span>
           </div>` : ''}
-          ${avgCycle > 0 ? `<div style="text-align:center;font-size:0.88rem;color:var(--text-secondary);padding-top:8px;border-top:1px solid var(--border)">평균 방문 주기: <strong style="color:var(--primary)">${avgCycle}일</strong></div>` : ''}
+          ${avgCycle > 0 ? `<div style="text-align:center;font-size:0.93rem;color:var(--text-secondary);padding-top:8px;border-top:1px solid var(--border)">평균 방문 주기: <strong style="color:var(--primary)">${avgCycle}일</strong></div>` : ''}
         </div>
       </div>
 
@@ -693,8 +695,8 @@ App.pages.analytics = {
             const pct = Math.max(5, Math.round((c.revenue / topCustMax) * 100));
             return `<a href="#customers/${c.id}" style="display:block;margin-bottom:10px;text-decoration:none;color:inherit">
               <div style="display:flex;justify-content:space-between;margin-bottom:3px;align-items:center">
-                <span style="font-weight:700;font-size:0.85rem"><span style="color:${i < 3 ? 'var(--warning)' : 'var(--text-muted)'};margin-right:4px">${i + 1}</span>${App.escapeHtml(c.name)}</span>
-                <span style="font-size:0.82rem;color:var(--primary);font-weight:700">${App.formatCurrency(c.revenue)} <span style="font-weight:400;color:var(--text-muted)">(${c.count}회)</span></span>
+                <span style="font-weight:700;font-size:0.93rem"><span style="color:${i < 3 ? 'var(--warning)' : 'var(--text-muted)'};margin-right:4px">${i + 1}</span>${App.escapeHtml(c.name)}</span>
+                <span style="font-size:0.93rem;color:var(--primary);font-weight:700">${App.formatCurrency(c.revenue)} <span style="font-weight:400;color:var(--text-muted)">(${c.count}회)</span></span>
               </div>
               <div style="height:5px;background:var(--border-light);border-radius:3px;overflow:hidden">
                 <div style="height:100%;width:${pct}%;background:${i < 3 ? 'var(--warning)' : 'var(--primary)'};border-radius:3px"></div>
@@ -721,13 +723,13 @@ App.pages.analytics = {
             const sharePct = Math.round((b.count / breedTotal) * 100);
             return `<div style="margin-bottom:14px;padding-bottom:14px;${i < breedList.length - 1 ? 'border-bottom:1px solid var(--border)' : ''}">
               <div style="display:flex;justify-content:space-between;margin-bottom:4px;align-items:center">
-                <span style="font-weight:700;font-size:0.9rem"><span style="color:${i < 3 ? 'var(--warning)' : 'var(--text-muted)'};margin-right:4px">${i + 1}</span>${App.escapeHtml(b.name)}</span>
-                <span style="font-size:0.82rem;font-weight:700;color:var(--primary)">${App.formatCurrency(b.revenue)}</span>
+                <span style="font-weight:700;font-size:0.93rem"><span style="color:${i < 3 ? 'var(--warning)' : 'var(--text-muted)'};margin-right:4px">${i + 1}</span>${App.escapeHtml(b.name)}</span>
+                <span style="font-size:0.93rem;font-weight:700;color:var(--primary)">${App.formatCurrency(b.revenue)}</span>
               </div>
               <div style="height:6px;background:var(--border-light);border-radius:3px;overflow:hidden;margin-bottom:6px">
                 <div style="height:100%;width:${pct}%;background:${i < 3 ? 'var(--warning)' : 'var(--primary)'};border-radius:3px"></div>
               </div>
-              <div style="display:flex;gap:12px;font-size:0.75rem;color:var(--text-muted)">
+              <div style="display:flex;flex-wrap:wrap;gap:4px 12px;font-size:0.93rem;color:var(--text-muted)">
                 <span>${b.petCount}마리</span>
                 <span>${b.count}회 방문</span>
                 <span>평균 ${App.formatCurrency(b.avg)}</span>
@@ -755,22 +757,22 @@ App.pages.analytics = {
             const cntPct = Math.round((stats.count / serviceCntTotal) * 100);
             return `<div style="margin-bottom:14px;padding-bottom:14px;border-bottom:1px solid var(--border)">
               <div style="display:flex;justify-content:space-between;margin-bottom:6px">
-                <span style="font-weight:700;font-size:0.9rem">${App.escapeHtml(name)}</span>
-                <span style="font-size:0.85rem;font-weight:700;color:var(--primary)">${App.formatCurrency(stats.revenue)}</span>
+                <span style="font-weight:700;font-size:0.93rem">${App.escapeHtml(name)}</span>
+                <span style="font-size:0.93rem;font-weight:700;color:var(--primary)">${App.formatCurrency(stats.revenue)}</span>
               </div>
               <div style="display:flex;gap:8px;align-items:center;margin-bottom:4px">
-                <span style="font-size:0.72rem;color:var(--text-muted);width:28px">매출</span>
+                <span style="font-size:0.93rem;color:var(--text-muted);width:32px;flex-shrink:0">매출</span>
                 <div style="flex:1;height:6px;background:var(--border-light);border-radius:3px;overflow:hidden">
                   <div style="height:100%;width:${revPct}%;background:var(--primary);border-radius:3px"></div>
                 </div>
-                <span style="font-size:0.72rem;color:var(--text-muted);width:30px;text-align:right">${revPct}%</span>
+                <span style="font-size:0.93rem;color:var(--text-muted);width:44px;flex-shrink:0;text-align:right">${revPct}%</span>
               </div>
               <div style="display:flex;gap:8px;align-items:center">
-                <span style="font-size:0.72rem;color:var(--text-muted);width:28px">건수</span>
+                <span style="font-size:0.93rem;color:var(--text-muted);width:32px;flex-shrink:0">건수</span>
                 <div style="flex:1;height:6px;background:var(--border-light);border-radius:3px;overflow:hidden">
                   <div style="height:100%;width:${cntPct}%;background:var(--info);border-radius:3px"></div>
                 </div>
-                <span style="font-size:0.72rem;color:var(--text-muted);width:30px;text-align:right">${stats.count}건</span>
+                <span style="font-size:0.93rem;color:var(--text-muted);width:44px;flex-shrink:0;text-align:right">${stats.count}건</span>
               </div>
             </div>`;
           }).join('')}
@@ -787,7 +789,7 @@ App.pages.analytics = {
         <div class="card-body" style="padding:12px 16px">
           ${styleList.slice(0, 8).map(([name, count], i) => {
             const pct = Math.max(5, Math.round((count / (styleList[0][1] || 1)) * 100));
-            return '<div style="margin-bottom:10px"><div style="display:flex;justify-content:space-between;margin-bottom:3px"><span style="font-weight:700;font-size:0.85rem">' + App.escapeHtml(name) + '</span><span style="font-size:0.82rem;color:var(--primary);font-weight:700">' + count + '건</span></div><div style="height:5px;background:var(--border-light);border-radius:3px;overflow:hidden"><div style="height:100%;width:' + pct + '%;background:var(--primary);border-radius:3px"></div></div></div>';
+            return '<div style="margin-bottom:10px"><div style="display:flex;justify-content:space-between;margin-bottom:3px"><span style="font-weight:700;font-size:0.93rem">' + App.escapeHtml(name) + '</span><span style="font-size:0.93rem;color:var(--primary);font-weight:700">' + count + '건</span></div><div style="height:5px;background:var(--border-light);border-radius:3px;overflow:hidden"><div style="height:100%;width:' + pct + '%;background:var(--primary);border-radius:3px"></div></div></div>';
           }).join('')}
         </div>
       </div>
@@ -802,7 +804,7 @@ App.pages.analytics = {
         <div class="card-body" style="padding:12px 16px">
           ${addonList.slice(0, 8).map(([name, count]) => {
             const pct = Math.max(5, Math.round((count / (addonList[0][1] || 1)) * 100));
-            return '<div style="margin-bottom:10px"><div style="display:flex;justify-content:space-between;margin-bottom:3px"><span style="font-weight:700;font-size:0.85rem">' + App.escapeHtml(name) + '</span><span style="font-size:0.82rem;color:var(--info);font-weight:700">' + count + '건</span></div><div style="height:5px;background:var(--border-light);border-radius:3px;overflow:hidden"><div style="height:100%;width:' + pct + '%;background:var(--info);border-radius:3px"></div></div></div>';
+            return '<div style="margin-bottom:10px"><div style="display:flex;justify-content:space-between;margin-bottom:3px"><span style="font-weight:700;font-size:0.93rem">' + App.escapeHtml(name) + '</span><span style="font-size:0.93rem;color:var(--info);font-weight:700">' + count + '건</span></div><div style="height:5px;background:var(--border-light);border-radius:3px;overflow:hidden"><div style="height:100%;width:' + pct + '%;background:var(--info);border-radius:3px"></div></div></div>';
           }).join('')}
         </div>
       </div>
@@ -825,8 +827,8 @@ App.pages.analytics = {
             const filled = monthlyTrend.filter(m => m.rev > 0);
             const tAvg = filled.length > 0 ? Math.round(filled.reduce((s, m) => s + m.rev, 0) / filled.length) : 0;
             return `<div style="position:relative;height:220px;padding:0 8px;margin-left:36px">
-              <div style="position:absolute;left:0;right:0;bottom:45%;border-bottom:1px dashed var(--border-light)"><span style="position:absolute;left:-38px;top:-8px;font-size:0.72rem;color:var(--text-muted)">${Math.round(tMax * 0.5 / 10000)}만</span></div>
-              <div style="position:absolute;left:0;right:0;bottom:90%;border-bottom:1px dashed var(--border-light)"><span style="position:absolute;left:-38px;top:-8px;font-size:0.72rem;color:var(--text-muted)">${Math.round(tMax / 10000)}만</span></div>
+              <div style="position:absolute;left:0;right:0;bottom:45%;border-bottom:1px dashed var(--border-light)"><span style="position:absolute;left:-38px;top:-8px;font-size:0.86rem;color:var(--text-muted)">${Math.round(tMax * 0.5 / 10000)}만</span></div>
+              <div style="position:absolute;left:0;right:0;bottom:90%;border-bottom:1px dashed var(--border-light)"><span style="position:absolute;left:-38px;top:-8px;font-size:0.86rem;color:var(--text-muted)">${Math.round(tMax / 10000)}만</span></div>
               <div style="display:flex;gap:12px;height:180px;position:relative;z-index:1">
                 ${monthlyTrend.map(m => {
                   const barH = m.rev > 0 ? Math.max(8, Math.round((m.rev / tMax) * 130)) : 4;
@@ -834,17 +836,17 @@ App.pages.analytics = {
                   const barBg = m.rev === 0 ? 'var(--border-light)' : isCurrent ? 'linear-gradient(to top,var(--success),#34D399)' : 'linear-gradient(to top,var(--primary),#818CF8)';
                   const label = m.rev >= 10000 ? Math.round(m.rev / 10000) + '만' : (m.rev > 0 ? App.formatCurrency(m.rev) : '');
                   return `<div style="flex:1;position:relative;text-align:center;min-width:0" title="${m.month}: ${App.formatCurrency(m.rev)} (${m.count}건)">
-                    <span style="font-size:0.74rem;color:${isCurrent ? 'var(--success)' : 'var(--text-secondary)'};font-weight:800;position:absolute;top:0;left:0;right:0;overflow:hidden;text-overflow:clip;white-space:nowrap">${label}</span>
+                    <span style="font-size:0.93rem;color:${isCurrent ? 'var(--success)' : 'var(--text-secondary)'};font-weight:800;position:absolute;top:0;left:0;right:0;overflow:hidden;text-overflow:clip;white-space:nowrap">${label}</span>
                     <div style="position:absolute;bottom:36px;left:8%;right:8%;height:${barH}px;background:${barBg};border-radius:8px 8px 0 0"></div>
                     <div style="position:absolute;bottom:0;left:0;right:0;text-align:center">
-                      <div style="font-size:0.82rem;font-weight:${isCurrent ? '800' : '600'};color:${isCurrent ? 'var(--primary)' : 'var(--text-muted)'}">${m.label}</div>
-                      <div style="font-size:0.7rem;color:var(--text-muted)">${m.count}건</div>
+                      <div style="font-size:0.93rem;font-weight:${isCurrent ? '800' : '600'};color:${isCurrent ? 'var(--primary)' : 'var(--text-muted)'}">${m.label}</div>
+                      <div style="font-size:0.93rem;color:var(--text-muted)">${m.count}건</div>
                     </div>
                   </div>`;
                 }).join('')}
               </div>
             </div>
-            ${tAvg > 0 ? `<div style="text-align:center;margin-top:12px;padding-top:10px;border-top:1px solid var(--border-light);font-size:0.85rem;color:var(--text-secondary)">월평균 <strong style="color:var(--warning)">${App.formatCurrency(tAvg)}</strong></div>` : ''}`;
+            ${tAvg > 0 ? `<div style="text-align:center;margin-top:12px;padding-top:10px;border-top:1px solid var(--border-light);font-size:0.93rem;color:var(--text-secondary)">월평균 <strong style="color:var(--warning)">${App.formatCurrency(tAvg)}</strong></div>` : ''}`;
           })()}
         </div>
       </div>
@@ -853,7 +855,7 @@ App.pages.analytics = {
       ${avgPriceByMonth.length >= 3 ? `
       <div class="card" style="margin-bottom:16px">
         <div class="card-header">
-          <span class="card-title">객단가 추이${avgPriceUnit ? ` <span style="font-size:0.78rem;font-weight:500;color:var(--text-muted)">(${avgPriceUnit})</span>` : ''}</span>
+          <span class="card-title">객단가 추이${avgPriceUnit ? ` <span style="font-size:0.93rem;font-weight:500;color:var(--text-muted)">(${avgPriceUnit})</span>` : ''}</span>
         </div>
         <div class="card-body">
           <div style="display:flex;gap:${avgPriceBars.length > 6 ? '4' : '10'}px;height:140px;position:relative">
@@ -863,7 +865,7 @@ App.pages.analytics = {
               return `<div style="flex:1;position:relative;text-align:center;min-width:0" title="${m.label}: ${App.formatCurrency(m.avg)}">
                 <span style="font-size:${avgPriceBars.length > 6 ? '0.64rem' : '0.72rem'};color:${isCurrent ? 'var(--success)' : 'var(--text-secondary)'};font-weight:700;position:absolute;top:0;left:0;right:0;white-space:nowrap;overflow:hidden">${m.avg > 0 ? (m.avg >= 10000 ? (Math.round(m.avg / 1000) / 10) + '만' : App.formatCurrency(m.avg)) : ''}</span>
                 <div style="position:absolute;bottom:18px;left:15%;right:15%;height:${barH}px;background:${isCurrent ? 'linear-gradient(to top,var(--success),#34D399)' : 'linear-gradient(to top,var(--info),#60A5FA)'};border-radius:6px 6px 0 0"></div>
-                <span style="font-size:0.75rem;color:${isCurrent ? 'var(--primary)' : 'var(--text-muted)'};font-weight:${isCurrent ? '700' : '500'};position:absolute;bottom:0;left:0;right:0;white-space:nowrap;overflow:hidden${avgPriceBars.length > 6 ? ';font-size:0.66rem' : ''}">${m.label}</span>
+                <span style="font-size:0.93rem;color:${isCurrent ? 'var(--primary)' : 'var(--text-muted)'};font-weight:${isCurrent ? '700' : '500'};position:absolute;bottom:0;left:0;right:0;white-space:nowrap;overflow:hidden${avgPriceBars.length > 6 ? ';font-size:0.86rem' : ''}">${m.label}</span>
               </div>`;
             }).join('')}
           </div>
@@ -884,8 +886,8 @@ App.pages.analytics = {
                 const isTop = i === 0;
                 return `<div>
                   <div style="display:flex;justify-content:space-between;margin-bottom:3px">
-                    <span style="font-weight:${isTop ? '800' : '600'};font-size:0.88rem">${d.label}요일${isTop ? ' <span style="font-size:0.75rem;color:var(--success)">(최다)</span>' : ''}</span>
-                    <span style="font-weight:700;font-size:0.85rem;color:${isTop ? 'var(--success)' : 'var(--text-secondary)'}">${d.avg >= 10000 ? Math.round(d.avg / 10000) + '만원' : App.formatCurrency(d.avg)}</span>
+                    <span style="font-weight:${isTop ? '800' : '600'};font-size:0.93rem">${d.label}요일${isTop ? ' <span style="font-size:0.93rem;color:var(--success)">(최다)</span>' : ''}</span>
+                    <span style="font-weight:700;font-size:0.93rem;color:${isTop ? 'var(--success)' : 'var(--text-secondary)'}">${d.avg >= 10000 ? Math.round(d.avg / 10000) + '만원' : App.formatCurrency(d.avg)}</span>
                   </div>
                   <div style="height:6px;background:var(--border-light);border-radius:3px;overflow:hidden">
                     <div style="height:100%;width:${pct}%;background:${isTop ? 'var(--success)' : 'var(--primary)'};border-radius:3px"></div>
@@ -908,9 +910,9 @@ App.pages.analytics = {
                 const barH = h.count > 0 ? Math.max(6, Math.round((h.count / hourMax) * 90)) : 3;
                 const isPeak = h.count === hourMax && h.count > 0;
                 return `<div style="flex:1;position:relative;text-align:center" title="${h.label}: ${h.count}건">
-                  <span style="font-size:0.72rem;color:${isPeak ? 'var(--success)' : 'var(--text-muted)'};font-weight:700;position:absolute;top:0;left:0;right:0">${h.count > 0 ? h.count : ''}</span>
+                  <span style="font-size:0.86rem;color:${isPeak ? 'var(--success)' : 'var(--text-muted)'};font-weight:700;position:absolute;top:0;left:0;right:0">${h.count > 0 ? h.count : ''}</span>
                   <div style="position:absolute;bottom:16px;left:10%;right:10%;height:${barH}px;background:${isPeak ? 'var(--success)' : 'var(--primary)'};border-radius:4px 4px 0 0"></div>
-                  <span style="font-size:0.72rem;color:var(--text-muted);position:absolute;bottom:0;left:0;right:0">${h.hour}</span>
+                  <span style="font-size:0.86rem;color:var(--text-muted);position:absolute;bottom:0;left:0;right:0">${h.hour}</span>
                 </div>`;
               }).join('')}
             </div>`}
@@ -938,7 +940,7 @@ App.pages.analytics = {
                 <div style="height:8px;background:var(--border-light);border-radius:4px;overflow:hidden;margin-bottom:10px">
                   <div style="height:100%;width:${pct}%;background:linear-gradient(90deg,var(--primary),#818CF8);border-radius:4px"></div>
                 </div>
-                <div style="display:flex;gap:12px;font-size:0.82rem;color:var(--text-secondary);flex-wrap:wrap">
+                <div style="display:flex;gap:12px;font-size:0.93rem;color:var(--text-secondary);flex-wrap:wrap">
                   <span>${App.icon('scissors')} ${stats.count}건</span>
                   <span>건당 ${App.formatCurrency(avgPrice)}</span>
                   <span>비율 ${sharePct}%</span>

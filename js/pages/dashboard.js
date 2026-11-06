@@ -98,7 +98,7 @@ App.pages.dashboard = {
       title: `${petName} 관리 제외`,
       hideFooter: true,
       content: `
-        <p style="margin-bottom:14px;color:var(--text-secondary);font-size:0.9rem;line-height:1.5">
+        <p style="margin-bottom:14px;color:var(--text-secondary);font-size:0.93rem;line-height:1.5">
           재방문 알림과 통계에서 제외됩니다.<br>
           기존 미용 기록과 매출은 그대로 보존됩니다.
         </p>
@@ -430,7 +430,7 @@ App.pages.dashboard = {
         const note = `
         <div class="safety-note${_urgent ? ' warn' : ''}" id="dash-backup-note">
           ${App.icon('alert')}
-          <div class="flex-1"><strong>${_urgent ? '백업 필요' : '백업 알림'}</strong> · ${safety.days !== null ? `마지막 백업 ${safety.days}일 전` : '아직 백업 안 함'}<br><small>${_isIOS ? '아이폰은 오래 안 쓰면 저장 데이터가 지워질 수 있어요.' : '폰 분실·고장 대비'} <a href="#settings" style="color:var(--primary);font-weight:600;white-space:nowrap">동기화 켜기 &rarr;</a></small></div>
+          <div class="flex-1"><strong>${_urgent ? '백업 필요' : '백업 알림'}</strong> · ${safety.days !== null ? `마지막 백업 ${safety.days}일 전` : '아직 백업 안 함'}<br><small style="font-size:0.93rem">${_isIOS ? '아이폰은 오래 안 쓰면 저장 데이터가 지워질 수 있어요.' : '폰 분실·고장 대비'} <a href="#settings" style="color:var(--primary);font-weight:600;white-space:nowrap;font-size:0.93rem;padding:14px 4px;margin:0 -4px">동기화 켜기 &rarr;</a></small></div>
           <button class="btn btn-sm ${_urgent ? 'btn-warning' : 'btn-secondary'}" onclick="App.pages.settings?.directBackup()">지금 백업</button>
         </div>`;
         if (_urgent) safetyTop = note; else backupWarning = note;
@@ -477,30 +477,30 @@ App.pages.dashboard = {
           <div class="card-body" style="padding:24px">
             <div style="font-size:1.5rem;margin-bottom:4px">${App.icon('hand')}</div>
             <div style="font-size:1.1rem;font-weight:800;margin-bottom:4px">환영합니다! 시작해볼까요?</div>
-            <p style="color:var(--text-secondary);font-size:0.88rem;margin-bottom:20px">아래 단계를 완료하면 바로 사용할 수 있어요.</p>
+            <p style="color:var(--text-secondary);font-size:0.93rem;margin-bottom:20px">아래 단계를 완료하면 바로 사용할 수 있어요.</p>
             <div style="display:flex;flex-direction:column;gap:10px">
               <div class="onboarding-step" style="display:flex;align-items:center;gap:12px;padding:10px 14px;background:var(--bg-white);border-radius:var(--radius);border:1px solid var(--border-light)">
-                <span style="width:28px;height:28px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:0.8rem;font-weight:700;${shopInfo ? 'background:var(--success);color:#fff' : 'background:var(--bg);color:var(--text-muted);border:1.5px solid var(--border)'}">${shopInfo ? App.icon('check') : '1'}</span>
-                <div class="flex-1"><strong>매장 정보 입력</strong><div style="font-size:0.8rem;color:var(--text-muted)">매장명, 전화번호, 주소</div></div>
+                <span style="width:28px;height:28px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:0.93rem;font-weight:700;${shopInfo ? 'background:var(--success);color:#fff' : 'background:var(--bg);color:var(--text-muted);border:1.5px solid var(--border)'}">${shopInfo ? App.icon('check') : '1'}</span>
+                <div class="flex-1"><strong>매장 정보 입력</strong><div style="font-size:0.93rem;color:var(--text-muted)">매장명, 전화번호, 주소</div></div>
                 ${!shopInfo ? '<a href="#settings" class="btn btn-sm btn-primary">설정</a>' : '<span class="badge badge-success">완료</span>'}
               </div>
               <div class="onboarding-step" style="display:flex;align-items:center;gap:12px;padding:10px 14px;background:var(--bg-white);border-radius:var(--radius);border:1px solid var(--border-light)">
-                <span style="width:28px;height:28px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:0.8rem;font-weight:700;${groomersSet.length > 0 ? 'background:var(--success);color:#fff' : 'background:var(--bg);color:var(--text-muted);border:1.5px solid var(--border)'}">${groomersSet.length > 0 ? App.icon('check') : '2'}</span>
-                <div class="flex-1"><strong>미용사 등록</strong><div style="font-size:0.8rem;color:var(--text-muted)">선택 · 혼자면 본인 이름 1명만</div></div>
+                <span style="width:28px;height:28px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:0.93rem;font-weight:700;${groomersSet.length > 0 ? 'background:var(--success);color:#fff' : 'background:var(--bg);color:var(--text-muted);border:1.5px solid var(--border)'}">${groomersSet.length > 0 ? App.icon('check') : '2'}</span>
+                <div class="flex-1"><strong>미용사 등록</strong><div style="font-size:0.93rem;color:var(--text-muted)">선택 · 혼자면 본인 이름 1명만</div></div>
                 ${groomersSet.length === 0 ? '<a href="#settings" class="btn btn-sm btn-primary">설정</a>' : '<span class="badge badge-success">완료</span>'}
               </div>
               <div class="onboarding-step" style="display:flex;align-items:center;gap:12px;padding:10px 14px;background:var(--bg-white);border-radius:var(--radius);border:1px solid var(--border-light)">
-                <span style="width:28px;height:28px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:0.8rem;font-weight:700;${serviceCount > 0 ? 'background:var(--success);color:#fff' : 'background:var(--bg);color:var(--text-muted);border:1.5px solid var(--border)'}">${serviceCount > 0 ? App.icon('check') : '3'}</span>
-                <div class="flex-1"><strong>서비스 등록</strong><div style="font-size:0.8rem;color:var(--text-muted)">미용 서비스 및 가격 설정</div></div>
+                <span style="width:28px;height:28px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:0.93rem;font-weight:700;${serviceCount > 0 ? 'background:var(--success);color:#fff' : 'background:var(--bg);color:var(--text-muted);border:1.5px solid var(--border)'}">${serviceCount > 0 ? App.icon('check') : '3'}</span>
+                <div class="flex-1"><strong>서비스 등록</strong><div style="font-size:0.93rem;color:var(--text-muted)">미용 서비스 및 가격 설정</div></div>
                 ${serviceCount === 0 ? '<a href="#services" class="btn btn-sm btn-primary">설정</a>' : '<span class="badge badge-success">완료</span>'}
               </div>
               <div class="onboarding-step" style="display:flex;align-items:center;gap:12px;padding:10px 14px;background:var(--bg-white);border-radius:var(--radius);border:1px solid var(--border-light)">
-                <span style="width:28px;height:28px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:0.8rem;font-weight:700;background:var(--bg);color:var(--text-muted);border:1.5px solid var(--border)">4</span>
-                <div class="flex-1"><strong>첫 고객 등록</strong><div style="font-size:0.8rem;color:var(--text-muted)">고객과 반려견 정보 추가</div></div>
+                <span style="width:28px;height:28px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:0.93rem;font-weight:700;background:var(--bg);color:var(--text-muted);border:1.5px solid var(--border)">4</span>
+                <div class="flex-1"><strong>첫 고객 등록</strong><div style="font-size:0.93rem;color:var(--text-muted)">고객과 반려견 정보 추가</div></div>
                 <button class="btn btn-sm btn-primary" onclick="App.pages.customers.showForm()">등록</button>
               </div>
               <div style="border-top:1px dashed var(--border);margin-top:12px;padding-top:12px;text-align:center">
-                <a href="#settings" style="color:var(--text-muted);font-size:0.85rem">기존 데이터가 있나요? <strong style="color:var(--primary)">백업 파일로 복원하기</strong></a>
+                <a href="#settings" style="color:var(--text-muted);font-size:0.93rem;display:inline-flex;align-items:center;flex-wrap:wrap;gap:0 4px;min-height:44px">기존 데이터가 있나요? <strong style="color:var(--primary)">백업 파일로 복원하기</strong></a>
               </div>
             </div>
           </div>
@@ -544,13 +544,13 @@ App.pages.dashboard = {
 
         <!-- 2. 다음 영업일 예약 리마인더 -->
         ${tomorrowAppts.length > 0 ? `
-        <div class="card dash-accordion" style="margin-bottom:20px">
+        <div class="card dash-accordion dash-next-day" style="margin-bottom:20px">
           <div class="card-header dash-accordion-toggle" style="cursor:pointer;user-select:none" data-target="dash-tomorrow-reminder">
             <span class="card-title">${reminderTitle}</span>
             <div style="display:flex;align-items:center;gap:8px">
               <span class="badge badge-info">${tomorrowAppts.length}건</span>
-              ${(() => { const sentCount = tomorrowAppts.filter(a => a.reminderSentAt).length; return sentCount > 0 ? `<span class="badge badge-secondary" style="font-size:0.7rem">${sentCount}건 발송됨</span>` : ''; })()}
-              <span class="dash-chevron" style="display:inline-flex;transition:transform 0.2s;font-size:0.8rem">${App.icon('chevron-down')}</span>
+              ${(() => { const sentCount = tomorrowAppts.filter(a => a.reminderSentAt).length; return sentCount > 0 ? `<span class="badge badge-secondary" style="font-size:0.93rem">${sentCount}건 발송됨</span>` : ''; })()}
+              <span class="dash-chevron" style="display:inline-flex;transition:transform 0.2s;font-size:0.93rem">${App.icon('chevron-down')}</span>
             </div>
           </div>
           <div class="card-body" id="dash-tomorrow-reminder" style="padding:0">
@@ -579,10 +579,10 @@ App.pages.dashboard = {
                         <div class="reminder-content">
                           <div class="reminder-line-1">
                             <strong class="reminder-time-num">${reminderMultiDay ? `<span style="font-weight:600;color:var(--text-secondary)">${reminderDateLabel(a.date)}</span> ` : ''}${a.time || '--:--'}</strong>
-                            <a href="#pets/${a.petId}" class="reminder-pet-name" onclick="event.stopPropagation()">${App.escapeHtml(pet?.name || '?')}</a>
+                            <a href="#pets/${a.petId}" class="reminder-pet-name" onclick="event.stopPropagation()" style="padding:14px 0">${App.escapeHtml(pet?.name || '?')}</a>
                             ${breedSize ? `<span class="reminder-pet-meta">· ${App.escapeHtml(breedSize)}</span>` : ''}
                           </div>
-                          <a href="#customers/${a.customerId}" class="reminder-customer" onclick="event.stopPropagation()">${App.escapeHtml(App.getCustomerLabel(customer))}</a>
+                          <a href="#customers/${a.customerId}" class="reminder-customer" onclick="event.stopPropagation()" style="padding:14px 0">${App.escapeHtml(App.getCustomerLabel(customer))}</a>
                           ${(allergies || healthNotes || temperament || noShowCount > 0) ? `
                             <div class="reminder-warnings">
                               ${allergies ? `<span class="reminder-warning"><span class="reminder-warning-icon">${App.icon('alert')}</span> 알레르기: ${allergies}</span>` : ''}
@@ -616,7 +616,7 @@ App.pages.dashboard = {
             <span class="card-title text-danger">${App.icon('cash')} 미결제 현황</span>
             <div style="display:flex;align-items:center;gap:8px">
               <span class="badge badge-danger">${unpaidRecords.length}건 / ${App.formatCurrency(unpaidTotal)}</span>
-              <span class="dash-chevron" style="display:inline-flex;transition:transform 0.2s;font-size:0.8rem">${App.icon('chevron-down')}</span>
+              <span class="dash-chevron" style="display:inline-flex;transition:transform 0.2s;font-size:0.93rem">${App.icon('chevron-down')}</span>
             </div>
           </div>
           <div class="card-body" id="dash-unpaid" style="display:${unpaidRecords.length > 0 ? 'block' : 'none'}">
@@ -639,7 +639,7 @@ App.pages.dashboard = {
                   </div>
                 </div>`;
             }).join('')}
-            ${unpaidRecords.length > 5 ? `<div style="text-align:center;padding:10px 0 2px;font-size:0.85rem"><a href="#records" onclick="sessionStorage.setItem('record-filter',JSON.stringify({_loadMode:'unpaid',payment:'unpaid'}))" style="color:var(--primary);font-weight:600">전체 ${unpaidRecords.length}건 보기 &rarr;</a></div>` : ''}
+            ${unpaidRecords.length > 5 ? `<div style="text-align:center;padding:10px 0 2px;font-size:0.93rem"><a href="#records" onclick="sessionStorage.setItem('record-filter',JSON.stringify({_loadMode:'unpaid',payment:'unpaid'}))" style="color:var(--primary);font-weight:600;display:inline-flex;align-items:center;min-height:44px">전체 ${unpaidRecords.length}건 보기 &rarr;</a></div>` : ''}
           </div>
         </div>
         ` : ''}
@@ -671,7 +671,7 @@ App.pages.dashboard = {
             <span class="card-title">${App.icon('bell')} 연락할 손님</span>
             <div style="display:flex;align-items:center;gap:8px">
               ${total > 0 ? `<span class="badge badge-warning">${total}건</span>` : ''}
-              <span class="dash-chevron" style="display:inline-flex;transition:transform 0.2s;font-size:0.8rem">${App.icon('chevron-down')}</span>
+              <span class="dash-chevron" style="display:inline-flex;transition:transform 0.2s;font-size:0.93rem">${App.icon('chevron-down')}</span>
             </div>
           </div>
           <div class="card-body" id="dash-contact">
@@ -693,10 +693,10 @@ App.pages.dashboard = {
                   <span class="days">${a.days}일</span>
                   <div class="flex-1">
                     <strong>${App.escapeHtml(a.pet.name)}</strong>
-                    <span style="color:var(--text-muted);font-size:0.8rem">${App.escapeHtml(App.getCustomerLabel(a.customer))}</span>
-                    <span class="badge ${statusBadge}" style="font-size:0.72rem;margin-left:4px;padding:3px 8px">${statusLabel}</span>
-                    <span class="badge badge-secondary alert-contacted-tag" style="font-size:0.72rem;margin-left:4px;padding:3px 8px;display:none">연락함</span>
-                    <div style="font-size:0.78rem;color:var(--text-secondary);margin-top:2px">
+                    <span style="color:var(--text-muted);font-size:0.93rem">${App.escapeHtml(App.getCustomerLabel(a.customer))}</span>
+                    <span class="badge ${statusBadge}" style="font-size:0.93rem;margin-left:4px;padding:3px 8px">${statusLabel}</span>
+                    <span class="badge badge-secondary alert-contacted-tag" style="font-size:0.93rem;margin-left:4px;padding:3px 8px;display:none">연락함</span>
+                    <div style="font-size:0.93rem;color:var(--text-secondary);margin-top:2px">
                       마지막 미용: ${App.formatDate(a.lastDate)}
                       ${churnHint ? ' | ' + churnHint : ''}
                       ${a.contactedAgo !== null ? ` | <span style="color:var(--text-muted)">${a.contactedAgo}일 전 연락함</span>` : ''}
@@ -714,7 +714,7 @@ App.pages.dashboard = {
             <!-- 오래 안 옴 (미용 주기 2배 초과 — 매일 보는 목록에서 분리) -->
             <div class="dash-contact-panel" data-seg="gone" style="display:${active === 'gone' ? 'block' : 'none'}">
               ${longGoneAlerts.length === 0 ? empty : `
-              <div style="font-size:0.82rem;color:var(--text-muted);margin-bottom:10px;line-height:1.5">
+              <div style="font-size:0.93rem;color:var(--text-muted);margin-bottom:10px;line-height:1.5">
                 미용 주기의 2배가 지난 손님입니다. 다시 안 올 손님은 <strong>제외</strong>로 정리하면 목록이 계속 쌓이지 않습니다.
               </div>
               ${this._moreList(longGoneAlerts.slice(0, 10).map(a => `
@@ -722,9 +722,9 @@ App.pages.dashboard = {
                   <span class="days">${a.days}일</span>
                   <div class="flex-1">
                     <strong>${App.escapeHtml(a.pet.name)}</strong>
-                    <span style="color:var(--text-muted);font-size:0.8rem">${App.escapeHtml(App.getCustomerLabel(a.customer))}</span>
-                    <span class="badge badge-secondary alert-contacted-tag" style="font-size:0.72rem;margin-left:4px;padding:3px 8px;display:none">연락함</span>
-                    <div style="font-size:0.78rem;color:var(--text-secondary);margin-top:2px">
+                    <span style="color:var(--text-muted);font-size:0.93rem">${App.escapeHtml(App.getCustomerLabel(a.customer))}</span>
+                    <span class="badge badge-secondary alert-contacted-tag" style="font-size:0.93rem;margin-left:4px;padding:3px 8px;display:none">연락함</span>
+                    <div style="font-size:0.93rem;color:var(--text-secondary);margin-top:2px">
                       마지막 미용: ${App.formatDate(a.lastDate)}
                       ${a.contactedAgo !== null ? ` | <span style="color:var(--text-muted)">${a.contactedAgo}일 전 연락함</span>` : ''}
                     </div>
@@ -740,9 +740,9 @@ App.pages.dashboard = {
             <div class="dash-contact-panel" data-seg="vip" style="display:${active === 'vip' ? 'block' : 'none'}">
               ${vipUnvisitedAlerts.length === 0 ? empty : this._moreList(vipUnvisitedAlerts.slice(0, 15).map(x => `
                 <div style="display:flex;align-items:center;gap:10px;padding:10px 0;border-bottom:1px solid var(--border-light)">
-                  <a href="#customers/${x.customer.id}" style="flex:1;min-width:0;text-decoration:none;color:inherit">
+                  <a href="#customers/${x.customer.id}" style="flex:1;min-width:0;min-height:44px;display:flex;flex-direction:column;justify-content:center;text-decoration:none;color:inherit">
                     <div style="font-weight:700;font-size:0.95rem">${App.icon('crown')} ${App.escapeHtml(App.getCustomerLabel(x.customer, (this._petsByCustomer || {})[x.customer.id]))}</div>
-                    <div style="font-size:0.78rem;color:var(--text-muted);margin-top:2px">${x.days}일 전 방문${x.customer.phone ? ' · ' + App.formatPhoneHtml(x.customer.phone) : ''}</div>
+                    <div style="font-size:0.93rem;color:var(--text-muted);margin-top:2px">${x.days}일 전 방문${x.customer.phone ? ' · ' + App.formatPhoneHtml(x.customer.phone) : ''}</div>
                   </a>
                   ${x.customer.phone ? `<a href="tel:${App.escapeHtml(App.phoneDigits(x.customer.phone))}" class="btn btn-sm btn-secondary" onclick="event.stopPropagation()" title="전화 걸기" style="flex-shrink:0">전화</a>` : ''}
                 </div>
@@ -766,10 +766,10 @@ App.pages.dashboard = {
             <div>
               <div class="stat-value" style="font-size:1.3rem">${App.formatCurrency(monthRevenue)}</div>
               <div class="stat-label">이번 달 매출 (${monthRecords.length}건) &rarr;</div>
-              ${revenueChange !== null ? `<div style="font-size:0.78rem;margin-top:2px;opacity:0.9">전월 동기 대비 ${revenueChange >= 0 ? '+' : ''}${revenueChange}%</div>` : ''}
+              ${revenueChange !== null ? `<div style="font-size:0.93rem;margin-top:2px;opacity:0.9">지난달 이맘때보다 ${revenueChange >= 0 ? '+' : ''}${revenueChange}%</div>` : ''}
               ${monthlyGoal > 0 ? (() => {
                 const pct = Math.min(Math.round((monthRevenue / monthlyGoal) * 100), 100);
-                return '<div style="margin-top:6px"><div style="height:6px;background:rgba(255,255,255,0.3);border-radius:3px;overflow:hidden"><div style="height:100%;width:' + pct + '%;background:var(--gradient-stop-light);border-radius:3px;transition:width 0.3s"></div></div><div style="font-size:0.78rem;margin-top:2px;opacity:0.9">월 목표 ' + pct + '% (' + App.formatCurrency(monthlyGoal) + ')</div></div>';
+                return '<div style="margin-top:6px"><div style="height:6px;background:rgba(255,255,255,0.3);border-radius:3px;overflow:hidden"><div style="height:100%;width:' + pct + '%;background:var(--gradient-stop-light);border-radius:3px;transition:width 0.3s"></div></div><div style="font-size:0.93rem;margin-top:2px;opacity:0.9">월 목표 ' + pct + '% (' + App.formatCurrency(monthlyGoal) + ')</div></div>';
               })() : ''}
             </div>
           </a>
@@ -781,7 +781,7 @@ App.pages.dashboard = {
             <span class="card-title">${App.icon('cake')} 생일 알림</span>
             <div style="display:flex;align-items:center;gap:8px">
               <span class="badge badge-info">${upcomingBirthdays.length}건</span>
-              <span class="dash-chevron" style="display:inline-flex;transition:transform 0.2s;font-size:0.8rem">${App.icon('chevron-down')}</span>
+              <span class="dash-chevron" style="display:inline-flex;transition:transform 0.2s;font-size:0.93rem">${App.icon('chevron-down')}</span>
             </div>
           </div>
           <div class="card-body" id="dash-birthday" style="display:${upcomingBirthdays.length > 0 ? 'block' : 'none'}">
@@ -795,8 +795,8 @@ App.pages.dashboard = {
                     ${b.photo ? `<img src="${b.photo}" style="width:36px;height:36px;border-radius:10px;object-fit:cover">` : `<span style="font-size:1.3rem">${icon}</span>`}
                     <div>
                       <strong>${App.escapeHtml(b.name)}</strong>
-                      ${b.type === 'pet' ? `<span style="color:var(--text-muted);font-size:0.8rem"> (${App.escapeHtml(b.ownerName)}님)</span>` : ''}
-                      <div style="font-size:0.78rem;color:var(--primary);font-weight:700">${daysLabel}</div>
+                      ${b.type === 'pet' ? `<span style="color:var(--text-muted);font-size:0.93rem"> (${App.escapeHtml(b.ownerName)}님)</span>` : ''}
+                      <div style="font-size:0.93rem;color:var(--primary);font-weight:700">${daysLabel}</div>
                     </div>
                   </div>
                   <div style="display:flex;gap:4px;flex-shrink:0;margin-left:auto">
@@ -837,7 +837,7 @@ App.pages.dashboard = {
       container.innerHTML = `
         <div class="empty-state">
           <div class="empty-state-icon">${App.icon('alert','ico-xl')}</div>
-          <div class="empty-state-text">대시보드를 불러오는 중 오류가 발생했습니다.<br><small style="color:var(--text-muted)">${App.escapeHtml(err.message || '')}</small></div>
+          <div class="empty-state-text">홈 화면을 불러오는 중 오류가 발생했습니다.<br><small style="color:var(--text-muted)">${App.escapeHtml(err.message || '')}</small></div>
           <button class="btn btn-primary" onclick="App.navigate('dashboard')">다시 시도</button>
         </div>`;
     }
@@ -858,17 +858,17 @@ App.pages.dashboard = {
       const customer = customerMap[appt.customerId];
       const pet = petMap[appt.petId];
       const serviceNames = App.apptServiceNames(appt, serviceMap);
-      const dateLabel = appt.date === App.getToday() ? '' : `<span style="color:var(--text-muted);font-size:0.78rem">${App.formatDate(appt.date)}</span> `;
+      const dateLabel = appt.date === App.getToday() ? '' : `<span style="color:var(--text-muted);font-size:0.93rem">${App.formatDate(appt.date)}</span> `;
       return `
         <div class="appointment-item" style="cursor:pointer" onclick="App.navigate('appointments')">
           <div class="appointment-time">${appt.time || '--:--'}</div>
           <div class="appointment-info">
-            <div class="name">${dateLabel}<a href="#pets/${appt.petId}" onclick="event.stopPropagation()" style="color:inherit;font-weight:700">${App.escapeHtml(pet?.name || '?')}</a> <a href="#customers/${appt.customerId}" onclick="event.stopPropagation()" class="appt-guardian">${App.escapeHtml(App.getCustomerLabel(customer))}</a></div>
+            <div class="name">${dateLabel}<a href="#pets/${appt.petId}" onclick="event.stopPropagation()" style="color:inherit;font-weight:700;padding:14px 0">${App.escapeHtml(pet?.name || '?')}</a> <a href="#customers/${appt.customerId}" onclick="event.stopPropagation()" class="appt-guardian" style="padding:14px 0">${App.escapeHtml(App.getCustomerLabel(customer))}</a></div>
             <div class="detail">${App.escapeHtml(serviceNames || '서비스 미지정')}${appt.groomer ? ' &middot; ' + App.escapeHtml(appt.groomer) : ''}</div>
-            ${(() => { const w = [pet?.temperament, pet?.healthNotes, pet?.allergies].filter(Boolean); if (!w.length) return ''; const s = w.join(', '); return '<div style="font-size:0.75rem;color:var(--danger);margin-top:2px">' + App.icon('alert') + ' ' + App.escapeHtml(s.length > 50 ? s.slice(0, 50) + '...' : s) + '</div>'; })()}
+            ${(() => { const w = [pet?.temperament, pet?.healthNotes, pet?.allergies].filter(Boolean); if (!w.length) return ''; const s = w.join(', '); return '<div style="font-size:0.93rem;color:var(--danger);margin-top:2px">' + App.icon('alert') + ' ' + App.escapeHtml(s.length > 50 ? s.slice(0, 50) + '...' : s) + '</div>'; })()}
           </div>
           <div style="flex-shrink:0;display:flex;align-items:center;gap:4px">
-            ${customer?.phone ? `<a href="tel:${App.escapeHtml(App.phoneDigits(customer.phone))}" class="btn btn-sm btn-secondary" onclick="event.stopPropagation()" style="min-width:36px" aria-label="전화">${App.icon('phone')}</a>` : ''}
+            ${customer?.phone ? `<a href="tel:${App.escapeHtml(App.phoneDigits(customer.phone))}" class="btn btn-sm btn-secondary" onclick="event.stopPropagation()" style="min-width:44px" aria-label="전화">${App.icon('phone')}</a>` : ''}
             <span class="badge badge-${this.getStatusBadge(appt.status)}">${this.getStatusLabel(appt.status)}</span>
           </div>
           ${/* '미용 완료'는 그 예약 카드 안에 둔다 (컴퓨터: 오른쪽 끝 / 폰: 카드 아래 한 줄 — CSS .dash-complete-btn). 노쇼·취소·완료는 버튼 없음 */
@@ -890,6 +890,18 @@ App.pages.dashboard = {
   },
 
   async init() {
+    // 넓은 화면 두 단: 왼쪽(오늘·다음 영업일)이 훨씬 길면 다음 영업일 카드를 오른쪽 단 맨 위로 옮겨 빈 칸을 줄인다.
+    // 오른쪽 맨 위에 넣으므로 한 줄로 쌓일 때 순서(오늘 → 다음 영업일 → 미결제 …)는 그대로다.
+    requestAnimationFrame(() => {
+      if (!window.matchMedia('(min-width: 1200px)').matches) return;
+      const main = document.querySelector('.dash-col-main'), side = document.querySelector('.dash-col-side');
+      const next = main?.querySelector('.dash-next-day');
+      if (!main || !side) return;
+      if (next) {
+        const L = main.offsetHeight, R = side.offsetHeight, h = next.offsetHeight + 16;
+        if (Math.abs((L - h) - (R + h)) < Math.abs(L - R)) side.prepend(next);
+      }
+    });
     // Accordion toggles for alert sections (localStorage로 펼침 상태 유지)
     document.querySelectorAll('.dash-accordion-toggle').forEach(header => {
       const targetId = header.dataset.target;

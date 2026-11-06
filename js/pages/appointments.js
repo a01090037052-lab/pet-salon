@@ -14,7 +14,8 @@ App.pages.appointments = {
     // 휴무일 설정은 매 진입 시 재로드 (stale 방지)
     this._closedDays = null;
     const today = App.getToday();
-    const isMobile = window.matchMedia('(max-width: 768px)').matches;
+    // 예약 목록은 1023px 까지 카드(아이패드 세로·작은 노트북도 누르기 쉬운 카드), 표는 1024px 부터 — 800px 에서 표가 칸보다 넓어 버튼이 잘렸다
+    const isMobile = window.matchMedia('(max-width: 1023px)').matches;
     // 목록은 기본 오늘 ~ +30일만 로드 (수년치 데이터에서 1,000줄씩 그리던 문제).
     // 목록 아래 '이전 30일 보기' / '이후 30일 더 보기'로 넓힌다 — 넓힌 범위는 이 탭(session) 동안 유지. 달력은 따로 월 단위 조회.
     const shiftDate = (base, n) => { const d = new Date(base + 'T00:00:00'); d.setDate(d.getDate() + n); return App.formatLocalDate(d); };
@@ -52,12 +53,20 @@ App.pages.appointments = {
     appointments.forEach(a => { if (statusCounts[a.status] !== undefined) statusCounts[a.status]++; });
 
     // 목록·달력엔 이름·연락처만 쓰므로 사진·메모 같은 큰 필드는 빼고 읽는다 (records 목록과 같은 제외 목록)
-    const [customers, pets, services, recentRecords] = await Promise.all([
+    const [customers, pets, services, recentRecords, prepaidEntries] = await Promise.all([
       DB.getAllLight('customers', ['memo', 'address']),
       DB.getAllLight('pets', ['photo', 'temperament', 'healthNotes', 'preferredStyle']),
       DB.getAll('services'),
-      DB.getByDateRange('records', 'date', listFrom, '9999-12-31')
+      DB.getByDateRange('records', 'date', listFrom, '9999-12-31'),
+      Prepaid.getAllEntries()
     ]);
+    // 예약금은 정액권 충전(메모: 예약금)으로 받는다 — 예약과 묶이지 않으니 잔액만 한 줄로 알려 준다 (장부 한 번 읽어 고객별 합산)
+    const prepaidBal = Prepaid.balanceMap(prepaidEntries);
+    const balLine = (a, style) => {
+      const bal = prepaidBal[a.customerId] || 0;
+      if (bal <= 0 || ['completed', 'cancelled', 'noshow'].includes(a.status)) return '';
+      return `<div class="appt-prepaid-bal" style="font-size:0.93rem;color:var(--text-muted);${style || ''}">정액권·예약금 잔액 ${App.formatCurrency(bal)}</div>`;
+    };
     // 완료된 예약 카드에 붙일 미용 결과(금액·결제). 기록은 목록 범위만 읽으므로 그 이전 예약은 '기록 없음'이라 단정하지 않는다
     const recByAppt = App.apptRecordMap(recentRecords);
     const resultOf = (a) => App.apptResultHtml(a, recByAppt[String(a.id)], (a.date || '') >= listFrom);
@@ -82,6 +91,9 @@ App.pages.appointments = {
         </div>
       </div>
 
+      <!-- 넓은 화면: 왼쪽 달력 · 오른쪽 고른 날 예약/타임테이블 (좁은 화면은 위아래 그대로 — css 'v187 desktop') -->
+      <div class="appt-top">
+      <div class="appt-top-cal">
       <!-- 월별 캘린더 뷰 -->
       <div id="calendar-container" class="calendar-container">
         <div class="calendar-header">
@@ -100,6 +112,8 @@ App.pages.appointments = {
           <div class="calendar-day-label cal-sun">일</div>
         </div>
       </div>
+      </div>
+      <div class="appt-top-side">
 
       <!-- 날짜 선택 요약 패널 (셀 클릭 시 표시) -->
       <div id="cal-date-summary" style="display:none;margin-bottom:16px;padding:14px 16px;background:var(--bg-white);border-radius:var(--radius);box-shadow:var(--shadow-xs);border:1px solid var(--border-light)">
@@ -114,7 +128,7 @@ App.pages.appointments = {
           <div class="card-header">
             <div style="display:flex;align-items:center;gap:10px">
               <button class="btn btn-sm btn-secondary" id="tt-prev" aria-label="이전 날">${App.icon('chevron-left')}</button>
-              <strong id="tt-date">${today}</strong>
+              <strong id="tt-date">${App.formatDateKo(today)} · 오늘</strong>
               <button class="btn btn-sm btn-secondary" id="tt-next" aria-label="다음 날">${App.icon('chevron-right')}</button>
             </div>
             <span class="card-title" style="margin-left:auto">${App.icon('clock')} 미용사별 타임테이블</span>
@@ -124,6 +138,8 @@ App.pages.appointments = {
           </div>
         </div>
       </div>` : ''}
+      </div>
+      </div>
 
       ${openMode ? `<div class="safety-note warn" id="appt-open-note">
         ${App.icon('alert')}
@@ -140,7 +156,7 @@ App.pages.appointments = {
         </div>
         <div class="search-box">
           <span class="search-icon">${App.icon('search')}</span>
-          <input type="text" id="appt-search" placeholder="고객, 반려견 검색...">
+          <input type="text" id="appt-search" placeholder="이름·반려견·전화 뒷자리·초성">
         </div>
         <select id="filter-status">
           <option value="">전체 상태 (${statusCounts.all})</option>
@@ -155,6 +171,8 @@ App.pages.appointments = {
         <button class="btn btn-secondary btn-sm" id="btn-clear-filter">필터 초기화</button>
       </div>
 
+      <!-- 지금 목록이 어느 날짜를 보여주는지 (달력·빠른 필터와 맞춰 applyFilters 가 채운다) -->
+      <div id="appt-list-label" class="appt-list-label" aria-live="polite"></div>
       <div class="card">
         <div class="card-body no-padding">
           ${isMobile ? '' : `<div class="table-container">
@@ -166,7 +184,7 @@ App.pages.appointments = {
                   <th>반려견 / 보호자</th>
                   <th class="hide-mobile">서비스</th>
                   ${multiGroomer ? '<th class="hide-mobile">담당</th>' : ''}
-                  <th class="hide-mobile">메모</th>
+                  <th class="hide-mobile appt-memo-cell">메모</th>
                   <th>상태</th>
                   <th>관리</th>
                 </tr>
@@ -195,11 +213,11 @@ App.pages.appointments = {
                         ${isToday ? '<span class="badge badge-info" style="margin-left:4px">오늘</span>' : ''}
                         ${isPast && a.status !== 'completed' && a.status !== 'cancelled' ? '<span class="badge badge-danger" style="margin-left:4px">지남</span>' : ''}
                       </td>
-                      <td>${a.time || '-'}${a.duration && a.duration !== 60 ? `<div style="font-size:0.7rem;color:var(--text-muted)">${a.duration}분</div>` : ''}</td>
-                      <td><a href="#pets/${a.petId}" style="color:var(--primary);font-weight:700" onclick="event.stopPropagation()">${App.escapeHtml(pet?.name || '-')}</a> <span style="color:var(--text-muted);font-size:0.75rem">${App.escapeHtml(App.getCustomerLabel(customer))}</span>${customer?.phone ? ` <a href="sms:${App.escapeHtml(App.phoneDigits(customer.phone))}" onclick="event.stopPropagation()" title="문자 보내기" aria-label="문자 보내기" style="color:var(--text-muted);font-size:0.8rem">${App.icon('message')}</a>` : ''}</td>
-                      <td class="hide-mobile"><span style="font-size:0.85rem">${App.escapeHtml(serviceNames)}</span></td>
+                      <td>${a.time || '-'}${a.duration && a.duration !== 60 ? `<div style="font-size:0.93rem;color:var(--text-muted)">${a.duration}분</div>` : ''}</td>
+                      <td><a href="#pets/${a.petId}" style="color:var(--primary);font-weight:700" onclick="event.stopPropagation()">${App.escapeHtml(pet?.name || '-')}</a> <span style="color:var(--text-muted);font-size:0.93rem">${App.escapeHtml(App.getCustomerLabel(customer))}</span>${customer?.phone ? ` <a href="sms:${App.escapeHtml(App.phoneDigits(customer.phone))}" onclick="event.stopPropagation()" title="문자 보내기" aria-label="문자 보내기" style="color:var(--text-muted);font-size:0.93rem">${App.icon('message')}</a>` : ''}${balLine(a, 'margin-top:2px')}</td>
+                      <td class="hide-mobile" title="${App.escapeHtml(serviceNames)}"><div class="appt-cell-clip" style="font-size:0.93rem;max-width:200px">${App.escapeHtml(serviceNames)}</div></td>
                       ${multiGroomer ? `<td class="hide-mobile">${App.escapeHtml(a.groomer || '-')}</td>` : ''}
-                      <td class="hide-mobile" style="max-width:120px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${App.escapeHtml(a.memo || '')}">${App.escapeHtml(a.memo || '-')}</td>
+                      <td class="hide-mobile appt-memo-cell" title="${App.escapeHtml(a.memo || '')}"><div class="appt-cell-clip" style="max-width:160px">${App.escapeHtml(a.memo || '-')}</div></td>
                       <td>
                         ${a.status === 'completed' ? `<span class="badge badge-success">완료</span><div class="appt-result-compact">${resultOf(a)}</div>` : `
                         <select class="status-select appt-status-sel appt-status-sel-table" data-id="${a.id}" data-st="${a.status || 'pending'}" aria-label="예약 상태">
@@ -212,9 +230,9 @@ App.pages.appointments = {
                         </select>`}
                       </td>
                       <td class="table-actions">
-                        <button class="btn-icon btn-reminder-appt" data-id="${a.id}" title="재확인 문자" aria-label="재확인 문자" style="color:var(--info)${['noshow', 'cancelled'].includes(a.status) ? ';display:none' : ''}">${App.icon('send')}</button>
-                        <button class="btn-icon btn-edit-appt" data-id="${a.id}" title="수정" aria-label="수정">${App.icon('edit')}</button>
-                        ${a.status !== 'completed' ? `<button class="btn-icon btn-complete-appt" data-id="${a.id}" title="미용 완료 · 기록 작성" aria-label="미용 완료 · 기록 작성" style="color:var(--success)${['noshow', 'cancelled'].includes(a.status) ? ';display:none' : ''}">${App.icon('check')}</button>` : ''}
+                        <button class="btn-icon btn-reminder-appt" data-id="${a.id}" title="재확인 문자" aria-label="재확인 문자" style="color:var(--info)${['noshow', 'cancelled'].includes(a.status) ? ';display:none' : ''}">${App.icon('send')}<span class="btn-icon-label">문자</span></button>
+                        <button class="btn-icon btn-edit-appt" data-id="${a.id}" title="수정" aria-label="수정">${App.icon('edit')}<span class="btn-icon-label">수정</span></button>
+                        ${a.status !== 'completed' ? `<button class="btn-icon btn-complete-appt" data-id="${a.id}" title="미용 완료 · 기록 작성" aria-label="미용 완료 · 기록 작성" style="color:var(--success)${['noshow', 'cancelled'].includes(a.status) ? ';display:none' : ''}">${App.icon('check')}<span class="btn-icon-label">완료</span></button>` : ''}
                       </td>
                     </tr>`;
                 }).join('')}
@@ -245,15 +263,16 @@ App.pages.appointments = {
                   <div style="display:flex;align-items:baseline;flex-wrap:wrap;gap:4px 8px;min-width:0;flex:1">
                     <strong style="font-size:1.1rem">${App.escapeHtml(a.time || '--:--')}</strong>
                     <strong style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:60%">${App.escapeHtml(pet?.name || '-')}</strong>
-                    <span class="appt-card-date" style="font-size:0.8rem;color:var(--text-muted)">${App.formatDate(a.date)}${isToday ? ' <span class="badge badge-info">오늘</span>' : ''}</span>
-                    ${a.duration && a.duration !== 60 ? `<span style="font-size:0.75rem;color:var(--text-muted)">${a.duration}분</span>` : ''}
+                    <span class="appt-card-date" style="font-size:0.93rem;color:var(--text-muted)">${App.formatDate(a.date)}${isToday ? ' <span class="badge badge-info">오늘</span>' : ''}</span>
+                    ${a.duration && a.duration !== 60 ? `<span style="font-size:0.93rem;color:var(--text-muted)">${a.duration}분</span>` : ''}
                     ${isPast && a.status !== 'completed' && a.status !== 'cancelled' ? '<span class="badge badge-danger">지남</span>' : ''}
                   </div>
                 </div>
                 <div class="mobile-card-body">
-                  <div style="font-size:0.85rem;color:var(--text-secondary);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${[App.getCustomerLabel(customer), serviceNames, multiGroomer ? (a.groomer || '') : ''].filter(Boolean).map(t => App.escapeHtml(t)).join(' &middot; ')}</div>
-                  ${a.status === 'cancelled' && a.cancelReason ? `<div style="font-size:0.8rem;color:var(--text-muted);margin-top:4px">취소 사유: ${App.escapeHtml(a.cancelReason)}</div>` : ''}
-                  ${a.memo ? `<div style="font-size:0.8rem;color:var(--text-secondary);margin-top:4px">${App.icon('note')} ${App.escapeHtml(a.memo.length > 40 ? a.memo.slice(0, 40) + '...' : a.memo)}</div>` : ''}
+                  <div style="font-size:0.93rem;color:var(--text-secondary);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${[App.getCustomerLabel(customer), serviceNames, multiGroomer ? (a.groomer || '') : ''].filter(Boolean).map(t => App.escapeHtml(t)).join(' &middot; ')}</div>
+                  ${balLine(a, 'margin-top:4px')}
+                  ${a.status === 'cancelled' && a.cancelReason ? `<div style="font-size:0.93rem;color:var(--text-muted);margin-top:4px">취소 사유: ${App.escapeHtml(a.cancelReason)}</div>` : ''}
+                  ${a.memo ? `<div style="font-size:0.93rem;color:var(--text-secondary);margin-top:4px">${App.icon('note')} ${App.escapeHtml(a.memo.length > 40 ? a.memo.slice(0, 40) + '...' : a.memo)}</div>` : ''}
                 </div>
                 ${a.status === 'completed' ? `
                 <!-- 끝난 예약: 결과 줄(금액·결제 + 기록 보기)과 '수정'만. 상태 선택 상자는 두지 않는다 -->
@@ -396,7 +415,9 @@ App.pages.appointments = {
           const pName = pet?.name || '?';
           const barClass = 'cal-bar-' + (statusMap[a.status] || 'default');
           const timeStr = !isMobile && a.time ? a.time.slice(0,5) + ' ' : '';
-          return `<div class="cal-bar ${barClass}">${timeStr}${App.escapeHtml(pName)}</div>`;
+          // 데스크톱: 막대를 누르면 그 예약이 열린다. 모바일은 막대가 작아 칸 전체를 날짜 선택으로 두고, 아래 날짜 목록 줄(44px)로 연다
+          return isMobile ? `<div class="cal-bar ${barClass}">${App.escapeHtml(pName)}</div>`
+            : `<div class="cal-bar ${barClass}" role="button" tabindex="0" data-appt-id="${a.id}" style="cursor:pointer" title="예약 열기" aria-label="${App.escapeHtml((a.time || '') + ' ' + pName)} 예약 열기">${timeStr}${App.escapeHtml(pName)}</div>`;
         }).join('');
         if (count > maxBars) barsHtml += `<div class="cal-overflow">+${count - maxBars}</div>`;
       }
@@ -405,7 +426,7 @@ App.pages.appointments = {
         <div class="calendar-cell ${isToday ? 'today' : ''} ${isClosed ? 'closed' : ''} ${heatClass}" data-date="${dateStr}">
           <div class="cal-cell-header">
             <span class="cal-day-num ${weekendClass}">${d}</span>
-            ${isClosed ? '<span style="font-size:0.65rem;color:var(--danger);font-weight:700">휴무</span>' : ''}
+            ${isClosed ? '<span style="font-size:max(11px, 0.65rem);color:var(--danger);font-weight:700">휴무</span>' : ''}
           </div>
           ${barsHtml}
         </div>`;
@@ -418,6 +439,12 @@ App.pages.appointments = {
       existingCells.forEach(c => c.remove());
       // 새 셀 추가
       grid.insertAdjacentHTML('beforeend', cellsHtml);
+      // 예약 막대 → 그 예약 열기 (목록의 '수정'과 같은 폼). 날짜 선택으로 번지지 않게 막는다
+      grid.querySelectorAll('.cal-bar[data-appt-id]').forEach(bar => {
+        const open = (e) => { e.stopPropagation(); this.showForm(Number(bar.dataset.apptId)); };
+        bar.addEventListener('click', open);
+        bar.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); open(e); } });
+      });
       // 셀 클릭 이벤트
       grid.querySelectorAll('.calendar-cell[data-date]').forEach(cell => {
         cell.addEventListener('click', () => {
@@ -465,27 +492,44 @@ App.pages.appointments = {
     }
     dayAppts.sort((a, b) => (a.time || '').localeCompare(b.time || ''));
 
-    header.innerHTML = `${App.icon('calendar')} ${dayLabel} · ${dayAppts.length}건${isClosed ? ' <span style="color:var(--danger);font-size:0.82rem">휴무</span>' : ''}`;
+    header.innerHTML = `${App.icon('calendar')} ${dayLabel} · ${dayAppts.length}건${isClosed ? ' <span style="color:var(--danger);font-size:0.93rem">휴무</span>' : ''}`;
 
     if (dayAppts.length === 0) {
-      list.innerHTML = '<div style="color:var(--text-muted);font-size:0.88rem;padding:8px 0">예약 없음</div>';
+      list.innerHTML = '<div style="color:var(--text-muted);font-size:0.93rem;padding:8px 0">예약 없음</div>';
     } else {
       const petMap = this._petMap || {};
       const serviceMap = this._serviceMap || {};
-      const show = dayAppts.slice(0, 5);
-      list.innerHTML = show.map(a => {
+      // 5건까지 먼저 보이고, 나머지는 '+N건 더 보기'를 누르면 그 자리에서 펼친다 (모든 예약을 열 수 있게)
+      list.innerHTML = dayAppts.map((a, idx) => {
         const pet = petMap[a.petId];
         const svcName = App.apptServiceNames(a, serviceMap);
-        return `<div style="display:flex;align-items:center;gap:8px;padding:6px 0;border-bottom:1px solid var(--border-light);font-size:0.88rem">
+        // 줄을 누르면(또는 Enter) 그 예약이 열린다 — 젖은 손가락도 맞도록 44px 높이
+        return `<div class="cal-summary-row" role="button" tabindex="0" data-appt-id="${a.id}"${idx >= 5 ? ' data-extra' : ''} aria-label="${App.escapeHtml((a.time || '') + ' ' + (pet?.name || ''))} 예약 열기" style="display:flex;align-items:center;gap:8px;min-height:44px;padding:6px 0;border-bottom:1px solid var(--border-light);font-size:0.93rem;cursor:pointer${idx >= 5 ? ';display:none' : ''}">
           <strong style="color:var(--primary);min-width:42px">${a.time || '--:--'}</strong>
           <span style="font-weight:600">${App.escapeHtml(pet?.name || '?')}</span>
-          ${svcName ? `<span style="color:var(--text-muted);font-size:0.82rem">${App.escapeHtml(svcName)}</span>` : ''}
+          ${svcName ? `<span style="color:var(--text-muted);font-size:0.93rem;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${App.escapeHtml(svcName)}</span>` : ''}
+          <span style="margin-left:auto;color:var(--text-muted);flex-shrink:0" aria-hidden="true">${App.icon('chevron-right')}</span>
         </div>`;
-      }).join('') + (dayAppts.length > 5 ? `<div style="font-size:0.82rem;color:var(--text-muted);padding:4px 0">+${dayAppts.length - 5}건 더</div>` : '');
+      }).join('') + (dayAppts.length > 5 ? `<button type="button" class="btn btn-ghost btn-sm cal-summary-more" style="min-height:44px;width:100%">+${dayAppts.length - 5}건 더 보기</button>` : '');
     }
+
+    // 목록은 매번 다시 그려지므로 위임 처리 (onclick 대입이라 중복 바인딩 없음)
+    const openRow = (e) => {
+      const more = e.target.closest('.cal-summary-more');
+      if (more) { list.querySelectorAll('.cal-summary-row[data-extra]').forEach(r => { r.style.display = 'flex'; }); more.remove(); return; }
+      const row = e.target.closest('.cal-summary-row[data-appt-id]');
+      if (row) this.showForm(Number(row.dataset.apptId));
+    };
+    list.onclick = openRow;
+    list.onkeydown = (e) => { if ((e.key === 'Enter' || e.key === ' ') && e.target.closest('.cal-summary-row')) { e.preventDefault(); openRow(e); } };
 
     this._selectedCalDate = date;
     panel.style.display = 'block';
+    // 타임테이블이 열려 있으면 같은 날짜로 맞춘다 (달력에서 11/9를 눌렀는데 '오늘'에 남아 있던 문제)
+    if (this._ttDate !== date && document.getElementById('timetable-container')?.style.display === 'block') {
+      this._ttDate = date;
+      this.renderTimetable();
+    }
   },
 
   _hideDateSummary() {
@@ -533,11 +577,7 @@ App.pages.appointments = {
         // 이전 선택 날짜 복원 또는 오늘 자동 선택
         const restoreDate = this._selectedCalDate || App.getToday();
         const dateInput = document.getElementById('filter-date');
-        if (dateInput) { dateInput.value = restoreDate; this.applyFilters(); }
-        document.querySelectorAll('.quick-filter-btn').forEach(b => b.classList.remove('active'));
-        if (!this._selectedCalDate || restoreDate === App.getToday()) {
-          document.querySelector('.quick-filter-btn[data-filter="today"]')?.classList.add('active');
-        }
+        if (dateInput) { dateInput.value = restoreDate; this.applyFilters(); } // 칩은 applyFilters 가 날짜에 맞춰 켠다
         // 캘린더에서 셀 선택 표시 + 요약 패널
         const restoreCell = document.querySelector(`.calendar-cell[data-date="${restoreDate}"]`);
         if (restoreCell) restoreCell.classList.add('selected');
@@ -593,7 +633,7 @@ App.pages.appointments = {
         tt.style.display = isHidden ? 'block' : 'none';
         sessionStorage.setItem('timetableOpen', isHidden ? 'true' : 'false');
         if (isHidden) {
-          this._ttDate = App.getToday();
+          this._ttDate = this._selectedCalDate || App.getToday(); // 달력에서 고른 날짜로 연다
           this.renderTimetable();
         }
         this._updateListVisibility();
@@ -641,6 +681,9 @@ App.pages.appointments = {
           document.querySelectorAll('.calendar-cell').forEach(c => c.classList.remove('selected'));
           todayCell.classList.add('selected');
         }
+        // 목록도 오늘로 맞춘다 (예전엔 패널만 오늘이고 목록은 보던 날짜에 남았다)
+        const dateInput = document.getElementById('filter-date');
+        if (dateInput && !this._openMode) { dateInput.value = todayStr; this.applyFilters(); }
         this._updateDateSummary(todayStr);
       }, 50);
     });
@@ -678,9 +721,11 @@ App.pages.appointments = {
     // 모바일↔데스크톱 뷰포트 경계 변화 시 재렌더 (한 번만 바인딩)
     if (!this._resizeBound) {
       this._resizeBound = true;
-      let lastIsMobile = window.matchMedia('(max-width: 768px)').matches;
+      // 목록 카드↔표 경계(1023px)와 달력 막대 경계(768px) 어느 쪽을 넘어도 다시 그린다
+      const bp = () => window.matchMedia('(max-width: 768px)').matches + ':' + window.matchMedia('(max-width: 1023px)').matches;
+      let lastIsMobile = bp();
       const onResize = App.debounce(() => {
-        const nowIsMobile = window.matchMedia('(max-width: 768px)').matches;
+        const nowIsMobile = bp();
         if (nowIsMobile !== lastIsMobile) {
           lastIsMobile = nowIsMobile;
           if (location.hash.startsWith('#appointments')) App.handleRoute();
@@ -747,14 +792,14 @@ App.pages.appointments = {
         const appt = await DB.get('appointments', id);
         if (!appt) { App.showToast('예약을 찾을 수 없습니다.', 'error'); return; }
         if (newStatus === 'noshow') {
-          const ok = await App.confirm('노쇼로 변경하시겠습니까?<br>고객 이력에 기록됩니다.');
+          const ok = await App.confirm('노쇼로 바꿀까요?<br>고객 이력에 기록됩니다.', { okLabel: '노쇼로 변경', cancelLabel: '돌아가기' });
           if (!ok) { e.target.value = appt.status; return; }
         }
         let cancelReason = '';
         if (newStatus === 'cancelled' && appt.status !== 'cancelled') {
           const reasons = ['고객 요청', '반려견 컨디션', '연락 두절', '기타'];
           const chipsHtml = reasons.map(r => `<button type="button" class="btn btn-sm btn-secondary cancel-reason-chip" data-reason="${r}" style="min-height:44px">${r}</button>`).join('');
-          const okPromise = App.confirm(`이 예약을 취소할까요?<br><small style="color:var(--text-muted)">취소 사유 (선택)</small><span style="display:flex;flex-wrap:wrap;gap:6px;margin-top:8px">${chipsHtml}</span>`, { okLabel: '예약 취소', cancelLabel: '닫기' });
+          const okPromise = App.confirm(`이 예약을 취소할까요?<br><small style="color:var(--text-muted)">취소 사유 (선택)</small><span style="display:flex;flex-wrap:wrap;gap:6px;margin-top:8px">${chipsHtml}</span>`, { okLabel: '예약 취소', cancelLabel: '돌아가기' });
           // confirm 본문은 동기적으로 그려지므로 바로 칩에 핸들러를 붙인다 (한 개만 선택, 다시 누르면 해제)
           document.querySelectorAll('#confirm-body .cancel-reason-chip').forEach(chip => {
             chip.addEventListener('click', () => {
@@ -886,7 +931,7 @@ App.pages.appointments = {
     const grid = document.getElementById('timetable-grid');
     const dateLabel = document.getElementById('tt-date');
     if (!grid) return;
-    if (dateLabel) dateLabel.textContent = this._ttDate;
+    if (dateLabel) dateLabel.textContent = App.formatDateKo(this._ttDate) + (this._ttDate === App.getToday() ? ' · 오늘' : '');
 
     // 효율적 쿼리: 해당 날짜의 예약만 인덱스로 로드
     const dayApptsRaw = await DB.getByIndex('appointments', 'date', this._ttDate);
@@ -958,14 +1003,14 @@ App.pages.appointments = {
     const colCount = activeGroomers.length + 1;
     let html = `<div style="display:grid;grid-template-columns:60px repeat(${activeGroomers.length}, 1fr);min-width:${colCount * 100}px">`;
     // 헤더
-    html += `<div style="padding:8px;font-weight:700;background:var(--bg);border-bottom:2px solid var(--border);text-align:center;font-size:0.8rem">시간</div>`;
+    html += `<div style="padding:8px;font-weight:700;background:var(--bg);border-bottom:2px solid var(--border);text-align:center;font-size:0.93rem">시간</div>`;
     activeGroomers.forEach(g => {
-      html += `<div style="padding:8px;font-weight:700;background:var(--bg);border-bottom:2px solid var(--border);text-align:center;font-size:0.85rem">${App.escapeHtml(g)}</div>`;
+      html += `<div style="padding:8px;font-weight:700;background:var(--bg);border-bottom:2px solid var(--border);text-align:center;font-size:0.93rem">${App.escapeHtml(g)}</div>`;
     });
 
     // 시간 슬롯
     slots.forEach(slot => {
-      html += `<div style="padding:6px 4px;font-size:0.75rem;color:var(--text-muted);border-bottom:1px solid var(--border);text-align:center;background:var(--bg)">${slot}</div>`;
+      html += `<div style="padding:6px 4px;font-size:0.93rem;color:var(--text-muted);border-bottom:1px solid var(--border);text-align:center;background:var(--bg)">${slot}</div>`;
       activeGroomers.forEach(g => {
         const key = `${slot}_${g}`;
         const cell = cellMap[key];
@@ -975,16 +1020,16 @@ App.pages.appointments = {
           const pet = petMap[a.petId];
           const statusColors = { pending: 'var(--warning)', confirmed: 'var(--primary)', in_progress: 'var(--info)', completed: 'var(--success)', noshow: 'var(--danger)' };
           const durLabel = (a.duration || 60) >= 60 ? Math.floor((a.duration || 60) / 60) + '시간' + ((a.duration || 60) % 60 ? ' ' + (a.duration || 60) % 60 + '분' : '') : (a.duration || 60) + '분';
-          html += `<div style="padding:4px 6px;border-bottom:1px solid var(--border);background:color-mix(in srgb, ${statusColors[a.status] || 'var(--primary)'} 12%, transparent);border-left:3px solid ${statusColors[a.status] || 'var(--primary)'}">
-            <div style="font-size:0.78rem;font-weight:700">${App.escapeHtml(a.time || '')} ${App.escapeHtml(pet?.name || '-')}</div>
-            <div style="font-size:0.7rem;color:var(--text-secondary)">${App.escapeHtml(App.getCustomerLabel(customer))}</div>
-            <div style="font-size:0.75rem;color:var(--text-muted)">${durLabel}</div>
-            ${cell.others.map(o => `<div style="font-size:0.72rem;font-weight:700;color:var(--warning-text-strong);margin-top:2px">+ ${App.escapeHtml(o.time || '')} ${App.escapeHtml(petMap[o.petId]?.name || '-')}</div>`).join('')}
+          html += `<div class="tt-appt" role="button" tabindex="0" data-appt-id="${a.id}" aria-label="${App.escapeHtml((a.time || '') + ' ' + (pet?.name || ''))} 예약 열기" style="padding:4px 6px;min-height:44px;cursor:pointer;border-bottom:1px solid var(--border);background:color-mix(in srgb, ${statusColors[a.status] || 'var(--primary)'} 12%, transparent);border-left:3px solid ${statusColors[a.status] || 'var(--primary)'}">
+            <div style="font-size:0.93rem;font-weight:700">${App.escapeHtml(a.time || '')} ${App.escapeHtml(pet?.name || '-')}</div>
+            <div style="font-size:0.93rem;color:var(--text-secondary)">${App.escapeHtml(App.getCustomerLabel(customer))}</div>
+            <div style="font-size:0.93rem;color:var(--text-muted)">${durLabel}</div>
+            ${cell.others.map(o => `<div class="tt-appt" role="button" tabindex="0" data-appt-id="${o.id}" style="min-height:44px;display:flex;align-items:center;cursor:pointer;font-size:0.93rem;font-weight:700;color:var(--warning-text-strong);margin-top:2px">+ ${App.escapeHtml(o.time || '')} ${App.escapeHtml(petMap[o.petId]?.name || '-')}</div>`).join('')}
           </div>`;
         } else if (cell && !cell.isStart) {
           const a = cell.appt;
           const statusColors = { pending: 'var(--warning)', confirmed: 'var(--primary)', in_progress: 'var(--info)', completed: 'var(--success)', noshow: 'var(--danger)' };
-          html += `<div style="padding:0;border-bottom:1px solid var(--border);background:color-mix(in srgb, ${statusColors[a.status] || 'var(--primary)'} 12%, transparent);border-left:3px solid ${statusColors[a.status] || 'var(--primary)'}"></div>`;
+          html += `<div class="tt-appt" data-appt-id="${a.id}" style="padding:0;cursor:pointer;border-bottom:1px solid var(--border);background:color-mix(in srgb, ${statusColors[a.status] || 'var(--primary)'} 12%, transparent);border-left:3px solid ${statusColors[a.status] || 'var(--primary)'}"></div>`;
         } else {
           html += `<div style="padding:4px;border-bottom:1px solid var(--border)"></div>`;
         }
@@ -993,6 +1038,13 @@ App.pages.appointments = {
 
     html += '</div>';
     grid.innerHTML = html;
+    // 예약 칸(이어지는 칸 포함)을 누르면 그 예약이 열린다. 겹친 예약 줄은 그 예약으로 (안쪽 요소가 먼저 잡힘)
+    const openTt = (e) => {
+      const el = e.target.closest('.tt-appt[data-appt-id]');
+      if (el) { e.stopPropagation(); this.showForm(Number(el.dataset.apptId)); }
+    };
+    grid.onclick = openTt;
+    grid.onkeydown = (e) => { if ((e.key === 'Enter' || e.key === ' ') && e.target.closest('.tt-appt')) { e.preventDefault(); openTt(e); } };
   },
 
   _updateListVisibility() {
@@ -1026,7 +1078,7 @@ App.pages.appointments = {
 
     document.querySelectorAll('#appt-tbody tr').forEach(row => {
       if (!row.dataset.id) return;
-      const matchSearch = !search || (row.dataset.search || '').toLowerCase().includes(search);
+      const matchSearch = App.searchMatch(row.dataset.search || '', search); // 초성·전화 숫자·여러 낱말
       const matchStatus = !status || row.dataset.status === status;
       let matchDate = true;
       if (special === 'open') {
@@ -1045,7 +1097,7 @@ App.pages.appointments = {
       if (!card.dataset.id) return;
       const dateEl = card.querySelector('.appt-card-date');
       if (dateEl) dateEl.style.display = hideCardDate ? 'none' : '';
-      const matchSearch = !search || (card.dataset.search || '').toLowerCase().includes(search);
+      const matchSearch = App.searchMatch(card.dataset.search || '', search);
       const matchStatus = !status || card.dataset.status === status;
       let matchDate = true;
       if (special === 'open') {
@@ -1063,6 +1115,20 @@ App.pages.appointments = {
     if (this._openMode && openCountEl) {
       const n = [...document.querySelectorAll('#appt-tbody tr[data-id], #appt-card-list .mobile-card[data-id]')].filter(isOpenEl).length;
       openCountEl.textContent = `마감 안 한 지난 예약 ${n}건`;
+    }
+
+    // 빠른 필터 칩을 실제 보이는 범위에 맞춘다 — 달력에서 11/10을 눌러도 '오늘'이 켜져 있던 문제
+    const tomorrow = (() => { const d = App.parseLocalDate(today); d.setDate(d.getDate() + 1); return App.formatLocalDate(d); })();
+    const chip = special === 'open' ? '' : special === 'week' ? 'week' : !date ? 'all' : date === today ? 'today' : date === tomorrow ? 'tomorrow' : '';
+    document.querySelectorAll('.quick-filter-btn').forEach(b => b.classList.toggle('active', !!chip && b.dataset.filter === chip));
+    const labelEl = document.getElementById('appt-list-label');
+    if (labelEl) {
+      const shown = document.querySelectorAll('#appt-tbody tr[data-id]:not([style*="display: none"]), #appt-card-list .mobile-card[data-id]:not([style*="display: none"])').length;
+      const what = special === 'open' ? '마감 안 한 지난 예약'
+        : special === 'week' ? `이번주 예약 (${App.formatDateKo(today)} ~ ${App.formatDateKo(weekEnd)})`
+        : date ? `${App.formatDateKo(date)}${date === today ? ' · 오늘' : date === tomorrow ? ' · 내일' : ''} 예약`
+        : `전체 예약 (${App.formatDate(this._loadedFrom)} ~ ${App.formatDate(this._loadedTo)})`;
+      labelEl.innerHTML = `${App.icon('list')} 목록: <strong>${App.escapeHtml(what)}</strong> · ${shown}건`;
     }
   },
 
@@ -1091,7 +1157,7 @@ App.pages.appointments = {
       return App.serviceChipHtml(svc, sizeType, table, true, svc.isActive === false ? ' (비활성)' : '');
     }).join('');
     if (!chips.trim()) return;
-    host.insertAdjacentHTML('beforeend', `<div style="font-size:0.78rem;font-weight:700;color:var(--text-muted);margin:8px 0 4px;padding-bottom:2px;border-bottom:1px solid var(--border)">기존 선택 (메뉴에서 숨김)</div><div class="service-select-grid">${chips}</div>`);
+    host.insertAdjacentHTML('beforeend', `<div style="font-size:0.93rem;font-weight:700;color:var(--text-muted);margin:8px 0 4px;padding-bottom:2px;border-bottom:1px solid var(--border)">기존 선택 (메뉴에서 숨김)</div><div class="service-select-grid">${chips}</div>`);
   },
   async showForm(id, preCustomerId, prefill) {
     // 새 예약 시 다음 정시를 기본 시간으로
@@ -1173,14 +1239,14 @@ App.pages.appointments = {
             </div>
           </div>
         </div>
-        <div id="time-conflict-warning" style="display:none;background:var(--warning-light);border:1px solid var(--warning);border-radius:var(--radius);padding:8px 12px;font-size:0.82rem;color:var(--warning-text-strong);font-weight:600;margin-bottom:8px"></div>
+        <div id="time-conflict-warning" style="display:none;background:var(--warning-light);border:1px solid var(--warning);border-radius:var(--radius);padding:8px 12px;font-size:0.93rem;color:var(--warning-text-strong);font-weight:600;margin-bottom:8px"></div>
         <!-- 선택사항 -->
-        <div style="margin:12px 0 8px;padding-top:10px;border-top:1px dashed var(--border);font-size:0.82rem;color:var(--text-muted)">선택사항</div>
+        <div style="margin:12px 0 8px;padding-top:10px;border-top:1px dashed var(--border);font-size:0.93rem;color:var(--text-muted)">선택사항</div>
         <div class="form-group">
           <div id="f-services">
             ${serviceCheckboxes}
           </div>
-          <div id="f-appt-estimate" style="display:none;margin-top:8px;padding:8px 12px;background:var(--bg);border-radius:var(--radius);font-size:0.85rem"></div>
+          <div id="f-appt-estimate" style="display:none;margin-top:8px;padding:8px 12px;background:var(--bg);border-radius:var(--radius);font-size:0.93rem"></div>
         </div>
 
         ${!id ? `<div class="form-group">
@@ -1258,7 +1324,7 @@ App.pages.appointments = {
       const unknown = picked.some(cb => cb.dataset.needsWeight === '1');
       el.style.display = 'block';
       el.innerHTML = `<div style="display:flex;justify-content:space-between;align-items:center;gap:8px"><span style="color:var(--text-secondary)">예상 금액</span><strong>${unknown && sum === 0 ? '-' : App.formatCurrency(sum)}</strong></div>`
-        + (unknown ? '<div style="font-size:0.75rem;color:var(--text-muted);margin-top:2px">몸무게를 넣으면 구간 가격으로 계산돼요</div>' : '');
+        + (unknown ? '<div style="font-size:0.93rem;color:var(--text-muted);margin-top:2px">몸무게를 넣으면 구간 가격으로 계산돼요</div>' : '');
     };
     const bindServiceChips = () => {
       // 서비스 칩 토글 (checked 클래스)
@@ -1406,7 +1472,7 @@ App.pages.appointments = {
           const custAppts = await DB.getByIndex('appointments', 'customerId', Number(cid));
           const noshowCount = custAppts.filter(a => a.status === 'noshow').length;
           if (noshowCount > 0) {
-            warn.innerHTML = `<div style="color:var(--danger);font-size:0.85rem;margin-top:4px;font-weight:600">${App.icon('alert')} 이 고객은 노쇼 ${noshowCount}회 이력이 있습니다</div>`;
+            warn.innerHTML = `<div style="color:var(--danger);font-size:0.93rem;margin-top:4px;font-weight:600">${App.icon('alert')} 이 고객은 노쇼 ${noshowCount}회 이력이 있습니다</div>`;
           }
         }
       }
@@ -1426,7 +1492,7 @@ App.pages.appointments = {
         document.getElementById('f-date')?.parentElement?.appendChild(existingWarn);
       }
       if (cd.includes(dow)) {
-        existingWarn.innerHTML = `<div style="color:var(--danger);font-size:0.85rem;margin-top:4px;font-weight:600">${App.icon('alert')} ${dayNames[dow]}요일은 휴무일입니다</div>`;
+        existingWarn.innerHTML = `<div style="color:var(--danger);font-size:0.93rem;margin-top:4px;font-weight:600">${App.icon('alert')} ${dayNames[dow]}요일은 휴무일입니다</div>`;
       } else {
         existingWarn.innerHTML = '';
       }
@@ -1444,7 +1510,7 @@ App.pages.appointments = {
       const noshowCount = custAppts2.filter(a => a.status === 'noshow').length;
       if (noshowCount > 0) {
         const warn = document.getElementById('noshow-warning');
-        if (warn) warn.innerHTML = `<div style="color:var(--danger);font-size:0.85rem;margin-top:4px;font-weight:600">${App.icon('alert')} 이 고객은 노쇼 ${noshowCount}회 이력이 있습니다</div>`;
+        if (warn) warn.innerHTML = `<div style="color:var(--danger);font-size:0.93rem;margin-top:4px;font-weight:600">${App.icon('alert')} 이 고객은 노쇼 ${noshowCount}회 이력이 있습니다</div>`;
       }
     }
   },
@@ -1658,7 +1724,7 @@ App.pages.appointments = {
       App.showToast('미용 기록이 있는 예약입니다. 기록을 삭제하면 예약이 되돌아갑니다.', 'warning');
       return;
     }
-    const ok = await App.confirm('완료를 취소하고 \'확정\'으로 되돌릴까요?', { okLabel: '완료 취소', cancelLabel: '닫기', danger: false });
+    const ok = await App.confirm('완료를 취소하고 \'확정\'으로 되돌릴까요?', { okLabel: '완료 취소', cancelLabel: '돌아가기', danger: false });
     if (!ok) return;
     try {
       appt.status = 'confirmed';
@@ -1689,7 +1755,7 @@ App.pages.appointments = {
     const ok = await App.confirm(
       `${App.formatDateKo(first.date)}부터 ${App.formatDateKo(last.date)}까지 반복 예약 <strong>${targets.length}건</strong>을 모두 취소할까요?<br>` +
       `<small style="color:var(--text-muted)">삭제가 아니라 '취소' 상태로 바뀌며 이력은 남습니다. 이미 완료된 예약은 그대로 둡니다.</small>`,
-      { okLabel: `${targets.length}건 취소` });
+      { okLabel: `${targets.length}건 취소`, cancelLabel: '돌아가기' });
     if (!ok) return;
     try {
       for (const a of targets) {
@@ -1712,7 +1778,7 @@ App.pages.appointments = {
     if (!appt) { App.showToast('예약을 찾을 수 없습니다.', 'error'); return; }
     const pet = appt.petId ? await DB.get('pets', appt.petId) : null;
     const detail = `<small style="color:var(--text-muted)">${App.formatDate(appt.date)}${appt.time ? ' ' + appt.time : ''}${pet ? ' · ' + App.escapeHtml(pet.name) : ''}</small>`;
-    const confirmed = await App.confirm(`이 예약을 삭제하시겠습니까?<br>${detail}`, { okLabel: '삭제' });
+    const confirmed = await App.confirm(`이 예약을 삭제할까요?<br>${detail}`, { okLabel: '삭제', cancelLabel: '돌아가기' });
     if (!confirmed) return;
 
     try {

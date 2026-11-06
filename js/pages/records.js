@@ -1,7 +1,9 @@
 // ========== Grooming Records Page ==========
 App.pages.records = {
   async render(container) {
-    const isMobile = window.matchMedia('(max-width: 768px)').matches;
+    const isMobile = window.matchMedia('(max-width: 1023px)').matches;
+    // 넓은 화면(1280px~): 왼쪽 목록 + 오른쪽 상세(영수증) 칸. 그보다 좁으면 예전 그대로
+    const isWide = window.matchMedia('(min-width: 1280px)').matches;
     const today = App.getToday();
 
     // ========== 활동 로그 + 더 보기 패턴 ==========
@@ -59,7 +61,7 @@ App.pages.records = {
       if (!r.paidAt || r.paidAt === r.date || r.paymentMethod === 'unpaid') return '';
       const [, pm, pd] = String(r.paidAt).slice(0, 10).split('-');
       if (!pm || !pd) return '';
-      return ` <span style="font-size:0.72rem;color:var(--text-muted)">수금 ${Number(pm)}/${Number(pd)}</span>`;
+      return ` <span style="font-size:0.93rem;color:var(--text-muted)">수금 ${Number(pm)}/${Number(pd)}</span>`;
     };
     const getGroupLabel = (date) => {
       if (!date) return '날짜 없음';
@@ -86,7 +88,7 @@ App.pages.records = {
     // 담당 미용사는 미용사가 2명 이상 등록됐을 때만 목록에 보인다 (1인 매장은 늘 같은 이름이라 자리만 차지)
     const showGroomer = ((await DB.getSetting('groomers')) || []).length >= 2;
 
-    // 미수금 경고 카드용 집계 — 불러온 기간이 아니라 전체 기간 (paymentMethod 인덱스, 미결제 건만 읽음)
+    // 미결제 경고 카드용 집계 — 불러온 기간이 아니라 전체 기간 (paymentMethod 인덱스, 미결제 건만 읽음)
     const unpaidRecs = loadMode === 'unpaid'
       ? records
       : (await DB.getByIndex('records', 'paymentMethod', 'unpaid'));
@@ -117,14 +119,14 @@ App.pages.records = {
       const serviceNames = App.getRecordServiceDisplay(r, serviceMap);
       const gLabel = getGroupLabel(r.date);
       return `
-                    <tr data-id="${r.id}" data-month="${(r.date || '').slice(0, 7)}" data-group="${gLabel}"
+                    <tr data-id="${r.id}"${isWide && r.id === this._paneRecordId ? ' class="is-selected"' : ''} data-month="${(r.date || '').slice(0, 7)}" data-group="${gLabel}"
                         data-payment="${r.paymentMethod || ''}"
                         data-amount="${App.getRecordAmount(r)}"
                         style="${r.paymentMethod === 'unpaid' ? 'background:var(--warning-light);border-left:3px solid var(--danger)' : ''}">
                       <td>${App.formatDate(r.date)}</td>
-                      <td><a href="#pets/${r.petId}" style="color:var(--primary);font-weight:700" onclick="event.stopPropagation()">${App.escapeHtml(pet?.name || '-')}</a> <span style="color:var(--text-muted);font-size:0.75rem">${App.escapeHtml(App.getCustomerLabel(customer))}</span></td>
-                      <td class="hide-mobile"><span style="font-size:0.85rem">${App.escapeHtml(serviceNames)}</span>${Array.isArray(r.complimentary) && r.complimentary.length ? ' <span class="badge badge-success" style="font-size:0.7rem;padding:1px 6px">서비스 제공</span>' : ''}</td>
-                      <td><strong>${App.formatCurrency(App.getRecordAmount(r))}</strong>${r.discount || r.extraCharge ? `<div style="font-size:0.7rem;color:var(--text-muted)">${r.discount ? '-' + App.formatCurrency(r.discount) : ''}${r.extraCharge ? '+' + App.formatCurrency(r.extraCharge) : ''}</div>` : ''}</td>
+                      <td><a href="#pets/${r.petId}" style="color:var(--primary);font-weight:700" onclick="event.stopPropagation()">${App.escapeHtml(pet?.name || '-')}</a> <span style="color:var(--text-muted);font-size:0.93rem">${App.escapeHtml(App.getCustomerLabel(customer))}</span></td>
+                      <td class="hide-mobile"><span style="font-size:0.93rem">${App.escapeHtml(serviceNames)}</span>${Array.isArray(r.complimentary) && r.complimentary.length ? ' <span class="badge badge-success" style="font-size:0.93rem;padding:1px 6px">서비스 제공</span>' : ''}</td>
+                      <td><strong>${App.formatCurrency(App.getRecordAmount(r))}</strong>${r.discount || r.extraCharge ? `<div style="font-size:0.93rem;color:var(--text-muted)">${r.discount ? '-' + App.formatCurrency(r.discount) : ''}${r.extraCharge ? '+' + App.formatCurrency(r.extraCharge) : ''}</div>` : ''}</td>
                       ${showGroomer ? `<td class="hide-mobile">${App.escapeHtml(r.groomer || '-')}</td>` : ''}
                       <td class="hide-mobile">${zeroPaid(r) ? '' : this.getPaymentLabel(r.paymentMethod, r) + paidNote(r)}</td>
                       <td class="hide-mobile" style="max-width:150px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${App.escapeHtml(r.memo || '')}">
@@ -148,7 +150,7 @@ App.pages.records = {
                    data-payment="${r.paymentMethod || ''}"
                    data-amount="${App.getRecordAmount(r)}">
                 <div class="mobile-card-header">
-                  <span class="mobile-card-date"><strong>${App.formatDate(r.date)}</strong>${r.status === 'in_progress' ? ' <span class="badge badge-warning" style="font-size:0.72rem;padding:3px 8px">진행중</span>' : ''}</span>
+                  <span class="mobile-card-date"><strong>${App.formatDate(r.date)}</strong>${r.status === 'in_progress' ? ' <span class="badge badge-warning" style="font-size:0.93rem;padding:3px 8px">진행중</span>' : ''}</span>
                   <span class="mobile-card-amount"><strong>${App.formatCurrency(App.getRecordAmount(r))}</strong></span>
                 </div>
                 <div class="mobile-card-body">
@@ -159,10 +161,10 @@ App.pages.records = {
                     <!-- 미결제는 빨간 배지 하나만 (결제수단 글자 '미결제' + 배지가 겹쳐 '미결제 미결제'로 보였다) -->
                     ${isUnpaid || zeroPaid(r) ? '' : `<span>${this.getPaymentLabel(r.paymentMethod, r)}${paidNote(r)}</span>`}
                     ${App._recordHasPhoto(r) ? `<span>${App.icon('camera')} 사진</span>` : ''}
-                    ${Number(r.complimentaryTotal) > 0 || (Array.isArray(r.complimentary) && r.complimentary.length) ? `<span class="badge badge-success" style="font-size:0.72rem;padding:2px 8px" title="서비스 제공: ${App.escapeHtml((r.complimentary || []).map(c => c.name).join(', '))}">서비스 제공</span>` : ''}
+                    ${Number(r.complimentaryTotal) > 0 || (Array.isArray(r.complimentary) && r.complimentary.length) ? `<span class="badge badge-success" style="font-size:0.93rem;padding:2px 8px" title="서비스 제공: ${App.escapeHtml((r.complimentary || []).map(c => c.name).join(', '))}">서비스 제공</span>` : ''}
                     ${isUnpaid ? '<span class="badge badge-danger">미결제</span>' : ''}
                   </div>
-                  ${r.memo ? `<div style="font-size:0.82rem;color:var(--text-secondary);margin-top:6px;padding-top:6px;border-top:1px dashed var(--border-light);white-space:nowrap;overflow:hidden;text-overflow:ellipsis" title="${App.escapeHtml(r.memo)}">${App.icon('note')} ${App.escapeHtml(r.memo.length > 60 ? r.memo.slice(0, 60) + '...' : r.memo)}</div>` : ''}
+                  ${r.memo ? `<div style="font-size:0.93rem;color:var(--text-secondary);margin-top:6px;padding-top:6px;border-top:1px dashed var(--border-light);white-space:nowrap;overflow:hidden;text-overflow:ellipsis" title="${App.escapeHtml(r.memo)}">${App.icon('note')} ${App.escapeHtml(r.memo.length > 60 ? r.memo.slice(0, 60) + '...' : r.memo)}</div>` : ''}
                 </div>
                 <!-- 카드를 누르면 수정. 삭제는 수정 화면 안에서만 (목록에서 잘못 눌러 지우는 일 방지)
                      보내기 하나만 둔다 — 영수증은 보내기(리포트) 화면의 '영수증' 버튼에서 연다 -->
@@ -201,10 +203,10 @@ App.pages.records = {
         <div class="card-body" style="padding:16px 20px;display:flex;align-items:center;gap:14px;background:linear-gradient(135deg,var(--danger-light),var(--danger-bg-soft))">
           <span style="font-size:1.5rem">${App.icon('cash')}</span>
           <div class="flex-1">
-            <div style="font-weight:800;color:var(--danger);font-size:1rem">미수금 경고</div>
-            <div style="font-size:0.88rem;color:var(--danger-text-strong);margin-top:2px">전체 기간 ${unpaidRecs.length}건 &middot; ${App.formatCurrency(unpaidTotal)}</div>
+            <div style="font-weight:800;color:var(--danger);font-size:1rem">미결제 경고</div>
+            <div style="font-size:0.93rem;color:var(--danger-text-strong);margin-top:2px">전체 기간 ${unpaidRecs.length}건 &middot; ${App.formatCurrency(unpaidTotal)}</div>
           </div>
-          <span style="color:var(--danger);font-weight:600;font-size:0.85rem">클릭하여 필터 &rarr;</span>
+          <span style="color:var(--danger);font-weight:600;font-size:0.93rem">눌러서 보기 &rarr;</span>
         </div>
       </div>
       ` : ''}
@@ -212,7 +214,7 @@ App.pages.records = {
       <div class="filter-bar">
         <div class="search-box" style="max-width:none">
           <span class="search-icon">${App.icon('search')}</span>
-          <input type="text" id="record-search" placeholder="고객, 반려견, 서비스, 메모 검색..." style="min-height:40px">
+          <input type="text" id="record-search" placeholder="이름·반려견·서비스·초성(ㅊㅋ)" style="min-height:40px">
         </div>
         <div class="filter-bar-row">
           <input type="month" id="filter-month" value="${jumpMonth}" placeholder="월 점프" style="flex:1;min-height:44px">
@@ -227,8 +229,9 @@ App.pages.records = {
         </div>
       </div>
 
-      <div id="record-filter-total" style="display:none;padding:12px 16px;margin-bottom:12px;background:var(--bg);border-radius:var(--radius);font-size:0.9rem;font-weight:600;gap:8px;flex-wrap:wrap;justify-content:space-between;align-items:center"></div>
+      <div id="record-filter-total" style="display:none;padding:12px 16px;margin-bottom:12px;background:var(--bg);border-radius:var(--radius);font-size:0.93rem;font-weight:600;gap:8px;flex-wrap:wrap;justify-content:space-between;align-items:center"></div>
 
+      ${isWide ? '<div class="records-md"><div class="records-md-list">' : ''}
       <div class="card">
         <div class="card-body no-padding" id="record-list-wrap">
           ${isMobile ? '' : `<div class="table-container">
@@ -268,7 +271,7 @@ App.pages.records = {
             ` : ''}
           </div>`}
           <!-- 항목은 init → applyFilters → _appendRecordChunk 가 150개씩 붙인다 (수천 건을 한 번에 DOM에 넣지 않음) -->
-          <div id="record-no-match" style="display:none;padding:28px 16px;text-align:center;color:var(--text-muted);font-size:0.9rem">조건에 맞는 기록이 없습니다</div>
+          <div id="record-no-match" style="display:none;padding:28px 16px;text-align:center;color:var(--text-muted);font-size:0.93rem">조건에 맞는 기록이 없습니다</div>
           <div id="record-sentinel" style="display:none;padding:12px;text-align:center">
             <button class="btn btn-ghost btn-sm" id="btn-record-more-dom" style="min-height:40px"></button>
           </div>
@@ -282,8 +285,61 @@ App.pages.records = {
           </button>
         </div>
       ` : ''}
+      ${isWide ? `</div><aside class="records-md-pane" id="record-detail-pane" aria-live="polite">${this._paneEmptyHtml()}</aside></div>` : ''}
 
     `;
+  },
+
+  _paneEmptyHtml() {
+    return `<div class="records-md-empty">${App.icon('receipt')}<div>왼쪽에서 기록을 누르면<br>여기에 자세히 보여요</div></div>`;
+  },
+
+  // 넓은 화면 오른쪽 칸에 기록 상세(영수증 + 수정·보내기·문자·인쇄). 목록은 다시 그리지 않아 스크롤 위치가 그대로다
+  async _showRecordPane(id) {
+    const pane = document.getElementById('record-detail-pane');
+    if (!pane) return;
+    const seq = (this._paneSeq || 0) + 1;
+    this._paneSeq = seq;
+    const built = await this._buildReceipt(id);
+    if (seq !== this._paneSeq || !pane.isConnected) return;
+    document.querySelectorAll('#record-tbody tr.is-selected').forEach(tr => tr.classList.remove('is-selected'));
+    if (!built) { this._paneRecordId = null; pane.innerHTML = this._paneEmptyHtml(); return; }
+    this._paneRecordId = id;
+    document.querySelector(`#record-tbody tr[data-id="${id}"]`)?.classList.add('is-selected');
+    const { record, customer, pet, customerPhone } = built;
+    pane.innerHTML = `
+      <div class="records-md-head">
+        <div><strong>${App.escapeHtml(pet?.name || '-')}</strong> <span class="records-md-sub">${App.escapeHtml(App.getCustomerLabel(customer))} · ${App.formatDate(record.date)}</span></div>
+        <button type="button" class="btn-icon" data-pane="close" aria-label="상세 닫기" title="닫기">${App.icon('close')}</button>
+      </div>
+      <div class="records-md-actions">
+        <button type="button" class="btn btn-primary" data-pane="report">${App.icon('send')} 보호자에게 보내기</button>
+        <button type="button" class="btn btn-secondary" data-pane="edit">${App.icon('edit')} 수정</button>
+        ${customerPhone ? `<button type="button" class="btn btn-secondary" data-pane="sms">${App.icon('message')} 완료 문자</button>` : ''}
+        <button type="button" class="btn btn-secondary" data-pane="photocard">${App.icon('image')} 사진 카드</button>
+        <button type="button" class="btn btn-secondary" data-pane="print">${App.icon('print')} 인쇄</button>
+      </div>
+      <div class="records-md-receipt">${built.html.replace('id="receipt-print-area"', 'class="receipt-pane-area"')}</div>`;
+    pane.onclick = (e) => {
+      const act = e.target.closest('[data-pane]')?.dataset.pane;
+      if (!act) return;
+      if (act === 'close') {
+        this._paneRecordId = null;
+        pane.innerHTML = this._paneEmptyHtml();
+        document.querySelectorAll('#record-tbody tr.is-selected').forEach(tr => tr.classList.remove('is-selected'));
+      } else if (act === 'edit') this.showForm(record.id);
+      else if (act === 'report') this.showReport(record.id);
+      else if (act === 'sms') this._sendCompleteSms(record, customer, pet);
+      else if (act === 'photocard') {
+        if (this._photoCardStarting) return; // 두 번 눌러 창이 두 번 열리지 않게
+        this._photoCardStarting = true;
+        this.startPhotoCard({ recordId: record.id })
+          .catch(err => { console.error('사진 카드 열기 실패:', err); App.showToast('사진 카드를 열지 못했습니다.', 'error'); })
+          .finally(() => { this._photoCardStarting = false; });
+      }
+      // 인쇄는 영수증 창(인쇄용 스타일이 있는 곳)을 열어 거기서 인쇄
+      else if (act === 'print') this.showReceipt(record.id).then(() => setTimeout(() => window.print(), 300));
+    };
   },
 
   // '더 오래된 기록 보기' 영역 (render 와 _loadOlderRecords 가 같이 씀)
@@ -295,10 +351,10 @@ App.pages.records = {
           <button class="btn btn-secondary" id="btn-load-more" style="min-height:44px;min-width:200px">
             더 오래된 기록 보기 (이전 90일)
           </button>
-          <div style="margin-top:8px;font-size:0.78rem;color:var(--text-muted)">불러온 ${loaded.toLocaleString('ko-KR')}건 / 총 ${total.toLocaleString('ko-KR')}건</div>
+          <div style="margin-top:8px;font-size:0.93rem;color:var(--text-muted)">불러온 ${loaded.toLocaleString('ko-KR')}건 / 총 ${total.toLocaleString('ko-KR')}건</div>
         </div>`;
     if (this._loadMode === 'recent' && total > 0 && loaded === total) return `
-        <div style="margin-top:16px;padding:12px;text-align:center;color:var(--text-muted);font-size:0.85rem">
+        <div style="margin-top:16px;padding:12px;text-align:center;color:var(--text-muted);font-size:0.93rem">
           ${App.icon('check')} 모든 기록을 불러왔습니다 (${total.toLocaleString('ko-KR')}건)
         </div>`;
     return '';
@@ -408,7 +464,7 @@ App.pages.records = {
       App.handleRoute();
     };
 
-    // 미수금 경고 카드 -> 미결제 모드 (전체 기간 paymentMethod 인덱스 쿼리)
+    // 미결제 경고 카드 -> 미결제 모드 (전체 기간 paymentMethod 인덱스 쿼리)
     document.getElementById('unpaid-warning-card')?.addEventListener('click', () => {
       // 드롭다운 UI 도 unpaid 로 (사용자 인지 명확)
       const pay = document.getElementById('filter-payment');
@@ -485,14 +541,20 @@ App.pages.records = {
       this.applyFilters();
     }
 
+    // 수정·저장 뒤 목록이 다시 그려져도 보던 기록 상세를 다시 띄운다 (넓은 화면)
+    if (this._paneRecordId && document.getElementById('record-detail-pane')) this._showRecordPane(this._paneRecordId);
+
     // 뷰포트 경계 변화 시 재렌더 (모바일↔데스크톱 전환, 한 번만 바인딩)
     if (!this._resizeBound) {
       this._resizeBound = true;
-      let lastIsMobile = window.matchMedia('(max-width: 768px)').matches;
+      let lastIsMobile = window.matchMedia('(max-width: 1023px)').matches;
+      let lastIsWide = window.matchMedia('(min-width: 1280px)').matches;
       const onResize = App.debounce(() => {
-        const nowIsMobile = window.matchMedia('(max-width: 768px)').matches;
-        if (nowIsMobile !== lastIsMobile) {
+        const nowIsMobile = window.matchMedia('(max-width: 1023px)').matches;
+        const nowIsWide = window.matchMedia('(min-width: 1280px)').matches;
+        if (nowIsMobile !== lastIsMobile || nowIsWide !== lastIsWide) {
           lastIsMobile = nowIsMobile;
+          lastIsWide = nowIsWide;
           if (location.hash.startsWith('#records')) App.handleRoute();
         }
       }, 250);
@@ -519,6 +581,9 @@ App.pages.records = {
         return;
       }
       if (e.target.closest('button, a')) return;
+      // 넓은 화면: 줄을 누르면 오른쪽 칸에 상세
+      const row = e.target.closest('#record-tbody tr[data-id]');
+      if (row && document.getElementById('record-detail-pane')) { this._showRecordPane(Number(row.dataset.id)); return; }
       const card = e.target.closest('#record-card-list .mobile-card');
       if (card) this.showForm(Number(card.dataset.id));
     });
@@ -546,7 +611,7 @@ App.pages.records = {
     const L = this._list;
     if (!L) return;
     const matchFn = (r) => {
-      const ms = !search || L.searchKey(r).includes(search);
+      const ms = App.searchMatch(L.searchKey(r), search); // 초성·전화 숫자·여러 낱말
       const mm = !month || (r.date || '').slice(0, 7) === month;
       const mp = !payment || (r.paymentMethod || '') === payment;
       return ms && mm && mp;
@@ -589,7 +654,7 @@ App.pages.records = {
         totalEl.style.display = 'flex';
         totalEl.innerHTML = `
           <span>${visibleCount}건 · <strong>${App.formatCurrency(visibleSum)}</strong></span>
-          ${unpaidCount > 0 ? `<span style="color:var(--danger);font-size:0.82rem">미결제 ${unpaidCount}건 · ${App.formatCurrency(unpaidSum)}</span>` : ''}
+          ${unpaidCount > 0 ? `<span style="color:var(--danger);font-size:0.93rem">미결제 ${unpaidCount}건 · ${App.formatCurrency(unpaidSum)}</span>` : ''}
         `;
       }
     }
@@ -597,6 +662,21 @@ App.pages.records = {
 
   // 추가 항목 태그: 이름 · [서비스 제공] · ×. data-price = 그 항목 메뉴 가격(모르면 0), data-free = 서비스로 제공
   // [서비스 제공] 토글은 '서비스로 제공' 링크를 눌러야 보인다 (#f-addon-tags.comp-open — css)
+  // 여러 미용 코스를 한 기록의 주 서비스로 합칠 때 쓰는 구분자 ('전체미용 + 위생미용')
+  _COURSE_SEP: ' + ',
+  // 예약 서비스 → { courses: 주 서비스로 합칠 미용 코스들, extras: 추가 항목으로 갈 나머지 }
+  // 미용 코스(grooming)가 없으면 첫 번째를 주 서비스로 (예: 목욕만 단독 케어로 예약)
+  _splitAppointmentServices(picked) {
+    const list = (picked || []).filter(Boolean);
+    let courses = list.filter(s => s.category === 'grooming');
+    if (!courses.length && list.length) courses = [list[0]];
+    return { courses, extras: list.filter(s => !courses.includes(s)) };
+  },
+  // 합친 주 서비스 이름 → 코스 이름들 (메뉴에 그 이름 그대로 있는 경우는 호출하는 쪽에서 먼저 확인)
+  _splitCourseName(name) {
+    return App.normalizeServiceName(name).split(this._COURSE_SEP).map(x => App.normalizeServiceName(x)).filter(Boolean);
+  },
+
   _addonTagHtml(name, price, opts = {}) {
     const free = !!opts.free;
     return `<span class="badge badge-info addon-tag${free ? ' is-free' : ''}" data-name="${App.escapeHtml(name)}" data-price="${Number(price) || 0}"${opts.menu ? ' data-menu="1"' : ''}${free ? ' data-free="1"' : ''} style="cursor:pointer;padding:3px 4px 3px 10px;display:inline-flex;align-items:center;gap:2px" title="눌러서 빼기">`
@@ -641,18 +721,22 @@ App.pages.records = {
         // 지워진 서비스는 예약에 저장된 이름으로라도 넘긴다 (메뉴 가격이 없으면 0원 — 직접 입력)
         const savedNames = Array.isArray(fromAppointment.serviceNames) ? fromAppointment.serviceNames : [];
         const picked = fromAppointment.serviceIds.map((sid, i) => sMap[sid] || sMap[Number(sid)] || (savedNames[i] ? { name: savedNames[i] } : null)).filter(Boolean);
-        // 주 서비스 = 미용 분류 중 첫 번째 (없으면 첫 번째). 나머지는 추가 항목으로.
-        const main = picked.find(s => s.category === 'grooming') || picked[0];
+        // 주 서비스 = 미용 코스 전부 (2개면 '전체미용 + 위생미용'으로 합치고 가격도 더한다 — 추가 옵션으로 세지 않게).
+        // 미용 코스가 없으면 첫 번째. 나머지(추가 옵션·단독 케어)는 추가 항목으로.
+        const { courses, extras } = this._splitAppointmentServices(picked);
         const apPet = fromAppointment.petId ? await DB.get('pets', Number(fromAppointment.petId)) : null;
         // 예약 때 적은 몸무게 → 반려견 몸무게 → 사이즈 순 (구간 가격)
         const apSize = Number(fromAppointment.weightAtBooking) > 0 ? Number(fromAppointment.weightAtBooking) : App.getPetPriceBasis(apPet);
-        if (main) {
-          serviceName = App.normalizeServiceName(main.name);
-          const m = await App.getMenuPrice(serviceName, apSize, allSvcs);
-          servicePrice = m ? m.price : 0;
+        const courseNames = [];
+        for (const c of courses) {
+          const nm = App.normalizeServiceName(c.name);
+          if (!nm || courseNames.includes(nm)) continue;
+          courseNames.push(nm);
+          const m = await App.getMenuPrice(nm, apSize, allSvcs);
+          servicePrice += m ? (Number(m.price) || 0) : 0;
         }
-        for (const s of picked) {
-          if (s === main) continue;
+        serviceName = courseNames.join(this._COURSE_SEP);
+        for (const s of extras) {
           const nm = App.normalizeServiceName(s.name);
           if (!nm || addons.includes(nm)) continue;
           const m = await App.getMenuPrice(nm, apSize, allSvcs);
@@ -718,6 +802,8 @@ App.pages.records = {
       title: id ? '미용 기록 수정' : '새 미용 기록',
       size: 'lg',
       content: `
+        <!-- 넓은 화면(1280px~)에서만 두 칸: 왼쪽 고객·서비스·금액·결제 / 오른쪽 컨디션·사진·상세 옵션. 좁은 화면은 그냥 위에서 아래로 (순서 같음) -->
+        <div class="rec-form-grid"><div class="rec-form-main">
         <!-- 필수 입력 영역 -->
         <div class="form-row">
           <div class="form-group">
@@ -734,8 +820,8 @@ App.pages.records = {
         </div>
         <!-- 이전 미용과 같음 (단골 손님 자동 채움) -->
         <div id="f-copy-last-area" style="display:none;margin-bottom:12px"${id ? ' data-edit="1"' : ''}>
-          <button type="button" id="btn-copy-last-record" style="width:100%;padding:10px 14px;background:var(--primary-light);color:var(--primary);border:1.5px dashed var(--primary);border-radius:var(--radius);font-weight:700;cursor:pointer;font-size:0.88rem;display:flex;align-items:center;justify-content:center;gap:8px;min-height:44px">
-            ${App.icon('copy')} 이전 미용과 같음 <span id="copy-last-hint" style="font-weight:500;font-size:0.78rem;opacity:0.8"></span>
+          <button type="button" id="btn-copy-last-record" style="width:100%;padding:10px 14px;background:var(--primary-light);color:var(--primary);border:1.5px dashed var(--primary);border-radius:var(--radius);font-weight:700;cursor:pointer;font-size:0.93rem;display:flex;align-items:center;justify-content:center;gap:8px;min-height:44px">
+            ${App.icon('copy')} 이전 미용과 같음 <span id="copy-last-hint" style="font-weight:500;font-size:0.93rem;opacity:0.8"></span>
           </button>
         </div>
         <div class="form-group">
@@ -748,7 +834,7 @@ App.pages.records = {
         <div class="form-group" id="f-weight-group"${bandsOff ? ' style="display:none"' : ''}>
           <label class="form-label" for="f-weightAtVisit">오늘 몸무게 (kg)</label>
           <input type="number" id="f-weightAtVisit" value="${prefillWeight || ''}" placeholder="예: 5.2" min="0" max="120" step="0.1" inputmode="decimal">
-          <label id="f-update-pet-weight-wrap" style="display:none;align-items:center;gap:6px;margin-top:6px;font-size:0.85rem;cursor:pointer">
+          <label id="f-update-pet-weight-wrap" style="display:none;align-items:center;gap:6px;margin-top:6px;min-height:44px;font-size:0.93rem;cursor:pointer">
             <input type="checkbox" id="f-update-pet-weight" ${id ? '' : 'checked'} style="width:18px;height:18px">
             <span id="f-update-pet-weight-label">반려견 몸무게도 업데이트</span>
           </label>
@@ -765,46 +851,58 @@ App.pages.records = {
             <input type="number" id="f-servicePrice" class="${mainComp ? 'is-free' : ''}" value="${mainComp ? (Number(mainComp.price) || '') : (record.servicePrice || record.totalPrice || '')}" placeholder="0" min="0" step="1000">
           </div>
         </div>
-        <div id="f-band-info" style="margin:-6px 0 12px;font-size:0.8rem;color:var(--text-secondary);line-height:1.4"></div>
+        <div id="f-band-info" style="margin:-6px 0 12px;font-size:0.93rem;color:var(--text-secondary);line-height:1.4"></div>
         <!-- 서비스로 제공 (금액에서 빼기): 평소엔 작은 링크 하나. 누르면 기본가·추가 항목 토글이 보인다 -->
         <div id="f-comp-area" style="margin:-8px 0 12px">
-          <button type="button" id="f-comp-reveal" style="background:none;border:none;padding:4px 0;color:var(--text-secondary);text-decoration:underline;cursor:pointer;font-size:0.8rem;min-height:32px${compList.length ? ';display:none' : ''}">서비스로 제공</button>
-          <div id="f-comp-row" style="${compList.length ? '' : 'display:none;'}font-size:0.82rem;color:var(--text-secondary)">
+          <button type="button" id="f-comp-reveal" style="background:none;border:none;padding:4px 0;color:var(--text-secondary);text-decoration:underline;cursor:pointer;font-size:0.93rem;min-height:44px${compList.length ? ';display:none' : ''}">서비스로 제공</button>
+          <div id="f-comp-row" style="${compList.length ? '' : 'display:none;'}font-size:0.93rem;color:var(--text-secondary)">
             기본가 <button type="button" id="f-main-free" class="free-toggle${mainComp ? ' on' : ''}" aria-pressed="${mainComp ? 'true' : 'false'}" title="기본가를 금액에서 빼고 서비스로 제공">서비스 제공</button>
-            <span style="margin-left:6px">· 추가 항목은 상세 옵션에서 항목마다</span>
+            <span style="margin-left:6px">· 추가 항목은 아래에서 항목마다</span>
           </div>
         </div>
         <!-- 즉석 새 서비스 등록 (드롭다운에서 "+새 서비스 등록" 선택 시 표시) -->
         <div id="quickadd-service-form" style="display:none;background:var(--primary-light);border:1.5px solid var(--primary);border-radius:var(--radius);padding:12px;margin-bottom:12px">
-          <div style="font-weight:700;font-size:0.88rem;color:var(--primary);margin-bottom:8px">${App.icon('sparkle')} 새 서비스 즉석 등록</div>
+          <div style="font-weight:700;font-size:0.93rem;color:var(--primary);margin-bottom:8px">${App.icon('sparkle')} 새 서비스 즉석 등록</div>
           <div class="form-group" style="margin-bottom:8px">
-            <label class="form-label" style="font-size:0.78rem">이름</label>
-            <input type="text" id="quickadd-name" placeholder="서비스 이름" maxlength="40" style="min-height:40px">
+            <label class="form-label" style="font-size:0.93rem">이름</label>
+            <input type="text" id="quickadd-name" placeholder="서비스 이름" maxlength="40" style="min-height:44px">
           </div>
           <div class="form-group" style="margin-bottom:8px">
-            <label class="form-label" style="font-size:0.78rem">분류</label>
+            <label class="form-label" style="font-size:0.93rem">분류</label>
             <div id="quickadd-category-chips" style="display:flex;gap:6px;flex-wrap:wrap">
-              <button type="button" class="payment-chip active" data-value="grooming">${App.icon('scissors')} 미용</button>
-              <button type="button" class="payment-chip" data-value="addon">${App.icon('sparkle')} 추가</button>
-              <button type="button" class="payment-chip" data-value="care">${App.icon('drop')} 케어</button>
+              <button type="button" class="payment-chip active" data-value="grooming">${App.icon('scissors')} 미용 코스</button>
+              <button type="button" class="payment-chip" data-value="addon">${App.icon('sparkle')} 추가 옵션</button>
+              <button type="button" class="payment-chip" data-value="care">${App.icon('drop')} 단독 케어</button>
             </div>
             <input type="hidden" id="quickadd-category" value="grooming">
           </div>
           <div class="form-group" style="margin-bottom:10px">
-            <label class="form-label" style="font-size:0.78rem">가격 (원) <span style="color:var(--text-muted);font-weight:400">— 모든 몸무게 같은 가격 (서비스 메뉴에서 구간별로 바꿀 수 있어요)</span></label>
-            <input type="number" id="quickadd-price" placeholder="0" min="0" step="1000" style="min-height:40px">
+            <label class="form-label" style="font-size:0.93rem">가격 (원) <span style="color:var(--text-muted);font-weight:400">— 모든 몸무게 같은 가격 (서비스 메뉴에서 구간별로 바꿀 수 있어요)</span></label>
+            <input type="number" id="quickadd-price" placeholder="0" min="0" step="1000" style="min-height:44px">
           </div>
           <div style="display:flex;gap:6px">
-            <button type="button" class="btn btn-primary" id="quickadd-save" style="flex:1;min-height:40px">${App.icon('check')} 등록 + 사용</button>
-            <button type="button" class="btn btn-secondary" id="quickadd-cancel" style="flex:1;min-height:40px">취소</button>
+            <button type="button" class="btn btn-primary" id="quickadd-save" style="flex:1;min-height:44px">${App.icon('check')} 등록 + 사용</button>
+            <button type="button" class="btn btn-secondary" id="quickadd-cancel" style="flex:1;min-height:44px">취소</button>
           </div>
+        </div>
+        <!-- 추가 항목: 매번 쓰므로 기본가 바로 아래 (예전엔 '상세 옵션' 안이라 펼치고 내려야 했다). 금액 칸은 상세 옵션에 그대로 -->
+        <div class="form-group" id="f-addon-group">
+          <label class="form-label" for="f-addon-input">추가 항목 <span style="color:var(--text-muted);font-size:0.93rem;font-weight:400">(엉킴·약욕·스파 등)</span></label>
+          <div id="f-addon-tags" class="${compList.length ? 'comp-open' : ''}" style="display:flex;gap:4px;flex-wrap:wrap;margin-bottom:6px">${(record.addons || []).map(a => {
+            const nm = App.normalizeServiceName(a);
+            const isFree = Object.prototype.hasOwnProperty.call(compAddon, nm);
+            return this._addonTagHtml(a, isFree ? compAddon[nm] : (Number(prefillAddonPrices[a]) || 0), { menu: Object.prototype.hasOwnProperty.call(prefillAddonPrices, a), free: isFree });
+          }).join('')}</div>
+          <div class="form-hint" id="f-addon-comp-hint" style="margin-top:-2px;margin-bottom:6px${compList.length ? '' : ';display:none'}">항목 옆 <strong>서비스 제공</strong>을 누르면 금액에서 빠져요</div>
+          <input type="text" id="f-addon-input" placeholder="눌러서 고르거나 직접 입력" autocomplete="off">
+          <div class="search-select-dropdown" id="addon-dropdown" style="position:absolute;z-index:10;background:var(--bg-white);border:1px solid var(--border);border-radius:var(--radius);box-shadow:var(--shadow);max-height:min(45vh,360px);overflow-y:auto;display:none;width:100%"></div>
         </div>
         <!-- 합계 + 결제 수단 (필수 매출 정보) -->
         <div class="form-group" id="final-price-display" style="background:var(--bg);border-radius:var(--radius);padding:12px 16px;display:flex;justify-content:space-between;align-items:center">
           <span style="font-weight:700">합계</span>
           <span id="final-price-value" style="font-size:1.2rem;font-weight:800;color:var(--primary)">${App.formatCurrency(record.finalPrice != null ? record.finalPrice : (record.servicePrice || record.totalPrice || 0) + (record.addonPrice || 0) - (record.discount || 0) + (record.extraCharge || 0))}</span>
         </div>
-        <div id="f-comp-summary" style="display:none;margin:-8px 0 12px;font-size:0.8rem;color:var(--success, #16a34a)"></div>
+        <div id="f-comp-summary" style="display:none;margin:-8px 0 12px;font-size:0.93rem;color:var(--success, #16a34a)"></div>
         <div class="form-group">
           <label class="form-label">결제 수단</label>
           <div id="f-paymentMethod-chips" style="display:flex;gap:6px;flex-wrap:wrap">
@@ -828,39 +926,40 @@ App.pages.records = {
 
         <!-- 현금영수증 (현금 결제 시에만 표시) -->
         <div class="form-group" id="cashreceipt-group" style="display:${record.paymentMethod === 'cash' ? 'block' : 'none'};margin-top:-4px;background:var(--bg);border-radius:var(--radius);padding:10px 12px">
-          <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:0.88rem;font-weight:600">
+          <label style="display:flex;align-items:center;gap:8px;min-height:44px;cursor:pointer;font-size:0.93rem;font-weight:600">
             <input type="checkbox" id="f-cashReceipt" ${record.cashReceiptYn ? 'checked' : ''} style="width:18px;height:18px;cursor:pointer">
             <span>현금영수증 발행</span>
           </label>
           <input type="text" id="f-cashReceiptNo" placeholder="승인번호 (선택)" value="${App.escapeHtml(record.cashReceiptNo || '')}"
             inputmode="numeric" maxlength="20"
-            style="margin-top:8px;display:${record.cashReceiptYn ? 'block' : 'none'};min-height:38px;width:100%;padding:8px 10px;border:1px solid var(--border);border-radius:6px;font-size:max(16px,0.9rem)">
+            style="margin-top:8px;display:${record.cashReceiptYn ? 'block' : 'none'};min-height:44px;width:100%;padding:8px 10px;border:1px solid var(--border);border-radius:6px;font-size:max(16px,0.9rem)">
         </div>
 
+        </div><div class="rec-form-side">
         <!-- 컨디션 (기본 표시 — 리포트 가치) -->
         <div class="form-group" style="margin-bottom:12px">
-          <label class="form-label" style="font-size:0.85rem">컨디션 <span style="font-weight:400;color:var(--text-muted);font-size:0.78rem">(선택 — 리포트에 반영)</span></label>
+          <label class="form-label" style="font-size:0.93rem">컨디션 <span style="font-weight:400;color:var(--text-muted);font-size:0.93rem">(선택 — 리포트에 반영)</span></label>
           <div id="f-condition-chips" style="display:flex;gap:6px">
-            <button type="button" class="condition-chip${record.condition === 'good' ? ' active' : ''}" data-field="condition" data-value="good" style="flex:1;padding:8px;border:1.5px solid var(--border);border-radius:8px;background:${record.condition === 'good' ? 'var(--success-light)' : 'var(--bg-white)'};cursor:pointer;font-size:0.82rem;font-weight:600">좋음</button>
-            <button type="button" class="condition-chip${record.condition === 'normal' ? ' active' : ''}" data-field="condition" data-value="normal" style="flex:1;padding:8px;border:1.5px solid var(--border);border-radius:8px;background:${record.condition === 'normal' ? 'var(--warning-light)' : 'var(--bg-white)'};cursor:pointer;font-size:0.82rem;font-weight:600">보통</button>
-            <button type="button" class="condition-chip${record.condition === 'caution' ? ' active' : ''}" data-field="condition" data-value="caution" style="flex:1;padding:8px;border:1.5px solid var(--border);border-radius:8px;background:${record.condition === 'caution' ? 'var(--danger-bg-soft)' : 'var(--bg-white)'};cursor:pointer;font-size:0.82rem;font-weight:600">주의</button>
+            <button type="button" class="condition-chip${record.condition === 'good' ? ' active' : ''}" data-field="condition" data-value="good" style="flex:1;min-height:44px;padding:8px;border:1.5px solid var(--border);border-radius:8px;background:${record.condition === 'good' ? 'var(--success-light)' : 'var(--bg-white)'};cursor:pointer;font-size:0.93rem;font-weight:600">좋음</button>
+            <button type="button" class="condition-chip${record.condition === 'normal' ? ' active' : ''}" data-field="condition" data-value="normal" style="flex:1;min-height:44px;padding:8px;border:1.5px solid var(--border);border-radius:8px;background:${record.condition === 'normal' ? 'var(--warning-light)' : 'var(--bg-white)'};cursor:pointer;font-size:0.93rem;font-weight:600">보통</button>
+            <button type="button" class="condition-chip${record.condition === 'caution' ? ' active' : ''}" data-field="condition" data-value="caution" style="flex:1;min-height:44px;padding:8px;border:1.5px solid var(--border);border-radius:8px;background:${record.condition === 'caution' ? 'var(--danger-bg-soft)' : 'var(--bg-white)'};cursor:pointer;font-size:0.93rem;font-weight:600">주의</button>
           </div>
           <input type="hidden" id="f-condition" value="${record.condition || ''}">
         </div>
 
         <!-- 미용 협조도 (다음 미용 시간 견적 참고) -->
         <div class="form-group" style="margin-bottom:12px">
-          <label class="form-label" style="font-size:0.85rem">미용 협조도 <span style="font-weight:400;color:var(--text-muted);font-size:0.78rem">(선택 — 다음 미용 시간 참고)</span></label>
+          <label class="form-label" style="font-size:0.93rem">미용 협조도 <span style="font-weight:400;color:var(--text-muted);font-size:0.93rem">(선택 — 다음 미용 시간 참고)</span></label>
           <div id="f-cooperativeness-chips" style="display:flex;gap:6px">
-            <button type="button" class="condition-chip${record.cooperativeness === 'easy' ? ' active' : ''}" data-field="cooperativeness" data-value="easy" style="flex:1;padding:8px;border:1.5px solid var(--border);border-radius:8px;background:${record.cooperativeness === 'easy' ? 'var(--success-light)' : 'var(--bg-white)'};cursor:pointer;font-size:0.82rem;font-weight:600">잘함</button>
-            <button type="button" class="condition-chip${record.cooperativeness === 'normal' ? ' active' : ''}" data-field="cooperativeness" data-value="normal" style="flex:1;padding:8px;border:1.5px solid var(--border);border-radius:8px;background:${record.cooperativeness === 'normal' ? 'var(--warning-light)' : 'var(--bg-white)'};cursor:pointer;font-size:0.82rem;font-weight:600">보통</button>
-            <button type="button" class="condition-chip${record.cooperativeness === 'difficult' ? ' active' : ''}" data-field="cooperativeness" data-value="difficult" style="flex:1;padding:8px;border:1.5px solid var(--border);border-radius:8px;background:${record.cooperativeness === 'difficult' ? 'var(--danger-bg-soft)' : 'var(--bg-white)'};cursor:pointer;font-size:0.82rem;font-weight:600">까다로움</button>
+            <button type="button" class="condition-chip${record.cooperativeness === 'easy' ? ' active' : ''}" data-field="cooperativeness" data-value="easy" style="flex:1;min-height:44px;padding:8px;border:1.5px solid var(--border);border-radius:8px;background:${record.cooperativeness === 'easy' ? 'var(--success-light)' : 'var(--bg-white)'};cursor:pointer;font-size:0.93rem;font-weight:600">잘함</button>
+            <button type="button" class="condition-chip${record.cooperativeness === 'normal' ? ' active' : ''}" data-field="cooperativeness" data-value="normal" style="flex:1;min-height:44px;padding:8px;border:1.5px solid var(--border);border-radius:8px;background:${record.cooperativeness === 'normal' ? 'var(--warning-light)' : 'var(--bg-white)'};cursor:pointer;font-size:0.93rem;font-weight:600">보통</button>
+            <button type="button" class="condition-chip${record.cooperativeness === 'difficult' ? ' active' : ''}" data-field="cooperativeness" data-value="difficult" style="flex:1;min-height:44px;padding:8px;border:1.5px solid var(--border);border-radius:8px;background:${record.cooperativeness === 'difficult' ? 'var(--danger-bg-soft)' : 'var(--bg-white)'};cursor:pointer;font-size:0.93rem;font-weight:600">까다로움</button>
           </div>
           <input type="hidden" id="f-cooperativeness" value="${record.cooperativeness || ''}">
         </div>
 
         <div class="form-group">
-          <label class="form-label">사진 <span style="color:var(--text-muted);font-size:0.78rem;font-weight:400">(선택 — 다음 미용 때 참고용)</span></label>
+          <label class="form-label">사진 <span style="color:var(--text-muted);font-size:0.93rem;font-weight:400">(선택 — 다음 미용 때 참고용)</span></label>
           <div class="rec-photo-row">
             ${App.RECORD_PHOTO_FIELDS.map(f => `
             <label class="rec-photo-tile" data-field="${f}" aria-label="${f === 'photoBefore' ? '미용 전' : '미용 후'} 사진 선택">
@@ -885,25 +984,14 @@ App.pages.records = {
         <div class="form-detail-section">
           <div id="f-weight-detail-slot"></div>
           <div class="form-group">
-            <label class="form-label">스타일 <span style="color:var(--text-muted);font-size:0.78rem">(선택)</span></label>
+            <label class="form-label">스타일 <span style="color:var(--text-muted);font-size:0.93rem">(선택)</span></label>
             <input type="text" id="f-style" value="${App.escapeHtml(record.style || '')}" placeholder="예: 테디베어컷, 하이바+스포팅" autocomplete="off">
             <div class="search-select-dropdown" id="style-dropdown" style="position:absolute;z-index:10;background:var(--bg-white);border:1px solid var(--border);border-radius:var(--radius);box-shadow:var(--shadow);max-height:150px;overflow-y:auto;display:none;width:100%"></div>
-          </div>
-          <div class="form-group">
-            <label class="form-label">추가 항목 <span style="color:var(--text-muted);font-size:0.78rem">(엉킴·약욕·스파 등)</span></label>
-            <div id="f-addon-tags" class="${compList.length ? 'comp-open' : ''}" style="display:flex;gap:4px;flex-wrap:wrap;margin-bottom:6px">${(record.addons || []).map(a => {
-              const nm = App.normalizeServiceName(a);
-              const isFree = Object.prototype.hasOwnProperty.call(compAddon, nm);
-              return this._addonTagHtml(a, isFree ? compAddon[nm] : (Number(prefillAddonPrices[a]) || 0), { menu: Object.prototype.hasOwnProperty.call(prefillAddonPrices, a), free: isFree });
-            }).join('')}</div>
-            <div class="form-hint" id="f-addon-comp-hint" style="margin-top:-2px;margin-bottom:6px${compList.length ? '' : ';display:none'}">항목 옆 <strong>서비스 제공</strong>을 누르면 금액에서 빠져요</div>
-            <input type="text" id="f-addon-input" placeholder="추가 항목 입력 후 Enter" autocomplete="off">
-            <div class="search-select-dropdown" id="addon-dropdown" style="position:absolute;z-index:10;background:var(--bg-white);border:1px solid var(--border);border-radius:var(--radius);box-shadow:var(--shadow);max-height:min(45vh,360px);overflow-y:auto;display:none;width:100%"></div>
           </div>
           <!-- 금액: '추가 금액' 하나만 받는다. 예전 '추가 요금'(extraCharge)은 값이 있는 옛 기록에서만 보이고, 합계·저장 식은 그대로 -->
           <div class="form-row">
             <div class="form-group">
-              <label class="form-label">추가 금액 <span style="color:var(--text-muted);font-size:0.75rem;font-weight:400">(위 추가 항목 값 자동 · 고쳐도 됨)</span></label>
+              <label class="form-label">추가 금액 <span style="color:var(--text-muted);font-size:0.93rem;font-weight:400">(자동 · 고쳐도 됨)</span></label>
               <input type="number" id="f-addonPrice" value="${record.addonPrice || ''}" placeholder="0" min="0" step="1000">
             </div>
             <div class="form-group">
@@ -912,7 +1000,7 @@ App.pages.records = {
             </div>
           </div>
           <div class="form-group" style="${Number(record.extraCharge) > 0 ? '' : 'display:none'}">
-            <label class="form-label">기타 추가 금액 <span style="color:var(--text-muted);font-size:0.75rem;font-weight:400">(예전에 따로 적은 금액)</span></label>
+            <label class="form-label">기타 추가 금액 <span style="color:var(--text-muted);font-size:0.93rem;font-weight:400">(예전에 따로 적은 금액)</span></label>
             <input type="number" id="f-extraCharge" value="${record.extraCharge || ''}" placeholder="0" min="0" step="1000">
           </div>
           <div class="form-row">
@@ -924,16 +1012,16 @@ App.pages.records = {
           </div>
           <!-- 상세 컨디션 (피부/귀/엉킴) -->
           <div style="border:1px solid var(--border);border-radius:var(--radius);padding:14px;margin-bottom:16px">
-            <div style="font-weight:700;font-size:0.9rem;margin-bottom:12px">상세 컨디션 <span style="font-weight:400;color:var(--text-muted);font-size:0.8rem">(선택)</span></div>
+            <div style="font-weight:700;font-size:0.93rem;margin-bottom:12px">상세 컨디션 <span style="font-weight:400;color:var(--text-muted);font-size:0.93rem">(선택)</span></div>
             <div class="form-group" style="margin-bottom:10px">
-              <label class="form-label" style="font-size:0.82rem">피부 상태</label>
+              <label class="form-label" style="font-size:0.93rem">피부 상태</label>
               <div style="display:flex;gap:6px;flex-wrap:wrap">
-                ${['정상','건조','발적','각질','습진'].map(s => `<label class="checkbox-label" style="font-size:0.82rem"><input type="checkbox" name="skinStatus" value="${s}" ${(record.skinStatus || []).includes(s) ? 'checked' : ''}> ${s}</label>`).join('')}
+                ${['정상','건조','발적','각질','습진'].map(s => `<label class="checkbox-label" style="font-size:0.93rem"><input type="checkbox" name="skinStatus" value="${s}" ${(record.skinStatus || []).includes(s) ? 'checked' : ''}> ${s}</label>`).join('')}
               </div>
             </div>
             <div class="form-row" style="margin-bottom:0">
               <div class="form-group" style="margin-bottom:0">
-                <label class="form-label" style="font-size:0.82rem">귀 상태</label>
+                <label class="form-label" style="font-size:0.93rem">귀 상태</label>
                 <select id="f-earStatus" style="font-size:max(16px,0.85rem);padding:6px 10px">
                   <option value="">선택 안 함</option>
                   <option value="clean" ${record.earStatus === 'clean' ? 'selected' : ''}>깨끗</option>
@@ -942,7 +1030,7 @@ App.pages.records = {
                 </select>
               </div>
               <div class="form-group" style="margin-bottom:0">
-                <label class="form-label" style="font-size:0.82rem">엉킴 정도</label>
+                <label class="form-label" style="font-size:0.93rem">엉킴 정도</label>
                 <select id="f-mattingLevel" style="font-size:max(16px,0.85rem);padding:6px 10px">
                   <option value="">선택 안 함</option>
                   <option value="none" ${record.mattingLevel === 'none' ? 'selected' : ''}>없음</option>
@@ -957,6 +1045,7 @@ App.pages.records = {
             <textarea id="f-memo" placeholder="미용 중 특이사항, 다음 방문 시 참고할 내용 등" maxlength="2000">${App.escapeHtml(record.memo || '')}</textarea>
           </div>
         </div>
+        </div></div>
         <input type="hidden" id="f-appointmentId" value="${record.appointmentId || ''}">
         ${id ? `<div style="margin-top:16px;padding-top:12px;border-top:1px dashed var(--border);text-align:center">
           <button type="button" class="btn btn-ghost text-danger" id="btn-delete-record-form" style="min-height:44px">이 기록 삭제</button>
@@ -1032,6 +1121,15 @@ App.pages.records = {
     // opts.hintFor(v): 항목 옆에 붙일 보조 문구 (예: 가격). 선택 시 입력값에는 들어가지 않는다.
     // opts.onSelect(v): 선택 시 기본 동작(입력값 채움 + change) 대신 실행
     // opts.allDbItems: 메뉴 항목(dbItems)은 모두 보이고, 10개 제한은 기록·기본 제안에만
+    // 작성 중 표시: 목록에서 고른 것(고객·서비스·추가 항목 드롭다운)은 stopPropagation 이라 App 의 click 감시에 안 잡힌다 → 캡처 단계에서 잡는다.
+    // modal-body 는 모든 모달이 같이 쓰므로 한 번만 붙이고, 미용 기록 폼일 때만 표시한다
+    if (!this._recordDirtyCaptureBound) {
+      this._recordDirtyCaptureBound = true;
+      document.getElementById('modal-body')?.addEventListener('click', (e) => {
+        if (!e.isTrusted || !document.getElementById('f-service') || !document.getElementById('record-customer-select')) return;
+        if (e.target.closest('.search-select-dropdown, .cust-chip-clear')) App._modalDirty = true;
+      }, true);
+    }
     const setupAutocomplete = (inputId, dropdownId, historyKey, defaultSuggestions, opts = {}) => {
       const input = document.getElementById(inputId);
       const dropdown = document.getElementById(dropdownId);
@@ -1052,12 +1150,12 @@ App.pages.records = {
           : filtered.slice(0, 10);
         let html = shown.map(v => {
           const hint = opts.hintFor ? opts.hintFor(v) : '';
-          return `<div class="search-select-option" data-action="select" data-value="${App.escapeHtml(v)}" style="padding:8px 12px;cursor:pointer;font-size:0.9rem;min-height:44px;display:flex;align-items:center;gap:6px">${App.escapeHtml(v)}${hint ? `<span style="color:var(--text-muted);font-size:0.8rem">· ${App.escapeHtml(hint)}</span>` : ''}</div>`;
+          return `<div class="search-select-option" data-action="select" data-value="${App.escapeHtml(v)}" style="padding:8px 12px;cursor:pointer;font-size:0.93rem;min-height:44px;display:flex;align-items:center;gap:6px">${App.escapeHtml(v)}${hint ? `<span style="color:var(--text-muted);font-size:0.93rem">· ${App.escapeHtml(hint)}</span>` : ''}</div>`;
         }).join('');
 
         // 즉석 등록 옵션 (정확히 일치 안 할 때만)
         if (opts.onNoMatch && query && !exactMatch) {
-          html += `<div class="search-select-option" data-action="add-new" data-query="${App.escapeHtml(query)}" style="padding:10px 12px;cursor:pointer;font-size:0.85rem;font-weight:700;color:var(--primary);background:var(--primary-light);border-top:1px dashed var(--border)">+ "${App.escapeHtml(query)}" 새 서비스 등록</div>`;
+          html += `<div class="search-select-option" data-action="add-new" data-query="${App.escapeHtml(query)}" style="padding:10px 12px;cursor:pointer;font-size:0.93rem;font-weight:700;color:var(--primary);background:var(--primary-light);border-top:1px dashed var(--border)">+ "${App.escapeHtml(query)}" 새 서비스 등록</div>`;
         }
 
         if (!html) { dropdown.style.display = 'none'; return; }
@@ -1251,19 +1349,28 @@ App.pages.records = {
       const name = App.normalizeServiceName(serviceInput.value);
       const petId = Number(document.getElementById('f-petId')?.value);
       const sizeType = currentSize();
-      const [menu, price] = name
+      let [menu, price] = name
         ? await Promise.all([App.getMenuPrice(name, sizeType), App.getRecentServicePrice(petId, name, sizeType)])
         : [null, null];
+      // 예약에서 온 '전체미용 + 위생미용' — 메뉴에 그 이름이 없으면 코스마다 메뉴 가격을 더한다 (하나라도 모르면 기존처럼)
+      let placeMenu = menu, bandMenu = menu;
+      const courseParts = !menu ? this._splitCourseName(name) : [];
+      if (courseParts.length > 1) {
+        const ms = await Promise.all(courseParts.map(c => App.getMenuPrice(c, sizeType)));
+        if (ms.every(m => m && !m.needsWeight && Number(m.price) > 0)) price = ms.reduce((a, m) => a + Number(m.price), 0);
+        placeMenu = ms.find(isWeighted) || null;
+        bandMenu = ms.find(m => m && m.needsWeight) || null; // 몸무게를 알아야 하는 코스가 있으면 그 안내만
+      }
       // 더 최신 조회가 시작됐거나, 기다리는 사이 직접 입력했거나, 폼이 닫혔으면 무시
       if (seq !== priceFillSeq || servicePriceManual || !servicePriceInput.isConnected) return;
       // 못 찾으면 이전 서비스 가격을 남기지 않는다 (몸무게가 필요한 구간 가격도 비워 둔다)
       servicePriceInput.value = price ? price : '';
-      showBandInfo(menu);
+      showBandInfo(bandMenu);
       // 메뉴에서 '무료'로 정한 서비스 — 기본가를 서비스 제공으로 자동으로 켠다 (0원 확인창 없이, 서비스 제공 금액으로 남게).
       // 자동으로 켠 것만 다른 서비스로 바꾸면 끈다 (사장님이 직접 켠 것은 그대로)
       if (menu && menu.free) { if (!isMainFree()) { setMainFree(true); mainFreeAuto = true; } }
       else if (mainFreeAuto) { setMainFree(false); mainFreeAuto = false; }
-      placeWeightField(menu);
+      placeWeightField(placeMenu);
       calcTotal();
     };
     const runPriceFill = () => {
@@ -1304,7 +1411,7 @@ App.pages.records = {
               && Number(servicePriceInput.value) !== menu.price && !document.getElementById('f-main-free')?.classList.contains('on')) {
             const a = document.createElement('button');
             a.type = 'button';
-            a.style.cssText = 'background:none;border:none;padding:4px 0 4px 6px;color:var(--primary);font-weight:700;text-decoration:underline;cursor:pointer;font-size:0.8rem;min-height:32px';
+            a.style.cssText = 'background:none;border:none;padding:4px 0 4px 6px;color:var(--primary);font-weight:700;text-decoration:underline;cursor:pointer;font-size:0.93rem;min-height:44px';
             a.textContent = `구간 가격(${App.formatCurrency(menu.price)}) 적용`;
             a.addEventListener('click', () => { servicePriceInput.value = menu.price; calcTotal(); a.remove(); });
             bandInfo.appendChild(a);
@@ -1614,12 +1721,14 @@ App.pages.records = {
         e.preventDefault(); // label 활성화(파일 창) 막기
         e.stopPropagation();
         this._formPhotos[field] = { data: null, changed: true };
+        App._modalDirty = true; // stopPropagation 이라 App 의 작성 중 감시에 안 잡힌다
         if (input) input.value = '';
         paint(field);
       });
       input.addEventListener('change', () => {
         const file = input.files && input.files[0];
         if (!file) return;
+        App._modalDirty = true; // 사진을 넣었으면 닫을 때 한 번 묻는다
         // 사진 처리가 끝나기 전에 저장을 누르면 사진이 빠지던 문제 — 진행 중 작업을 기록해 saveRecord 가 기다린다
         const jobs = this._pendingPhotoJobs || (this._pendingPhotoJobs = new Set());
         const job = new Promise((resolve) => {
@@ -1826,7 +1935,8 @@ App.pages.records = {
           const allServices = await DB.getAll('services');
           const findSvc = (nm) => allServices.find(s => s.isActive !== false && App.normalizeServiceName(s.name) === nm)
             || allServices.find(s => App.normalizeServiceName(s.name) === nm);
-          const svc = findSvc(service);
+          // 예약의 여러 미용 코스를 합친 이름('전체미용 + 위생미용')은 첫 코스에 연결 — 분류가 미용 코스로 남는다
+          const svc = findSvc(service) || findSvc(this._splitCourseName(service)[0]);
           if (svc) {
             serviceId = svc.id;
             if (svc.category) serviceCategory = svc.category;
@@ -1974,17 +2084,7 @@ App.pages.records = {
         const customer = await DB.get('customers', customerId);
         const pet = await DB.get('pets', petId);
         const customerPhone = (customer?.phone || '').replace(/\D/g, '');
-        const sendSms = async () => {
-          const svcDisplay = [data.service, data.style].filter(Boolean).join(' / ');
-          const msg = await App.buildSms('complete', {
-            // 이름 없는 손님은 '보호자(1234)님'이 아니라 buildSms 의 '보호자님'으로
-            '고객명': customer?.name || '',
-            '반려견명': pet?.name || '',
-            '서비스': svcDisplay,
-            '금액': Number(finalPrice || 0).toLocaleString('ko-KR')
-          });
-          App.openSms(customerPhone, msg);
-        };
+        const sendSms = () => this._sendCompleteSms({ ...data, finalPrice }, customer, pet);
         App.showToast('미용 기록 저장 완료' + (apptDone ? ' · 예약도 완료 처리했어요' : ''), 'success',
           customerPhone ? { action: { label: '문자 보내기', onClick: sendSms } } : {});
         return;
@@ -2145,9 +2245,9 @@ App.pages.records = {
           <div style="display:flex;align-items:center;justify-content:center;gap:8px;margin-bottom:8px">
             <input type="date" id="report-date-picker" value="${reportDate}" style="width:auto;padding:8px 14px;font-size:1rem;font-weight:700;color:var(--text-primary);text-align:center;border-radius:8px;min-height:44px">
           </div>
-          <div style="font-size:0.88rem;color:var(--text-muted);margin-bottom:4px">${reportDow}요일</div>
+          <div style="font-size:0.93rem;color:var(--text-muted);margin-bottom:4px">${reportDow}요일</div>
           <div style="font-size:2.2rem;font-weight:800;color:var(--primary)">${App.formatCurrency(totalRevenue)}</div>
-          <div style="display:flex;justify-content:center;gap:16px;margin-top:8px;font-size:0.88rem">
+          <div style="display:flex;justify-content:center;gap:16px;margin-top:8px;font-size:0.93rem">
             <span style="color:var(--text-secondary)">총 <strong>${todayRecs.length}</strong>건</span>
             ${todayRecs.length > 0 ? `<span style="color:var(--text-secondary)">객단가 <strong>${App.formatCurrency(Math.round(totalRevenue / todayRecs.length))}</strong></span>` : ''}
           </div>
@@ -2162,9 +2262,9 @@ App.pages.records = {
               if (!data || data.count === 0) return '';
               const pct = totalRevenue > 0 ? Math.round((data.amount / totalRevenue) * 100) : 0;
               return `<div style="flex:1;min-width:70px;background:var(--bg);border-radius:10px;padding:12px;text-align:center${m === 'unpaid' ? ';border:1.5px solid var(--danger)' : ''}">
-                <div style="font-size:0.78rem;color:var(--text-muted);margin-bottom:4px">${this.getPaymentLabel(m)}</div>
+                <div style="font-size:0.93rem;color:var(--text-muted);margin-bottom:4px">${this.getPaymentLabel(m)}</div>
                 <div style="font-weight:800;font-size:1rem;color:${paymentColors[m] || 'var(--text-primary)'}">${App.formatCurrency(data.amount)}</div>
-                <div style="font-size:0.75rem;color:var(--text-muted);margin-top:2px">${data.count}건 · ${pct}%</div>
+                <div style="font-size:0.93rem;color:var(--text-muted);margin-top:2px">${data.count}건 · ${pct}%</div>
               </div>`;
             }).filter(Boolean).join('')}
           </div>
@@ -2179,7 +2279,7 @@ App.pages.records = {
               const pct = Math.max(5, Math.round((data.amount / groomerMax) * 100));
               return `<div style="background:var(--bg);border-radius:10px;padding:10px 14px">
                 <div style="display:flex;justify-content:space-between;margin-bottom:6px">
-                  <span style="font-weight:700">${App.escapeHtml(name)} <span style="font-weight:400;color:var(--text-muted);font-size:0.82rem">${data.count}건</span></span>
+                  <span style="font-weight:700">${App.escapeHtml(name)} <span style="font-weight:400;color:var(--text-muted);font-size:0.93rem">${data.count}건</span></span>
                   <strong style="color:var(--primary)">${App.formatCurrency(data.amount)}</strong>
                 </div>
                 <div style="height:6px;background:var(--border-light);border-radius:3px;overflow:hidden">
@@ -2203,14 +2303,14 @@ App.pages.records = {
                 const svcDisplay = r.service || r.style || '';
                 const isUnpaid = r.paymentMethod === 'unpaid';
                 return `<div style="display:flex;align-items:center;gap:10px;padding:10px 12px;background:var(--bg);border-radius:8px${isUnpaid ? ';border-left:3px solid var(--danger)' : ''}">
-                  <span style="font-weight:700;color:var(--primary);min-width:40px;font-size:0.85rem">${time}</span>
+                  <span style="font-weight:700;color:var(--primary);min-width:40px;font-size:0.93rem">${time}</span>
                   <div style="flex:1;min-width:0">
-                    <div style="font-weight:700;font-size:0.9rem">${App.escapeHtml(pet?.name || '-')} <span style="font-weight:400;color:var(--text-muted);font-size:0.82rem">${App.escapeHtml(App.getCustomerLabel(customer))}</span></div>
-                    ${svcDisplay ? `<div style="font-size:0.78rem;color:var(--text-secondary);margin-top:1px">${App.escapeHtml(svcDisplay)}${r.groomer ? ' · ' + App.escapeHtml(r.groomer) : ''}</div>` : (r.groomer ? `<div style="font-size:0.78rem;color:var(--text-secondary);margin-top:1px">${App.escapeHtml(r.groomer)}</div>` : '')}
+                    <div style="font-weight:700;font-size:0.93rem">${App.escapeHtml(pet?.name || '-')} <span style="font-weight:400;color:var(--text-muted);font-size:0.93rem">${App.escapeHtml(App.getCustomerLabel(customer))}</span></div>
+                    ${svcDisplay ? `<div style="font-size:0.93rem;color:var(--text-secondary);margin-top:1px">${App.escapeHtml(svcDisplay)}${r.groomer ? ' · ' + App.escapeHtml(r.groomer) : ''}</div>` : (r.groomer ? `<div style="font-size:0.93rem;color:var(--text-secondary);margin-top:1px">${App.escapeHtml(r.groomer)}</div>` : '')}
                   </div>
                   <div style="text-align:right;flex-shrink:0">
-                    <div style="font-weight:700;font-size:0.9rem">${App.formatCurrency(App.getRecordAmount(r))}</div>
-                    <div style="font-size:0.72rem;color:${isUnpaid ? 'var(--danger)' : 'var(--text-muted)'}">${this.getPaymentLabel(r.paymentMethod, r)}</div>
+                    <div style="font-weight:700;font-size:0.93rem">${App.formatCurrency(App.getRecordAmount(r))}</div>
+                    <div style="font-size:0.93rem;color:${isUnpaid ? 'var(--danger)' : 'var(--text-muted)'}">${this.getPaymentLabel(r.paymentMethod, r)}</div>
                   </div>
                 </div>`;
               }).join('')}
@@ -2234,9 +2334,52 @@ App.pages.records = {
     });
   },
 
+  // 미용 완료 문자 (저장 토스트의 '문자 보내기'와 영수증 화면이 같이 쓴다)
+  async _sendCompleteSms(record, customer, pet) {
+    const phone = (customer?.phone || '').replace(/\D/g, '');
+    if (!phone) return;
+    const svcDisplay = [record.service, record.style].filter(Boolean).join(' / ');
+    const msg = await App.buildSms('complete', {
+      // 이름 없는 손님은 '보호자(1234)님'이 아니라 buildSms 의 '보호자님'으로
+      '고객명': customer?.name || '',
+      '반려견명': pet?.name || '',
+      '서비스': svcDisplay,
+      '금액': Number(App.getRecordAmount(record) || 0).toLocaleString('ko-KR')
+    });
+    App.openSms(phone, msg);
+  },
+
   async showReceipt(recordId) {
+    const built = await this._buildReceipt(recordId);
+    if (!built) { App.showToast('기록을 찾을 수 없습니다.', 'error'); return; }
+    const { record, customer, pet, customerPhone } = built;
+    const receiptContent = built.html + `
+      <!-- '기록 보기'로 여는 화면이라 보호자에게 보내는 길도 여기 둔다 (저장 직후 토스트를 놓쳐도) -->
+      <div class="receipt-actions" style="display:flex;flex-direction:column;gap:8px;margin-top:16px">
+        <button type="button" class="btn btn-primary" id="receipt-report" style="min-height:44px">${App.icon('send')} 보호자에게 보내기 (리포트)</button>
+        <div style="display:flex;gap:8px">
+          ${customerPhone ? `<button type="button" class="btn btn-secondary" id="receipt-sms" style="flex:1;min-height:44px">${App.icon('message')} 완료 문자</button>` : ''}
+          <button type="button" class="btn btn-secondary" onclick="window.print()" style="flex:1;min-height:44px">${App.icon('print')} 인쇄</button>
+        </div>
+      </div>
+    `;
+
+    App.showModal({
+      title: '영수증',
+      content: receiptContent,
+      hideFooter: true
+    });
+    document.getElementById('receipt-report')?.addEventListener('click', () => {
+      App.closeModal();
+      setTimeout(() => this.showReport(record.id), 200); // 닫힘(뒤로가기 정리)이 끝난 뒤 연다
+    });
+    document.getElementById('receipt-sms')?.addEventListener('click', () => this._sendCompleteSms(record, customer, pet));
+  },
+
+  // 영수증 본문 HTML (모달 영수증과 넓은 화면의 오른쪽 상세 칸이 같이 쓴다). 기록이 없으면 null
+  async _buildReceipt(recordId) {
     const record = await DB.get('records', recordId);
-    if (!record) { App.showToast('기록을 찾을 수 없습니다.', 'error'); return; }
+    if (!record) return null;
 
     const [customer, pet, services] = await Promise.all([
       DB.get('customers', record.customerId),
@@ -2247,6 +2390,7 @@ App.pages.records = {
     const shopName = await DB.getSetting('shopName') || '펫살롱';
     const shopPhone = await DB.getSetting('shopPhone') || '';
     const shopAddress = await DB.getSetting('shopAddress') || '';
+    const customerPhone = (customer?.phone || '').replace(/\D/g, '');
     // 정액권으로 낸 몫 — '정액권 사용 -N원 (잔액 M원)' (잔액은 이 사용 직후 기준)
     let prepaidRows = '';
     if (Number(record.prepaidUsed) > 0) {
@@ -2262,7 +2406,7 @@ App.pages.records = {
       const svc = services.find(s => s.isActive !== false && App.normalizeServiceName(s.name) === nm)
         || services.find(s => App.normalizeServiceName(s.name) === nm);
       const included = Array.isArray(svc?.includedItems) ? svc.includedItems : [];
-      return included.length > 0 ? `<div style="padding-left:8px;font-size:11px;color:var(--text-secondary)">└ ${included.map(i => App.escapeHtml(i)).join(' · ')}</div>` : '';
+      return included.length > 0 ? `<div style="padding-left:8px;font-size:13px;color:var(--text-secondary)">└ ${included.map(i => App.escapeHtml(i)).join(' · ')}</div>` : '';
     };
     const addonPrice = Number(record.addonPrice) || 0;
     let totalPrice = Number(record.totalPrice) || 0;
@@ -2334,11 +2478,11 @@ App.pages.records = {
           .receipt { max-width: 320px; margin: 0 auto; font-family: 'Courier New', monospace; font-size: 13px; line-height: 1.6; }
           .receipt-header { text-align: center; margin-bottom: 12px; }
           .receipt-title { font-size: 16px; font-weight: 800; }
-          .receipt-subtitle { font-size: 12px; color: var(--text-secondary); }
+          .receipt-subtitle { font-size: 13px; color: var(--text-secondary); }
           .receipt-divider { border: none; border-top: 1px dashed var(--border); margin: 8px 0; }
           .receipt-row { display: flex; justify-content: space-between; padding: 2px 0; }
           .receipt-row.total { font-weight: 800; font-size: 15px; border-top: 2px solid var(--text); padding-top: 6px; margin-top: 4px; }
-          .receipt-footer { text-align: center; margin-top: 16px; font-size: 12px; color: var(--text-secondary); }
+          .receipt-footer { text-align: center; margin-top: 16px; font-size: 13px; color: var(--text-secondary); }
         </style>
         <div class="receipt">
           <div class="receipt-header">
@@ -2368,16 +2512,8 @@ App.pages.records = {
           </div>
         </div>
       </div>
-      <div style="text-align:center;margin-top:16px">
-        <button class="btn btn-primary" onclick="window.print()">${App.icon('print')} 인쇄</button>
-      </div>
     `;
-
-    App.showModal({
-      title: '영수증',
-      content: receiptContent,
-      hideFooter: true
-    });
+    return { record, customer, pet, customerPhone, html: receiptContent };
   },
 
   // 같은 펫의 가장 최근 미용 기록 조회 (excludeId는 수정 모드에서 자기 자신 제외)
@@ -3525,7 +3661,7 @@ App.pages.records = {
             <input type="range" min="100" max="200" step="5" value="100" class="card-zoom-slider" data-slot="${i}" style="flex:1;height:36px;min-height:0;cursor:pointer">
             <span id="card-zoom-label-${i}" style="color:var(--text-muted);flex-shrink:0;min-width:36px;text-align:right">100%</span>
           </div>
-          <button type="button" class="card-reset-btn" data-slot="${i}" style="width:100%;margin-top:4px;padding:4px;font-size:0.7rem;border:1px solid var(--border);border-radius:4px;background:var(--bg-white);color:var(--text-muted);cursor:pointer">초기화</button>
+          <button type="button" class="card-reset-btn" data-slot="${i}" style="width:100%;margin-top:4px;padding:4px;font-size:0.93rem;border:1px solid var(--border);border-radius:4px;background:var(--bg-white);color:var(--text-muted);cursor:pointer">초기화</button>
         </div>
       </div>
     `).join('');
@@ -4106,6 +4242,7 @@ App.pages.records = {
     if (!img || !this._cardCtx) return;
     const token = (this._cardPreviewToken || 0) + 1;
     this._cardPreviewToken = token;
+    this._autoCardLayout((this._cardPhotos || []).filter(Boolean).length);
     const f = await this._readCardForm(this._cardPetName || '');
     const count = (this._CARD_LAYOUTS[f.layout] && this._CARD_LAYOUTS[f.layout].photos) || 1;
     const nAll = (this._cardPhotos || []).filter(Boolean).length;
@@ -4142,6 +4279,21 @@ App.pages.records = {
         ? `사진 ${n}장 분할로 만들어요` + (splitWord ? ` · ${splitWord}` : '') + ' (4장까지)'
         : `사진 ${n}장으로 만들어요 · 칸이 ${n}개로 커져요` + (f.layout === 'photobooth' && n === 2 ? ' (2컷 레이아웃도 잘 어울려요)' : '');
     }
+  },
+
+  // 사진 장수에 맞는 기본 틀 — 1장 폴라로이드, 2장 2컷, 3장 이상 네컷 (1장을 네컷에 넣으면 많이 잘렸다)
+  _defaultCardLayout(n) {
+    return n <= 1 ? 'single' : (n === 2 ? 'strip2' : 'photobooth');
+  },
+  // 틀을 직접 고르기 전이면 장수에 맞는 틀로 바꾼다. 피드·스토리는 1~4장 모두 맞춰 그려서 그대로 둔다
+  _autoCardLayout(n) {
+    if (this._cardLayoutPicked || !n) return;
+    const cur = document.querySelector('#card-pick-layout .card-pick-btn.active');
+    if (cur && !['single', 'strip2', 'photobooth'].includes(cur.dataset.key)) return;
+    const want = this._defaultCardLayout(n);
+    if (cur && cur.dataset.key === want) return;
+    const btn = document.querySelector(`#card-pick-layout .card-pick-btn[data-key="${want}"]`);
+    if (btn) btn.click(); // 코드 클릭(isTrusted=false) — '직접 고름'으로 치지 않는다
   },
 
   // 고른 장수에 맞는 레이아웃에 '추천' 표시 (사진을 먼저 고르면 틀을 제안하는 Instagram Layout 방식)
@@ -4343,6 +4495,8 @@ App.pages.records = {
     }
     this._cardCtx = ctx;
     this._cardPetName = cardPetName;
+    // 틀을 직접 고르기 전에는 사진 장수에 맞춰 틀을 바꾼다 ('다시 꾸미기'는 쓰던 틀 그대로)
+    this._cardLayoutPicked = !!keep;
     const poolCount = Object.values(this._cardPool).filter(Boolean).length;
 
     const saved = await DB.getSetting('cardDesignSettings') || {};
@@ -4405,7 +4559,7 @@ App.pages.records = {
         <div class="card-tabpanel" data-panel="photo">
         <div class="form-group">
           <div class="card-photo-head">
-            <label class="form-label" style="margin:0">사진 <span style="font-size:0.78rem;color:var(--text-muted);font-weight:400">· 1~4장, 칸을 눌러 사진첩에서 고르세요</span></label>
+            <label class="form-label" style="margin:0">사진 <span style="font-size:0.93rem;color:var(--text-muted);font-weight:400">· 1~4장, 칸을 눌러 사진첩에서 고르세요</span></label>
             ${poolCount ? `<button type="button" class="btn btn-sm btn-secondary" id="card-use-record-photos">${App.icon('image')} ${App.escapeHtml(ctx.poolLabel || '기록 사진')} 넣기 (${poolCount}장)</button>` : ''}
           </div>
           <div id="card-photo-slots" class="card-slots-row"></div>
@@ -4414,54 +4568,54 @@ App.pages.records = {
         </div>
         <div class="card-tabpanel" data-panel="layout" hidden>
         <div class="form-group">
-          <label class="form-label">레이아웃 <span style="font-size:0.78rem;color:var(--text-muted);font-weight:400">· 고른 장수에 맞는 것에 추천 표시</span></label>
+          <label class="form-label">레이아웃 <span style="font-size:0.93rem;color:var(--text-muted);font-weight:400">· 고른 장수에 맞는 것에 추천 표시</span></label>
           <div id="card-pick-layout" style="display:flex;gap:8px;flex-wrap:wrap">
             ${Object.entries(LAYOUTS).filter(([, l]) => !l.legacy).map(([key, l]) => `
               <button type="button" class="card-pick-btn${key === selectedLayout ? ' active' : ''}" data-key="${key}" data-photos="${l.photos}">
                 ${this._layoutThumb(key)}
-                <span style="font-size:0.75rem">${l.name}</span>
+                <span style="font-size:0.93rem">${l.name}</span>
               </button>
             `).join('')}
           </div>
         </div>
         <!-- 폴라로이드 사진 크기 (폴라로이드 레이아웃 선택 시만 표시) -->
         <div id="polaroid-options" class="form-group" style="display:${selectedLayout === 'single' ? 'block' : 'none'};padding:12px;background:var(--bg);border-radius:var(--radius);margin-bottom:12px">
-          <label class="form-label" style="font-size:0.82rem;margin-bottom:6px">사진 크기 <span style="color:var(--text-muted);font-weight:400">(폴라로이드)</span></label>
+          <label class="form-label" style="font-size:0.93rem;margin-bottom:6px">사진 크기 <span style="color:var(--text-muted);font-weight:400">(폴라로이드)</span></label>
           <div style="display:flex;flex-direction:column;gap:6px;width:100%">
-            <label class="checkbox-label" style="font-size:0.88rem;min-height:auto;padding:12px;cursor:pointer;border:1.5px solid ${(saved.polaroidSize || 'modern') === 'modern' ? 'var(--primary)' : 'var(--border)'};border-radius:8px;display:flex;align-items:center;gap:10px;width:100%;box-sizing:border-box;background:${(saved.polaroidSize || 'modern') === 'modern' ? 'var(--primary-light)' : 'var(--bg-white)'}">
+            <label class="checkbox-label" style="font-size:0.93rem;min-height:auto;padding:12px;cursor:pointer;border:1.5px solid ${(saved.polaroidSize || 'modern') === 'modern' ? 'var(--primary)' : 'var(--border)'};border-radius:8px;display:flex;align-items:center;gap:10px;width:100%;box-sizing:border-box;background:${(saved.polaroidSize || 'modern') === 'modern' ? 'var(--primary-light)' : 'var(--bg-white)'}">
               <input type="radio" name="polaroidSize" value="modern" ${(saved.polaroidSize || 'modern') === 'modern' ? 'checked' : ''} style="flex-shrink:0">
               <div style="flex:1;min-width:0">
                 <div style="font-weight:700;color:var(--text-primary)">모던</div>
-                <div style="font-size:0.76rem;color:var(--text-muted);margin-top:2px">사진 920×920 · 균등 여백</div>
+                <div style="font-size:0.93rem;color:var(--text-muted);margin-top:2px">사진 920×920 · 균등 여백</div>
               </div>
             </label>
-            <label class="checkbox-label" style="font-size:0.88rem;min-height:auto;padding:12px;cursor:pointer;border:1.5px solid ${saved.polaroidSize === 'minimal' ? 'var(--primary)' : 'var(--border)'};border-radius:8px;display:flex;align-items:center;gap:10px;width:100%;box-sizing:border-box;background:${saved.polaroidSize === 'minimal' ? 'var(--primary-light)' : 'var(--bg-white)'}">
+            <label class="checkbox-label" style="font-size:0.93rem;min-height:auto;padding:12px;cursor:pointer;border:1.5px solid ${saved.polaroidSize === 'minimal' ? 'var(--primary)' : 'var(--border)'};border-radius:8px;display:flex;align-items:center;gap:10px;width:100%;box-sizing:border-box;background:${saved.polaroidSize === 'minimal' ? 'var(--primary-light)' : 'var(--bg-white)'}">
               <input type="radio" name="polaroidSize" value="minimal" ${saved.polaroidSize === 'minimal' ? 'checked' : ''} style="flex-shrink:0">
               <div style="flex:1;min-width:0">
                 <div style="font-weight:700;color:var(--text-primary)">미니멀</div>
-                <div style="font-size:0.76rem;color:var(--text-muted);margin-top:2px">사진 940×940 · 사진 최대 강조</div>
+                <div style="font-size:0.93rem;color:var(--text-muted);margin-top:2px">사진 940×940 · 사진 최대 강조</div>
               </div>
             </label>
           </div>
-          <div style="font-size:0.75rem;color:var(--text-muted);margin-top:6px">${App.icon('bulb')} 미니멀은 사진을 더 크게 — 사진 강조</div>
+          <div style="font-size:0.93rem;color:var(--text-muted);margin-top:6px">${App.icon('bulb')} 미니멀은 사진을 더 크게 — 사진 강조</div>
         </div>
 
         </div>
         <div class="card-tabpanel" data-panel="deco" hidden>
         <div class="form-group">
-          <label class="form-label">테마 ${userFrames.length > 0 ? `<span style="font-size:0.78rem;color:var(--text-muted);font-weight:400">· 내 프레임 ${userFrames.length}개</span>` : ''}</label>
+          <label class="form-label">테마 ${userFrames.length > 0 ? `<span style="font-size:0.93rem;color:var(--text-muted);font-weight:400">· 내 프레임 ${userFrames.length}개</span>` : ''}</label>
           <div id="card-pick-theme" style="display:flex;gap:8px;flex-wrap:wrap">
             ${Object.entries(THEMES).map(([key, t]) => `
               <button type="button" class="card-pick-btn${key === selectedTheme && !selectedFrameId ? ' active' : ''}" data-key="${key}" style="border-color:${t.color}">
                 <span style="font-size:1.1rem;color:${t.color}">${App.icon('circle-filled')}</span>
-                <span style="font-size:0.7rem;color:${t.color}">${t.name}</span>
+                <span style="font-size:0.93rem;color:${t.color}">${t.name}</span>
               </button>
             `).join('')}
             ${userFrames.map(f => `
               <button type="button" class="card-pick-btn${selectedFrameId === f.id ? ' active' : ''}" data-key="frame:${f.id}" data-frame-id="${App.escapeHtml(f.id)}" style="border-color:${f.accentColor};position:relative;overflow:hidden">
                 ${f.image ? `<span style="position:absolute;inset:0;background-image:url('${f.image}');background-size:cover;background-position:center;opacity:0.25"></span>` : ''}
                 <span style="font-size:1.1rem;position:relative">${App.icon('image')}</span>
-                <span style="font-size:0.7rem;color:${f.accentColor};position:relative;font-weight:700">${App.escapeHtml(f.name)}</span>
+                <span style="font-size:0.93rem;color:${f.accentColor};position:relative;font-weight:700">${App.escapeHtml(f.name)}</span>
               </button>
             `).join('')}
             <!-- '커스텀' 테마 값은 아래 '직접 꾸미기'를 펼치면 켜진다 (칸은 숨겨 두고 선택 상태만 담는다) -->
@@ -4472,7 +4626,7 @@ App.pages.records = {
         <details id="card-custom-panel" class="card-more"${selectedTheme === 'custom' && !selectedFrameId ? ' open' : ''}>
           <summary>${App.icon('palette')} 직접 꾸미기 <span>색 · 배경 사진</span></summary>
           <div style="margin-bottom:10px">
-            <label class="form-label" style="font-size:0.82rem;margin-bottom:6px">빠른 색상 조합</label>
+            <label class="form-label" style="font-size:0.93rem;margin-bottom:6px">빠른 색상 조합</label>
             <div style="display:flex;gap:6px;flex-wrap:wrap">
               <button type="button" class="btn btn-sm card-preset-btn" data-bg="#FFFFFF" data-text="#1A1A1A" data-accent="#1A1A1A" style="border:1.5px solid var(--border);min-height:36px"><span style="color:#1A1A1A">${App.icon('circle')}</span> 화이트</button>
               <button type="button" class="btn btn-sm card-preset-btn" data-bg="#F5F0E8" data-text="#5C4A32" data-accent="#8B7355" style="border:1.5px solid #8B7355;min-height:36px"><span style="color:#8B7355">${App.icon('circle-filled')}</span> 베이지</button>
@@ -4482,28 +4636,28 @@ App.pages.records = {
             </div>
           </div>
           <div id="card-custom-colors" style="margin-bottom:10px${saved.customBgImage ? ';display:none' : ''}">
-            <label class="form-label" style="font-size:0.82rem;margin-bottom:6px">직접 선택</label>
+            <label class="form-label" style="font-size:0.93rem;margin-bottom:6px">직접 선택</label>
             <div class="form-row" style="gap:8px">
               <div class="form-group" style="flex:1">
-                <label style="font-size:0.72rem;color:var(--text-muted)">배경</label>
+                <label style="font-size:0.93rem;color:var(--text-muted)">배경</label>
                 <input type="color" id="card-custom-bg" value="${saved.customBgColor || '#FFFFFF'}" style="width:100%;height:36px;border:none;border-radius:6px;cursor:pointer">
               </div>
               <div class="form-group" style="flex:1">
-                <label style="font-size:0.72rem;color:var(--text-muted)">글자</label>
+                <label style="font-size:0.93rem;color:var(--text-muted)">글자</label>
                 <input type="color" id="card-custom-text" value="${saved.customTextColor || '#1A1A1A'}" style="width:100%;height:36px;border:none;border-radius:6px;cursor:pointer">
               </div>
               <div class="form-group" style="flex:1">
-                <label style="font-size:0.72rem;color:var(--text-muted)">포인트</label>
+                <label style="font-size:0.93rem;color:var(--text-muted)">포인트</label>
                 <input type="color" id="card-custom-accent" value="${saved.customAccentColor || '#6366F1'}" style="width:100%;height:36px;border:none;border-radius:6px;cursor:pointer">
               </div>
             </div>
           </div>
           <div class="form-group" style="margin-bottom:0">
-            <label class="form-label" style="font-size:0.82rem">배경 이미지 <span style="color:var(--text-muted);font-weight:400">(선택)</span></label>
+            <label class="form-label" style="font-size:0.93rem">배경 이미지 <span style="color:var(--text-muted);font-weight:400">(선택)</span></label>
             <div style="display:flex;gap:8px;align-items:center">
               <input type="file" id="card-custom-bgimg" accept="image/*" style="display:none">
               <button type="button" class="btn btn-sm btn-secondary" id="card-custom-bgimg-btn">${saved.customBgImage ? '이미지 변경' : '이미지 선택'}</button>
-              <span id="card-custom-bgimg-name" style="font-size:0.78rem;color:var(--text-muted)">${saved.customBgImage ? App.icon('check') + ' 설정됨' : ''}</span>
+              <span id="card-custom-bgimg-name" style="font-size:0.93rem;color:var(--text-muted)">${saved.customBgImage ? App.icon('check') + ' 설정됨' : ''}</span>
               ${saved.customBgImage ? '<button type="button" class="btn btn-sm btn-danger" id="card-custom-bgimg-remove">제거</button>' : ''}
             </div>
           </div>
@@ -4517,7 +4671,7 @@ App.pages.records = {
         </div>
         <div class="card-tabpanel" data-panel="sticker" hidden>
         <div class="form-group">
-          <label class="form-label">스티커 <span style="font-size:0.78rem;color:var(--text-muted);font-weight:400">· 누르면 붙어요, 미리보기에서 끌어 옮기세요</span></label>
+          <label class="form-label">스티커 <span style="font-size:0.93rem;color:var(--text-muted);font-weight:400">· 누르면 붙어요, 미리보기에서 끌어 옮기세요</span></label>
           <div class="card-sticker-sets" role="tablist" aria-label="스티커 묶음">
             <button type="button" class="card-sticker-set active" data-set="retro">레트로</button>
             <button type="button" class="card-sticker-set" data-set="brand">브랜드</button>
@@ -4560,7 +4714,7 @@ App.pages.records = {
         <!-- 카드에 넣을 글자 — 켜고 끄는 정보 + 직접 쓰는 문구를 한곳에 (예전엔 '카드에 넣을 글자'·'자유 텍스트'·'표시 항목' 세 곳으로 나뉘어 헷갈렸다)
              이름·날짜·매장명은 테마와 상관없이 켜고 끈다 (늘 들어가면 촌스러울 수 있다 — 사장님 의견) -->
         <div class="form-group">
-          <label class="form-label">카드에 넣을 글자 <span style="font-size:0.78rem;color:var(--text-muted);font-weight:400">· 다 끄면 사진만 남아요</span></label>
+          <label class="form-label">카드에 넣을 글자 <span style="font-size:0.93rem;color:var(--text-muted);font-weight:400">· 다 끄면 사진만 남아요</span></label>
           <div class="card-text-toggles">
             <label class="card-toggle"><input type="checkbox" id="card-show-pet" ${saved.showPet !== false ? 'checked' : ''}> 반려견 이름</label>
             <label class="card-toggle"><input type="checkbox" id="card-show-date" ${saved.showDate !== false ? 'checked' : ''}> 날짜</label>
@@ -4569,7 +4723,7 @@ App.pages.records = {
             <label class="card-toggle"><input type="checkbox" id="card-show-nextvisit" ${saved.showNextVisit ? 'checked' : ''}> 다음 방문일</label>
           </div>
           <div class="form-hint" style="margin-top:6px">다음 방문일을 넣으면 손님이 다시 예약하기 쉬워요.</div>
-          <label class="form-label" style="font-size:0.82rem;margin:12px 0 6px">직접 쓰는 문구 <span style="color:var(--text-muted);font-weight:400">(빈 칸은 안 나와요 · 이모지 가능)</span></label>
+          <label class="form-label" style="font-size:0.93rem;margin:12px 0 6px">직접 쓰는 문구 <span style="color:var(--text-muted);font-weight:400">(빈 칸은 안 나와요 · 이모지 가능)</span></label>
           <input type="text" id="card-headline" placeholder="큰 제목 (예: {반려견명}의 첫 미용 ✨)" value="${App.escapeHtml(withPet(saved.headline))}" maxlength="40" style="width:100%;margin-bottom:6px;min-height:40px;font-size:max(16px,0.9rem)">
           <input type="text" id="card-subline" placeholder="작은 제목 (예: 행복한 하루)" value="${App.escapeHtml(withPet(saved.subline))}" maxlength="50" style="width:100%;margin-bottom:6px;min-height:40px;font-size:max(16px,0.9rem)">
           <input type="text" id="card-footer" placeholder="맨 아래 인사 (기본: 감사합니다 ♥)" value="${App.escapeHtml(withPet(saved.footerMessage))}" maxlength="60" style="width:100%;min-height:40px;font-size:max(16px,0.9rem)">
@@ -4618,7 +4772,8 @@ App.pages.records = {
     setTimeout(() => {
       // 레이아웃 선택 → 사진 슬롯 동적 변경 + 폴라로이드 옵션 토글
       document.querySelectorAll('#card-pick-layout .card-pick-btn').forEach(btn => {
-        btn.addEventListener('click', () => {
+        btn.addEventListener('click', (e) => {
+          if (e.isTrusted) this._cardLayoutPicked = true; // 직접 고른 틀은 사진 장수가 바뀌어도 그대로
           document.querySelectorAll('#card-pick-layout .card-pick-btn').forEach(b => b.classList.remove('active'));
           btn.classList.add('active');
           // 폴라로이드(single)일 때만 사진 크기 옵션 표시
@@ -5182,17 +5337,17 @@ App.pages.records = {
         </div>
 
         <div id="export-preview" style="background:var(--bg);border-radius:var(--radius);padding:16px">
-          <div style="color:var(--text-muted);text-align:center;font-size:0.9rem">기간을 선택하면 미리보기가 표시됩니다</div>
+          <div style="color:var(--text-muted);text-align:center;font-size:0.93rem">기간을 선택하면 미리보기가 표시됩니다</div>
         </div>
 
         <div style="text-align:center">
-          <div id="export-filename" style="font-size:0.78rem;color:var(--text-muted);margin-bottom:10px;line-height:1.5"></div>
+          <div id="export-filename" style="font-size:0.93rem;color:var(--text-muted);margin-bottom:10px;line-height:1.5"></div>
           <div style="display:flex;flex-direction:column;gap:8px">
             <button class="btn btn-success" id="btn-do-csv-download" style="width:100%;padding:14px;font-size:1rem;font-weight:700" disabled>
-              ${App.icon('download')} CSV 다운로드 <span style="font-size:0.78rem;font-weight:500;opacity:0.85">(엑셀·세무용)</span>
+              ${App.icon('download')} CSV 다운로드 <span style="font-size:0.93rem;font-weight:500;opacity:0.85">(엑셀·세무용)</span>
             </button>
             <button class="btn btn-primary" id="btn-do-json-download" style="width:100%;padding:14px;font-size:1rem;font-weight:700" disabled>
-              ${App.icon('download')} JSON 다운로드 <span style="font-size:0.78rem;font-weight:500;opacity:0.85">(Python 스크립트용)</span>
+              ${App.icon('download')} JSON 다운로드 <span style="font-size:0.93rem;font-weight:500;opacity:0.85">(Python 스크립트용)</span>
             </button>
           </div>
         </div>
@@ -5230,12 +5385,12 @@ App.pages.records = {
       if (!preview) return;
 
       if (!start || !end || start > end) {
-        preview.innerHTML = '<div style="color:var(--danger);text-align:center;font-size:0.9rem">올바른 기간을 선택해주세요</div>';
+        preview.innerHTML = '<div style="color:var(--danger);text-align:center;font-size:0.93rem">올바른 기간을 선택해주세요</div>';
         setBtnsDisabled(true);
         return;
       }
 
-      preview.innerHTML = '<div style="color:var(--text-muted);text-align:center;font-size:0.9rem">집계 중...</div>';
+      preview.innerHTML = '<div style="color:var(--text-muted);text-align:center;font-size:0.93rem">집계 중...</div>';
 
       // 인덱스 쿼리로 기간 내 records만 로드 (장기 누적 시 필수)
       const filtered = await DB.getByDateRange('records', 'date', start, end);
@@ -5245,7 +5400,7 @@ App.pages.records = {
           <div style="padding:20px;text-align:center;background:var(--bg);border-radius:var(--radius);border:1px dashed var(--border)">
             <div style="font-size:1.6rem;margin-bottom:6px">${App.icon('file')}</div>
             <div style="font-weight:700;font-size:0.95rem;margin-bottom:4px">해당 기간 기록이 없습니다</div>
-            <div style="font-size:0.82rem;color:var(--text-muted);line-height:1.5">기간을 변경하거나, 미용 기록이 쌓이면<br>다운로드 가능합니다</div>
+            <div style="font-size:0.93rem;color:var(--text-muted);line-height:1.5">기간을 변경하거나, 미용 기록이 쌓이면<br>다운로드 가능합니다</div>
           </div>
         `;
         if (filenameEl) filenameEl.textContent = '';
@@ -5268,7 +5423,7 @@ App.pages.records = {
       const row = (label, amount, count) =>
         `<div style="display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid var(--border)">
           <span style="color:var(--text-secondary)">${label}</span>
-          <span style="font-weight:600">${App.formatCurrency(amount)} <span style="color:var(--text-muted);font-weight:400;font-size:0.85rem">(${count}건)</span></span>
+          <span style="font-weight:600">${App.formatCurrency(amount)} <span style="color:var(--text-muted);font-weight:400;font-size:0.93rem">(${count}건)</span></span>
         </div>`;
 
       preview.innerHTML = `
@@ -5291,7 +5446,7 @@ App.pages.records = {
           ${breakdown.prepaid.count > 0 ? row('정액권 사용', breakdown.prepaid.amount, breakdown.prepaid.count) : ''}
           <div style="display:flex;justify-content:space-between;padding:6px 0">
             <span style="color:${breakdown.unpaid.count > 0 ? 'var(--danger)' : 'var(--text-secondary)'}">미결제</span>
-            <span style="font-weight:600;color:${breakdown.unpaid.count > 0 ? 'var(--danger)' : 'inherit'}">${App.formatCurrency(breakdown.unpaid.amount)} <span style="color:var(--text-muted);font-weight:400;font-size:0.85rem">(${breakdown.unpaid.count}건)</span></span>
+            <span style="font-weight:600;color:${breakdown.unpaid.count > 0 ? 'var(--danger)' : 'inherit'}">${App.formatCurrency(breakdown.unpaid.amount)} <span style="color:var(--text-muted);font-weight:400;font-size:0.93rem">(${breakdown.unpaid.count}건)</span></span>
           </div>
         </div>
       `;
