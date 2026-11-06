@@ -814,6 +814,12 @@ App.pages.appointments = {
         }
         let completedWithoutRecord = false;
         if (newStatus === 'completed' && appt.status !== 'completed') {
+          // 미래 날짜 예약이면 먼저 한 번 묻는다 (잘못 고른 예약 방지) — 기록 작성 쪽은 records.showForm 이 같은 질문을 한다
+          if (appt.date && appt.date > App.getToday()) {
+            const moveOk = await App.confirm(`${App.futureDayLabel(appt.date)} 예약이에요.<br>오늘로 옮겨서 완료할까요?`, { okLabel: '오늘로 옮겨 완료', cancelLabel: '돌아가기', danger: false });
+            if (!moveOk) { e.target.value = appt.status; return; }
+            App._earlyMoveConfirmedId = appt.id; // 이어서 '기록 작성'으로 가면 기록 폼이 같은 질문을 또 하지 않게
+          }
           const petRecords = appt.petId ? await DB.getByIndex('records', 'petId', appt.petId) : [];
           const hasRecord = petRecords.some(r => String(r.appointmentId) === String(id));
           if (!hasRecord) {
@@ -827,9 +833,21 @@ App.pages.appointments = {
               return;
             }
             completedWithoutRecord = true;
+            App._earlyMoveConfirmedId = null;
           }
         }
         appt.status = newStatus;
+        // 미래 예약을 기록 없이 완료하면 실제로 한 날 = 오늘로 옮긴다 (기록 저장 경로와 같은 규칙):
+        // 날짜 = 오늘, 시간 = 원래 시간과 '지금(10분 단위 내림)' 중 이른 쪽
+        let movedToToday = false;
+        if (completedWithoutRecord && appt.date && appt.date > App.getToday()) {
+          const now = new Date();
+          const m = Math.floor((now.getHours() * 60 + now.getMinutes()) / 10) * 10;
+          const nowHHMM = String(Math.floor(m / 60)).padStart(2, '0') + ':' + String(m % 60).padStart(2, '0');
+          appt.date = App.getToday();
+          appt.time = appt.time && appt.time < nowHHMM ? appt.time : nowHHMM;
+          movedToToday = true;
+        }
         if (newStatus === 'cancelled') { if (cancelReason) appt.cancelReason = cancelReason; }
         else delete appt.cancelReason;
         await DB.update('appointments', appt);
@@ -868,7 +886,9 @@ App.pages.appointments = {
           if (completeBtn && completedWithoutRecord) completeBtn.innerHTML = App.icon('note') + ' 기록 작성';
           else if (completeBtn && newStatus !== 'completed') completeBtn.innerHTML = App.icon('scissors') + ' 미용 완료';
         }
-        App.showToast('예약 상태가 변경되었습니다.');
+        App.showToast(movedToToday ? '완료 처리하고 오늘 날짜로 옮겼습니다.' : '예약 상태가 변경되었습니다.');
+        // 날짜가 바뀌었으면 목록 줄의 날짜·정렬이 달라지므로 화면을 다시 그린다
+        if (movedToToday) { App.handleRoute(); return; }
         // 바뀐 상태로 지금 보기(지난 예약 보기면 그 기준)를 다시 적용한다
         this.applyFilters();
         // 취소 건은 캘린더·요약에서 빠지므로 상태 변경 후 항상 다시 그린다
@@ -1460,10 +1480,36 @@ App.pages.appointments = {
       repeatCount.addEventListener('change', updateRepeatHint);
     }
 
+    // 반려견 칸: 여러 마리면 최근에 온 아이를 골라 두고 안내 한 줄 (고객을 고를 때 + 고객이 정해진 채 열 때 공통)
+    const applyPetChoice = async (cid) => {
+      // 여러 마리면 빈칸으로 두지 않고 가장 최근에 온 반려견(없으면 첫 번째)을 골라 둔다 — 선택 상자는 그대로라 바로 바꿀 수 있다
+      const petSel = document.getElementById('f-petId');
+      if (cid && petSel && !petSel.value) {
+        const ids = [...petSel.options].map(o => Number(o.value)).filter(Boolean);
+        if (ids.length > 1) {
+          const cPets = (await DB.getByIndex('pets', 'customerId', Number(cid))).filter(p => ids.includes(p.id));
+          cPets.sort((a, b) => (b.lastVisitDate || '').localeCompare(a.lastVisitDate || '') || ids.indexOf(a.id) - ids.indexOf(b.id));
+          if (cPets[0] && !petSel.value) { petSel.value = String(cPets[0].id); petSel.dispatchEvent(new Event('change')); }
+        }
+      }
+      // 2마리 이상이면 반려견 칸을 눈에 띄게 + 안내 한 줄 (기록 폼 markPetChoice 와 같은 모양·문구)
+      if (petSel && petSel.isConnected) {
+        const n = cid ? [...petSel.options].filter(o => Number(o.value)).length : 0;
+        petSel.classList.toggle('pet-choose-many', n >= 2);
+        petSel.style.borderColor = n >= 2 ? 'var(--primary)' : '';
+        petSel.style.borderWidth = n >= 2 ? '2px' : '';
+        let hint = document.getElementById('f-pet-many-hint');
+        if (n >= 2) {
+          if (!hint) { hint = document.createElement('div'); hint.id = 'f-pet-many-hint'; hint.className = 'form-hint'; hint.style.cssText = 'color:var(--primary);font-weight:700'; petSel.after(hint); }
+          hint.textContent = `반려견이 ${n}마리예요 — 최근에 온 아이를 골라 뒀어요. 다른 아이면 바꿔 주세요`;
+        } else if (hint) hint.remove();
+      }
+    };
     // 검색 가능한 고객 선택 렌더링
     await App.renderCustomerSelect('appt-customer-select', appt.customerId, async (cid, preferPetId) => {
       // 반려견 목록 갱신 + 없으면 그 자리에서 등록 버튼 제공
       await App.refreshPetSelect(cid, preferPetId);
+      await applyPetChoice(cid);
       // 노쇼 이력 경고
       const warn = document.getElementById('noshow-warning');
       if (warn) {
@@ -1477,6 +1523,8 @@ App.pages.appointments = {
         }
       }
     });
+    // 고객이 정해진 채로 연 새 예약(고객 상세 '+ 예약' 등): 반려견 미리 고르기 + 안내. 수정은 저장된 반려견을 그대로 둔다
+    // (아래 '고객만 정해진 채로 열렸으면 반려견 목록을 다시 그린다' 뒤에서 고른다 — 그 다시 그리기가 골라 둔 값을 지웠다)
 
     // 휴무일 경고
     const checkClosedDay = async () => {
@@ -1503,6 +1551,8 @@ App.pages.appointments = {
     // 고객만 정해진 채로 열렸으면 반려견 목록을 다시 그린다 — 활동 중인 아이가 하나면 자동 선택,
     // 하나도 없으면 그 자리에서 등록 버튼 제공
     if (appt.customerId && !appt.petId) await App.refreshPetSelect(appt.customerId);
+    // 고객이 정해진 채로 연 새 예약(고객 상세 '+ 예약' 등): 목록이 확정된 뒤 반려견 미리 고르기 + 안내. 수정은 저장된 반려견 그대로
+    if (!id && appt.customerId) await applyPetChoice(appt.customerId);
 
     // 기존 고객 선택 시 노쇼 이력 즉시 표시
     if (appt.customerId) {

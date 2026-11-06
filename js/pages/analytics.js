@@ -15,6 +15,23 @@ App.pages.analytics = {
   _customEnd: '',
 
   // 좁은 칸의 큰 금액은 숫자 중간에서 줄바꿈되지 않게 한국식으로 줄인다 (258,024,000 → '2억 5,802만원', 3,580,000 → '358만원')
+  // 서비스별 집계 단위: 보통은 기록 하나 = 서비스 하나(받은 금액 전부).
+  // r.courses([{ serviceId, name, price }], 2개 이상)가 있으면 코스마다 하나 — 받은 금액을 코스 가격 비율로 나눈다 (가격을 모르면 똑같이, 원 단위 나머지는 마지막 코스)
+  _serviceParts(r, rawName, legacyId) {
+    const amount = App.getRecordAmount(r);
+    const courses = Array.isArray(r.courses) ? r.courses.filter(c => c && (c.serviceId != null || c.name)) : [];
+    if (courses.length < 2) return [{ serviceId: r.serviceId, name: rawName, legacyId, amount }];
+    const priced = courses.every(c => Number(c.price) > 0);
+    const weights = courses.map(c => priced ? Number(c.price) : 1);
+    const total = weights.reduce((a, b) => a + b, 0);
+    let left = amount;
+    return courses.map((c, i) => {
+      const part = i === courses.length - 1 ? left : Math.round(amount * weights[i] / total);
+      left -= part;
+      return { serviceId: c.serviceId, name: c.name, legacyId: null, amount: part };
+    });
+  },
+
   _compactWon(amount) {
     const n = Math.round(Number(amount) || 0);
     const abs = Math.abs(n);
@@ -144,25 +161,25 @@ App.pages.analytics = {
       // 서비스명 추출 (신: r.service, 구: r.serviceNames)
       const rawName = App.normalizeServiceName(r.service || (r.serviceNames && r.serviceNames.length > 0 ? r.serviceNames[0] : ''));
       const legacyId = !rawName && Array.isArray(r.serviceIds) ? r.serviceIds.find(id => serviceNameMap[id] || serviceNameMap[Number(id)]) : null;
-      let svcKey = null;
-      if (r.serviceId != null && serviceNameMap[r.serviceId]) svcKey = 'id:' + r.serviceId;
-      else if (rawName && serviceIdByName[rawName] != null) svcKey = 'id:' + serviceIdByName[rawName];
-      else if (rawName) svcKey = 'name:' + rawName;
-      else if (legacyId != null) svcKey = 'id:' + Number(legacyId);
-      if (svcKey) {
+      // 미용 코스 2개 이상을 합친 기록(r.courses)은 코스마다 1건씩 세고, 금액은 코스 가격 비율로 나눈다 (가격 모르면 똑같이)
+      const parts = this._serviceParts(r, rawName, legacyId);
+      parts.forEach(p => {
+        const nm = App.normalizeServiceName(p.name);
+        let svcKey = null;
+        if (p.serviceId != null && serviceNameMap[p.serviceId]) svcKey = 'id:' + p.serviceId;
+        else if (nm && serviceIdByName[nm] != null) svcKey = 'id:' + serviceIdByName[nm];
+        else if (nm) svcKey = 'name:' + nm;
+        else if (p.legacyId != null) svcKey = 'id:' + Number(p.legacyId);
+        if (!svcKey) return;
         if (!serviceLabelByKey[svcKey]) {
-          serviceLabelByKey[svcKey] = svcKey.startsWith('id:') ? App.normalizeServiceName(serviceNameMap[svcKey.slice(3)]) || rawName : rawName;
+          serviceLabelByKey[svcKey] = svcKey.startsWith('id:') ? App.normalizeServiceName(serviceNameMap[svcKey.slice(3)]) || nm : nm;
         }
-        const svcName = svcKey;
-        if (!serviceRevMap[svcName]) serviceRevMap[svcName] = { count: 0, revenue: 0 };
-        serviceRevMap[svcName].count++;
-        // 기록마다 실제 결제 금액(할인·추가 반영)을 대표 서비스에 귀속시킨다.
-        // 이전에는 `r.servicePrice || getRecordAmount(r)` 라서 기준이 섞였다 —
-        // servicePrice 가 있는 기록은 서비스 단가만, 없는 구버전 기록은 전액이
-        // 들어가 서비스별 합계가 총매출과 맞지 않았고, 비율(%)의 분모 자체가
-        // 신뢰할 수 없었다. 이제 합계가 총매출과 일치한다.
-        serviceRevMap[svcName].revenue += App.getRecordAmount(r);
-      }
+        if (!serviceRevMap[svcKey]) serviceRevMap[svcKey] = { count: 0, revenue: 0 };
+        serviceRevMap[svcKey].count++;
+        // 기록마다 실제 결제 금액(할인·추가 반영)을 대표 서비스에 귀속시킨다 (합계가 총매출과 일치).
+        // 이전에는 `r.servicePrice || getRecordAmount(r)` 라서 기준이 섞여 서비스별 합계가 총매출과 맞지 않았다.
+        serviceRevMap[svcKey].revenue += p.amount;
+      });
       // 스타일 집계
       if (r.style) {
         styleCountMap[r.style] = (styleCountMap[r.style] || 0) + 1;

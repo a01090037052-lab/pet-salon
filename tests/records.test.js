@@ -181,3 +181,66 @@ describe('사진 카드 기본 틀 (_defaultCardLayout)', () => {
     for (const k of ['single', 'strip2', 'photobooth']) assert.ok(R._CARD_LAYOUTS[k], k);
   });
 });
+
+// ---------- v191: 합친 코스 금액 나누기 · 이른 완료 예약 옮기기 · 분석 코스별 집계 ----------
+describe('합친 코스 (courses)', () => {
+  const { App } = loadApp({ files: ['js/app.js', 'js/pages/records.js', 'js/pages/analytics.js'] });
+  const R = App.pages.records, A = App.pages.analytics;
+  const plain = (x) => JSON.parse(JSON.stringify(x));
+  test('_splitByWeights: 메뉴 가격 비율, 합은 그대로 (나머지는 마지막)', () => {
+    assert.deepEqual(plain(R._splitByWeights(70000, [50000, 20000])), [50000, 20000]);
+    assert.deepEqual(plain(R._splitByWeights(100000, [1, 2])), [33333, 66667]);
+  });
+  test('_splitByWeights: 가격 모르는 코스가 있으면 똑같이', () => {
+    assert.deepEqual(plain(R._splitByWeights(10001, [30000, 0])), [5001, 5000]);
+  });
+  test('분석: courses 있으면 코스마다 1건, 받은 금액을 코스 가격 비율로', () => {
+    const parts = plain(A._serviceParts({ finalPrice: 63000, serviceId: 1, courses: [
+      { serviceId: 1, name: '전체미용', price: 50000 }, { serviceId: 4, name: '위생미용', price: 20000 }] }, '전체미용 + 위생미용', null));
+    assert.deepEqual(parts.map(p => [p.serviceId, p.amount]), [[1, 45000], [4, 18000]]);
+  });
+  test('분석: courses 없으면 예전처럼 기록 하나 = 서비스 하나', () => {
+    const parts = plain(A._serviceParts({ finalPrice: 50000, serviceId: 1 }, '전체미용', null));
+    assert.deepEqual(parts.map(p => [p.serviceId, p.name, p.amount]), [[1, '전체미용', 50000]]);
+  });
+});
+
+describe('내일 예약을 오늘 끝냄 (_moveEarlyAppointment)', () => {
+  const { App } = loadApp({ files: ['js/app.js', 'js/pages/records.js'] });
+  const R = App.pages.records;
+  const now = new Date(2026, 10, 6, 14, 37); // 2026-11-06 14:37
+  test('미래 예약 → 오늘로, 늦은 시각은 지금(10분 내림)', () => {
+    const a = { date: '2026-11-07', time: '16:00' };
+    assert.equal(R._moveEarlyAppointment(a, '2026-11-06', now), true);
+    assert.deepEqual([a.date, a.time, a.movedFromDate], ['2026-11-06', '14:30', '2026-11-07']);
+  });
+  test('이른 시각은 그대로', () => {
+    const a = { date: '2026-11-08', time: '10:00' };
+    R._moveEarlyAppointment(a, '2026-11-06', now);
+    assert.equal(a.time, '10:00');
+  });
+  test('오늘·지난 예약, 기록 날짜를 바꾼 경우는 옮기지 않는다', () => {
+    for (const [d, rd] of [['2026-11-06', '2026-11-06'], ['2026-11-01', '2026-11-01'], ['2026-11-07', '2026-11-07']]) {
+      const a = { date: d, time: '18:00' };
+      assert.equal(R._moveEarlyAppointment(a, rd, now), false);
+      assert.equal(a.date, d);
+    }
+  });
+});
+
+describe('합친 코스 가격 (_comboPrice) — 몸무게를 바꾸면 다시 계산', () => {
+  const { App } = loadApp({ files: ['js/app.js', 'js/pages/records.js'] });
+  const R = App.pages.records;
+  test('코스 모두 새 구간 가격이 있으면 그 합', () => {
+    assert.equal(R._comboPrice([{ price: 40000 }, { price: 15000 }]).price, 55000);
+  });
+  test('무료 코스는 0원, 모두 무료면 free', () => {
+    assert.equal(R._comboPrice([{ price: 40000 }, { price: 0, free: true }]).price, 40000);
+    assert.equal(R._comboPrice([{ price: 0, free: true }, { price: 0, free: true }]).free, true);
+  });
+  test('하나라도 모르면(가격 없음·몸무게 필요·메뉴에 없음) null — 적힌 값을 그대로 둔다', () => {
+    for (const ms of [[{ price: 40000 }, { price: null }], [{ price: 40000 }, { needsWeight: true, price: null }], [{ price: 40000 }, null]]) {
+      assert.equal(R._comboPrice(ms).price, null);
+    }
+  });
+});

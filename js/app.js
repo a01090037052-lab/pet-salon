@@ -42,6 +42,7 @@ const App = {
       document.addEventListener('visibilitychange', () => {
         if (document.visibilityState === 'visible') this.Push.ensureDevice().then(() => this.Push.scheduleUpload());
       });
+      this.setupDayRollover();
       // 저장 공간 quota 체크 (fire-and-forget, UI 차단 안 함)
       this.setupStorageQuotaCheck();
       // 데이터 무결성 점검 (fire-and-forget, 하루 1회)
@@ -255,8 +256,64 @@ const App = {
     }).catch(() => {});
   },
 
+  // 날짜가 바뀌면(밤새 켜 둔 아이패드·다음 날 다시 연 앱) 지금 화면을 오늘 기준으로 다시 그린다.
+  // 보일 때만 1분마다 확인 (숨겨지면 멈춤). 창·확인창이 열려 있거나 입력 중이면 미뤘다가 닫힌 뒤에.
+  setupDayRollover() {
+    this._renderedDay = this.getToday();
+    let timer = null;
+    const tick = () => {
+      clearTimeout(timer); timer = null;
+      if (document.visibilityState !== 'visible') return;
+      const today = this.getToday();
+      if (today !== this._renderedDay) {
+        this._renderedDay = today;
+        this._dayRerenderPending = true;
+        this._dashboardDirty = true;
+        this.Push.scheduleUpload();
+        try { this.updateBadges(); } catch (_) {}
+      }
+      if (this._dayRerenderPending) {
+        const open = (id) => !document.getElementById(id)?.classList.contains('hidden');
+        const ae = document.activeElement;
+        const typing = ae && /^(INPUT|TEXTAREA|SELECT)$/.test(ae.tagName) && ae.closest && ae.closest('#page-content');
+        if (!open('modal-overlay') && !open('confirm-overlay') && !open('global-search-overlay') && !typing && !this.leaveGuardDirty) {
+          this._dayRerenderPending = false;
+          this.handleRoute();
+        }
+      }
+      timer = setTimeout(tick, 60000);
+    };
+    this._dayTick = tick;
+    document.addEventListener('visibilitychange', tick);
+    window.addEventListener('focus', tick);
+    tick();
+  },
+
+  // 알림을 눌렀을 때 서비스워커가 보낸 'open-url' — 작성 중인 창이 있으면 먼저 묻고(닫을지) 그 화면으로 간다
+  async _openFromNotification(url) {
+    try {
+      const u = new URL(url, location.href);
+      if (u.origin !== location.origin) return;
+      if (!document.getElementById('confirm-overlay').classList.contains('hidden')) return; // 다른 확인 중 — 건드리지 않는다
+      if (!document.getElementById('modal-overlay').classList.contains('hidden')) {
+        await this.requestCloseModal();
+        if (!document.getElementById('modal-overlay').classList.contains('hidden')) return; // '계속 작성'
+        await new Promise(r => setTimeout(r, 250)); // 모달의 history.back() 이 끝난 뒤 이동
+      }
+      if (!document.getElementById('global-search-overlay')?.classList.contains('hidden')) {
+        this.closeSearch();
+        await new Promise(r => setTimeout(r, 200));
+      }
+      if (u.hash && u.hash !== location.hash) location.hash = u.hash; // 떠나기 확인(leaveGuard)은 라우터가 처리
+      else if (!u.hash) this.navigate('dashboard');
+    } catch (e) { console.warn('알림 주소 열기 실패:', e); }
+  },
+
   registerSW() {
     if ('serviceWorker' in navigator && window.location.protocol !== 'file:') {
+      navigator.serviceWorker.addEventListener('message', (e) => {
+        if (e.data && e.data.type === 'open-url' && e.data.url) this._openFromNotification(e.data.url);
+      });
       navigator.serviceWorker.register('./sw.js', { updateViaCache: 'none' }).then(reg => {
         // 앱 열 때마다 SW 업데이트 강제 체크 (iOS PWA 대응)
         reg.update().catch(() => {});
@@ -577,6 +634,7 @@ const App = {
         }
         // Auto-format phone inputs
         this.setupPhoneInputs();
+        if (page === 'dashboard') this._maybeCloudPhotoNotice(content);
       } catch (err) {
         console.error(`Page render error (${page}):`, err);
         content.innerHTML = `
@@ -724,6 +782,20 @@ const App = {
         window.addEventListener('popstate', this._modalPopHandler, { once: true });
         return;
       }
+      // 모달 위에 확인창이 떠 있을 때 뒤로가기 → 맨 위(확인창)만 닫는다. 모달과 그 history 항목은 그대로
+      // (예전엔 둘 다 닫히고 모달 항목이 남아 다음 뒤로가기가 먹통이었다)
+      const confirmOpen = !document.getElementById('confirm-overlay').classList.contains('hidden');
+      if (confirmOpen || Date.now() - (this._confirmPopAt || 0) < 100) {
+        window.addEventListener('popstate', this._modalPopHandler, { once: true });
+        return;
+      }
+      // 작성 중인 입력 창이면 바로 닫지 않고 바깥 누름과 같이 묻는다 — 모달 항목을 다시 쌓고 확인
+      if (this._isModalFormDirty()) {
+        history.pushState({ modalOpen: true }, '');
+        window.addEventListener('popstate', this._modalPopHandler, { once: true });
+        this.requestCloseModal();
+        return;
+      }
       this.closeModal(true);
     };
     window.addEventListener('popstate', this._modalPopHandler, { once: true });
@@ -769,13 +841,18 @@ const App = {
     };
   },
 
-  // 바깥 누름·Esc·끌어내리기로 닫을 때: 저장 버튼이 있는 입력 창에서 작성 중이면 한 번 묻는다
+  // 저장 버튼이 있는 입력 창에서 무언가 입력·선택했는지
+  _isModalFormDirty() {
+    const saveBtn = document.getElementById('modal-save');
+    const isForm = saveBtn && saveBtn.onclick && document.getElementById('modal-footer').style.display !== 'none';
+    return !!(this._modalDirty && isForm);
+  },
+
+  // 바깥 누름·Esc·끌어내리기·뒤로가기로 닫을 때: 저장 버튼이 있는 입력 창에서 작성 중이면 한 번 묻는다
   async requestCloseModal() {
     const overlay = document.getElementById('modal-overlay');
     if (overlay.classList.contains('hidden')) return;
-    const saveBtn = document.getElementById('modal-save');
-    const isForm = saveBtn && saveBtn.onclick && document.getElementById('modal-footer').style.display !== 'none';
-    if (this._modalDirty && isForm) {
+    if (this._isModalFormDirty()) {
       const ok = await this.confirm('작성 중인 내용이 있어요. 닫을까요?', { okLabel: '닫기', cancelLabel: '계속 작성' });
       if (!ok) return;
     }
@@ -813,6 +890,8 @@ const App = {
     }
     this._suppressModalPop = false;
     this._modalDirty = false;
+    // 창이 열린 동안 날짜가 바뀌었으면 닫힌 뒤 오늘 기준으로 다시 그린다
+    if (this._dayRerenderPending && this._dayTick) setTimeout(() => this._dayTick(), 400);
     if (!fromPopstate) {
       // 확인창이 막 닫히며 낸 history.back() 이 아직 처리 전이면 겹쳐 두 번 뒤로 가거나 항목이 남는다 — 잠깐 뒤에 정리
       const since = Date.now() - (this._lastConfirmCloseAt || 0);
@@ -856,7 +935,7 @@ const App = {
       if (options.onOpen) { try { options.onOpen(body, okBtn); } catch (_) {} }
       // Android 뒤로가기 처리
       history.pushState({ confirmOpen: true }, '');
-      this._confirmPopHandler = () => { this.closeConfirm(false, true); };
+      this._confirmPopHandler = () => { this._confirmPopAt = Date.now(); this.closeConfirm(false, true); };
       window.addEventListener('popstate', this._confirmPopHandler, { once: true });
       // Focus confirm button
       setTimeout(() => document.getElementById('confirm-ok')?.focus(), 100);
@@ -1095,10 +1174,32 @@ const App = {
   },
 
   // 미결제 기록 결제 처리 (홈 미결제·예약 카드 공용) — 기록 폼 결제 칩과 같은 순서·기본값(카드)
-  showPayUnpaid(recordId) {
+  // 결제 창 맨 위 요약 — 누구의 얼마인지 ('초코 · 박도준 · 11/6 · 전체미용' / '받을 금액 45,000원'). 순수 함수 (테스트)
+  payUnpaidSummary(record, pet, customer) {
+    const r = record || {};
+    const svc = this.getRecordServiceDisplay(r, null);
+    const who = [pet && pet.name, customer && customer.name, r.date ? this.formatDate(r.date) : '', svc && svc !== '-' ? svc : '']
+      .filter(Boolean).join(' · ');
+    return { who, amount: this.formatCurrency(this.getUnpaidAmount(r)) };
+  },
+
+  async showPayUnpaid(recordId) {
+    let sumHtml = '';
+    try {
+      const rec = await DB.get('records', recordId);
+      if (rec) {
+        const [pet, customer] = await Promise.all([
+          rec.petId != null ? DB.get('pets', rec.petId).catch(() => null) : null,
+          rec.customerId != null ? DB.get('customers', rec.customerId).catch(() => null) : null
+        ]);
+        const sm = this.payUnpaidSummary(rec, pet, customer);
+        sumHtml = `<div class="pay-unpaid-summary"><div class="pay-unpaid-who">${this.escapeHtml(sm.who)}</div>` +
+          `<div class="pay-unpaid-amt">받을 금액 <strong>${this.escapeHtml(sm.amount)}</strong></div></div>`;
+      }
+    } catch (_) {}
     this.showModal({
       title: '결제 완료 처리',
-      content: `
+      content: `${sumHtml}
         <div class="form-group">
           <label class="form-label">결제 수단을 선택하세요</label>
           <select id="f-pay-method">
@@ -1251,6 +1352,15 @@ const App = {
   // innerHTML 템플릿용: 형식 불일치 입력값이 그대로 들어가도 안전하게
   formatPhoneHtml(phone) {
     return this.escapeHtml(this.formatPhone(phone));
+  },
+
+  // 미래 날짜 → '내일' / '모레' / '11/9(월)' (확인 문구용)
+  futureDayLabel(dateStr) {
+    const t = new Date(this.getToday() + 'T00:00:00'), d = new Date(String(dateStr) + 'T00:00:00');
+    const diff = Math.round((d - t) / 86400000);
+    if (diff === 1) return '내일';
+    if (diff === 2) return '모레';
+    return `${d.getMonth() + 1}/${d.getDate()}(${['일', '월', '화', '수', '목', '금', '토'][d.getDay()]})`;
   },
 
   getToday() {
@@ -3100,25 +3210,78 @@ const App = {
           }
           return;
         }
+        // 동기화가 켜져 있는데 아직 덜 받았거나 끊겨 있으면 올리지 않는다 — 다른 기기에서 잡은 예약 알림이 지워진다.
+        // 정상이 되면(sync:status) 다시 시도
+        if (typeof Sync !== 'undefined' && Sync.isReadyForPush && !Sync.isReadyForPush()) {
+          if (!this._syncWait) {
+            this._syncWait = true;
+            const onSt = () => {
+              if (!Sync.isReadyForPush()) return;
+              window.removeEventListener('sync:status', onSt);
+              this._syncWait = false;
+              this.scheduleUpload(force);
+            };
+            window.addEventListener('sync:status', onSt);
+          }
+          return;
+        }
         const now = Date.now();
         const today = App.formatLocalDate(new Date(now));
         const endD = new Date(now); endD.setDate(endD.getDate() + 14);
-        const [appts, pets, services, minutes] = await Promise.all([
+        const [appts, services, minutes] = await Promise.all([
           DB.getByDateRange('appointments', 'date', today, App.formatLocalDate(endD)),
-          DB.getAllLight('pets', ['photo', 'photoThumb', 'preferredStyle']),
           DB.getAll('services'),
           DB.getSetting('notifMinutes')
         ]);
-        const petsById = {}; (pets || []).forEach(p => { petsById[p.id] = p; });
+        // 반려견은 다가오는 예약에 나오는 아이만 하나씩 읽는다 (전체 목록을 읽지 않는다)
+        const petIds = [...new Set((appts || []).map(a => a.petId).filter(id => id != null))];
+        const pets = await Promise.all(petIds.map(id => DB.get('pets', id).catch(() => null)));
+        const petsById = {}; pets.forEach(p => { if (p) petsById[p.id] = p; });
         const serviceMap = {}; (services || []).forEach(sv => { serviceMap[sv.id] = sv.name; });
         const jobs = this.buildJobs(appts, petsById, serviceMap, Number(minutes) || 30, now);
         const hash = this._hash(JSON.stringify(jobs.map(j => [j.at, j.tag, j.body])));
         const last = await DB.getSetting('pushLastHash');
         // 같은 목록이면 건너뛴다 — 단 12시간마다는 다시 올린다 (서버가 지난 알림을 지우므로)
         if (!force && last && last.hash === hash && now - (last.at || 0) < 12 * 3600000) return;
-        const r = await this._fetch('/schedule', { jobs }, key);
+        let r = await this._fetch('/schedule', { jobs }, key);
+        // 서버 열쇠가 다르면(다른 기기가 먼저 새 열쇠를 등록) 이 기기 구독으로 열쇠를 맞추고 한 번만 다시
+        if (r.status === 401 && await this._rekey(key)) r = await this._fetch('/schedule', { jobs }, key);
         if (r.ok) await DB.setSetting('pushLastHash', { hash, at: now, count: jobs.length });
+        else console.warn('예약 알림 목록 올리기 실패:', r.status);
       } catch (e) { console.warn('예약 알림 목록 올리기 실패 (다음에 다시):', e); }
+    },
+    // 서버 열쇠를 이 매장의 (동기화된) 열쇠로 맞춘다 — 이 기기가 서버에 등록된 구독을 가지고 있어야 받아 준다.
+    // 같은 열쇠로는 10분에 한 번만 (되풀이 금지)
+    async _rekey(key) {
+      try {
+        const tag = key + '|' + Math.floor(Date.now() / 600000);
+        if (this._rekeyTried === tag) return false;
+        this._rekeyTried = tag;
+        if (!this.supported()) return false;
+        const reg = await navigator.serviceWorker.getRegistration();
+        const sub = reg && reg.pushManager ? await reg.pushManager.getSubscription() : null;
+        if (!sub) return false;
+        const r = await this._fetch('/rekey', { endpoint: sub.endpoint }, key);
+        console.warn('알림 열쇠 맞추기:', r.ok ? '성공' : '실패 ' + r.status);
+        return r.ok;
+      } catch (e) { console.warn('알림 열쇠 맞추기 오류:', e); return false; }
+    },
+    // 브라우저 오류 → 한국어 안내 (영어 원문을 보이지 않는다). 순수 함수 (테스트)
+    errorMessage(e, ua) {
+      const name = (e && e.name) || '';
+      const msg = String((e && e.message) || e || '');
+      const u = ua != null ? ua : (typeof navigator !== 'undefined' ? navigator.userAgent || '' : '');
+      const ios = /iPhone|iPad|iPod/.test(u);
+      const mac = !ios && /Macintosh|Mac OS X/.test(u);
+      if (name === 'NotAllowedError' || /permission|denied|not allowed/i.test(msg)) {
+        if (ios) return '알림이 막혀 있어요. 아이폰 설정 › 알림 › 펫살롱에서 알림 허용을 켜 주세요.';
+        if (mac) return '알림이 막혀 있어요. Mac 시스템 설정 › 알림에서 쓰는 브라우저(크롬·사파리 등)를 허용하고, 브라우저 주소창 왼쪽 자물쇠 › 알림도 허용해 주세요.';
+        return '알림이 막혀 있어요. 기기 설정과 브라우저 주소창 왼쪽 자물쇠 › 알림에서 허용해 주세요.';
+      }
+      if (name === 'AbortError' || /abort|push service/i.test(msg)) return '알림 서비스에 등록하지 못했어요. 인터넷 연결을 확인하고 잠시 뒤 다시 눌러 주세요.';
+      if (name === 'InvalidStateError') return '앱을 완전히 닫았다가 다시 열고 눌러 주세요.';
+      if (name === 'TypeError' || /fetch|network|load failed/i.test(msg)) return '알림 서버에 연결하지 못했어요. 인터넷 연결을 확인해 주세요.';
+      return '알림을 켜지 못했어요. 앱을 닫았다가 다시 열고 눌러 주세요.';
     },
     _b64urlToBytes(b64) {
       const s = String(b64).replace(/-/g, '+').replace(/_/g, '/');
@@ -3160,7 +3323,8 @@ const App = {
         const storedVapid = await DB.getSetting('pushVapid');
         if (sub && storedVapid === vapid) return;
         const fresh = await this._subscribe(vapid, !!sub);
-        const r = await this._fetch('/register', { subscription: fresh.toJSON(), label: this._label() }, key);
+        let r = await this._fetch('/register', { subscription: fresh.toJSON(), label: this._label() }, key);
+        if (r.status === 401 && await this._rekey(key)) r = await this._fetch('/register', { subscription: fresh.toJSON(), label: this._label() }, key);
         if (r.ok) {
           await DB.setSetting('pushVapid', vapid);
           await DB.setSetting('pushDevice', { endpoint: fresh.endpoint, label: this._label(), at: Date.now() });
@@ -3173,24 +3337,30 @@ const App = {
       if (!this.supported()) return { ok: false, message: '이 기기에서는 쓸 수 없어요. 아이폰은 홈 화면에 추가한 앱에서만 됩니다(iOS 16.4 이상).' };
       let perm;
       try { perm = Notification.permission === 'granted' ? 'granted' : await Notification.requestPermission(); } catch (_) { perm = 'denied'; }
-      if (perm !== 'granted') return { ok: false, message: '알림 권한이 꺼져 있어요. 아이폰 설정 › 알림 › 펫살롱에서 허용해 주세요.' };
+      if (perm !== 'granted') return { ok: false, message: this.errorMessage({ name: 'NotAllowedError' }) };
       try {
-        let key = await DB.getSetting('pushKey');
-        if (!key) { key = this._newKey(); await DB.setSetting('pushKey', key); }
+        // 새로 만든 열쇠는 서버 등록이 성공한 뒤에만 저장한다 (거절되면 버린다 — 다른 기기 열쇠를 덮어쓰지 않게)
+        const savedKey = await DB.getSetting('pushKey');
+        const key = savedKey || this._newKey();
         const st = await this._fetch('/status');
         const vapid = st.json && st.json.vapid;
         if (!vapid) return { ok: false, message: '알림 서버에 연결하지 못했어요. 인터넷 연결을 확인해 주세요.' };
         const storedVapid = await DB.getSetting('pushVapid');
         const sub = await this._subscribe(vapid, !!storedVapid && storedVapid !== vapid);
-        const r = await this._fetch('/register', { subscription: sub.toJSON(), label: this._label() }, key);
-        if (r.status === 401) return { ok: false, message: '다른 기기에서 만든 알림 열쇠와 맞지 않아요. 동기화가 끝난 뒤 다시 눌러 주세요.' };
+        const register = () => this._fetch('/register', { subscription: sub.toJSON(), label: this._label() }, key);
+        let r = await register();
+        // 동기화된 열쇠가 거절되면: 이 기기 구독이 서버에 있으면 열쇠를 맞추고 한 번만 다시
+        if (r.status === 401 && savedKey && await this._rekey(key)) r = await register();
+        if (r.status === 401) return { ok: false, message: '다른 기기에서 쓰는 알림 열쇠가 아직 안 왔어요. 동기화가 "동기화됨"이 된 뒤 다시 눌러 주세요.' };
         if (!r.ok) return { ok: false, message: '기기 등록에 실패했어요 (' + r.status + '). 잠시 뒤 다시 눌러 주세요.' };
+        if (!savedKey) await DB.setSetting('pushKey', key);
         await DB.setSetting('pushVapid', vapid);
         await DB.setSetting('pushDevice', { endpoint: sub.endpoint, label: this._label(), at: Date.now() });
         this.scheduleUpload(true);
         return { ok: true, message: '이 기기에서 예약 알림을 받아요.' };
       } catch (e) {
-        return { ok: false, message: '켜는 중 오류: ' + (e && e.message ? e.message : e) };
+        console.warn('알림 켜기 오류:', e);
+        return { ok: false, message: this.errorMessage(e) };
       }
     },
     async disableThisDevice() {
@@ -3215,10 +3385,11 @@ const App = {
         const reg = this.supported() ? await navigator.serviceWorker.ready : null;
         const sub = reg ? await reg.pushManager.getSubscription() : null;
         if (!key || !sub) return { ok: false, message: '이 기기 알림이 꺼져 있어요. 먼저 [이 기기에서 알림 받기]를 눌러 주세요.' };
-        const r = await this._fetch('/test', { endpoint: sub.endpoint }, key);
+        let r = await this._fetch('/test', { endpoint: sub.endpoint }, key);
+        if (r.status === 401 && await this._rekey(key)) r = await this._fetch('/test', { endpoint: sub.endpoint }, key);
         return r.ok ? { ok: true, message: '시험 알림을 보냈어요. 몇 초 안에 와야 해요 (앱을 닫아 두어도 와요).' }
           : { ok: false, message: '시험 알림 보내기 실패 (' + r.status + ')' };
-      } catch (e) { return { ok: false, message: '시험 중 오류: ' + (e && e.message ? e.message : e) }; }
+      } catch (e) { console.warn('시험 알림 오류:', e); return { ok: false, message: this.errorMessage(e) }; }
     },
     // 설정 화면 한 줄용: { supported, on, devices, lastSent }
     async status() {
@@ -3918,6 +4089,148 @@ const App = {
       else await DB.update('records', r);
     }
     return n;
+  },
+  // ========== 클라우드 사진 용량 (Firestore 무료 1GiB) ==========
+  // 클라우드를 읽지 않고(무료 읽기 한도) 이 기기가 아는 것으로 어림한다:
+  //   클라우드 사진 수 = 이 기기 기록 중 전·후 사진이 있는 칸 수(받은 사본 포함, 정리로 클라우드에서 뺀 칸 제외) + 사진 있는 반려견 수
+  //   한 장 크기 = 이 기기가 올리고 받은 사진 문서의 실제 글자 수 평균 (Sync._s.photoBytes, 5장 이상 모이기 전엔 기본값)
+  CLOUD_PHOTO_LIMIT: 1024 * 1024 * 1024,
+  CLOUD_PHOTO_DEFAULT_AVG: { rec: 90000, pet: 45000 }, // 600px·400px JPEG 의 base64 길이 어림
+  _avgPhotoBytes(stats, kind) {
+    const st = stats && stats[kind];
+    return st && st[0] >= 5 ? st[1] / st[0] : this.CLOUD_PHOTO_DEFAULT_AVG[kind];
+  },
+  // 이 기록 칸의 사진이 클라우드에 있다고 볼지 (정리로 뺀 같은 사진이면 아니다)
+  _cloudHasRecordPhoto(r, f) {
+    const pid = r && r[f + 'Id'];
+    return !!pid && !(r._cloudPhotoOff && r._cloudPhotoOff[f] === pid);
+  },
+  // 순수 함수 (테스트) — { bytes, recordPhotos, petPhotos, pct }
+  estimateCloudPhotoUsage(records, pets, stats) {
+    let recN = 0;
+    (records || []).forEach(r => this.RECORD_PHOTO_FIELDS.forEach(f => { if (this._cloudHasRecordPhoto(r, f)) recN++; }));
+    const petN = (pets || []).filter(p => p && (p.photoId || p.photoThumb || p.photo)).length;
+    const bytes = Math.round(recN * this._avgPhotoBytes(stats, 'rec') + petN * this._avgPhotoBytes(stats, 'pet'));
+    return { bytes, recordPhotos: recN, petPhotos: petN, pct: Math.round(bytes / this.CLOUD_PHOTO_LIMIT * 100) };
+  },
+  cloudPhotoUsageText(u) {
+    return `클라우드 사진 약 ${(u.bytes / this.CLOUD_PHOTO_LIMIT).toFixed(2)}GB / 1GB (${u.pct}%)`;
+  },
+  // 순수 함수 (테스트) — 2년 넘게 안 온 반려견: 클라우드에는 마지막 방문(사진 있는 가장 최근 기록) 사진만 남긴다.
+  //  반환 { items: [{ recordId, field }], bytes } — 이 기기 사진은 지우지 않는다(클라우드 문서만)
+  planOldPetPhotoCleanup(records, petsById, today, stats) {
+    const cut = new Date(String(today) + 'T00:00:00'); cut.setFullYear(cut.getFullYear() - 2);
+    const cutStr = this.formatLocalDate(cut);
+    const byPet = {};
+    (records || []).forEach(r => {
+      if (!r || r.petId == null) return;
+      (byPet[r.petId] = byPet[r.petId] || []).push(r);
+    });
+    const items = [];
+    for (const [petId, recs] of Object.entries(byPet)) {
+      const pet = petsById && petsById[petId];
+      const last = (pet && pet.lastVisitDate) || recs.reduce((m, r) => (r.date || '') > m ? r.date : m, '');
+      if (!last || last >= cutStr) continue;
+      const withPhoto = recs.filter(r => this.RECORD_PHOTO_FIELDS.some(f => this._cloudHasRecordPhoto(r, f)))
+        .sort((a, b) => (b.date || '').localeCompare(a.date || '') || (b.id - a.id));
+      for (const r of withPhoto.slice(1)) {
+        this.RECORD_PHOTO_FIELDS.forEach(f => { if (this._cloudHasRecordPhoto(r, f)) items.push({ recordId: r.id, field: f }); });
+      }
+    }
+    return { items, bytes: Math.round(items.length * this._avgPhotoBytes(stats, 'rec')) };
+  },
+  async _loadCloudPhotoData() {
+    const [records, pets] = await Promise.all([
+      DB.getAllLight('records', ['photoBefore', 'photoAfter', 'photo3', 'photo4', 'memo']),
+      DB.getAllLight('pets', ['preferredStyle', 'memo'])
+    ]);
+    const petsById = {}; pets.forEach(p => { petsById[p.id] = p; });
+    return { records, pets, petsById, stats: (typeof Sync !== 'undefined' && Sync._s && Sync._s.photoBytes) || null };
+  },
+  // 10분 동안 기억 (설정 카드가 상태가 바뀔 때마다 다시 그려져도 기록 전체를 매번 읽지 않게)
+  async getCloudPhotoUsage(fresh) {
+    if (!fresh && this._cloudUsageCache && Date.now() - this._cloudUsageCache.at < 600000) return this._cloudUsageCache.u;
+    const d = await this._loadCloudPhotoData();
+    const u = this.estimateCloudPhotoUsage(d.records, d.pets, d.stats);
+    this._cloudUsageCache = { at: Date.now(), u };
+    return u;
+  },
+  // 설정 › 데이터 › 기기 간 동기화 카드 아래 한 줄 (+ 70% 넘으면 정리 버튼). 동기화가 꺼져 있으면 비운다
+  async renderCloudPhotoUsage() {
+    const el = document.getElementById('cloud-photo-usage');
+    if (!el) return;
+    if (typeof Sync === 'undefined' || !Sync.isEnabled()) { el.innerHTML = ''; el.hidden = true; return; }
+    try {
+      const u = await this.getCloudPhotoUsage();
+      el.hidden = false;
+      el.innerHTML = `<div class="cloud-photo-line">${this.escapeHtml(this.cloudPhotoUsageText(u))}</div>` +
+        (u.pct >= 70 ? `<button type="button" class="btn btn-secondary btn-sm" id="btn-cloud-photo-cleanup">${this.icon('trash')} 오래 안 온 반려견 사진 정리</button>` : '');
+      document.getElementById('btn-cloud-photo-cleanup')?.addEventListener('click', () => this.runOldPetPhotoCleanup());
+    } catch (e) { el.innerHTML = ''; }
+  },
+  // 사장님이 눌러야만 실행. 클라우드 문서만 지운다(동기화 삭제 경로 — 다른 기기는 받은 사본만 지우고, 찍은 기기 원본은 남는다)
+  async runOldPetPhotoCleanup() {
+    if (typeof Sync === 'undefined' || !Sync.isEnabled() || !Sync.queueCloudPhotoDeletes) return;
+    if (this._photoCleanupBusy) return;
+    this._photoCleanupBusy = true;
+    try {
+      const d = await this._loadCloudPhotoData();
+      const plan = this.planOldPetPhotoCleanup(d.records, d.petsById, this.getToday(), d.stats);
+      if (!plan.items.length) { this.showToast('정리할 사진이 없어요. 2년 넘게 안 온 반려견은 이미 마지막 방문 사진만 있어요.'); return; }
+      const mb = Math.max(1, Math.round(plan.bytes / 1048576));
+      const ok = await this.confirm(
+        `2년 넘게 안 온 반려견은 클라우드에 마지막 방문 사진만 남깁니다. 이 기기·사진을 찍은 기기의 사진은 그대로예요. 약 ${mb}MB가 줄어요.` +
+        `<br><small style="color:var(--text-muted)">사진 ${plan.items.length}장 · 인터넷이 될 때 조금씩 나눠 보냅니다.</small>`,
+        { okLabel: '정리하기', danger: false });
+      if (!ok) return;
+      const recById = {}; d.records.forEach(r => { recById[r.id] = r; });
+      const byRec = {};
+      plan.items.forEach(it => { (byRec[it.recordId] = byRec[it.recordId] || []).push(it.field); });
+      // 기록마다 '클라우드에서 뺀 사진' 표시 → 삭제 대기열 (중간에 앱이 꺼져도 다시 누르면 남은 것만 이어서)
+      const ids = Object.keys(byRec);
+      for (let i = 0; i < ids.length; i += 100) {
+        const docIds = [];
+        for (const rid of ids.slice(i, i + 100)) {
+          const rec = await DB.get('records', Number(rid));
+          if (!rec) continue;
+          const off = { ...(rec._cloudPhotoOff || {}) };
+          byRec[rid].forEach(f => { if (rec[f + 'Id']) { off[f] = rec[f + 'Id']; docIds.push(`${rec.id}_${f}`); } });
+          rec._cloudPhotoOff = off;
+          await Sync._putRaw('records', rec);
+        }
+        await Sync.queueCloudPhotoDeletes(docIds);
+      }
+      this._cloudUsageCache = null;
+      try { await DB.setSetting('cloudPhotoNoticeAt', Date.now()); } catch (_) {}
+      this.showToast(`사진 ${plan.items.length}장을 클라우드에서 빼는 중이에요. 인터넷이 될 때 나눠 보냅니다.`, 'success', { duration: 5000 });
+      this.renderCloudPhotoUsage();
+    } catch (e) {
+      console.error('클라우드 사진 정리 실패:', e);
+      this.showToast('정리 중 문제가 생겼어요. 잠시 뒤 다시 눌러 주세요 (이어서 합니다).', 'error');
+    } finally { this._photoCleanupBusy = false; }
+  },
+  // 홈: 70% 넘으면 한 번 알림 (닫으면 30일 동안 안 보임). 하루 한 번만 계산
+  async _maybeCloudPhotoNotice(content) {
+    try {
+      if (typeof Sync === 'undefined' || !Sync.isEnabled()) return;
+      const seen = Number(await DB.getSetting('cloudPhotoNoticeAt')) || 0;
+      if (Date.now() - seen < 30 * 86400000) return;
+      const u = await this.getCloudPhotoUsage();
+      if (u.pct < 70 || !content.isConnected || content.dataset.page !== 'dashboard' || content.querySelector('.cloud-photo-notice')) return;
+      const box = document.createElement('div');
+      box.className = 'cloud-photo-notice';
+      box.innerHTML = `<div class="flex-1"><strong>클라우드 사진 공간 ${u.pct}% 사용</strong><br><small>설정 › 데이터 › 기기 간 동기화에서 오래 안 온 반려견 사진을 정리할 수 있어요.</small></div>` +
+        `<a href="#settings" class="btn btn-sm btn-secondary" id="cloud-photo-notice-go">정리하러 가기</a>` +
+        `<button type="button" class="btn-icon" id="cloud-photo-notice-x" aria-label="알림 닫기">${this.icon('close')}</button>`;
+      const hero = content.querySelector('.welcome-section');
+      if (hero) hero.after(box); else content.prepend(box);
+      const dismiss = () => { DB.setSetting('cloudPhotoNoticeAt', Date.now()).catch(() => {}); box.remove(); };
+      box.querySelector('#cloud-photo-notice-x').addEventListener('click', dismiss);
+      box.querySelector('#cloud-photo-notice-go').addEventListener('click', () => {
+        try { sessionStorage.setItem('settings-open-tab', 'data'); } catch (_) {}
+        DB.setSetting('cloudPhotoNoticeAt', Date.now()).catch(() => {});
+      });
+    } catch (_) {}
   },
   async pruneAllRecordPhotos() {
     const recs = await DB.getAllLight('records', ['photoBefore', 'photoAfter', 'photo3', 'photo4', 'memo']);

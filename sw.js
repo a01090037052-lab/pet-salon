@@ -1,4 +1,4 @@
-const CACHE_NAME = 'petsalon-offline-v190';
+const CACHE_NAME = 'petsalon-offline-v191';
 const FONT_CACHE = 'petsalon-fonts-v1';
 const ASSETS = [
   './',
@@ -199,7 +199,8 @@ self.addEventListener('push', (e) => {
   }));
 });
 
-// 알림을 누르면 앱을 연다 — 열린 창이 있으면 그 창을 앞으로 가져와 알림의 주소(url, 기본 예약 화면)로 옮긴다
+// 알림을 누르면 앱을 연다 — 열린 창이 있으면 앞으로 가져오고, 옮기는 것은 앱에 맡긴다(postMessage 'open-url').
+// (서비스워커가 직접 navigate 하면 작성 중이던 미용 기록 창이 묻지도 않고 사라졌다) 창이 없으면 그 주소로 새로 연다
 self.addEventListener('notificationclick', (e) => {
   e.notification.close();
   const url = new URL((e.notification.data && e.notification.data.url) || './#appointments', self.registration.scope).href;
@@ -208,9 +209,8 @@ self.addEventListener('notificationclick', (e) => {
     for (const c of all) {
       if (!('focus' in c)) continue;
       try {
-        const focused = await c.focus();
-        const target = focused || c;
-        if (target.url !== url && 'navigate' in target) { try { await target.navigate(url); } catch (_) {} }
+        const target = (await c.focus()) || c;
+        target.postMessage({ type: 'open-url', url });
         return;
       } catch (_) {}
     }

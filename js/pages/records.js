@@ -677,6 +677,47 @@ App.pages.records = {
     return App.normalizeServiceName(name).split(this._COURSE_SEP).map(x => App.normalizeServiceName(x)).filter(Boolean);
   },
 
+  // 손님의 활동 중 반려견 중 가장 최근에 온 아이 (방문 기록이 없으면 첫 번째). 없으면 null
+  async _pickDefaultPetId(customerId) {
+    const pets = (await DB.getByIndex('pets', 'customerId', Number(customerId))).filter(p => (p.petStatus || 'active') === 'active');
+    const recent = pets.filter(p => p.lastVisitDate).sort((a, b) => b.lastVisitDate.localeCompare(a.lastVisitDate))[0];
+    return (recent || pets[0] || {}).id || null;
+  },
+
+  // 미래 날짜 예약을 오늘 끝냈으면(기록 날짜 = 오늘) 예약을 오늘로 옮긴다. 시작 시각이 지금보다 늦으면 지금(10분 단위 내림)으로.
+  // 지난 예약·오늘 예약은 그대로. 옮겼으면 true (appt 를 직접 고친다)
+  _moveEarlyAppointment(appt, recordDate, now) {
+    const pad = (n) => String(n).padStart(2, '0');
+    const today = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`;
+    if (!appt || !appt.date || appt.date <= today || recordDate !== today) return false;
+    appt.movedFromDate = appt.date;
+    appt.date = today;
+    const nowHm = `${pad(now.getHours())}:${pad(Math.floor(now.getMinutes() / 10) * 10)}`;
+    if (appt.time && appt.time > nowHm) appt.time = nowHm;
+    return true;
+  },
+
+  // 합친 코스의 메뉴 조회 결과들 → { price: 코스 모두 가격이 정해지면 합(무료 코스 0원), 하나라도 모르면 null, free: 모두 무료 메뉴 }
+  _comboPrice(menus) {
+    const list = menus || [];
+    const known = (m) => !!(m && !m.needsWeight && (m.free || Number(m.price) > 0));
+    return {
+      price: list.length && list.every(known) ? list.reduce((a, m) => a + (m.free ? 0 : Number(m.price)), 0) : null,
+      free: list.length > 0 && list.every(m => m && m.free)
+    };
+  },
+
+  // total 을 weights 비율로 나눈 원 단위 금액들 (합이 total — 나머지는 마지막). weights 중 0 이 있으면 똑같이 나눈다
+  _splitByWeights(total, weights) {
+    const n = weights.length;
+    if (!n) return [];
+    const w = weights.every(x => Number(x) > 0) ? weights.map(Number) : weights.map(() => 1);
+    const sum = w.reduce((a, b) => a + b, 0);
+    const t = Number(total) || 0;
+    let left = t;
+    return w.map((x, i) => { const v = i === n - 1 ? left : Math.round(t * x / sum); left -= v; return v; });
+  },
+
   _addonTagHtml(name, price, opts = {}) {
     const free = !!opts.free;
     return `<span class="badge badge-info addon-tag${free ? ' is-free' : ''}" data-name="${App.escapeHtml(name)}" data-price="${Number(price) || 0}"${opts.menu ? ' data-menu="1"' : ''}${free ? ' data-free="1"' : ''} style="cursor:pointer;padding:3px 4px 3px 10px;display:inline-flex;align-items:center;gap:2px" title="눌러서 빼기">`
@@ -708,6 +749,14 @@ App.pages.records = {
     this._pendingPriceFill = null;
     // 예약에서 넘어온 추가 항목의 메뉴 가격 (태그 data-price — 제거 시 정확히 빼기 위함)
     const prefillAddonPrices = {};
+
+    // 미래 날짜 예약을 오늘 완료하려 하면 한 번 묻는다 — 다른 날 예약 카드를 잘못 누른 경우를 막는다 (사장님 결정 2026-11-06)
+    const earlyAsked = fromAppointment && App._earlyMoveConfirmedId != null && String(App._earlyMoveConfirmedId) === String(fromAppointment.id);
+    App._earlyMoveConfirmedId = null;
+    if (fromAppointment && !id && !earlyAsked && fromAppointment.date && fromAppointment.date > App.getToday()) {
+      const ok = await App.confirm(`${App.futureDayLabel(fromAppointment.date)} 예약이에요.<br>오늘로 옮겨서 완료할까요?`, { okLabel: '오늘로 옮겨 완료', cancelLabel: '돌아가기', danger: false });
+      if (!ok) return;
+    }
 
     // Pre-fill from appointment if provided
     if (fromAppointment && !id) {
@@ -750,7 +799,8 @@ App.pages.records = {
         // getPetOptions는 p.id === selectedId(엄격 비교)라 문자열 id가 오면 선택이 풀린다
         customerId: fromAppointment.customerId ? Number(fromAppointment.customerId) : undefined,
         petId: fromAppointment.petId ? Number(fromAppointment.petId) : undefined,
-        date: fromAppointment.date || App.getToday(),
+        // 내일 이후 예약을 오늘 미리 끝낸 경우 — 예약을 오늘로 옮긴 것으로 본다 (기록은 오늘, 저장할 때 예약도 오늘로)
+        date: fromAppointment.date && fromAppointment.date <= App.getToday() ? fromAppointment.date : App.getToday(),
         groomer: fromAppointment.groomer || '',
         service: serviceName,
         servicePrice: servicePrice || undefined,
@@ -764,10 +814,8 @@ App.pages.records = {
     }
     // 고객만 정해진 새 기록(고객 상세 › + 미용 기록, 반려견 2마리 이상): 가장 최근에 온 아이를 미리 고른다 (없으면 첫 번째). 선택칸에서 바꿀 수 있다
     if (!id && record.customerId && !record.petId) {
-      const cPets0 = (await DB.getByIndex('pets', 'customerId', Number(record.customerId))).filter(p => (p.petStatus || 'active') === 'active');
-      const recent = cPets0.filter(p => p.lastVisitDate).sort((a, b) => b.lastVisitDate.localeCompare(a.lastVisitDate))[0];
-      const pick = recent || cPets0[0];
-      if (pick) record.petId = pick.id;
+      const pick = await this._pickDefaultPetId(record.customerId);
+      if (pick) record.petId = pick;
     }
     // 오늘 몸무게 칸 기본값: 기록에 적힌 값 → (새 기록이면) 반려견 마지막 몸무게
     let prefillWeight = Number(record.weightAtVisit) > 0 ? Number(record.weightAtVisit) : null;
@@ -1130,6 +1178,19 @@ App.pages.records = {
         if (e.target.closest('.search-select-dropdown, .cust-chip-clear')) App._modalDirty = true;
       }, true);
     }
+    // 바깥을 누르면 목록 닫기 — document 리스너는 한 번만 붙이고, 지금 열린 폼의 입력칸·목록 짝만 본다
+    // (예전엔 폼을 열 때마다 리스너가 3개씩 쌓였다)
+    this._acPairs = [];
+    if (!this._acDocBound) {
+      this._acDocBound = true;
+      document.addEventListener('click', (e) => {
+        for (const [inputId, dropdownId] of this._acPairs || []) {
+          if (e.target.closest('#' + inputId) || e.target.closest('#' + dropdownId)) continue;
+          const dd = document.getElementById(dropdownId);
+          if (dd) dd.style.display = 'none';
+        }
+      });
+    }
     const setupAutocomplete = (inputId, dropdownId, historyKey, defaultSuggestions, opts = {}) => {
       const input = document.getElementById(inputId);
       const dropdown = document.getElementById(dropdownId);
@@ -1180,7 +1241,7 @@ App.pages.records = {
       };
       input.addEventListener('focus', () => showDropdown(input.value));
       input.addEventListener('input', App.debounce(() => showDropdown(input.value), 200));
-      document.addEventListener('click', (e) => { if (!e.target.closest('#' + inputId) && !e.target.closest('#' + dropdownId)) dropdown.style.display = 'none'; });
+      this._acPairs.push([inputId, dropdownId]);
     };
     // 메뉴에 서비스가 있으면 메뉴 이름을 기본 제안으로 (미용 분류 먼저). 메뉴가 비었을 때만 고정 목록.
     const activeMenu = (await DB.getAll('services')).filter(s => s.isActive !== false && App.normalizeServiceName(s.name));
@@ -1352,23 +1413,26 @@ App.pages.records = {
       let [menu, price] = name
         ? await Promise.all([App.getMenuPrice(name, sizeType), App.getRecentServicePrice(petId, name, sizeType)])
         : [null, null];
-      // 예약에서 온 '전체미용 + 위생미용' — 메뉴에 그 이름이 없으면 코스마다 메뉴 가격을 더한다 (하나라도 모르면 기존처럼)
-      let placeMenu = menu, bandMenu = menu;
+      // 예약에서 온 '전체미용 + 위생미용' — 메뉴에 그 이름이 없으면 코스마다 메뉴 가격을 더한다 (무료 코스는 0원)
+      let placeMenu = menu, bandMenu = menu, comboFree = false, keepPrice = false;
       const courseParts = !menu ? this._splitCourseName(name) : [];
       if (courseParts.length > 1) {
         const ms = await Promise.all(courseParts.map(c => App.getMenuPrice(c, sizeType)));
-        if (ms.every(m => m && !m.needsWeight && Number(m.price) > 0)) price = ms.reduce((a, m) => a + Number(m.price), 0);
+        const combo = this._comboPrice(ms);
+        if (combo.price != null) price = combo.price; // 코스 모두 이 몸무게 가격이 있으면 그 합
+        else keepPrice = true; // 가격을 모르는 코스가 있으면 지금 적힌 값을 그대로 둔다 (비우지 않는다)
+        comboFree = combo.free; // 코스가 모두 무료 메뉴면 서비스 제공으로
         placeMenu = ms.find(isWeighted) || null;
         bandMenu = ms.find(m => m && m.needsWeight) || null; // 몸무게를 알아야 하는 코스가 있으면 그 안내만
       }
       // 더 최신 조회가 시작됐거나, 기다리는 사이 직접 입력했거나, 폼이 닫혔으면 무시
       if (seq !== priceFillSeq || servicePriceManual || !servicePriceInput.isConnected) return;
-      // 못 찾으면 이전 서비스 가격을 남기지 않는다 (몸무게가 필요한 구간 가격도 비워 둔다)
-      servicePriceInput.value = price ? price : '';
+      // 못 찾으면 이전 서비스 가격을 남기지 않는다 (몸무게가 필요한 구간 가격도 비워 둔다) — 합친 코스는 위 keepPrice
+      if (!keepPrice) servicePriceInput.value = price ? price : '';
       showBandInfo(bandMenu);
       // 메뉴에서 '무료'로 정한 서비스 — 기본가를 서비스 제공으로 자동으로 켠다 (0원 확인창 없이, 서비스 제공 금액으로 남게).
       // 자동으로 켠 것만 다른 서비스로 바꾸면 끈다 (사장님이 직접 켠 것은 그대로)
-      if (menu && menu.free) { if (!isMainFree()) { setMainFree(true); mainFreeAuto = true; } }
+      if ((menu && menu.free) || comboFree) { if (!isMainFree()) { setMainFree(true); mainFreeAuto = true; } }
       else if (mainFreeAuto) { setMainFree(false); mainFreeAuto = false; }
       placeWeightField(placeMenu);
       calcTotal();
@@ -1404,9 +1468,19 @@ App.pages.records = {
         // 직접 고친 가격은 두고 구간 안내만 갱신 — 구간 가격과 다르면 '구간 가격(…) 적용' 링크
         const nm = App.normalizeServiceName(serviceInput?.value);
         if (nm) {
-          const menu = await App.getMenuPrice(nm, currentSize());
-          showBandInfo(menu);
-          placeWeightField(menu);
+          let menu = await App.getMenuPrice(nm, currentSize());
+          // 합친 코스('전체미용 + 위생미용'): 코스 모두 가격이 있으면 그 합을 구간 가격으로 보고 같은 '적용' 링크를 단다
+          const parts = !menu ? this._splitCourseName(nm) : [];
+          if (parts.length > 1) {
+            const ms = await Promise.all(parts.map(c => App.getMenuPrice(c, currentSize()).catch(() => null)));
+            const combo = this._comboPrice(ms);
+            placeWeightField(ms.find(isWeighted) || null);
+            showBandInfo(ms.find(m => m && m.needsWeight) || null);
+            menu = combo.price != null && !combo.free ? { price: combo.price, needsWeight: false } : null;
+          } else {
+            showBandInfo(menu);
+            placeWeightField(menu);
+          }
           if (menu && !menu.needsWeight && menu.price > 0 && bandInfo && servicePriceInput
               && Number(servicePriceInput.value) !== menu.price && !document.getElementById('f-main-free')?.classList.contains('on')) {
             const a = document.createElement('button');
@@ -1464,6 +1538,13 @@ App.pages.records = {
       if (on) openComp();
     };
     let mainFreeAuto = false; // 무료 메뉴라서 자동으로 켠 경우
+    // 예약에서 온 새 기록: 주 서비스(합친 코스면 코스 모두)가 무료 메뉴면 처음부터 서비스 제공으로 — 서비스를 다시 고를 때와 같게
+    if (!id && fromAppointment && record.service && !mainComp) {
+      Promise.all(this._splitCourseName(record.service).map(c => App.getMenuPrice(c, currentSize()).catch(() => null))).then(ms => {
+        if (!ms.length || !ms.every(m => m && m.free) || !mainFreeBtn?.isConnected || isMainFree()) return;
+        setMainFree(true); mainFreeAuto = true; calcTotal();
+      });
+    }
     // 오늘 몸무게 칸 자리: 고른 서비스(주 서비스·메뉴 추가 항목) 중 몸무게로 값이 정해지는 게 없고 반려견 몸무게가 이미 있으면
     // '상세 옵션' 안으로 옮긴다 (거기서 고칠 수 있다). 몸무게 가격 서비스이거나 반려견 몸무게가 없으면 원래 자리.
     const weightGroup = document.getElementById('f-weight-group');
@@ -1640,14 +1721,33 @@ App.pages.records = {
     });
 
     // 반려견 목록 갱신 + 없으면 그 자리에서 등록 버튼 제공 (change 이벤트도 여기서 발생시킨다)
+    // 반려견이 2마리 이상인 손님: 반려견 칸을 눈에 띄게 + 안내 한 줄 (가장 최근에 온 아이를 미리 고른다 — 다르면 바꾸게)
+    const markPetChoice = async (cid) => {
+      const sel = document.getElementById('f-petId');
+      if (!sel) return;
+      const n = cid ? (await DB.getByIndex('pets', 'customerId', Number(cid))).filter(p => (p.petStatus || 'active') === 'active').length : 0;
+      if (!sel.isConnected) return;
+      sel.classList.toggle('pet-choose-many', n >= 2);
+      sel.style.borderColor = n >= 2 ? 'var(--primary)' : '';
+      sel.style.borderWidth = n >= 2 ? '2px' : '';
+      let hint = document.getElementById('f-pet-many-hint');
+      if (n >= 2) {
+        if (!hint) { hint = document.createElement('div'); hint.id = 'f-pet-many-hint'; hint.className = 'form-hint'; hint.style.cssText = 'color:var(--primary);font-weight:700'; sel.after(hint); }
+        hint.textContent = `반려견이 ${n}마리예요 — 최근에 온 아이를 골라 뒀어요. 다른 아이면 바꿔 주세요`;
+      } else if (hint) hint.remove();
+    };
     const origCustomerOnChange = async (cid, preferPetId) => {
       if (this._prepaidCustomer) this._prepaidCustomer(cid);
+      // 반려견을 정하지 않고 고객을 고르면 가장 최근에 온 아이(없으면 첫 번째)를 미리 고른다
+      if (cid && !preferPetId) preferPetId = await this._pickDefaultPetId(cid);
       await App.refreshPetSelect(cid, preferPetId);
+      await markPetChoice(cid);
     };
 
     // Re-render customer select with enhanced onChange
     await App.renderCustomerSelect('record-customer-select', record.customerId, origCustomerOnChange);
 
+    if (!id && record.customerId) await markPetChoice(record.customerId);
     // 이미 고객이 정해진 채로 열렸는데 반려견이 하나도 없으면, 여기서 바로 등록할 수 있게 한다
     if (record.customerId) {
       const cPets = await DB.getByIndex('pets', 'customerId', Number(record.customerId));
@@ -1929,6 +2029,7 @@ App.pages.records = {
       // serviceId: 메뉴 서비스 연결 (이름이 바뀌어도 사용 횟수·분석이 이어지도록). service(이름)는 스냅샷으로 유지
       let serviceCategory = '';
       let serviceId = null;
+      let courses = null; // 미용 코스 2개 이상을 합친 주 서비스 → [{ serviceId, name, price }] (분석이 코스별로 센다)
       const addonServiceIds = [];
       if (service) {
         try {
@@ -1940,6 +2041,15 @@ App.pages.records = {
           if (svc) {
             serviceId = svc.id;
             if (svc.category) serviceCategory = svc.category;
+          }
+          // 합친 코스: 기본가(서비스 제공이면 원래 가격)를 그날 메뉴 가격 비율로 코스마다 나눈다 (가격을 모르면 똑같이)
+          const courseParts = this._splitCourseName(service);
+          if (courseParts.length >= 2 && !findSvc(service)) {
+            let basis = weightAtVisit;
+            if (!basis) { const pp = await DB.get('pets', petId).catch(() => null); basis = (pp && pp.size) || null; }
+            const menus = await Promise.all(courseParts.map(c => App.getMenuPrice(c, basis).catch(() => null)));
+            const prices = this._splitByWeights(servicePriceInputVal, menus.map(m => (m && !m.needsWeight) ? Number(m.price) || 0 : 0));
+            courses = courseParts.map((nm, i) => { const cs = findSvc(nm); return { serviceId: cs ? cs.id : null, name: nm, price: prices[i] }; });
           }
           // 추가 항목 중 메뉴에 있는 것만 id 연결 (태그 순서 유지, 메뉴에 없는 자유 입력은 건너뜀)
           addons.forEach(a => {
@@ -1955,6 +2065,7 @@ App.pages.records = {
 
       const data = { customerId, petId, date, groomer, nextVisitDate, service, serviceId, servicePrice, serviceCategory, addons, addonServiceIds, addonPrice, style, serviceNames, totalPrice, discount, extraCharge, finalPrice, memo, paymentMethod, cashReceiptYn, cashReceiptNo, appointmentId, status, condition, cooperativeness, skinStatus, earStatus, mattingLevel };
       if (prepaidUsed > 0) data.prepaidUsed = prepaidUsed;
+      if (courses) data.courses = courses;
       // 서비스(무료)로 제공한 항목 — 금액(finalPrice)에는 안 들어가고, 원래 가격만 남긴다 (영수증 '서비스' 줄 · 매출 화면 '서비스로 제공한 금액')
       if (mainFree || freeAddons.length) {
         const svcList = await DB.getAll('services').catch(() => []);
@@ -2017,6 +2128,7 @@ App.pages.records = {
         }
         // 무료 항목을 모두 끈 경우
         if (!data.complimentary) { delete existing.complimentary; delete existing.complimentaryTotal; }
+        if (!courses) delete existing.courses; // 코스 하나로 바꾼 경우
         // 메뉴에 없는 이름으로 바꿨거나 다른 서비스로 바꿨는데 새 스냅샷이 없으면 — 옛 서비스의 메뉴 가격·구간·초과 요금을 남기지 않는다
         if (data.menuPriceAtVisit == null && (serviceId == null || App.normalizeServiceName(prevService) !== service)) {
           delete existing.menuPriceAtVisit; delete existing.priceOver; delete existing.priceBandId; delete existing.priceBandLabel;
@@ -2036,9 +2148,11 @@ App.pages.records = {
           try {
             const appt = await DB.get('appointments', Number(appointmentId));
             if (appt) {
+              const moved = this._moveEarlyAppointment(appt, date, new Date());
               appt.status = 'completed';
+              appt.completedAt = new Date().toISOString();
               await DB.update('appointments', appt);
-              apptDone = true; // 저장 완료 토스트에 함께 적는다
+              apptDone = moved ? 'moved' : true; // 저장 완료 토스트에 함께 적는다
             }
           } catch (e) {
             console.warn('Failed to update appointment status:', e);
@@ -2085,7 +2199,7 @@ App.pages.records = {
         const pet = await DB.get('pets', petId);
         const customerPhone = (customer?.phone || '').replace(/\D/g, '');
         const sendSms = () => this._sendCompleteSms({ ...data, finalPrice }, customer, pet);
-        App.showToast('미용 기록 저장 완료' + (apptDone ? ' · 예약도 완료 처리했어요' : ''), 'success',
+        App.showToast(apptDone === 'moved' ? '예약을 오늘로 옮겨 기록했어요' : '미용 기록 저장 완료' + (apptDone ? ' · 예약도 완료 처리했어요' : ''), 'success',
           customerPhone ? { action: { label: '문자 보내기', onClick: sendSms } } : {});
         return;
       }

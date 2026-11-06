@@ -198,9 +198,17 @@ App.pages.customers = {
   async _showPane(id) {
     const pane = document.getElementById('cust-pane');
     if (!pane) return;
+    // 마지막으로 누른 고객만 그린다 — 복원 호출과 줄 클릭이 겹치면 늦게 끝난 쪽이 다른 고객을 덮어썼다 (records 의 _paneSeq 와 같은 방식)
+    const seq = (this._paneSeq || 0) + 1;
+    this._paneSeq = seq;
     const customer = await DB.get('customers', id);
+    if (seq !== this._paneSeq || !pane.isConnected) return;
     if (!customer) { this._paneId = null; try { sessionStorage.removeItem('cust-pane-id'); } catch (_) {} return; }
-    await this.renderDetail(pane, id);
+    // 다른 칸에 먼저 그린 뒤 마지막 요청일 때만 옮긴다 (renderDetail 은 여러 번 await 한다)
+    const tmp = document.createElement('div');
+    await this.renderDetail(tmp, id);
+    if (seq !== this._paneSeq || !pane.isConnected) return;
+    pane.replaceChildren(...tmp.childNodes);
     this._paneId = id;
     try { sessionStorage.setItem('cust-pane-id', String(id)); } catch (_) {}
     document.querySelectorAll('#customer-table .clickable-row').forEach(r => r.classList.toggle('is-selected', Number(r.dataset.id) === id));
@@ -792,6 +800,8 @@ App.pages.customers = {
 
     if (finish(result.customerId, result.label, result.petId)) return;
 
+    // 넓은 화면 고객 목록이면 다시 그릴 때 새 고객을 옆 칸에 띄운다 (init 이 cust-pane-id 를 복원)
+    try { sessionStorage.setItem('cust-pane-id', String(result.customerId)); } catch (_) {}
     App.handleRoute();
 
     // 완료 모달은 한 틱 늦춘다.

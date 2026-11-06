@@ -63,3 +63,36 @@ describe('예약 알림: buildJobs', () => {
     assert.equal(P.buildJobs(many, pets, services, 30, NOW).length, 300);
   });
 });
+
+describe('예약 알림: 브라우저 오류 → 한국어 안내 (errorMessage)', () => {
+  const IOS = 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X)';
+  const MAC = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) Chrome/120';
+  test('권한 거부: 아이폰은 설정 › 알림 › 펫살롱, 맥은 시스템 설정 › 알림', () => {
+    const e = { name: 'NotAllowedError', message: 'Registration failed - permission denied' };
+    assert.match(P.errorMessage(e, IOS), /설정 › 알림 › 펫살롱/);
+    assert.match(P.errorMessage(e, MAC), /시스템 설정 › 알림/);
+    assert.match(P.errorMessage({ message: 'Registration failed - permission denied' }, MAC), /시스템 설정/);
+  });
+  test('AbortError·네트워크·알 수 없는 오류도 영어 원문 없이', () => {
+    for (const e of [{ name: 'AbortError', message: 'Registration failed - push service error' },
+      { name: 'TypeError', message: 'Failed to fetch' }, { name: 'Weird', message: 'Something odd' }]) {
+      const m = P.errorMessage(e, IOS);
+      assert.ok(m && !/[A-Za-z]{4,}/.test(m.replace(/Mac/g, '')), m);
+    }
+  });
+});
+
+describe('미결제 결제 창 요약 (payUnpaidSummary)', () => {
+  test('반려견 · 보호자 · 날짜 · 서비스 / 받을 금액(정액권 쓴 몫 뺀 나머지)', () => {
+    const sm = App.payUnpaidSummary(
+      { date: '2026-11-06', service: '전체미용', finalPrice: 50000, prepaidUsed: 5000, paymentMethod: 'unpaid' },
+      { name: '초코' }, { name: '박도준' });
+    assert.ok(sm.who.startsWith('초코 · 박도준 · '), sm.who);
+    assert.ok(sm.who.endsWith(' · 전체미용'), sm.who);
+    assert.equal(sm.amount, '45,000원');
+  });
+  test('반려견·보호자·서비스가 없어도 빈 칸·"-" 없이', () => {
+    const sm = App.payUnpaidSummary({ date: '2026-11-06', finalPrice: 10000 }, null, null);
+    assert.ok(!/ · ·|^ · | · $|-$/.test(sm.who), sm.who);
+  });
+});

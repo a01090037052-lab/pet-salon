@@ -23,7 +23,7 @@ const Sync = {
   // (photoId 는 이 기기 photos 스토어의 번호라 다른 기기에선 엉뚱한 사진을 가리킨다)
   LOCAL_FIELDS: {
     pets: ['photoId', 'photo', '_photoFromSync', '_syncPhotoSig'],
-    records: ['photoBeforeId', 'photoAfterId', 'photo3Id', 'photo4Id', '_photoFromSync', '_photoSetAt']
+    records: ['photoBeforeId', 'photoAfterId', 'photo3Id', 'photo4Id', '_photoFromSync', '_photoSetAt', '_cloudPhotoOff']
   },
   // 기록 사진(미용 전·후)은 recordPhotos/{recordId}_{field} 문서로 따로 보낸다 (축소본). 보관 횟수는 App.pruneRecordPhotos 가 맞춘다.
   RECORD_PHOTO_FIELDS: ['photoBefore', 'photoAfter'],
@@ -159,6 +159,16 @@ const Sync = {
       this._pending = 0;
       this._emit();
     } catch (_) {}
+  },
+
+  // 예약 알림 목록을 올려도 되는지 — 동기화가 꺼져 있으면 언제나 true.
+  // 켜져 있으면 처음 받기(pull)·오래된 기기 정정이 끝났고, 받는 중(리스너)이며 오류·오프라인이 아닐 때만
+  // (덜 받은 상태로 올리면 다른 기기에서 잡은 예약 알림이 서버 목록에서 지워진다)
+  isReadyForPush() {
+    if (!this.isEnabled()) return true;
+    const st = this.getStatus().state;
+    if (st !== 'synced' && st !== 'pending') return false;
+    return !this._pulling && !this._pullPromise && !(this._s && (this._s.pull || this._s.staleFix)) && (this._unsubs || []).length > 0;
   },
 
   getStatus() {
@@ -924,6 +934,7 @@ const Sync = {
             const sz = data.data ? String(data.data).length : 0;
             if (ops > 0 && bytes + sz > this.MAX_BATCH_BYTES) break;
             bytes += sz;
+            if (sz && (row.store === 'petPhotos' || row.store === 'recordPhotos')) this._notePhotoBytes(row.store, sz);
             try {
               batch.set(ref, { ...data, _serverAt: FV.serverTimestamp() });
               if (clearTomb) { batch.delete(this._col('tombstones').doc(`${row.store}_${row.id}`)); cleared.push(`${row.store}_${row.id}`); }
@@ -1506,6 +1517,8 @@ const Sync = {
         out.push({ store: 'recordPhotos', op: 'delete', id: `${id}_${f}`, data: null });
         continue;
       }
+      // 클라우드 정리로 뺀 사진(같은 사진 번호)은 다시 올리지 않는다 (전체 다시 올리기 때도)
+      if (op === 'put' && rec && rec._cloudPhotoOff && rec[f + 'Id'] && rec._cloudPhotoOff[f] === rec[f + 'Id']) continue;
       let sig = null;
       if (op === 'put' && rec) {
         const pid = rec[f + 'Id'];
@@ -1529,6 +1542,28 @@ const Sync = {
       const items = this._recordPhotoItems('put', rec.id, rec);
       if (items.length) this._enqueue(items).then(() => { this._refreshPending(); this._scheduleFlush(); }).catch(() => {});
     } catch (_) {}
+  },
+
+  // 클라우드 사진 문서 크기 기록 (올린 것·받은 것) — 클라우드 사진 용량 어림용 평균. 최근 500장 기준으로 줄여 간다
+  _notePhotoBytes(store, len) {
+    try {
+      if (!this._s || !len) return;
+      const k = store === 'petPhotos' ? 'pet' : 'rec';
+      const pb = this._s.photoBytes || (this._s.photoBytes = {});
+      let [n, sum] = pb[k] || [0, 0];
+      if (n >= 500) { sum = sum / n * 250; n = 250; }
+      pb[k] = [n + 1, sum + len];
+      this._saveLater();
+    } catch (_) {}
+  },
+
+  // 클라우드 사진 정리(App.runOldPetPhotoCleanup) — 기록 사진 문서만 지운다. 일반 삭제와 같은 대기열·삭제 표시 경로
+  // (편지함이 묶음으로 나눠 보내고, 한도에 걸리면 다음에 이어서 보낸다). 이 기기 사진·서명은 그대로 둔다(다시 올리지 않게)
+  async queueCloudPhotoDeletes(docIds) {
+    if (!this.isEnabled() || !docIds || !docIds.length) return;
+    await this._enqueue(docIds.map(id => ({ store: 'recordPhotos', op: 'delete', id: String(id), data: null })));
+    this._refreshPending();
+    this._scheduleFlush();
   },
 
   _parseRecordPhotoId(docId) {
@@ -1572,6 +1607,7 @@ const Sync = {
         const data = d && d.data;
         const p = this._parseRecordPhotoId(doc.id);
         if (!p || !data) continue;
+        this._notePhotoBytes('recordPhotos', String(data).length);
         const rec = await DB.get('records', p.rid);
         if (!rec) { this._pendingRecordPhotos[doc.id] = doc; this._savePendingIds(); continue; }
         const ts = Number(d._updatedAt) || 0;
@@ -1639,7 +1675,14 @@ const Sync = {
         const idKey = p.field + 'Id';
         if (!rec[idKey]) continue;
         // 이 기기에서 찍은 원본은 자기 기기에서만 지운다 (예전엔 다른 기기의 백업 복원이 원본까지 지웠다)
-        if (!(rec._photoFromSync && rec._photoFromSync[p.field])) continue;
+        // 대신 '클라우드에는 없음'으로 적어 둔다 — 클라우드 사진 용량 어림에서 빠지게 (App.estimateCloudPhotoUsage)
+        if (!(rec._photoFromSync && rec._photoFromSync[p.field])) {
+          if (!(rec._cloudPhotoOff && rec._cloudPhotoOff[p.field] === rec[idKey])) {
+            rec._cloudPhotoOff = { ...(rec._cloudPhotoOff || {}), [p.field]: rec[idKey] };
+            await this._putRaw('records', rec);
+          }
+          continue;
+        }
         if (((rec._photoSetAt || {})[p.field] || 0) > (Number(t._updatedAt) || 0)) continue;
         await DB.deletePhoto(rec[idKey]);
         rec[idKey] = null;

@@ -369,6 +369,8 @@ App.pages.settings = {
             <span class="card-title">${App.icon('refresh')} 기기 간 동기화</span>
           </div>
           <div class="card-body" id="sync-card-body">${this.syncCardHtml()}</div>
+          <!-- 클라우드 사진 용량 한 줄 (+ 70% 넘으면 정리 버튼) — App.renderCloudPhotoUsage 가 채운다 (동기화 켜져 있을 때만) -->
+          <div class="card-body cloud-photo-usage" id="cloud-photo-usage" hidden></div>
         </div>` : ''}
 
         <div class="grid-2">
@@ -946,6 +948,7 @@ App.pages.settings = {
   bindSyncCard() {
     const body = document.getElementById('sync-card-body');
     if (!body || typeof Sync === 'undefined') return;
+    App.renderCloudPhotoUsage();
     body.onclick = async (e) => {
       const b = e.target.closest('button');
       if (!b || b.disabled) return;
@@ -985,6 +988,9 @@ App.pages.settings = {
       window.addEventListener('sync:status', () => {
         const el = document.getElementById('sync-card-body');
         if (el && !el.querySelector('button:disabled')) el.innerHTML = this.syncCardHtml();
+        // 동기화를 켜고 끌 때만 클라우드 사진 줄을 다시 (상태 알림마다 다시 그리지 않는다)
+        const cu = document.getElementById('cloud-photo-usage');
+        if (cu && cu.hidden === Sync.isEnabled()) App.renderCloudPhotoUsage();
       });
     }
   },
@@ -1263,8 +1269,7 @@ App.pages.settings = {
     // Export (directBackup 재사용으로 중복 제거)
     document.getElementById('btn-export')?.addEventListener('click', () => this.directBackup(false));
     document.getElementById('btn-export-full')?.addEventListener('click', async () => {
-      const ok = await App.confirm('사진까지 넣은 백업 파일을 만듭니다.<br>파일이 매우 클 수 있어요 (수백 MB). 기기 저장 공간을 확인해 주세요.', { okLabel: '백업 만들기', danger: false });
-      if (ok) this.directBackup(true);
+      this.directBackup(true); // 크기를 어림해 보여 주고 묻는다
     });
 
     // Import
@@ -2083,26 +2088,46 @@ App.pages.settings = {
 
   async directBackup(includePhotos = false) {
     try {
-      // 사진 포함 백업 — 큰 데이터 안전망 (100장 이상 시 경고)
+      let blob;
       if (includePhotos) {
-        const photosLight = await DB.getAllLight('photos', ['data']);
-        const photoCount = photosLight.length;
-        if (photoCount >= 100) {
-          const estimatedMB = Math.round(photoCount * 0.4); // 평균 사진 ~300KB raw + base64 33% 증가
-          const ok = await App.confirm(
-            `사진 ${photoCount}장을 포함한 백업은 약 ${estimatedMB}MB 이상이 됩니다.<br>` +
-            `폰 메모리 부담으로 실패할 수 있어요.<br><br>` +
-            `<strong>권장:</strong> 사진 제외 백업을 정기적으로, 사진 포함은 가끔만.`,
-            { okLabel: '백업 만들기', danger: false }
-          );
+        // 사진 포함 백업 — 먼저 크기를 어림해 보여 준다. 너무 크면(500MB~) 폰이 버거워하니 사진 제외를 권한다
+        const btn = document.getElementById('btn-export-full');
+        const btnHtml = btn ? btn.innerHTML : '';
+        const setBtn = (text) => { if (btn) { btn.disabled = !!text; if (text) btn.textContent = text; else btn.innerHTML = btnHtml; } };
+        setBtn('사진 크기 확인 중...');
+        let est;
+        try { est = await DB.estimatePhotoBackup(); } finally { setBtn(''); }
+        const mb = Math.max(1, Math.round(est.bytes / (1024 * 1024)));
+        const sizeText = mb >= 1024 ? `${(mb / 1024).toFixed(1)}GB` : `${mb}MB`;
+        if (mb > 500) {
+          const pick = await App.choose(
+            `사진 <strong>${est.count}장</strong>을 넣으면 백업 파일이 약 <strong>${sizeText}</strong>예요.<br>` +
+            `휴대폰에서 만들다 멈추거나 저장·전송이 안 될 수 있어요.<br><br>` +
+            `<strong>권장:</strong> 평소엔 사진 제외 백업을, 사진 포함은 컴퓨터에서 가끔만.`,
+            [{ value: 'light', label: '사진 제외 백업 만들기' }, { value: 'photos', label: `그래도 사진 포함 (${sizeText})` }]);
+          if (!pick) return;
+          if (pick === 'light') return this.directBackup(false);
+        } else {
+          const ok = await App.confirm(`사진 <strong>${est.count}장</strong>을 넣은 백업 파일을 만듭니다 (약 <strong>${sizeText}</strong>).<br>기기 저장 공간을 확인해 주세요.`, { okLabel: '백업 만들기', danger: false });
           if (!ok) return;
         }
+        // 사진을 한 장씩 조각으로 붙인다 — 큰 문자열 하나를 만들지 않아 폰 메모리가 터지지 않는다
+        let last = 0;
+        try {
+          blob = await DB.exportAllBlob({
+            onProgress: (i, total) => {
+              const now = Date.now();
+              if (i < total && now - last < 250) return;
+              last = now;
+              setBtn(i < total ? `사진 ${i}/${total} 준비 중` : '파일 만드는 중...');
+            }
+          });
+        } finally { setBtn(''); }
+      } else {
+        const data = await DB.exportAll({ excludePhotos: true });
+        const json = JSON.stringify(data); // pretty-print 제거 — 메모리 30% 절감
+        blob = new Blob([json], { type: 'application/json' });
       }
-      // 진행 toast (백업이 길어질 때 사장님 안심)
-      if (includePhotos) App.showToast('백업 생성 중... (사진 포함이라 1~2분 소요)', 'info');
-      const data = await DB.exportAll({ excludePhotos: !includePhotos });
-      const json = JSON.stringify(data); // pretty-print 제거 — 메모리 30% 절감
-      const blob = new Blob([json], { type: 'application/json' });
       const now = new Date();
       const date = App.getToday();
       const time = `${String(now.getHours()).padStart(2, '0')}${String(now.getMinutes()).padStart(2, '0')}`;

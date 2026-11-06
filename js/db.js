@@ -620,13 +620,7 @@ const DB = {
         const exportPhotos = [];
         for (const p of photos) {
           if (p.data instanceof Blob) {
-            const base64 = await new Promise((resolve) => {
-              const reader = new FileReader();
-              reader.onload = () => resolve(reader.result);
-              reader.onerror = () => resolve(null);
-              reader.readAsDataURL(p.data);
-            });
-            exportPhotos.push({ ...p, data: base64 });
+            exportPhotos.push({ ...p, data: await this._blobToDataUrl(p.data) });
           } else {
             exportPhotos.push(p);
           }
@@ -660,6 +654,76 @@ const DB = {
     data._version = this.version;
     data._excludePhotos = excludePhotos;
     return data;
+  },
+
+  _blobToDataUrl(blob) {
+    return new Promise((resolve) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(reader.result);
+      reader.onerror = () => resolve(null);
+      reader.readAsDataURL(blob);
+    });
+  },
+
+  // photos 스토어의 id 만 (사진 본문을 한꺼번에 읽지 않으려고)
+  async _photoIds() {
+    if (this.mode === 'server') return (await this.getAllLight('photos', ['data'])).map(p => p.id);
+    return new Promise((resolve, reject) => {
+      const req = this._idbStore('photos', 'readonly').getAllKeys();
+      req.onsuccess = () => resolve(req.result || []);
+      req.onerror = () => reject(req.error);
+    });
+  },
+
+  // 사진 포함 백업 파일 크기 어림 — 사진을 한 장씩 열어 크기만 더한다 (base64 는 약 4/3 배)
+  async estimatePhotoBackup() {
+    const ids = await this._photoIds();
+    let bytes = 0;
+    for (const id of ids) {
+      const p = await this.get('photos', id);
+      const d = p && p.data;
+      if (d instanceof Blob) bytes += Math.ceil(d.size * 4 / 3) + 200;
+      else if (typeof d === 'string') bytes += d.length + 200;
+    }
+    return { count: ids.length, bytes };
+  },
+
+  // 사진 포함 백업을 문자열 하나가 아니라 조각(Blob)으로 만든다.
+  // 예전엔 모든 사진을 base64 로 한 배열에 모은 뒤 JSON.stringify 해서 1~3GB 문자열이 생겨 아이폰이 멈췄다.
+  // 사진은 한 장씩 base64 → JSON 조각 → Blob 으로 바꿔 두고 다음 장으로 넘어가므로, 문자열은 한 번에 한 장 분량만 남는다.
+  // 결과 JSON 은 exportAll() 과 같은 모양이다 (복원 코드가 그대로 읽는다).
+  async exportAllBlob(options = {}) {
+    const onProgress = options.onProgress || (() => {});
+    const parts = ['{'];
+    let first = true;
+    const key = (k) => { const s = (first ? '' : ',') + JSON.stringify(k) + ':'; first = false; return s; };
+    for (const storeName of Object.keys(this.stores)) {
+      if (this._localOnlyStores.includes(storeName)) continue;
+      if (storeName === 'photos') {
+        const ids = await this._photoIds();
+        parts.push(key(storeName) + '[');
+        let n = 0;
+        for (let i = 0; i < ids.length; i++) {
+          onProgress(i, ids.length);
+          let p = await this.get('photos', ids[i]);
+          if (!p) continue;
+          if (p.data instanceof Blob) p = { ...p, data: await this._blobToDataUrl(p.data) };
+          parts.push(new Blob([(n++ ? ',' : '') + JSON.stringify(p)]));
+          p = null;
+        }
+        onProgress(ids.length, ids.length);
+        parts.push(']');
+        continue;
+      }
+      let items = await this.getAll(storeName);
+      if (storeName === 'settings') items = items.filter(item => !this._isInternalSetting(item.key));
+      // 옛 기록엔 사진이 글자로 들어 있을 수 있다 — 한 건씩 문자열로 만들어 스토어마다 Blob 으로 묶는다
+      parts.push(key(storeName) + '[', new Blob([items.map(it => JSON.stringify(it)).join(',')]), ']');
+    }
+    parts.push(key('_exportDate') + JSON.stringify(new Date().toISOString()));
+    parts.push(key('_version') + JSON.stringify(this.version));
+    parts.push(key('_excludePhotos') + 'false}');
+    return new Blob(parts, { type: 'application/json' });
   },
 
   // 백업 파일에 포함하지 않고, 복원 시에도 덮어쓰지 않는 기기 내부 설정 키
