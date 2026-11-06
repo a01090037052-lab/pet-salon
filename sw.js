@@ -1,4 +1,4 @@
-const CACHE_NAME = 'petsalon-offline-v187';
+const CACHE_NAME = 'petsalon-offline-v188';
 const FONT_CACHE = 'petsalon-fonts-v1';
 const ASSETS = [
   './',
@@ -184,6 +184,19 @@ self.addEventListener('fetch', (e) => {
       })
     )
   );
+});
+
+// 서버에서 온 푸시 알림 (앱을 닫아도 온다). 아이폰은 받으면 반드시 알림을 띄워야 한다.
+self.addEventListener('push', (e) => {
+  let d = {};
+  try { d = e.data ? e.data.json() : {}; } catch (_) { d = { body: e.data ? e.data.text() : '' }; }
+  e.waitUntil(self.registration.showNotification(d.title || '펫살롱', {
+    body: d.body || '',
+    tag: d.tag || undefined,
+    icon: './icon-192.png',
+    badge: './icon-192.png',
+    data: { url: d.url || './#appointments' }
+  }));
 });
 
 // 알림을 누르면 앱을 연다 (열린 창이 있으면 그 창으로)

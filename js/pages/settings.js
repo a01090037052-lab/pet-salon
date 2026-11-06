@@ -264,6 +264,11 @@ App.pages.settings = {
                   <option value="120" ${notifMinutes == 120 ? 'selected' : ''}>2시간 전</option>
                 </select>
               </div>
+              <!-- 푸시 알림 시험 (임시 — 시험이 끝나면 지우거나 정식 기능으로 바꾼다) -->
+              <div class="form-group">
+                <button type="button" class="btn btn-secondary btn-sm" id="btn-push-test">앱 닫아도 오는 알림 시험</button>
+                <div class="form-hint" id="push-test-msg">시험 중인 기능이에요. 누른 뒤 앱을 완전히 닫고 1~2분 기다려 보세요. 손님 정보는 보내지 않아요.</div>
+              </div>
             </div>
           </div>
 
@@ -993,6 +998,37 @@ App.pages.settings = {
     }
   },
 
+  // 푸시 알림 시험 (임시). 시험 서버는 정해진 시험 문구만 보낸다 — 손님 정보는 보내지 않는다.
+  _PUSH_TEST_URL: 'https://petsalon-push-test.a01090037052.workers.dev',
+  async _runPushTest() {
+    const msg = document.getElementById('push-test-msg');
+    const btn = document.getElementById('btn-push-test');
+    const say = (t) => { if (msg) msg.textContent = t; };
+    try {
+      if (!('serviceWorker' in navigator) || !('PushManager' in window) || !('Notification' in window)) {
+        say('이 기기에서는 푸시 알림을 쓸 수 없어요. 아이폰은 홈 화면에 추가한 앱에서만 됩니다(iOS 16.4 이상).');
+        return;
+      }
+      btn.disabled = true;
+      const perm = Notification.permission === 'granted' ? 'granted' : await Notification.requestPermission();
+      if (perm !== 'granted') { say('알림 권한이 꺼져 있어요. 아이폰 설정 › 알림에서 이 앱을 허용해 주세요.'); return; }
+      const st = await (await fetch(this._PUSH_TEST_URL + '/status')).json();
+      const reg = await navigator.serviceWorker.ready;
+      const key = Uint8Array.from(atob(st.vapid.replace(/-/g, '+').replace(/_/g, '/') + '==='.slice((st.vapid.length + 3) % 4)), c => c.charCodeAt(0));
+      let sub = await reg.pushManager.getSubscription();
+      if (!sub) sub = await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: key });
+      const r1 = await fetch(this._PUSH_TEST_URL + '/subscribe', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ subscription: sub.toJSON() }) });
+      if (!r1.ok) { say('구독 등록 실패 (' + r1.status + ')'); return; }
+      const r2 = await fetch(this._PUSH_TEST_URL + '/test?delay=90', { method: 'POST' });
+      if (!r2.ok) { say(r2.status === 429 ? '이미 기다리는 시험 알림이 있어요. 잠시 뒤 다시 눌러 주세요.' : '시험 예약 실패 (' + r2.status + ')'); return; }
+      say('준비됐어요. 지금 앱을 완전히 닫고(위로 쓸어 올리기) 2~3분 안에 "펫살롱 시험 알림"이 오는지 봐 주세요.');
+    } catch (e) {
+      say('시험 중 오류: ' + (e && e.message ? e.message : e));
+    } finally {
+      if (btn) btn.disabled = false;
+    }
+  },
+
   async init() {
     // 그려진 직후 값을 '저장된 값'으로 기억 — 나갈 때(다른 메뉴·홈·탭) 비교한다
     this._saved = {};
@@ -1175,6 +1211,7 @@ App.pages.settings = {
       return true;
     };
     document.getElementById('btn-save-tab-operation')?.addEventListener('click', () => saveOperation());
+    document.getElementById('btn-push-test')?.addEventListener('click', () => this._runPushTest());
     this._tabSavers = { shop: saveShop, operation: saveOperation };
 
     // Reset templates to defaults
