@@ -29,7 +29,7 @@ const Sync = {
   RECORD_PHOTO_FIELDS: ['photoBefore', 'photoAfter'],
   PHOTO_STORES: ['petPhotos', 'recordPhotos'],
   // 동기화하지 않는 설정 키 (기기별 설정). DB._isInternalSetting(_autoBackup*, _sync*, sync) 도 제외된다.
-  LOCAL_SETTINGS: new Set(['sync', 'security', 'lastBackupDate', 'petVisitStatsVersion', 'lastIntegrityCheck', 'customFrames', 'customStickers', 'inlinePhotosMigratedAt', 'priceBandsMigrated']),
+  LOCAL_SETTINGS: new Set(['sync', 'security', 'lastBackupDate', 'petVisitStatsVersion', 'lastIntegrityCheck', 'customFrames', 'customStickers', 'inlinePhotosMigratedAt', 'priceBandsMigrated', 'pushDevice', 'pushLastHash', 'pushVapid']),
 
   _s: null,            // 'sync' 설정 {enabled, deviceId, deviceNo, shopId, lastPullAt:{}, email}
   _auth: null,
@@ -1356,6 +1356,8 @@ const Sync = {
 
   // 화면 갱신 — 입력 중이거나 모달이 열려 있으면 미룬다 (작성 중인 내용이 사라지지 않게)
   _scheduleRefresh(delay = 400) {
+    // 다른 기기에서 받은 변경(예약 등)도 알림 목록에 반영 — 화면 갱신을 미루는 것과 상관없이 (같은 목록이면 안 올린다)
+    try { if (typeof App !== 'undefined' && App.Push) App.Push.scheduleUpload(); } catch (_) {}
     this._refreshWanted = true;
     App._dashboardDirty = true;
     clearTimeout(this._refreshTimer);

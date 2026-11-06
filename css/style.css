@@ -4078,3 +4078,6 @@ body { line-height: 1.5; font-variant-numeric: tabular-nums; }
 }
 /* 왼쪽 메뉴가 보이는 폭(769px~)에서는 메뉴의 '찾기'를 쓴다 — 떠 있는 돋보기는 표 줄을 가렸다 */
 @media (min-width: 769px) { .global-search-btn { display: none !important; } }
+/* 설정 › 예약 알림 카드 */
+.push-status { font-weight: 600; font-size: max(0.9rem, 13px); margin-bottom: 8px; }
+.push-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 6px; }

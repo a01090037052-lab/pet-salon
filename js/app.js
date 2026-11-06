@@ -37,8 +37,11 @@ const App = {
       await this.updateBadges();
       await this.applyShopName();
       await this.applyTheme();
-      // 예약 알림 체커 시작
-      await this.setupNotificationChecker();
+      // 예약 알림 (Web Push): 이 기기 등록 확인 → 알림 목록 올리기. 다시 보일 때도 (기다리지 않는다)
+      this.Push.ensureDevice().then(() => this.Push.scheduleUpload());
+      document.addEventListener('visibilitychange', () => {
+        if (document.visibilityState === 'visible') this.Push.ensureDevice().then(() => this.Push.scheduleUpload());
+      });
       // 저장 공간 quota 체크 (fire-and-forget, UI 차단 안 함)
       this.setupStorageQuotaCheck();
       // 데이터 무결성 점검 (fire-and-forget, 하루 1회)
@@ -3014,99 +3017,227 @@ const App = {
     if (meta) meta.setAttribute('content', color);
   },
 
-  // ========== 예약 알림 시스템 ==========
-  _notifInterval: null,
-  _notifiedAppts: new Set(),
-
-  async setupNotificationChecker() {
-    // 기존 인터벌 정리
-    if (this._notifInterval) {
-      clearInterval(this._notifInterval);
-      this._notifInterval = null;
-    }
-
-    const enabled = await DB.getSetting('notifEnabled');
-    if (!enabled) return;
-
-    // 브라우저 알림 지원 확인
-    if (!('Notification' in window)) return;
-
-    if (Notification.permission === 'default') {
-      // 사용자 제스처 없이 호출되면 일부 브라우저가 throw → init 전체가 catch 로 빠져 안전망이 건너뛰어진다
-      try { await Notification.requestPermission(); } catch (_) {}
-    }
-    if (Notification.permission !== 'granted') return;
-
-    // 1분마다 체크
-    this._notifInterval = setInterval(() => this.checkUpcomingAppointments(), 60000);
-    // 즉시 한번 실행
-    this.checkUpcomingAppointments();
-  },
-
-  async checkUpcomingAppointments() {
-    try {
-      const enabled = await DB.getSetting('notifEnabled');
-      if (!enabled) return;
-      if (!('Notification' in window) || Notification.permission !== 'granted') return;
-
-      const minutes = Number(await DB.getSetting('notifMinutes')) || 30;
-      const now = new Date();
-      const today = this.getToday();
-
-      // 날짜 바뀌면 알림 Set 초기화 (메모리 누수 방지)
-      if (this._notifiedDate !== today) {
-        this._notifiedAppts.clear();
-        this._notifiedDate = today;
+  // ========== 예약 알림 (Web Push — 앱을 닫아도 온다) ==========
+  // 서버(Cloudflare Worker)가 알림 목록(jobs)을 들고 있다가 시간이 되면 등록된 기기 모두에 보낸다.
+  // 이 기기는 (1) 알림 목록을 올리고(scheduleUpload) (2) 이 기기를 받는 곳으로 등록(enableThisDevice)한다.
+  // 설정 키: pushKey(동기화 — 매장 공용 열쇠) / pushDevice·pushLastHash·pushVapid (이 기기만, 백업·동기화 제외)
+  // 알림 글에는 반려견 이름·시간·서비스만 — 보호자 이름·전화는 절대 넣지 않는다 (잠금 화면에 보인다)
+  PUSH_URL: 'https://petsalon-push.a01090037052.workers.dev',
+  Push: {
+    _timer: null,
+    _onlineWait: false,
+    supported() {
+      return typeof navigator !== 'undefined' && 'serviceWorker' in navigator &&
+        typeof window !== 'undefined' && 'PushManager' in window && 'Notification' in window;
+    },
+    titleFor(minutes) {
+      const m = Number(minutes) || 30;
+      if (m < 60) return `${m}분 뒤 예약`;
+      return m % 60 === 0 ? `${m / 60}시간 뒤 예약` : `${Math.floor(m / 60)}시간 ${m % 60}분 뒤 예약`;
+    },
+    // 순수 함수 (테스트) — 오늘~14일 뒤 예약 → 서버에 올릴 알림 목록
+    //  serviceMap: { id: 이름 } (없으면 예약에 저장된 serviceNames)
+    buildJobs(appointments, petsById, serviceMap, minutes, nowMs) {
+      const min = Number(minutes) || 30;
+      const now = Number(nowMs) || Date.now();
+      const today = App.formatLocalDate(new Date(now));
+      const endD = new Date(now); endD.setDate(endD.getDate() + 14);
+      const end = App.formatLocalDate(endD);
+      const jobs = [];
+      for (const a of (appointments || [])) {
+        if (!a || !a.date || !a.time) continue;
+        if (['cancelled', 'completed', 'noshow', 'no_show'].includes(a.status)) continue;
+        if (a.date < today || a.date > end) continue;
+        const [y, mo, d] = String(a.date).split('-').map(Number);
+        const [hh, mm] = String(a.time).split(':').map(Number);
+        if (!y || !mo || !d || isNaN(hh)) continue;
+        const at = new Date(y, mo - 1, d, hh, mm || 0, 0, 0).getTime() - min * 60000;
+        if (at < now - 15 * 60000) continue;
+        const pet = petsById && (petsById[a.petId] || petsById[Number(a.petId)]);
+        const ids = Array.isArray(a.serviceIds) ? a.serviceIds : [];
+        const saved = Array.isArray(a.serviceNames) ? a.serviceNames : [];
+        const svc = (ids.length ? ids.map((id, i) => (serviceMap && (serviceMap[id] || serviceMap[Number(id)])) || saved[i]) : saved)
+          .filter(Boolean).join(', ');
+        jobs.push({
+          at,
+          tag: `appt-${a.id}-${a.date}-${a.time}-${min}`,
+          title: this.titleFor(min),
+          body: `${a.time} ${(pet && pet.name) || '반려견'}` + (svc ? ' · ' + svc : ''),
+          url: './#appointments'
+        });
       }
-      // 효율적 쿼리: 오늘 날짜의 예약만 인덱스로 조회
-      const appointments = await DB.getByIndex('appointments', 'date', today);
-
-      for (const appt of appointments) {
-        if (!appt.time) continue;
-        if (appt.status === 'cancelled' || appt.status === 'completed') continue;
-
-        // 알림 키 (중복 방지)
-        const key = `${appt.id}-${appt.date}-${appt.time}`;
-        if (this._notifiedAppts.has(key)) continue;
-
-        // 예약 시간 계산
-        const [h, m] = appt.time.split(':').map(Number);
-        const apptTime = new Date(now);
-        apptTime.setHours(h, m, 0, 0);
-
-        const diffMs = apptTime.getTime() - now.getTime();
-        const diffMin = diffMs / (1000 * 60);
-
-        // 설정된 시간 전~예약 시간 사이에 알림
-        if (diffMin > 0 && diffMin <= minutes) {
-          this._notifiedAppts.add(key);
-
-          // 반려견 이름만 조회 — 잠금 화면 알림에 고객 이름(개인정보)이 보이지 않게 한다
-          let petName = '반려견';
-          try {
-            const pet = await DB.get('pets', appt.petId);
-            if (pet) petName = pet.name;
-          } catch (e) { /* ignore */ }
-
-          const minLeft = Math.round(diffMin);
-          const notifOpts = {
-            body: `${minLeft}분 후 예약: ${petName} (${appt.time})`,
-            icon: './icon-192.png',
-            tag: key
-          };
-          // 안드로이드 크롬은 new Notification() 을 허용하지 않는다("Illegal constructor") → SW 알림 우선
-          try {
-            // ready 는 SW 가 없으면 영원히 대기하므로 getRegistration() 으로 즉시 확인
-            const reg = navigator.serviceWorker && navigator.serviceWorker.getRegistration ? await navigator.serviceWorker.getRegistration() : null;
-            if (reg && reg.active && reg.showNotification) await reg.showNotification('예약 알림 - 펫살롱', notifOpts);
-            else new Notification('예약 알림 - 펫살롱', notifOpts);
-          } catch (ne) {
-            try { new Notification('예약 알림 - 펫살롱', notifOpts); } catch (_) { /* 알림 불가 환경 */ }
+      jobs.sort((x, y) => x.at - y.at);
+      return jobs.slice(0, 300);
+    },
+    _hash(str) { // 짧은 지문 (같은 목록이면 다시 안 올린다)
+      let h = 5381;
+      for (let i = 0; i < str.length; i++) h = ((h * 33) ^ str.charCodeAt(i)) >>> 0;
+      return h.toString(36) + ':' + str.length;
+    },
+    async _fetch(path, body, key) {
+      const headers = { 'Content-Type': 'application/json' };
+      if (key) headers['X-Push-Key'] = key;
+      const res = await fetch(App.PUSH_URL + path, body === undefined ? { headers } : { method: 'POST', headers, body: JSON.stringify(body) });
+      let json = null;
+      try { json = await res.json(); } catch (_) {}
+      return { ok: res.ok, status: res.status, json };
+    },
+    // 예약·반려견·알림 시간이 바뀌면 부른다 (여러 번 불러도 3초 모아서 한 번)
+    scheduleUpload(force = false) {
+      try {
+        clearTimeout(this._timer);
+        this._timer = setTimeout(() => { this._upload(force).catch(() => {}); }, force ? 0 : 3000);
+      } catch (_) {}
+    },
+    async _upload(force) {
+      try {
+        const key = await DB.getSetting('pushKey');
+        if (!key) return;
+        if (typeof navigator !== 'undefined' && navigator.onLine === false) {
+          if (!this._onlineWait) {
+            this._onlineWait = true;
+            window.addEventListener('online', () => { this._onlineWait = false; this.scheduleUpload(); }, { once: true });
           }
+          return;
         }
+        const now = Date.now();
+        const today = App.formatLocalDate(new Date(now));
+        const endD = new Date(now); endD.setDate(endD.getDate() + 14);
+        const [appts, pets, services, minutes] = await Promise.all([
+          DB.getByDateRange('appointments', 'date', today, App.formatLocalDate(endD)),
+          DB.getAllLight('pets', ['photo', 'photoThumb', 'preferredStyle']),
+          DB.getAll('services'),
+          DB.getSetting('notifMinutes')
+        ]);
+        const petsById = {}; (pets || []).forEach(p => { petsById[p.id] = p; });
+        const serviceMap = {}; (services || []).forEach(sv => { serviceMap[sv.id] = sv.name; });
+        const jobs = this.buildJobs(appts, petsById, serviceMap, Number(minutes) || 30, now);
+        const hash = this._hash(JSON.stringify(jobs.map(j => [j.at, j.tag, j.body])));
+        const last = await DB.getSetting('pushLastHash');
+        // 같은 목록이면 건너뛴다 — 단 12시간마다는 다시 올린다 (서버가 지난 알림을 지우므로)
+        if (!force && last && last.hash === hash && now - (last.at || 0) < 12 * 3600000) return;
+        const r = await this._fetch('/schedule', { jobs }, key);
+        if (r.ok) await DB.setSetting('pushLastHash', { hash, at: now, count: jobs.length });
+      } catch (e) { console.warn('예약 알림 목록 올리기 실패 (다음에 다시):', e); }
+    },
+    _b64urlToBytes(b64) {
+      const s = String(b64).replace(/-/g, '+').replace(/_/g, '/');
+      return Uint8Array.from(atob(s + '==='.slice((s.length + 3) % 4)), c => c.charCodeAt(0));
+    },
+    _newKey() {
+      const b = new Uint8Array(32);
+      crypto.getRandomValues(b);
+      return btoa(String.fromCharCode(...b)).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+    },
+    _label() {
+      const ua = navigator.userAgent || '';
+      if (/iPhone/.test(ua)) return '아이폰';
+      if (/iPad/.test(ua) || (navigator.maxTouchPoints > 1 && /Macintosh/.test(ua))) return '아이패드';
+      if (/Android/.test(ua)) return /Mobile/.test(ua) ? '안드로이드 폰' : '안드로이드 태블릿';
+      return '컴퓨터';
+    },
+    async _subscribe(vapid, renew) {
+      const reg = await navigator.serviceWorker.ready;
+      let sub = await reg.pushManager.getSubscription();
+      if (sub && renew) { try { await sub.unsubscribe(); } catch (_) {} sub = null; }
+      if (!sub) sub = await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: this._b64urlToBytes(vapid) });
+      return sub;
+    },
+    // 앱 시작·다시 보일 때: 이 기기가 받는 중이면 구독이 살아 있는지 확인하고, 없으면 조용히 다시 등록
+    async ensureDevice() {
+      try {
+        if (!this.supported()) return;
+        const marker = await DB.getSetting('pushDevice');
+        if (!marker) return;
+        if (Notification.permission !== 'granted') { await DB.setSetting('pushDevice', null); return; } // 권한을 껐다
+        const key = await DB.getSetting('pushKey');
+        if (!key || navigator.onLine === false) return;
+        const reg = await navigator.serviceWorker.ready;
+        const sub = await reg.pushManager.getSubscription();
+        const st = await this._fetch('/status');
+        const vapid = st.json && st.json.vapid;
+        if (!vapid) return;
+        const storedVapid = await DB.getSetting('pushVapid');
+        if (sub && storedVapid === vapid) return;
+        const fresh = await this._subscribe(vapid, !!sub);
+        const r = await this._fetch('/register', { subscription: fresh.toJSON(), label: this._label() }, key);
+        if (r.ok) {
+          await DB.setSetting('pushVapid', vapid);
+          await DB.setSetting('pushDevice', { endpoint: fresh.endpoint, label: this._label(), at: Date.now() });
+        }
+      } catch (e) { console.warn('알림 기기 확인 실패 (무시):', e); }
+    },
+    // 반드시 버튼 누름에서 바로 부른다 — 아이폰은 사용자가 누른 직후에만 알림 권한을 물을 수 있다
+    // 반환: { ok, message }
+    async enableThisDevice() {
+      if (!this.supported()) return { ok: false, message: '이 기기에서는 쓸 수 없어요. 아이폰은 홈 화면에 추가한 앱에서만 됩니다(iOS 16.4 이상).' };
+      let perm;
+      try { perm = Notification.permission === 'granted' ? 'granted' : await Notification.requestPermission(); } catch (_) { perm = 'denied'; }
+      if (perm !== 'granted') return { ok: false, message: '알림 권한이 꺼져 있어요. 아이폰 설정 › 알림 › 펫살롱에서 허용해 주세요.' };
+      try {
+        let key = await DB.getSetting('pushKey');
+        if (!key) { key = this._newKey(); await DB.setSetting('pushKey', key); }
+        const st = await this._fetch('/status');
+        const vapid = st.json && st.json.vapid;
+        if (!vapid) return { ok: false, message: '알림 서버에 연결하지 못했어요. 인터넷 연결을 확인해 주세요.' };
+        const storedVapid = await DB.getSetting('pushVapid');
+        const sub = await this._subscribe(vapid, !!storedVapid && storedVapid !== vapid);
+        const r = await this._fetch('/register', { subscription: sub.toJSON(), label: this._label() }, key);
+        if (r.status === 401) return { ok: false, message: '다른 기기에서 만든 알림 열쇠와 맞지 않아요. 동기화가 끝난 뒤 다시 눌러 주세요.' };
+        if (!r.ok) return { ok: false, message: '기기 등록에 실패했어요 (' + r.status + '). 잠시 뒤 다시 눌러 주세요.' };
+        await DB.setSetting('pushVapid', vapid);
+        await DB.setSetting('pushDevice', { endpoint: sub.endpoint, label: this._label(), at: Date.now() });
+        this.scheduleUpload(true);
+        return { ok: true, message: '이 기기에서 예약 알림을 받아요.' };
+      } catch (e) {
+        return { ok: false, message: '켜는 중 오류: ' + (e && e.message ? e.message : e) };
       }
-    } catch (e) {
-      // 알림 체크 오류 무시
+    },
+    async disableThisDevice() {
+      try {
+        const key = await DB.getSetting('pushKey');
+        let endpoint = null;
+        if (this.supported()) {
+          const reg = await navigator.serviceWorker.ready;
+          const sub = await reg.pushManager.getSubscription();
+          if (sub) { endpoint = sub.endpoint; try { await sub.unsubscribe(); } catch (_) {} }
+        }
+        if (!endpoint) endpoint = ((await DB.getSetting('pushDevice')) || {}).endpoint || null;
+        if (key && endpoint) { try { await this._fetch('/unregister', { endpoint }, key); } catch (_) {} }
+      } catch (e) { console.warn('알림 끄기 오류 (무시):', e); }
+      await DB.setSetting('pushDevice', null);
+      await DB.setSetting('pushVapid', null);
+      return { ok: true, message: '이 기기 알림을 껐어요.' };
+    },
+    async sendTest() {
+      try {
+        const key = await DB.getSetting('pushKey');
+        const reg = this.supported() ? await navigator.serviceWorker.ready : null;
+        const sub = reg ? await reg.pushManager.getSubscription() : null;
+        if (!key || !sub) return { ok: false, message: '이 기기 알림이 꺼져 있어요. 먼저 [이 기기에서 알림 받기]를 눌러 주세요.' };
+        const r = await this._fetch('/test', { endpoint: sub.endpoint }, key);
+        return r.ok ? { ok: true, message: '시험 알림을 보냈어요. 몇 초 안에 와야 해요 (앱을 닫아 두어도 와요).' }
+          : { ok: false, message: '시험 알림 보내기 실패 (' + r.status + ')' };
+      } catch (e) { return { ok: false, message: '시험 중 오류: ' + (e && e.message ? e.message : e) }; }
+    },
+    // 설정 화면 한 줄용: { supported, on, devices, lastSent }
+    async status() {
+      const out = { supported: this.supported(), on: false, devices: null, lastSent: null };
+      try {
+        const marker = await DB.getSetting('pushDevice');
+        out.on = !!marker && out.supported && Notification.permission === 'granted';
+        const key = await DB.getSetting('pushKey');
+        if (key && navigator.onLine !== false) {
+          const r = await this._fetch('/status', undefined, key);
+          if (r.ok && r.json) { out.devices = r.json.devices ?? null; out.lastSent = r.json.lastSent || null; }
+        }
+      } catch (_) {}
+      return out;
+    },
+    // DB 훅: 이 기기에서 쓴 것 중 알림에 영향 주는 것만
+    onLocalWrite(storeName, id, data) {
+      if (storeName === 'appointments' || storeName === 'pets') this.scheduleUpload();
+      else if (storeName === 'settings' && ((data && data.key) || id) === 'notifMinutes') this.scheduleUpload();
     }
   },
 

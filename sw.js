@@ -1,4 +1,4 @@
-const CACHE_NAME = 'petsalon-offline-v189';
+const CACHE_NAME = 'petsalon-offline-v190';
 const FONT_CACHE = 'petsalon-fonts-v1';
 const ASSETS = [
   './',
@@ -199,12 +199,21 @@ self.addEventListener('push', (e) => {
   }));
 });
 
-// 알림을 누르면 앱을 연다 (열린 창이 있으면 그 창으로)
+// 알림을 누르면 앱을 연다 — 열린 창이 있으면 그 창을 앞으로 가져와 알림의 주소(url, 기본 예약 화면)로 옮긴다
 self.addEventListener('notificationclick', (e) => {
   e.notification.close();
+  const url = new URL((e.notification.data && e.notification.data.url) || './#appointments', self.registration.scope).href;
   e.waitUntil((async () => {
     const all = await self.clients.matchAll({ type: 'window', includeUncontrolled: true });
-    for (const c of all) { if ('focus' in c) { try { await c.focus(); return; } catch (_) {} } }
-    if (self.clients.openWindow) await self.clients.openWindow('./#appointments');
+    for (const c of all) {
+      if (!('focus' in c)) continue;
+      try {
+        const focused = await c.focus();
+        const target = focused || c;
+        if (target.url !== url && 'navigate' in target) { try { await target.navigate(url); } catch (_) {} }
+        return;
+      } catch (_) {}
+    }
+    if (self.clients.openWindow) await self.clients.openWindow(url);
   })());
 });

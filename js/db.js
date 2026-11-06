@@ -27,6 +27,8 @@ const DB = {
   // 동기화 훅 — Sync 가 없거나 꺼져 있으면 아무것도 하지 않는다. 절대 throw 하지 않는다.
   _syncHook(storeName, op, id, data) {
     try { if (typeof Sync !== 'undefined' && Sync.onLocalWrite) Sync.onLocalWrite(storeName, op, id, data); } catch (e) { console.warn('sync hook error:', e); }
+    // 예약 알림 목록 다시 올리기 (예약·반려견·알림 시간이 바뀌었을 때만 — 3초 모아서)
+    try { if (typeof App !== 'undefined' && App.Push && App.Push.onLocalWrite) App.Push.onLocalWrite(storeName, id, data); } catch (e) { console.warn('push hook error:', e); }
   },
 
   async init() {
@@ -664,7 +666,9 @@ const DB = {
   // 'sync'(동기화 연결 정보: 기기 id·기기 번호·마지막 받은 시각) 와 '_sync*' 도 기기 전용이다.
   _isInternalSetting(key) {
     // security(잠금 비밀번호): 옛 백업을 복원하면 옛 비밀번호로 바뀌어 잠길 수 있어 백업·복원에서 뺀다
-    return typeof key === 'string' && (key.startsWith('_autoBackup') || key.startsWith('_sync') || key === 'sync' || key === 'security');
+    // pushDevice·pushLastHash·pushVapid: 이 기기의 알림 등록 표시 — 다른 기기 백업을 복원해도 옮겨 오지 않는다 (pushKey 는 매장 공용이라 포함)
+    return typeof key === 'string' && (key.startsWith('_autoBackup') || key.startsWith('_sync') || key === 'sync' || key === 'security' ||
+      key === 'pushDevice' || key === 'pushLastHash' || key === 'pushVapid');
   },
 
   validateBackup(data) {

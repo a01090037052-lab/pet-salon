@@ -37,7 +37,6 @@ App.pages.settings = {
     const revisitDays = await DB.getSetting('revisitDays') || 30;
     const groomers = await DB.getSetting('groomers') || [];
 
-    const notifEnabled = await DB.getSetting('notifEnabled');
     const notifMinutes = await DB.getSetting('notifMinutes');
     const closedDays = await DB.getSetting('closedDays') || [];
     const themeColor = await DB.getSetting('themeColor') || '#6366F1';
@@ -248,26 +247,18 @@ App.pages.settings = {
               <span class="card-title">${App.icon('bell')} 알림 설정</span>
             </div>
             <div class="card-body">
-              <div class="form-group">
-                <label class="checkbox-label">
-                  <input type="checkbox" id="s-notifEnabled" ${notifEnabled ? 'checked' : ''}>
-                  예약 알림 활성화
-                </label>
-                <div class="form-hint">예약 전에 알림을 띄웁니다. <strong>앱이 열려 있을 때만 알림이 와요(아이폰)</strong> — 앱을 닫으면 오지 않아요. 알림에는 반려견 이름과 시간만 보여요.</div>
+              <!-- 예약 알림 (Web Push) — 상태 줄·버튼은 init 에서 채운다 (누르면 바로 반영, 저장 버튼과 무관) -->
+              <div class="form-group" id="push-card">
+                <div id="push-status" class="push-status">알림 상태 확인 중…</div>
+                <div id="push-actions" class="push-actions"></div>
+                <div class="form-hint" id="push-msg">앱을 닫아도 와요. 아이폰은 홈 화면에 추가한 앱에서만 됩니다(iOS 16.4 이상). 알림에는 반려견 이름·시간·서비스만 보여요.</div>
               </div>
               <div class="form-group">
                 <label class="form-label">알림 시간</label>
                 <select id="s-notifMinutes">
-                  <option value="10" ${notifMinutes == 10 ? 'selected' : ''}>10분 전</option>
-                  <option value="30" ${notifMinutes == 30 || !notifMinutes ? 'selected' : ''}>30분 전</option>
-                  <option value="60" ${notifMinutes == 60 ? 'selected' : ''}>1시간 전</option>
-                  <option value="120" ${notifMinutes == 120 ? 'selected' : ''}>2시간 전</option>
+                  ${[[5,'5분 전'],[10,'10분 전'],[15,'15분 전'],[20,'20분 전'],[30,'30분 전'],[45,'45분 전'],[60,'1시간 전'],[90,'1시간 30분 전'],[120,'2시간 전'],[180,'3시간 전']]
+                    .map(([v, t]) => `<option value="${v}" ${(Number(notifMinutes) || 30) === v ? 'selected' : ''}>${t}</option>`).join('')}
                 </select>
-              </div>
-              <!-- 푸시 알림 시험 (임시 — 시험이 끝나면 지우거나 정식 기능으로 바꾼다) -->
-              <div class="form-group">
-                <button type="button" class="btn btn-secondary btn-sm" id="btn-push-test">앱 닫아도 오는 알림 시험</button>
-                <div class="form-hint" id="push-test-msg">시험 중인 기능이에요. 누른 뒤 앱을 완전히 닫고 1~2분 기다려 보세요. 손님 정보는 보내지 않아요.</div>
               </div>
             </div>
           </div>
@@ -998,35 +989,43 @@ App.pages.settings = {
     }
   },
 
-  // 푸시 알림 시험 (임시). 시험 서버는 정해진 시험 문구만 보낸다 — 손님 정보는 보내지 않는다.
-  _PUSH_TEST_URL: 'https://petsalon-push-test.a01090037052.workers.dev',
-  async _runPushTest() {
-    const msg = document.getElementById('push-test-msg');
-    const btn = document.getElementById('btn-push-test');
-    const say = (t) => { if (msg) msg.textContent = t; };
-    try {
-      if (!('serviceWorker' in navigator) || !('PushManager' in window) || !('Notification' in window)) {
-        say('이 기기에서는 푸시 알림을 쓸 수 없어요. 아이폰은 홈 화면에 추가한 앱에서만 됩니다(iOS 16.4 이상).');
-        return;
-      }
-      btn.disabled = true;
-      const perm = Notification.permission === 'granted' ? 'granted' : await Notification.requestPermission();
-      if (perm !== 'granted') { say('알림 권한이 꺼져 있어요. 아이폰 설정 › 알림에서 이 앱을 허용해 주세요.'); return; }
-      const st = await (await fetch(this._PUSH_TEST_URL + '/status')).json();
-      const reg = await navigator.serviceWorker.ready;
-      const key = Uint8Array.from(atob(st.vapid.replace(/-/g, '+').replace(/_/g, '/') + '==='.slice((st.vapid.length + 3) % 4)), c => c.charCodeAt(0));
-      let sub = await reg.pushManager.getSubscription();
-      if (!sub) sub = await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: key });
-      const r1 = await fetch(this._PUSH_TEST_URL + '/subscribe', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ subscription: sub.toJSON() }) });
-      if (!r1.ok) { say('구독 등록 실패 (' + r1.status + ')'); return; }
-      const r2 = await fetch(this._PUSH_TEST_URL + '/test?delay=90', { method: 'POST' });
-      if (!r2.ok) { say(r2.status === 429 ? '이미 기다리는 시험 알림이 있어요. 잠시 뒤 다시 눌러 주세요.' : '시험 예약 실패 (' + r2.status + ')'); return; }
-      say('준비됐어요. 지금 앱을 완전히 닫고(위로 쓸어 올리기) 2~3분 안에 "펫살롱 시험 알림"이 오는지 봐 주세요.');
-    } catch (e) {
-      say('시험 중 오류: ' + (e && e.message ? e.message : e));
-    } finally {
-      if (btn) btn.disabled = false;
+  // ========== 예약 알림 카드 (Web Push) ==========
+  // 상태 줄: '이 기기: 알림 받는 중 · 등록된 기기 2대 · 마지막 알림 오늘 13:30'
+  async renderPushCard(msg) {
+    const st = document.getElementById('push-status');
+    const act = document.getElementById('push-actions');
+    if (!st || !act) return;
+    const say = (t) => { const m = document.getElementById('push-msg'); if (m && t) m.textContent = t; };
+    if (!App.Push.supported()) {
+      st.textContent = '이 기기에서는 예약 알림을 쓸 수 없어요.';
+      act.innerHTML = '';
+      say('아이폰은 사파리에서 [공유 › 홈 화면에 추가]로 만든 앱에서만 됩니다(iOS 16.4 이상). 컴퓨터는 크롬·엣지에서 됩니다.');
+      return;
     }
+    const s = await App.Push.status();
+    if (!document.getElementById('push-status')) return; // 그새 다른 화면
+    const parts = ['이 기기: ' + (s.on ? '알림 받는 중' : '꺼짐')];
+    if (s.devices != null) parts.push('등록된 기기 ' + s.devices + '대');
+    if (s.lastSent && s.lastSent.at) {
+      const d = new Date(s.lastSent.at);
+      const day = App.formatLocalDate(d) === App.getToday() ? '오늘' : (d.getMonth() + 1) + '/' + d.getDate();
+      parts.push('마지막 알림 ' + day + ' ' + String(d.getHours()).padStart(2, '0') + ':' + String(d.getMinutes()).padStart(2, '0'));
+    }
+    st.textContent = parts.join(' · ');
+    act.innerHTML = s.on
+      ? `<button type="button" class="btn btn-secondary btn-sm" id="btn-push-off">이 기기 알림 끄기</button>
+         <button type="button" class="btn btn-secondary btn-sm" id="btn-push-test">시험 알림 보내기</button>`
+      : `<button type="button" class="btn btn-primary btn-sm" id="btn-push-on">${App.icon('bell')} 이 기기에서 알림 받기</button>`;
+    if (msg) say(msg);
+    const run = async (btn, fn) => {
+      btn.disabled = true;
+      try { const r = await fn(); say(r && r.message); if (r && !r.ok) App.showToast(r.message, 'warning'); }
+      finally { btn.disabled = false; this.renderPushCard(); }
+    };
+    // 켜기: 아이폰은 누른 직후에만 권한을 물을 수 있다 — 클릭 처리 안에서 바로 enableThisDevice 를 부른다 (그 앞에 다른 await 없음)
+    document.getElementById('btn-push-on')?.addEventListener('click', (e) => run(e.currentTarget, () => App.Push.enableThisDevice()));
+    document.getElementById('btn-push-off')?.addEventListener('click', (e) => run(e.currentTarget, () => App.Push.disableThisDevice()));
+    document.getElementById('btn-push-test')?.addEventListener('click', (e) => run(e.currentTarget, () => App.Push.sendTest()));
   },
 
   async init() {
@@ -1177,18 +1176,9 @@ App.pages.settings = {
 
     // Tab 2: 운영 설정 전체 저장
     const saveOperation = async () => {
-      // 알림 설정
-      const enabled = document.getElementById('s-notifEnabled').checked;
+      // 알림 시간 — 저장하면 DB 훅이 알림 목록을 다시 올린다 (App.Push.onLocalWrite)
       const minutes = Number(document.getElementById('s-notifMinutes').value) || 30;
-      await DB.setSetting('notifEnabled', enabled);
       await DB.setSetting('notifMinutes', minutes);
-      if (enabled && 'Notification' in window && Notification.permission === 'default') {
-        const perm = await Notification.requestPermission();
-        if (perm !== 'granted') {
-          App.showToast('브라우저 알림 권한이 거부되었습니다. 브라우저 설정에서 허용해주세요.', 'warning');
-        }
-      }
-      App.setupNotificationChecker();
       // 메시지 템플릿 (입력하면 자동 저장되지만, 이 버튼으로도 한 번 더 저장)
       await this._saveSmsTemplates();
       // 매출 목표
@@ -1211,7 +1201,7 @@ App.pages.settings = {
       return true;
     };
     document.getElementById('btn-save-tab-operation')?.addEventListener('click', () => saveOperation());
-    document.getElementById('btn-push-test')?.addEventListener('click', () => this._runPushTest());
+    this.renderPushCard();
     this._tabSavers = { shop: saveShop, operation: saveOperation };
 
     // Reset templates to defaults
@@ -1419,7 +1409,7 @@ App.pages.settings = {
   // 문자 템플릿(tpl-*)은 입력하면 자동 저장된다.
   _UNSAVED_FIELDS: {
     shop: ['s-shopName', 's-shopPhone', 's-shopAddress', 's-shopReviewLink', 's-revisitDays'],
-    operation: ['s-notifEnabled', 's-notifMinutes', 's-monthlyGoal', 's-fixedCost']
+    operation: ['s-notifMinutes', 's-monthlyGoal', 's-fixedCost']
   },
   _UNSAVED_TAB_LABELS: { shop: '매장 관리', operation: '운영 설정' },
 
