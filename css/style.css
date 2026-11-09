@@ -3823,6 +3823,12 @@ body { line-height: 1.5; font-variant-numeric: tabular-nums; }
 .prepaid-amt { flex-shrink: 0; font-size: max(0.9rem, 13px); }
 .prepaid-amt.neg { color: var(--text-secondary); }
 .prepaid-preview { margin-top: 4px; padding: 10px 12px; background: var(--bg); border-radius: var(--radius); font-size: max(0.9rem, 13px); display: flex; justify-content: space-between; }
+/* 고객 화면 [보호자별 | 반려견별] 탭 (1.08) */
+.people-tabs { display: flex; gap: 4px; padding: 4px; margin: 0 0 12px; background: var(--bg-white); border-radius: var(--radius-lg); box-shadow: var(--shadow-xs); }
+.people-tab { flex: 1; display: inline-flex; align-items: center; justify-content: center; gap: 6px; min-height: 44px; border-radius: var(--radius); font-weight: 700; font-size: max(0.9rem, 14px); color: var(--text-secondary); text-decoration: none; }
+.people-tab .ico { width: 16px; height: 16px; }
+.people-tab.active { background: var(--primary); color: #fff; }
+@media (min-width: 769px) { .people-tabs { max-width: 360px; } }
 /* 입력 칸 안 지우기(×) — 서비스 칸 (1.08). .form-group 은 이미 position:relative */
 input.has-clear { padding-right: 44px; }
 .input-clear { position: absolute; right: 6px; top: 30px; width: 36px; height: 36px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 1.3rem; line-height: 1; color: var(--text-muted); background: var(--bg); z-index: 2; }

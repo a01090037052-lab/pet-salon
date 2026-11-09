@@ -198,7 +198,26 @@ const App = {
     });
   },
 
+  // 고객 화면 위 [보호자별 | 반려견별] 탭 (1.08). 마지막에 본 쪽을 기억해 아래 '고객' 메뉴가 그쪽으로 연다
+  peopleTabsHtml(active) {
+    try { localStorage.setItem('peopleTab', active); } catch (_) {}
+    const tab = (key, href, label) => `<a href="${href}" class="people-tab${active === key ? ' active' : ''}" role="tab" aria-selected="${active === key}">${label}</a>`;
+    return `<div class="people-tabs" role="tablist" aria-label="목록 보기">${tab('customers', '#customers', `${this.icon('user')} 보호자별`)}${tab('pets', '#pets', `${this.icon('paw')} 반려견별`)}</div>`;
+  },
+
   setupBottomNav() {
+    // 아래 '고객' 메뉴: 마지막에 본 목록(보호자별·반려견별)으로
+    const peopleNav = document.querySelector('.bottom-nav-item[data-page="customers"]');
+    document.querySelector('.nav-link[data-page="customers"]')?.addEventListener('click', (e) => {
+      let last = null;
+      try { last = localStorage.getItem('peopleTab'); } catch (_) {}
+      if (last === 'pets' && location.hash !== '#pets') { e.preventDefault(); location.hash = '#pets'; }
+    });
+    peopleNav?.addEventListener('click', (e) => {
+      let last = null;
+      try { last = localStorage.getItem('peopleTab'); } catch (_) {}
+      if (last === 'pets' && location.hash !== '#pets') { e.preventDefault(); location.hash = '#pets'; }
+    });
     document.querySelectorAll('.bottom-nav-item[data-page]').forEach(item => {
       item.addEventListener('click', () => {
         document.querySelectorAll('.bottom-nav-item').forEach(i => i.classList.remove('active'));
@@ -605,7 +624,8 @@ const App = {
     this.currentPage = page;
 
     document.querySelectorAll('.nav-link').forEach(link => {
-      link.classList.toggle('active', link.dataset.page === page);
+      const also = (link.dataset.also || '').split(' ');
+      link.classList.toggle('active', link.dataset.page === page || also.includes(page)); // 고객 관리는 반려견 목록(탭)에서도 켜 둔다
     });
     // Sync bottom nav
     // 고객 탭은 반려견 상세에서도, 더보기는 그 안의 화면(매출·분석·설정 등)에서도 켜 둔다

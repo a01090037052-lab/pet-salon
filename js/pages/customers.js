@@ -81,10 +81,10 @@ App.pages.customers = {
           <p class="page-subtitle" id="customer-total-label" data-total="${customers.length}">총 ${customers.length}명의 고객</p>
         </div>
         <div class="page-actions">
-          <a href="#pets" class="btn btn-secondary">${App.icon('paw')} 반려견 목록</a>
           <button class="btn btn-primary" id="btn-add-customer">+ 새 고객(반려견)</button>
         </div>
       </div>
+      ${App.peopleTabsHtml('customers')}
       <div class="filter-bar">
         <div class="search-box" style="max-width:none;position:relative">
           <span class="search-icon">${App.icon('search')}</span>

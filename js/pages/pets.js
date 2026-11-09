@@ -51,7 +51,7 @@ App.pages.pets = {
     container.innerHTML = `
       <div class="page-header">
         <div>
-          <h1 class="page-title">반려견 관리</h1>
+          <h1 class="page-title">고객 관리</h1>
           <p class="page-subtitle">
             총 ${pets.length}마리${inactiveCount > 0 ? ` <a href="#" id="pet-toggle-inactive" style="color:var(--primary);text-decoration:underline;font-size:0.93rem;margin-left:4px">${showInactive ? '비활성 숨기기' : `비활성 ${inactiveCount}마리 보기`}</a>` : ''}
           </p>
@@ -63,6 +63,7 @@ App.pages.pets = {
           <button class="btn btn-primary" id="btn-add-pet">+ 등록</button>
         </div>
       </div>
+      ${App.peopleTabsHtml('pets')}
       <div class="search-box" style="margin-bottom:12px;max-width:none">
         <span class="search-icon">${App.icon('search')}</span>
         <input type="text" id="pet-search" placeholder="이름·견종·보호자·초성(ㅊㅋ)" style="width:100%">
@@ -593,7 +594,7 @@ App.pages.pets = {
         <div class="form-row three">
           <div class="form-group">
             <label class="form-label">몸무게 (kg)</label>
-            <input type="number" id="f-weight" value="${pet.weight || ''}" placeholder="예: 3.5" step="0.1" min="0">
+            <input type="number" id="f-weight" value="${pet.weight ? App.formatKg(pet.weight) : ''}" placeholder="예: 3.5" step="0.1" min="0">
           </div>
           <div class="form-group">
             <label class="form-label">성별</label>
@@ -788,7 +789,8 @@ App.pages.pets = {
       const customerId = presetCustomerId || Number(document.getElementById('pet-customer-select-value')?.value || document.getElementById('f-customerId')?.value);
       const name = document.getElementById('f-name').value.trim();
       const breed = App.normalizeBreed(document.getElementById('f-breed').value);
-      const weight = parseFloat(document.getElementById('f-weight').value) || null;
+      const weightRaw = parseFloat(document.getElementById('f-weight').value);
+      const weight = weightRaw > 0 ? Math.round(weightRaw * 10) / 10 : null; // 0.1kg 단위로 (기록 폼과 같게)
       const gender = document.getElementById('f-gender').value;
       // 나이: 사용자가 바꾸지 않았으면 기존 birthDate/birthYear 를 그대로 둔다
       // (예전엔 수정할 때마다 정확한 생일이 YYYY-01-01 로 덮어써졌고, 0살 강아지는 비어 버렸다)

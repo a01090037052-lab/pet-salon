@@ -67,7 +67,7 @@ App.pages.records = {
       if (!date) return '날짜 없음';
       if (date === todayStr) return '오늘';
       if (date === yesterdayStr) return '어제';
-      if (date >= weekAgoStr) return '이번 주';
+      if (date >= weekAgoStr) return '최근 7일'; // 지난 7일 (월요일 시작 '이번 주'가 아니다 — 월요일에 지난주 기록이 '이번 주'로 보였다)
       const [yy, mm] = date.split('-');
       return `${yy}년 ${Number(mm)}월`;
     };
@@ -2690,6 +2690,7 @@ App.pages.records = {
 
     App.showModal({
       title: '일일 정산표',
+      noAutoFocus: true, // 날짜 칸에 바로 포커스가 가면 아이폰에서 날짜 휠이 열자마자 올라왔다
       content,
       hideFooter: true
     });
