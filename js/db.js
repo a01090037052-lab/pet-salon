@@ -704,38 +704,92 @@ const DB = {
   // 예전엔 모든 사진을 base64 로 한 배열에 모은 뒤 JSON.stringify 해서 1~3GB 문자열이 생겨 아이폰이 멈췄다.
   // 사진은 한 장씩 base64 → JSON 조각 → Blob 으로 바꿔 두고 다음 장으로 넘어가므로, 문자열은 한 번에 한 장 분량만 남는다.
   // 결과 JSON 은 exportAll() 과 같은 모양이다 (복원 코드가 그대로 읽는다).
+  // 파일 모양 (v195~): 사진이 아닌 것 전부 → _exportDate·_version 등 → 맨 마지막에 "photos":[ 한 장에 한 줄 ]}
+  //   복원할 때 "photos":[ 앞까지만 읽어 JSON 으로 열고(사진 없는 백업과 같은 모양), 사진은 한 줄씩 읽어 넣는다 (readBackupFile).
+  //   그래서 400MB 백업도 폰 메모리에 한 번에 올리지 않는다. 전체는 여전히 올바른 JSON 이라 옛 방식(통째로 읽기)으로도 열린다.
   async exportAllBlob(options = {}) {
     const onProgress = options.onProgress || (() => {});
     const parts = ['{'];
     let first = true;
     const key = (k) => { const s = (first ? '' : ',') + JSON.stringify(k) + ':'; first = false; return s; };
     for (const storeName of Object.keys(this.stores)) {
-      if (this._localOnlyStores.includes(storeName)) continue;
-      if (storeName === 'photos') {
-        const ids = await this._photoIds();
-        parts.push(key(storeName) + '[');
-        let n = 0;
-        for (let i = 0; i < ids.length; i++) {
-          onProgress(i, ids.length);
-          let p = await this.get('photos', ids[i]);
-          if (!p) continue;
-          if (p.data instanceof Blob) p = { ...p, data: await this._blobToDataUrl(p.data) };
-          parts.push(new Blob([(n++ ? ',' : '') + JSON.stringify(p)]));
-          p = null;
-        }
-        onProgress(ids.length, ids.length);
-        parts.push(']');
-        continue;
-      }
+      if (this._localOnlyStores.includes(storeName) || storeName === 'photos') continue;
       let items = await this.getAll(storeName);
       if (storeName === 'settings') items = items.filter(item => !this._isInternalSetting(item.key));
       // 옛 기록엔 사진이 글자로 들어 있을 수 있다 — 한 건씩 문자열로 만들어 스토어마다 Blob 으로 묶는다
       parts.push(key(storeName) + '[', new Blob([items.map(it => JSON.stringify(it)).join(',')]), ']');
     }
+    const ids = await this._photoIds();
     parts.push(key('_exportDate') + JSON.stringify(new Date().toISOString()));
     parts.push(key('_version') + JSON.stringify(this.version));
-    parts.push(key('_excludePhotos') + 'false}');
+    parts.push(key('_excludePhotos') + 'false');
+    parts.push(key('_photosLast') + 'true');
+    parts.push(key('_photoCount') + String(ids.length));
+    parts.push(key('photos') + '[');
+    let n = 0;
+    for (let i = 0; i < ids.length; i++) {
+      onProgress(i, ids.length);
+      let p = await this.get('photos', ids[i]);
+      if (!p) continue;
+      if (p.data instanceof Blob) p = { ...p, data: await this._blobToDataUrl(p.data) };
+      parts.push(new Blob(['\n' + (n++ ? ',' : '') + JSON.stringify(p)]));
+      p = null;
+    }
+    onProgress(ids.length, ids.length);
+    parts.push('\n]}');
     return new Blob(parts, { type: 'application/json' });
+  },
+
+  // 백업 파일 열기 — 조각으로 읽는다. 돌려주는 값: { data, photoStream }
+  //   data: 사진을 뺀 백업(photos: []) — validateBackup·importAll 에 그대로 넘긴다
+  //   photoStream: 사진이 뒤에 붙은 새 파일이면 한 장씩 내어 주는 async 함수(끝나면 null), 아니면 null
+  // 옛 파일(사진이 중간에 있거나 _photosLast 없음)·작은 파일은 예전처럼 통째로 읽는다.
+  async readBackupFile(file) {
+    const MARK = '"photos":[';
+    const canStream = file && typeof file.stream === 'function' && typeof TextDecoder !== 'undefined';
+    if (!canStream) return { data: JSON.parse(await file.text()), photoStream: null };
+    const reader = file.stream().getReader();
+    const dec = new TextDecoder('utf-8');
+    let buf = '';
+    let done = false;
+    const pull = async () => {
+      if (done) return false;
+      const r = await reader.read();
+      if (r.done) { done = true; buf += dec.decode(); return false; }
+      buf += dec.decode(r.value, { stream: true });
+      return true;
+    };
+    // 1) "photos":[ 가 나올 때까지 읽는다 (사진이 아닌 데이터 — 수 MB)
+    let at = -1, from = 0;
+    // 새로 받은 부분만 찾는다 (앞부분을 매번 다시 훑으면 수 MB 머리글에서 느려진다)
+    while ((at = buf.indexOf(MARK, from)) === -1) { from = Math.max(0, buf.length - MARK.length); if (!(await pull())) break; }
+    if (at === -1) { reader.cancel && reader.cancel().catch(() => {}); return { data: JSON.parse(buf), photoStream: null }; }
+    const prefix = buf.slice(0, at);
+    if (!/"_photosLast"\s*:\s*true/.test(prefix)) {
+      // 옛 모양: 사진 뒤에 다른 데이터가 더 있다 → 통째로 읽는다
+      while (await pull()) { /* 끝까지 */ }
+      return { data: JSON.parse(buf), photoStream: null };
+    }
+    const data = JSON.parse(prefix + MARK + ']}');
+    buf = buf.slice(at + MARK.length);
+    // 2) 사진은 한 줄에 한 장 — 줄 단위로 내어 준다
+    let ended = false;
+    const next = async () => {
+      while (!ended) {
+        const nl = buf.indexOf('\n');
+        if (nl === -1) { if (!(await pull())) { ended = true; break; } continue; }
+        const line = buf.slice(0, nl).trim();
+        buf = buf.slice(nl + 1);
+        if (!line) continue;
+        if (line.startsWith(']')) { ended = true; break; }
+        return JSON.parse(line.startsWith(',') ? line.slice(1) : line);
+      }
+      // 마지막 줄(개행 없이 끝난 경우)
+      const tail = buf.trim(); buf = '';
+      if (tail && !tail.startsWith(']')) return JSON.parse(tail.startsWith(',') ? tail.slice(1) : tail);
+      return null;
+    };
+    return { data, photoStream: next };
   },
 
   // 백업 파일에 포함하지 않고, 복원 시에도 덮어쓰지 않는 기기 내부 설정 키
@@ -832,7 +886,8 @@ const DB = {
     // ⚠ 사진 보호: '사진 제외 백업'은 photos: [] 로 저장된다. 이를 복원 대상에 넣으면
     //   photos 스토어가 통째로 clear 되어 기기의 사진이 전부 사라진다 (되돌릴 수 없음).
     //   사진이 없는 백업은 기존 사진을 그대로 두고, 참조가 끊긴 사진은 무결성 점검이 정리한다.
-    const skipPhotos = data._excludePhotos === true || !Array.isArray(data.photos) || data.photos.length === 0;
+    const photoStream = typeof data._photoStream === 'function' ? data._photoStream : null; // readBackupFile 이 준 '한 장씩' 함수
+    const skipPhotos = !photoStream && (data._excludePhotos === true || !Array.isArray(data.photos) || data.photos.length === 0);
     const storeNames = Object.keys(data).filter(
       k => !k.startsWith('_') && this.stores[k] && Array.isArray(data[k]) && !(skipPhotos && k === 'photos') && !this._localOnlyStores.includes(k)
     ).sort((a, b) => (a === 'photos') - (b === 'photos')); // 사진은 맨 마지막 — 사진에서 실패해도 데이터는 다 들어가 있게
@@ -861,7 +916,7 @@ const DB = {
     }
 
     const CHUNK_SIZE = 500; // 사진 5만 장 + 트랜잭션 시간 초과 방지
-    const totalItems = storeNames.reduce((sum, s) => sum + (data[s] ? data[s].length : 0), 0);
+    const totalItems = storeNames.reduce((sum, s) => sum + (data[s] ? data[s].length : 0), 0) + (photoStream ? (Number(data._photoCount) || 0) : 0);
     let processed = 0;
 
     // 1c. ⚠ 인-플라이트 안전망 — 사진 외 데이터 snapshot (메모리 + localStorage)
@@ -911,8 +966,11 @@ const DB = {
       for (const storeName of storeNames) {
         curStore = storeName;
         const items = data[storeName];
-        for (let i = 0; i < items.length; i += CHUNK_SIZE) {
-          const chunk = items.slice(i, i + CHUNK_SIZE);
+        // 사진을 조각으로 읽는 파일: 한 번에 20장씩 받아 넣는다 (메모리에 한 묶음만)
+        const batches = (storeName === 'photos' && photoStream)
+          ? (async function* () { let b = []; let p; while ((p = await photoStream()) !== null) { b.push(p); if (b.length >= 20) { yield b; b = []; } } if (b.length) yield b; })()
+          : (function* () { for (let i = 0; i < items.length; i += CHUNK_SIZE) yield items.slice(i, i + CHUNK_SIZE); })();
+        for await (const chunk of batches) {
           await new Promise((resolve, reject) => {
             const tx = this.db.transaction(storeName, 'readwrite');
             const store = tx.objectStore(storeName);

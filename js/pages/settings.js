@@ -1294,10 +1294,10 @@ App.pages.settings = {
       // 이 단계 실패는 DB를 전혀 건드리지 않았다는 뜻이므로 '되돌리기'를 제안하면 안 된다.
       // (기존에는 단일 catch라서, 손상된 파일을 고른 것만으로 되돌리기를 제안하고
       //  사장님이 '예'를 누르면 수개월 전 자동 백업으로 전체가 덮어써졌다.)
-      let data;
+      let data, photoStream = null;
       try {
-        const text = await file.text();
-        data = JSON.parse(text);
+        // 조각으로 읽는다 — 사진 포함 큰 백업(수백 MB)도 폰 메모리에 한 번에 올리지 않는다 (DB.readBackupFile)
+        ({ data, photoStream } = await DB.readBackupFile(file));
       } catch (parseErr) {
         console.error('Import parse error:', parseErr);
         App.showToast('파일을 읽을 수 없습니다. 올바른 백업 JSON 파일인지 확인해주세요. (현재 데이터는 그대로입니다)', 'error');
@@ -1329,7 +1329,7 @@ App.pages.settings = {
           customers: (currentData.customers || []).length,
           records: (currentData.records || []).length,
           // 복원 파일에 사진이 들어 있으면 기기 사진이 통째로 교체된다 — 되돌려도 사진은 못 돌아온다
-          photosReplaced: !(data._excludePhotos === true || !Array.isArray(data.photos) || data.photos.length === 0)
+          photosReplaced: !!photoStream || !(data._excludePhotos === true || !Array.isArray(data.photos) || data.photos.length === 0)
         });
       } catch (backupErr) {
         console.warn('Auto-backup before import failed:', backupErr);
@@ -1342,6 +1342,7 @@ App.pages.settings = {
       // ===== 3단계: 실제 복원 =====
       // 여기서 실패한 경우에만 DB가 변경됐을 수 있으므로 되돌리기를 제안한다.
       try {
+        if (photoStream) data._photoStream = photoStream;
         await DB.importAll(data);
         // 구버전 백업엔 반려견 방문 통계가 없을 수 있다 → 즉시 재계산 (목록·분석이 이 값을 읽는다)
         if (App.migratePetVisitStats) await App.migratePetVisitStats(true);
