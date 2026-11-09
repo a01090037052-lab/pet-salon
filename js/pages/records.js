@@ -747,6 +747,7 @@ App.pages.records = {
     if (id && !record) { App.showToast('기록을 찾을 수 없습니다.', 'error'); App.closeModal(); return; }
 
     this._pendingPriceFill = null;
+    this._pendingAddonReprice = null;
     // 예약에서 넘어온 추가 항목의 메뉴 가격 (태그 data-price — 제거 시 정확히 빼기 위함)
     const prefillAddonPrices = {};
 
@@ -900,6 +901,16 @@ App.pages.records = {
           </div>
         </div>
         <div id="f-band-info" style="margin:-6px 0 12px;font-size:0.93rem;color:var(--text-secondary);line-height:1.4"></div>
+        <!-- 이 아이 가격 (1.08): 기본가를 직접 고쳤고 반려견이 있으면 '이 아이 가격으로 기억' — 다음부터 이 값이 먼저 들어간다 -->
+        <label id="f-pet-price-wrap" style="display:none;align-items:center;gap:6px;margin:-6px 0 12px;min-height:44px;font-size:0.93rem;cursor:pointer">
+          <input type="checkbox" id="f-pet-price-save" style="width:18px;height:18px">
+          <span id="f-pet-price-label">이 아이 가격으로 기억</span>
+        </label>
+        <!-- 스타일 (1.08): 메뉴의 '스타일 추가'를 칩으로. 누르면 추가 항목에 그 값이 붙는다. 스타일 메뉴가 없으면 안 보인다 -->
+        <div class="form-group" id="f-style-pick" style="display:none">
+          <label class="form-label">스타일 <span style="color:var(--text-muted);font-size:0.93rem;font-weight:400">(여러 개 가능)</span></label>
+          <div id="f-style-chips" style="display:flex;gap:6px;flex-wrap:wrap"></div>
+        </div>
         <!-- 서비스로 제공 (금액에서 빼기): 평소엔 작은 링크 하나. 누르면 기본가·추가 항목 토글이 보인다 -->
         <div id="f-comp-area" style="margin:-8px 0 12px">
           <button type="button" id="f-comp-reveal" style="background:none;border:none;padding:4px 0;color:var(--text-secondary);text-decoration:underline;cursor:pointer;font-size:0.93rem;min-height:44px${compList.length ? ';display:none' : ''}">서비스로 제공</button>
@@ -1032,7 +1043,7 @@ App.pages.records = {
         <div class="form-detail-section">
           <div id="f-weight-detail-slot"></div>
           <div class="form-group">
-            <label class="form-label">스타일 <span style="color:var(--text-muted);font-size:0.93rem">(선택)</span></label>
+            <label class="form-label">스타일 메모 <span style="color:var(--text-muted);font-size:0.93rem">(선택 — 위 스타일 칩을 고르면 자동으로 채워져요)</span></label>
             <input type="text" id="f-style" value="${App.escapeHtml(record.style || '')}" placeholder="예: 테디베어컷, 하이바+스포팅" autocomplete="off">
             <div class="search-select-dropdown" id="style-dropdown" style="position:absolute;z-index:10;background:var(--bg-white);border:1px solid var(--border);border-radius:var(--radius);box-shadow:var(--shadow);max-height:150px;overflow-y:auto;display:none;width:100%"></div>
           </div>
@@ -1246,12 +1257,12 @@ App.pages.records = {
     // 메뉴에 서비스가 있으면 메뉴 이름을 기본 제안으로 (미용 분류 먼저). 메뉴가 비었을 때만 고정 목록.
     const activeMenu = (await DB.getAll('services')).filter(s => s.isActive !== false && App.normalizeServiceName(s.name));
     // 주 서비스 목록에는 추가 옵션을 넣지 않는다 (추가 옵션은 아래 '추가 항목'으로)
-    const addonMenuNames = new Set(activeMenu.filter(s => s.category === 'addon').map(s => App.normalizeServiceName(s.name)));
+    const addonMenuNames = new Set(activeMenu.filter(s => s.category === 'addon' || s.category === 'style').map(s => App.normalizeServiceName(s.name)));
     const defaultServices = activeMenu.length > 0
       ? [...activeMenu.filter(s => (s.category || 'grooming') === 'grooming'), ...activeMenu.filter(s => s.category === 'care')].map(s => App.normalizeServiceName(s.name))
       : ['전체미용', '목욕', '위생미용', '부분미용', '클리퍼컷', '스포팅'];
     // 메뉴에 추가 옵션·단독 케어가 하나라도 있으면 고정 제안은 숨긴다 (메뉴에 없는 이름이 섞여 보이지 않게)
-    const defaultAddons = activeMenu.some(s => s.category === 'addon' || s.category === 'care') ? [] : ['엉킴 제거', '약욕', '보습팩', '염색'];
+    const defaultAddons = activeMenu.some(s => s.category === 'addon' || s.category === 'care' || s.category === 'style') ? [] : ['엉킴 제거', '약욕', '보습팩', '염색'];
     const defaultStyles = ['테디베어컷', '배냇컷', '라이언컷', '하이바컷', '머쉬룸컷', '스포팅컷', '자연컷', '클린페이스'];
     // 가격 기준: 오늘 몸무게(kg) → 없으면 반려견 사이즈(대표 구간) → 둘 다 없으면 null(구간 가격은 자동 입력 안 함)
     const weightInput = document.getElementById('f-weightAtVisit');
@@ -1278,7 +1289,7 @@ App.pages.records = {
         const table = await App.getPriceBands();
         const catRank = (c) => ({ grooming: 0, care: 1 })[c || 'grooming'] ?? 2;
         return list
-          .filter(s => s.isActive !== false && s.category !== 'addon')
+          .filter(s => s.isActive !== false && s.category !== 'addon' && s.category !== 'style')
           .sort((a, b) => {
             // 고른 반려견 견종에 맞는 서비스(예: '스포팅 (말티즈·푸들)')를 맨 위로
             const breed = formPet && formPet.breed;
@@ -1311,9 +1322,27 @@ App.pages.records = {
       calcTotal();
     };
     const addonMenuHints = {};
+    // 고른 코스의 메뉴들 (합친 코스 '전체미용 + 위생미용'이면 여러 개). 스타일 포함 여부·코스별 다른 값을 볼 때 쓴다
+    const courseSvcsOf = async (value) => {
+      const course = App.normalizeServiceName(value);
+      if (!course) return [];
+      const one = await App.getMenuPrice(course, currentSize()).catch(() => null);
+      const ms = one ? [one] : await Promise.all(this._splitCourseName(course).map(c => App.getMenuPrice(c, currentSize()).catch(() => null)));
+      return ms.filter(x => x && x.service).map(x => x.service);
+    };
+    const courseIncludesStyle = async (value) => (await courseSvcsOf(value)).some(sv => sv.styleIncluded);
+    // 지금 고른 반려견 (이 아이 가격을 볼 때)
+    const currentPet = async () => { const pid = Number(document.getElementById('f-petId')?.value); return pid ? DB.get('pets', pid).catch(() => null) : null; };
+    // 추가 항목 값 — 코스에 포함이면 0 → 이 아이 가격 → 스타일의 코스별 다른 값 → 메뉴 값 (App.resolveExtraPrice, 테스트 있음)
+    const resolveExtra = async (m) => {
+      if (!m) return { price: 0, why: 'menu' };
+      const [courses, pet] = await Promise.all([courseSvcsOf(serviceInput?.value), currentPet()]);
+      return App.resolveExtraPrice(m.service, m.price, { courses, pet });
+    };
+    const extraPriceOf = async (m) => (await resolveExtra(m)).price;
     setupAutocomplete('f-addon-input', 'addon-dropdown', 'addonHistory', defaultAddons, {
       dbItems: async () => {
-        const list = (await DB.getAll('services')).filter(s => s.isActive !== false && (s.category === 'addon' || s.category === 'care'));
+        const list = (await DB.getAll('services')).filter(s => s.isActive !== false && (s.category === 'addon' || s.category === 'care' || s.category === 'style'));
         const table = await App.getPriceBands();
         const names = [];
         for (const s of list) {
@@ -1337,11 +1366,18 @@ App.pages.records = {
       const tag = addonTagsEl.lastElementChild;
       const m = await App.getMenuPrice(nm, currentSize());
       // 메뉴의 '추가'/'케어' 항목만 가격 자동 반영 (주 서비스 이름을 태그로 적은 경우는 제외)
-      if (m && (m.service.category === 'addon' || m.service.category === 'care') && tag.isConnected) {
+      if (m && App.isExtraCategory(m.service.category) && tag.isConnected) {
+        const p = await extraPriceOf(m);
+        if (!tag.isConnected) return;
+        m.price = p;
+        // 메뉴 표시·가격은 기다림이 끝난 뒤 한 번에 — 그 사이 다시 맞추기(repriceAddonTags)가 이 태그를 건드리지 않게
+        // (먼저 menu 를 달면 그 틈에 다시 맞추기가 값을 더하고, 여기서 또 더해 두 번 들어갔다)
+        const before = Number(tag.dataset.price) || 0;
         tag.dataset.menu = '1'; // 메뉴 항목 — 몸무게가 바뀌면 그 구간 가격으로 다시 맞춘다
-        tag.dataset.price = String(m.price || 0);
+        tag.dataset.price = String(p || 0);
         this._syncAddonTagPrice(tag);
-        if (m.price > 0) { adjustAddonPrice(m.price); const ft = tag.querySelector('.free-toggle'); if (ft) ft.hidden = false; }
+        if ((p || 0) !== before) adjustAddonPrice((p || 0) - before);
+        if (m.price > 0) { const ft = tag.querySelector('.free-toggle'); if (ft) ft.hidden = false; }
         if (isWeighted(m)) placeWeightField();
       }
     };
@@ -1384,6 +1420,68 @@ App.pages.records = {
       if (!wasFree) adjustAddonPrice(-p); // 무료 항목은 이미 금액에서 빠져 있다
     });
 
+    // 스타일 칩: 스타일 메뉴를 누르면 추가 항목 태그로 붙고(값 자동), 다시 누르면 뺀다.
+    // 칩 상태는 태그를 따라간다 — 태그를 직접 지우거나 '이전 미용과 같음'으로 다시 그려도 맞는다.
+    // 스타일 메모 칸(상세 옵션)이 비었거나 칩이 채운 글이면 고른 스타일 이름으로 채운다.
+    const stylePick = document.getElementById('f-style-pick');
+    const styleChips = document.getElementById('f-style-chips');
+    const styleMemo = document.getElementById('f-style');
+    // 칩이 마지막으로 써 넣은 글. 메모 칸이 그 글 그대로일 때만 칩이 고쳐 쓴다 —
+    // 직접 적거나 자동완성·'이전 미용과 같음'으로 들어온 글은 건드리지 않는다. 기록 수정은 칩을 누르기 전엔 손대지 않는다
+    let styleMemoAuto = id ? null : '';
+    let hasStyleChips = false;
+    let styleSvcs = [];
+    const courseInput = document.getElementById('f-service'); // serviceInput 은 아래에서 선언된다
+    const styleTagOf = (nm) => Array.from(addonTagsEl?.querySelectorAll('.addon-tag') || []).find(t => this._addonTagName(t) === nm);
+    const syncStyleChips = async () => {
+      if (!styleChips || !styleChips.isConnected) return;
+      if (!hasStyleChips) return;
+      const [courses, pet] = await Promise.all([courseSvcsOf(courseInput?.value), currentPet()]);
+      const picked = [];
+      styleChips.querySelectorAll('.style-pick-chip').forEach(b => {
+        const on = !!styleTagOf(b.dataset.name);
+        b.classList.toggle('active', on);
+        b.setAttribute('aria-pressed', on ? 'true' : 'false');
+        const hint = b.querySelector('.style-pick-price');
+        const sv = styleSvcs.find(x => App.normalizeServiceName(x.name) === b.dataset.name);
+        if (hint && sv) {
+          // 칩에 보이는 값 = 지금 코스·이 아이 기준으로 실제 붙을 값. 이유가 메뉴 값이 아니면 짧게 적는다
+          const r = App.resolveExtraPrice(sv, null, { courses, pet });
+          hint.textContent = r.why === 'included' ? '포함' : r.why === 'pet' ? `${App.formatCurrency(r.price)} (이 아이)` : r.why === 'course' ? `${App.formatCurrency(r.price)} (이 코스)` : (b.dataset.hint || '');
+        }
+        if (on) picked.push(b.dataset.name);
+      });
+      if (styleMemo && styleMemoAuto !== null && styleMemo.value === styleMemoAuto) { styleMemo.value = picked.join(' + '); styleMemoAuto = styleMemo.value; }
+    };
+    (async () => {
+      const styles = (await DB.getAll('services')).filter(s => s.isActive !== false && s.category === 'style' && App.normalizeServiceName(s.name))
+        .sort((a, b) => (a.sortOrder || 999) - (b.sortOrder || 999) || (a.name || '').localeCompare(b.name || '', 'ko'));
+      if (!styles.length || !styleChips || !styleChips.isConnected) return;
+      styleSvcs = styles;
+      const table = await App.getPriceBands();
+      styleChips.innerHTML = styles.map(s => {
+        const nm = App.normalizeServiceName(s.name);
+        const hint = priceHintOf(s, table);
+        return `<button type="button" class="payment-chip style-pick-chip" data-name="${App.escapeHtml(nm)}" data-hint="${App.escapeHtml(hint)}" aria-pressed="false">${App.escapeHtml(nm)} <span class="style-pick-price" style="font-weight:400;opacity:0.8">${App.escapeHtml(hint)}</span></button>`;
+      }).join('');
+      stylePick.style.display = '';
+      hasStyleChips = true;
+      syncStyleChips();
+    })().catch(err => console.warn('스타일 칩 실패:', err));
+    styleChips?.addEventListener('click', async (e) => {
+      const b = e.target.closest('.style-pick-chip');
+      if (!b) return;
+      this._modalDirty = true;
+      if (styleMemoAuto === null && styleMemo && !styleMemo.value.trim()) styleMemoAuto = styleMemo.value; // 수정 중 빈 메모 — 칩을 직접 누르면 채운다
+      const tag = styleTagOf(b.dataset.name);
+      if (tag) tag.click(); // 태그를 누른 것과 같다 — 값도 빠진다
+      else await addAddonTag(b.dataset.name);
+      syncStyleChips();
+    });
+    if (addonTagsEl) new MutationObserver(() => syncStyleChips()).observe(addonTagsEl, { childList: true });
+    courseInput?.addEventListener('change', () => setTimeout(syncStyleChips, 300));
+    document.getElementById('f-petId')?.addEventListener('change', () => setTimeout(syncStyleChips, 500)); // 이 아이 가격 표시도 반려견 따라
+
     // 서비스 선택 시 가격 자동 채움 (사이즈 변경 시에도 다시 계산)
     const serviceInput = document.getElementById('f-service');
     const servicePriceInput = document.getElementById('f-servicePrice');
@@ -1397,7 +1495,36 @@ App.pages.records = {
       bandInfo.style.color = '';
       bandInfo.textContent = App.describeBandPrice(menu, currentWeight()) + (menu.bySize ? ' — 몸무게를 입력하면 정확해요' : '');
     };
-    servicePriceInput?.addEventListener('input', () => { servicePriceManual = true; });
+    servicePriceInput?.addEventListener('input', () => { servicePriceManual = true; updatePetPriceWrap(); });
+    // '이 아이 가격으로 기억' 줄 — 반려견이 있고, 사장님이 기본가를 직접 고쳐서 메뉴·저장된 이 아이 가격과 다를 때만 보인다
+    const updatePetPriceWrap = async () => {
+      const wrap = document.getElementById('f-pet-price-wrap');
+      if (!wrap || !wrap.isConnected) return;
+      const pid = Number(document.getElementById('f-petId')?.value);
+      const name = App.normalizeServiceName(serviceInput?.value);
+      const val = Number(servicePriceInput?.value);
+      if (!pid || !name || !servicePriceManual || !(val >= 0) || servicePriceInput.value === '' || isMainFree()) { wrap.style.display = 'none'; return; }
+      const [pet, menu] = await Promise.all([DB.get('pets', pid).catch(() => null), App.getMenuPrice(name, currentSize()).catch(() => null)]);
+      // 기다리는 사이 값·서비스·반려견이 바뀌었으면 이 결과는 버린다 (서비스를 바꾼 뒤 옛 서비스 이름으로 저장되지 않게)
+      if (!wrap.isConnected || Number(servicePriceInput.value) !== val || App.normalizeServiceName(serviceInput?.value) !== name || Number(document.getElementById('f-petId')?.value) !== pid) return;
+      const saved = App.getPetPrice(pet, name);
+      const menuPrice = menu && menu.price != null ? menu.price : null;
+      const differs = saved !== null ? saved !== val : (menuPrice === null || menuPrice !== val);
+      wrap.style.display = differs ? 'flex' : 'none';
+      const lbl = document.getElementById('f-pet-price-label');
+      if (lbl && differs) lbl.textContent = saved !== null
+        ? `${pet?.name || '이 아이'} 가격 바꾸기 (${App.formatCurrency(saved)} → ${App.formatCurrency(val)})`
+        : `${pet?.name || '이 아이'}의 ${name} 가격으로 기억 (${App.formatCurrency(val)}) — 다음부터 자동`;
+    };
+    document.getElementById('f-petId')?.addEventListener('change', () => setTimeout(updatePetPriceWrap, 400));
+    // 서비스를 바꾸면 줄을 다시 맞춘다 — 직접 고친 가격이라 자동 채움이 안 돌 때도 (옛 서비스 이름이 남지 않게)
+    serviceInput?.addEventListener('change', () => {
+      const w = document.getElementById('f-pet-price-wrap');
+      if (w) { w.style.display = 'none'; const cb = document.getElementById('f-pet-price-save'); if (cb) cb.checked = false; }
+      // 직접 고친 가격이라 자동 채움이 안 돌면 옛 서비스의 '이 아이 가격 …' 안내가 남는다 — 지운다
+      if (servicePriceManual && bandInfo && bandInfo.textContent.startsWith('이 아이 가격')) bandInfo.textContent = '';
+      setTimeout(updatePetPriceWrap, 50);
+    });
     // 자동으로 채운 기본가를 누르면 전체 선택 — 이어 쳐서 '30000' 뒤에 붙는 일 없이 새로 친 값으로 바뀐다
     servicePriceInput?.addEventListener('focus', () => {
       if (servicePriceManual || !servicePriceInput.value) return;
@@ -1410,13 +1537,19 @@ App.pages.records = {
       const name = App.normalizeServiceName(serviceInput.value);
       const petId = Number(document.getElementById('f-petId')?.value);
       const sizeType = currentSize();
-      let [menu, price] = name
-        ? await Promise.all([App.getMenuPrice(name, sizeType), App.getRecentServicePrice(petId, name, sizeType)])
-        : [null, null];
+      let [menu, price, petForPrice] = name
+        ? await Promise.all([App.getMenuPrice(name, sizeType), App.getRecentServicePrice(petId, name, sizeType), currentPet()])
+        : [null, null, null];
+      // 이 아이 가격이 있으면 그게 답이다 — 합친 코스의 합계로 덮어쓰지 않는다 (0원도 값: 서비스 제공으로 켠다)
+      const pp = App.getPetPrice(petForPrice, name);
       // 예약에서 온 '전체미용 + 위생미용' — 메뉴에 그 이름이 없으면 코스마다 메뉴 가격을 더한다 (무료 코스는 0원)
       let placeMenu = menu, bandMenu = menu, comboFree = false, keepPrice = false;
       const courseParts = !menu ? this._splitCourseName(name) : [];
-      if (courseParts.length > 1) {
+      if (courseParts.length > 1 && pp !== null) {
+        const ms = await Promise.all(courseParts.map(c => App.getMenuPrice(c, sizeType)));
+        placeMenu = ms.find(isWeighted) || null;
+        bandMenu = null;
+      } else if (courseParts.length > 1) {
         const ms = await Promise.all(courseParts.map(c => App.getMenuPrice(c, sizeType)));
         const combo = this._comboPrice(ms);
         if (combo.price != null) price = combo.price; // 코스 모두 이 몸무게 가격이 있으면 그 합
@@ -1428,11 +1561,19 @@ App.pages.records = {
       // 더 최신 조회가 시작됐거나, 기다리는 사이 직접 입력했거나, 폼이 닫혔으면 무시
       if (seq !== priceFillSeq || servicePriceManual || !servicePriceInput.isConnected) return;
       // 못 찾으면 이전 서비스 가격을 남기지 않는다 (몸무게가 필요한 구간 가격도 비워 둔다) — 합친 코스는 위 keepPrice
-      if (!keepPrice) servicePriceInput.value = price ? price : '';
+      if (pp !== null) servicePriceInput.value = pp; // 0원이어도 적는다
+      else if (!keepPrice) servicePriceInput.value = price ? price : '';
       showBandInfo(bandMenu);
+      // 이 아이 가격이 들어갔으면 그렇다고 적는다 (메뉴 값과 다를 때)
+      if (pp !== null && bandInfo) {
+        const menuPrice = menu && menu.price != null ? menu.price : null;
+        bandInfo.style.color = '';
+        bandInfo.textContent = `이 아이 가격 ${App.formatCurrency(pp)}` + (menuPrice != null && menuPrice !== pp ? ` (메뉴 ${App.formatCurrency(menuPrice)})` : '') + ' — 반려견 상세에서 바꿔요';
+      }
+      updatePetPriceWrap();
       // 메뉴에서 '무료'로 정한 서비스 — 기본가를 서비스 제공으로 자동으로 켠다 (0원 확인창 없이, 서비스 제공 금액으로 남게).
       // 자동으로 켠 것만 다른 서비스로 바꾸면 끈다 (사장님이 직접 켠 것은 그대로)
-      if ((menu && menu.free) || comboFree) { if (!isMainFree()) { setMainFree(true); mainFreeAuto = true; } }
+      if ((menu && menu.free) || comboFree || pp === 0) { if (!isMainFree()) { setMainFree(true); mainFreeAuto = true; } }
       else if (mainFreeAuto) { setMainFree(false); mainFreeAuto = false; }
       placeWeightField(placeMenu);
       calcTotal();
@@ -1444,6 +1585,33 @@ App.pages.records = {
     };
     serviceInput?.addEventListener('change', runPriceFill);
     serviceInput?.addEventListener('input', App.debounce(runPriceFill, 400));
+
+    // 메뉴 추가 항목 가격을 지금 몸무게·코스 기준으로 다시 맞춘다 (몸무게를 바꾸거나 코스를 바꿨을 때)
+    // 한 번에 하나씩 차례로 돈다 (몸무게·코스 변경이 겹쳐도 같은 태그 값을 두 번 빼거나 더하지 않게).
+    // 저장할 때 이 차례가 끝나기를 기다린다 (_pendingAddonReprice)
+    let repriceChain = Promise.resolve();
+    const repriceAddonTags = (onlyStyle) => {
+      repriceChain = repriceChain.catch(() => {}).then(() => repriceAddonTagsNow(onlyStyle));
+      this._pendingAddonReprice = repriceChain;
+      return repriceChain;
+    };
+    const repriceAddonTagsNow = async (onlyStyle) => {
+      if (!addonTagsEl) return;
+      for (const tag of addonTagsEl.querySelectorAll('.addon-tag')) {
+        if (!Number(tag.dataset.price) && tag.dataset.menu !== '1') continue; // 직접 입력 태그는 가격 정보 없음
+        const m = await App.getMenuPrice(this._addonTagName(tag), currentSize());
+        if (!m || !tag.isConnected) continue;
+        if (onlyStyle && m.service.category !== 'style') continue;
+        const np = Number(await extraPriceOf(m)) || 0; // 가격 미입력 메뉴는 null
+        if (!tag.isConnected) continue;
+        const old = Number(tag.dataset.price) || 0; // 기다린 뒤에 읽는다 — 그 사이 바뀐 값 기준으로 차이만 반영
+        tag.dataset.price = String(np);
+        this._syncAddonTagPrice(tag);
+        if (tag.dataset.free !== '1') adjustAddonPrice(np - old); // 무료 항목은 금액에 안 들어간다
+      }
+    };
+    // 코스를 바꾸면 스타일 값(코스에 포함인지)이 달라진다
+    serviceInput?.addEventListener('change', () => repriceAddonTags(true).catch(() => {}));
 
     // 몸무게 변경 → 기본가 다시 채움 + 메뉴 추가 항목 가격도 그 구간으로 맞춤
     const onWeightChange = async (ev) => {
@@ -1494,17 +1662,7 @@ App.pages.records = {
       } else {
         runPriceFill();
       }
-      if (!addonTagsEl) return;
-      for (const tag of addonTagsEl.querySelectorAll('.addon-tag')) {
-        const old = Number(tag.dataset.price) || 0;
-        if (!old && tag.dataset.menu !== '1') continue; // 직접 입력 태그는 가격 정보 없음
-        const m = await App.getMenuPrice(this._addonTagName(tag), currentSize());
-        if (!m || !tag.isConnected) continue;
-        const np = Number(m.price) || 0; // 가격 미입력 메뉴는 null
-        tag.dataset.price = String(np);
-        this._syncAddonTagPrice(tag);
-        if (tag.dataset.free !== '1') adjustAddonPrice(np - old); // 무료 항목은 금액에 안 들어간다
-      }
+      await repriceAddonTags();
     };
     weightInput?.addEventListener('change', onWeightChange);
     // 입력 중 자동 계산 — 확인이 필요한 값은 확인(change)을 거친 뒤에만 반영
@@ -1605,7 +1763,7 @@ App.pages.records = {
       const ft = tag.querySelector('.free-toggle');
       if (!ft || !ft.hidden) return;
       App.getMenuPrice(this._addonTagName(tag), currentSize()).then(m => {
-        if (m && m.price > 0 && (m.service.category === 'addon' || m.service.category === 'care') && tag.isConnected) { tag.dataset.refPrice = String(m.price); ft.hidden = false; }
+        if (m && m.price > 0 && App.isExtraCategory(m.service.category) && tag.isConnected) { tag.dataset.refPrice = String(m.price); ft.hidden = false; }
       }).catch(() => {});
     });
     // 기록 수정: 가격은 그대로 두고 구간 설명만 보여 준다 (지금 메뉴와 다르면 그렇다고 적는다)
@@ -1900,6 +2058,11 @@ App.pages.records = {
         try { await this._pendingPriceFill; } catch (e) { /* 조회 실패 시 입력된 값으로 진행 */ }
         this._pendingPriceFill = null;
       }
+      // 코스·몸무게를 바꾼 직후 바로 저장 — 추가 항목(스타일 포함 0원 등) 값 다시 맞추기가 끝난 뒤 금액을 읽는다
+      if (this._pendingAddonReprice) {
+        try { await this._pendingAddonReprice; } catch (e) { /* ignore */ }
+        this._pendingAddonReprice = null;
+      }
       // 고른 사진의 압축이 끝나기 전에 저장하면 사진이 빠지던 문제 — 사진 처리를 기다린다
       if (this._pendingPhotoJobs && this._pendingPhotoJobs.size) {
         await Promise.all([...this._pendingPhotoJobs]);
@@ -1960,6 +2123,8 @@ App.pages.records = {
       }
       const updatePetWeightWrap = document.getElementById('f-update-pet-weight-wrap');
       const updatePetWeight = !!(weightAtVisit && updatePetWeightWrap && updatePetWeightWrap.style.display !== 'none' && document.getElementById('f-update-pet-weight')?.checked);
+      const petPriceWrap = document.getElementById('f-pet-price-wrap');
+      const savePetPrice = !!(service && !mainFree && petPriceWrap && petPriceWrap.style.display !== 'none' && document.getElementById('f-pet-price-save')?.checked);
 
       // 컨디션 체크 필드
       const condition = document.getElementById('f-condition')?.value || '';
@@ -2174,6 +2339,16 @@ App.pages.records = {
       // 수정 시에는 전체 기록 기준으로 재계산한다 — 예전엔 앞으로만 당겨서, 날짜 오타를 과거로 고치거나
       // 반려견을 바꾸면 옛 날짜가 남아 상태 뱃지·재방문 알림이 틀렸다.
       // '반려견 몸무게도 업데이트' — 사이즈가 몸무게로 자동 정해진 값이면 함께 맞춘다 (구버전 기기는 사이즈 가격을 쓴다)
+      // '이 아이 가격으로 기억' — 반려견에 서비스별 값 저장 (다음 기록부터 이 값이 먼저 들어간다)
+      if (savePetPrice && petId) {
+        try {
+          const pet = await DB.get('pets', petId);
+          if (pet) {
+            pet.customPrices = Object.assign({}, pet.customPrices || {}, { [service]: servicePriceInputVal });
+            await DB.update('pets', pet);
+          }
+        } catch (e) { console.warn('이 아이 가격 저장 실패:', e); }
+      }
       if (updatePetWeight) {
         try {
           const pet = await DB.get('pets', petId);
@@ -2701,7 +2876,7 @@ App.pages.records = {
           if (isFree) price = freeAddon[nm];
           else {
             const m = await App.getMenuPrice(nm, basis, services).catch(() => null);
-            if (m && (m.service.category === 'addon' || m.service.category === 'care')) { menu = true; price = Number(m.price) || 0; }
+            if (m && App.isExtraCategory(m.service.category)) { menu = true; price = Number(m.price) || 0; }
           }
           items.push({ a, nm, isFree, menu, price });
         }
@@ -5204,151 +5379,312 @@ App.pages.records = {
     return '#D97706';
   },
 
+  // 리포트 디자인 (1.08 시안) — 같은 내용을 네 가지 느낌으로. 설정값 reportTheme (고르는 화면은 사장님이 시안을 고른 뒤 정함 — 지금은 늘 warm)
+  REPORT_THEMES: {
+    warm: { label: '따뜻한', bg: '#F6F1EA', card: true, band: 'glow', align: 'center', r: 1, tile: '#FAF8F5', tileLine: null, heading: 'bar', ticket: 'fill', chip: 'soft', kicker: '오늘의 미용 알림장', title: 800 },
+    clean: { label: '깔끔한', bg: '#FFFFFF', card: false, band: 'none', align: 'left', r: 0.35, tile: null, tileLine: '#E5E7EB', heading: 'rule', ticket: 'line', chip: 'line', kicker: '미용 리포트', title: 700 },
+    modern: { label: '모던', bg: '#EEF0F3', card: true, band: 'dark', align: 'left', r: 0.55, tile: '#F4F5F7', tileLine: null, heading: 'num', ticket: 'dark', chip: 'dark', kicker: '미용 리포트', title: 800 },
+    pastel: { label: '파스텔', bg: 'tint', card: true, band: 'dots', align: 'center', r: 1.5, tile: 'tint', tileLine: null, heading: 'pill', ticket: 'fill', chip: 'soft', kicker: '오늘도 예뻐졌어요', title: 800 }
+  },
+
   async buildReportCanvas(record, info) {
     const { pet, shopName, shopPhone, logo, reviewLink } = info;
-    const W = 1080, pad = 64, accent = info.accent || '#6366F1';
+    // 기록에 있는 것만 쓰고(빈 칸은 통째로 뺀다), 이미지는 저장하지 않고 즉석에서 만든다.
+    const T = this.REPORT_THEMES[info.theme] || this.REPORT_THEMES.warm;
+    const W = 1080, M = T.card ? 44 : 0, P = T.card ? 60 : 80;
+    const CX = M + P, CW = W - (M + P) * 2;
+    const R = (n) => Math.round(n * T.r);
+    const accent = /^#[0-9a-f]{6}$/i.test(info.accent || '') ? info.accent : '#6366F1';
+    const tint = (a) => { const n = parseInt(accent.slice(1), 16); return `rgba(${n >> 16},${(n >> 8) & 255},${n & 255},${a})`; };
     const font = '-apple-system, BlinkMacSystemFont, "Apple SD Gothic Neo", "Noto Sans KR", sans-serif';
-    const C = { text: '#1A1A1A', sub: '#64748B', line: '#E5E7EB', box: '#F8FAFC' };
+    const C = { text: '#1F2328', sub: '#6B7280', line: '#ECE7E0', dark: '#14161A' };
+    const bgColor = T.bg === 'tint' ? null : T.bg;
+    const tileFill = T.tile === 'tint' ? tint(0.07) : T.tile;
     const L = this._REPORT_LABELS;
+    const DOW = ['일', '월', '화', '수', '목', '금', '토'];
+    const kDate = (s, withYear) => {
+      const d = App.parseLocalDate ? App.parseLocalDate(s) : new Date(s + 'T00:00:00');
+      if (!d || isNaN(d)) return s || '';
+      return (withYear ? d.getFullYear() + '년 ' : '') + (d.getMonth() + 1) + '월 ' + d.getDate() + '일 (' + DOW[d.getDay()] + ')';
+    };
+
     const imgs = [];
-    for (const [f, tag] of [['photoBefore', '전'], ['photoAfter', '후']]) {
+    for (const [f, tag] of [['photoBefore', '미용 전'], ['photoAfter', '미용 후']]) {
       const src = await App.getRecordPhoto(record, f);
       const im = src ? await this._loadImg(src) : null;
       if (im) imgs.push({ im, tag });
     }
+    if (imgs.length === 1 && imgs[0].tag === '미용 후') imgs[0].tag = '오늘의 모습';
     const logoImg = logo ? await this._loadImg(logo) : null;
-    const svc = record.service ? App.getRecordServiceDisplay(record) : (record.serviceNames || []).join(', ');
-    // 신형 기록은 서비스 표시에 추가 항목이 이미 들어 있다 — 구형(serviceNames)만 따로 붙인다
-    const addons = (!record.service && Array.isArray(record.addons)) ? record.addons.filter(Boolean) : [];
+
+    let mainSvc = '', subSvc = [];
+    if (record.service) {
+      mainSvc = String(record.service) + (record.style ? ' · ' + record.style : '');
+      const styleParts = new Set(String(record.style || '').split(/\s*[+,·]\s*/).map(x => App.normalizeServiceName(x)).filter(Boolean));
+      subSvc = (record.addons || []).filter(Boolean).map(String).filter(a => !styleParts.has(App.normalizeServiceName(a)));
+    } else {
+      const names = (record.serviceNames || []).filter(Boolean).map(String);
+      mainSvc = names[0] || '';
+      subSvc = names.slice(1).concat(Array.isArray(record.addons) ? record.addons.filter(Boolean).map(String) : []);
+    }
     const tips = (App.getHomeCareAdvice ? App.getHomeCareAdvice(record) : []).slice(0, 3);
     const status = [];
     if (record.condition) status.push(['컨디션', L.condition[record.condition] || record.condition, this._reportTone('condition', record.condition)]);
     if (record.cooperativeness) status.push(['미용 협조', L.cooperativeness[record.cooperativeness] || record.cooperativeness, this._reportTone('cooperativeness', record.cooperativeness)]);
     if (Array.isArray(record.skinStatus) && record.skinStatus.length) status.push(['피부', record.skinStatus.join(' · '), this._reportTone('skin', record.skinStatus.find(x => x !== '정상') || '정상')]);
     if (record.earStatus) status.push(['귀', L.earStatus[record.earStatus] || record.earStatus, this._reportTone('earStatus', record.earStatus)]);
-    if (record.mattingLevel) status.push(['엉킴', L.mattingLevel[record.mattingLevel] || record.mattingLevel, this._reportTone('mattingLevel', record.mattingLevel)]);
-    const memo = String(record.memo || '').trim().replace(/\s+/g, ' ').slice(0, 90);
+    if (record.mattingLevel) status.push(['털 엉킴', L.mattingLevel[record.mattingLevel] || record.mattingLevel, this._reportTone('mattingLevel', record.mattingLevel)]);
+    const memo = String(record.memo || '').trim().replace(/\s+/g, ' ').slice(0, 140);
+    let daysToNext = null;
+    if (record.nextVisitDate && record.date) {
+      const a = new Date(record.date + 'T00:00:00'), b = new Date(record.nextVisitDate + 'T00:00:00');
+      if (!isNaN(a) && !isNaN(b)) daysToNext = Math.round((b - a) / 86400000);
+    }
 
-    // 두 번 그린다: 1차는 높이만 재고, 2차는 그 높이의 캔버스에 실제로 그린다
     const canvas = document.createElement('canvas');
     canvas.width = W; canvas.height = 10;
     let ctx = canvas.getContext('2d');
-    const wrap = (text, maxW) => {
+    const setFont = (f) => { ctx.font = f; };
+    const F = (w, s) => `${w} ${s}px ${font}`;
+    const wrap = (str, maxW, f) => {
+      setFont(f);
       const out = []; let line = '';
-      for (const ch of String(text || '')) {
+      for (const ch of String(str || '')) {
         const t = line + ch;
-        if (ctx.measureText(t).width > maxW && line) { out.push(line); line = ch; } else line = t;
+        if (ctx.measureText(t).width > maxW && line) { out.push(line.trimEnd()); line = ch === ' ' ? '' : ch; } else line = t;
       }
       if (line) out.push(line);
       return out;
     };
-    const run = (draw, extra = 0) => {
-      let y = 0;
+    const fit = (str, maxW, f) => { setFont(f); let v = String(str); while (ctx.measureText(v).width > maxW && v.length > 2) v = v.slice(0, -2) + '…'; return v; };
+
+    const run = (draw, cardH) => {
       const text = (str, x, yy, f, color, align) => { if (!draw) return; ctx.font = f; ctx.fillStyle = color; ctx.textAlign = align || 'left'; ctx.fillText(str, x, yy); };
-      const section = (title) => { y += 44; text(title, pad, y, 'bold 30px ' + font, accent); y += 18; if (draw) { ctx.fillStyle = C.line; ctx.fillRect(pad, y, W - pad * 2, 2); } y += 40; };
-      // 머리: 로고 또는 매장명
+      const box = (x, yy, w, h, r, fill) => { if (!draw) return; ctx.fillStyle = fill; this._roundRect(ctx, x, yy, w, h, Math.max(0, Math.min(r, h / 2, w / 2))); ctx.fill(); };
+      const stroke = (x, yy, w, h, r, color, lw) => { if (!draw) return; ctx.strokeStyle = color; ctx.lineWidth = lw || 2; this._roundRect(ctx, x, yy, w, h, Math.max(0, Math.min(r, h / 2, w / 2))); ctx.stroke(); };
+      let secNo = 0;
+      // 섹션 제목 — 테마마다 모양이 다르다. 돌려주는 값 = 내용이 시작할 y
+      const heading = (title, yy) => {
+        secNo++;
+        if (T.heading === 'bar') { box(CX, yy - 26, 8, 30, 4, accent); text(title, CX + 24, yy, F('bold', 32), C.text); return yy + 54; }
+        if (T.heading === 'rule') {
+          text(title, CX, yy, F('600', 26), C.sub);
+          setFont(F('600', 26)); const tw = ctx.measureText(title).width;
+          if (draw) { ctx.fillStyle = '#E5E7EB'; ctx.fillRect(CX + tw + 20, yy - 9, CW - tw - 20, 2); }
+          return yy + 44;
+        }
+        if (T.heading === 'num') {
+          text(String(secNo).padStart(2, '0'), CX, yy, F('800', 30), accent);
+          text(title, CX + 56, yy, F('bold', 32), C.dark);
+          return yy + 54;
+        }
+        // pill
+        setFont(F('bold', 28)); const w = ctx.measureText(title).width + 48;
+        box(T.align === 'center' ? (W - w) / 2 : CX, yy - 38, w, 54, 27, tint(0.14));
+        text(title, T.align === 'center' ? W / 2 : CX + 24, yy - 2, F('bold', 28), accent, T.align === 'center' ? 'center' : 'left');
+        return yy + 50;
+      };
+      const ax = T.align === 'center' ? W / 2 : CX;
+      const aa = T.align === 'center' ? 'center' : 'left';
+      let y = 0;
+      // ── 바탕
+      if (draw) {
+        ctx.fillStyle = bgColor || '#FFFFFF'; ctx.fillRect(0, 0, W, canvas.height);
+        if (!bgColor) { ctx.fillStyle = tint(0.10); ctx.fillRect(0, 0, W, canvas.height); }
+        if (T.band === 'glow') {
+          const g = ctx.createLinearGradient(0, 0, 0, 420); g.addColorStop(0, tint(0.22)); g.addColorStop(1, tint(0));
+          ctx.fillStyle = g; ctx.fillRect(0, 0, W, 420);
+        } else if (T.band === 'dark') {
+          ctx.fillStyle = C.dark; ctx.fillRect(0, 0, W, 520);
+        } else if (T.band === 'dots') {
+          // 물방울 장식
+          [[90, 90, 60, 0.18], [980, 150, 90, 0.14], [1010, 40, 30, 0.2], [60, 260, 26, 0.16], [880, 300, 22, 0.2]].forEach(([x, yy, r, a]) => { ctx.fillStyle = tint(a); ctx.beginPath(); ctx.arc(x, yy, r, 0, Math.PI * 2); ctx.fill(); });
+        }
+      }
+      const onDark = T.band === 'dark';
+      // ── 머리: 로고 또는 가게 이름
       y = 72;
       if (logoImg) {
-        const h = 72, w = Math.min(420, logoImg.width * h / logoImg.height);
-        if (draw) ctx.drawImage(logoImg, (W - w) / 2, y - 36, w, h);
-        y += 72;
-      } else { text(shopName, W / 2, y + 12, 'bold 36px ' + font, accent, 'center'); y += 56; }
-      // 제목
-      y += 40;
-      text(`${pet?.name || ''}의 미용 리포트`, W / 2, y + 20, 'bold 56px ' + font, C.text, 'center'); y += 70;
-      text(App.formatDate(record.date) + (record.groomer ? ' · 담당 ' + record.groomer : ''), W / 2, y + 10, '30px ' + font, C.sub, 'center'); y += 40;
-      // 사진
+        const h = 76, w = Math.min(420, logoImg.width * h / logoImg.height);
+        if (draw) ctx.drawImage(logoImg, T.align === 'center' ? (W - w) / 2 : CX, y - 30, w, h);
+        y += 76;
+      } else { text(shopName, T.align === 'center' ? W / 2 : CX, y + 22, F('bold', 34), onDark ? '#fff' : accent, aa); y += 50; }
+      // 모던: 제목을 어두운 띠 위에 크게
+      if (onDark) {
+        y += 70;
+        text(T.kicker, CX, y, F('600', 28), accent, 'left'); y += 84;
+        text(`${pet?.name || '우리 아이'}`, CX, y, F('800', 84), '#fff', 'left'); y += 60;
+        text(kDate(record.date, true) + (record.groomer ? '  ·  담당 ' + record.groomer : ''), CX, y, F('500', 30), 'rgba(255,255,255,0.7)', 'left');
+        y += 60;
+      } else { y += 16; }
+      // ── 카드 시작
+      const cardTop = y;
+      if (draw && T.card) {
+        ctx.save();
+        ctx.shadowColor = 'rgba(40,30,20,0.10)'; ctx.shadowBlur = 40; ctx.shadowOffsetY = 12;
+        box(M, cardTop, W - M * 2, cardH, R(44), '#FFFFFF');
+        ctx.restore();
+      }
+      if (onDark) {
+        y = cardTop + P;
+      } else {
+        y = cardTop + (T.card ? 74 : 40);
+        text(T.kicker, ax, y, F('600', 28), accent, aa); y += 76;
+        text(`${pet?.name || '우리 아이'}의 미용 리포트`, ax, y, F(String(T.title), 62), C.text, aa); y += 58;
+        const s = kDate(record.date, true) + (record.groomer ? '  ·  담당 ' + record.groomer : '');
+        if (T.align === 'center') {
+          setFont(F('500', 28)); const w = ctx.measureText(s).width + 56;
+          box((W - w) / 2, y - 8, w, 54, 27, tileFill || '#F5F5F4');
+          text(s, W / 2, y + 28, F('500', 28), C.sub, 'center');
+          y += 46;
+        } else { text(s, CX, y + 20, F('500', 28), C.sub, 'left'); y += 36; }
+        y += 44;
+      }
+      // ── 사진
       if (imgs.length) {
-        y += 36;
-        const gap = 20, n = imgs.length;
-        const w = n === 2 ? (W - pad * 2 - gap) / 2 : W - pad * 2;
-        const h = n === 2 ? Math.round(w * 1.15) : Math.round(w * 0.78);
+        const gap = 22, n = imgs.length;
+        const w = n === 2 ? (CW - gap) / 2 : CW;
+        const h = n === 2 ? Math.round(w * 1.22) : Math.round(w * 0.8);
         imgs.forEach((p, i) => {
-          const x = pad + i * (w + gap);
+          const x = CX + i * (w + gap);
           if (!draw) return;
-          ctx.save(); this._roundRect(ctx, x, y, w, h, 24); ctx.clip();
-          this._drawImageCover(ctx, p.im, x, y, w, h); ctx.restore();
-          ctx.fillStyle = 'rgba(0,0,0,0.55)'; this._roundRect(ctx, x + 16, y + 16, 72, 48, 12); ctx.fill();
-          text(p.tag, x + 52, y + 50, 'bold 28px ' + font, '#fff', 'center');
+          ctx.save(); this._roundRect(ctx, x, y, w, h, R(30)); ctx.clip();
+          this._drawImageCover(ctx, p.im, x, y, w, h);
+          const g = ctx.createLinearGradient(0, y + h - 160, 0, y + h);
+          g.addColorStop(0, 'rgba(0,0,0,0)'); g.addColorStop(1, 'rgba(0,0,0,0.35)');
+          ctx.fillStyle = g; ctx.fillRect(x, y + h - 160, w, 160);
+          ctx.restore();
+          const isAfter = p.tag !== '미용 전';
+          if (T.chip === 'line') {
+            text(p.tag, x + 24, y + h - 30, F('bold', 28), '#fff');
+          } else {
+            setFont(F('bold', 26));
+            const tw = ctx.measureText(p.tag).width + 40;
+            const fill = isAfter ? (T.chip === 'dark' ? C.dark : accent) : 'rgba(255,255,255,0.92)';
+            box(x + 20, y + h - 70, tw, 50, R(25), fill);
+            text(p.tag, x + 20 + tw / 2, y + h - 35, F('bold', 26), isAfter ? '#fff' : C.text, 'center');
+          }
         });
         y += h;
       }
-      // 오늘 한 것
-      if (svc || addons.length) {
-        section('오늘 한 것');
-        ctx.font = '34px ' + font;
-        wrap(svc, W - pad * 2).forEach(l => { text(l, pad, y, '34px ' + font, C.text); y += 46; });
-        if (addons.length) { ctx.font = '30px ' + font; wrap('+ ' + addons.join(', '), W - pad * 2).forEach(l => { text(l, pad, y, '30px ' + font, C.sub); y += 40; }); }
+      // ── 오늘 받은 미용
+      if (mainSvc || subSvc.length) {
+        y += 80; y = heading('오늘 받은 미용', y);
+        let x = CX, rowH = 0;
+        const chip = (label, big) => {
+          const f = big ? F('bold', 32) : F('500', 28);
+          const h = big ? 70 : 60, padX = big ? 30 : 24;
+          const lbl = fit(label, CW - padX * 2, f);
+          setFont(f);
+          const w = ctx.measureText(lbl).width + padX * 2;
+          if (x > CX && x + w > CX + CW) { x = CX; y += rowH + 14; rowH = 0; }
+          let fill = C.text, bgc = tileFill || '#F5F5F4';
+          if (T.chip === 'soft') { bgc = big ? tint(0.12) : (tileFill || '#F5F5F4'); fill = big ? accent : C.text; }
+          if (T.chip === 'dark') { bgc = big ? C.dark : '#F4F5F7'; fill = big ? '#fff' : C.text; }
+          if (T.chip === 'line') { bgc = null; fill = big ? C.text : C.sub; }
+          if (bgc) box(x, y, w, h, R(h / 2), bgc);
+          if (T.chip === 'line' || (T.chip === 'soft' && !big)) stroke(x, y, w, h, R(h / 2), big ? C.text : (T.chip === 'line' ? '#D1D5DB' : C.line), 2);
+          text(lbl, x + padX, y + h / 2 + (big ? 11 : 10), f, fill);
+          x += w + 12; rowH = Math.max(rowH, h);
+        };
+        if (mainSvc) chip(mainSvc, true);
+        subSvc.forEach(s => chip('+ ' + s, false));
+        y += rowH;
       }
-      // 상태
+      // ── 오늘 상태 (2칸 타일)
       if (status.length) {
-        section('오늘 상태');
-        status.forEach(([k, v, tone]) => {
-          if (draw) { ctx.fillStyle = tone; ctx.beginPath(); ctx.arc(pad + 14, y - 11, 11, 0, Math.PI * 2); ctx.fill(); }
-          text(k, pad + 44, y, '30px ' + font, C.sub);
-          text(v, pad + 230, y, 'bold 32px ' + font, C.text);
-          y += 50;
+        y += 80; y = heading('오늘 상태', y);
+        const gap = 16, tw = (CW - gap) / 2, th = 112;
+        status.forEach(([k, v, tone], i) => {
+          const col = i % 2, row = Math.floor(i / 2);
+          const x = CX + col * (tw + gap), yy = y + row * (th + gap);
+          if (tileFill) box(x, yy, tw, th, R(22), tileFill);
+          if (T.tileLine) stroke(x, yy, tw, th, R(22), T.tileLine, 2);
+          text(k, x + 28, yy + 42, F('500', 26), C.sub);
+          if (draw) { ctx.fillStyle = tone; ctx.beginPath(); ctx.arc(x + 38, yy + 80, 10, 0, Math.PI * 2); ctx.fill(); }
+          text(fit(v, tw - 90, F('bold', 32)), x + 60, yy + 92, F('bold', 32), C.text);
         });
+        y += Math.ceil(status.length / 2) * (th + gap) - gap;
       }
-      // 미용사 한마디
+      // ── 미용사 한마디
       if (memo) {
-        section('미용사 한마디');
-        ctx.font = '32px ' + font;
-        const lines = wrap(memo, W - pad * 2 - 56);
-        const bh = lines.length * 44 + 36;
-        if (draw) { ctx.fillStyle = C.box; this._roundRect(ctx, pad, y - 34, W - pad * 2, bh, 18); ctx.fill(); }
-        y += 10;
-        lines.forEach(l => { text(l, pad + 28, y, '32px ' + font, C.text); y += 44; });
-        y += bh - lines.length * 44 - 10;
+        y += 80; y = heading('미용사 한마디', y);
+        const lines = wrap(memo, CW - 100, F('500', 32));
+        const sig = record.groomer ? '— 담당 ' + record.groomer : '— ' + shopName;
+        const bh = 54 + lines.length * 50 + 60;
+        if (T.heading === 'rule') { if (draw) { ctx.fillStyle = accent; ctx.fillRect(CX, y, 6, bh); } }
+        else box(CX, y, CW, bh, R(28), T.chip === 'dark' ? '#F4F5F7' : tint(0.08));
+        if (T.heading !== 'rule') text('“', CX + 26, y + 72, F('bold', 80), T.chip === 'dark' ? accent : tint(0.35));
+        let ly = y + 70;
+        lines.forEach(l => { text(l, CX + 70, ly, F('500', 32), C.text); ly += 50; });
+        text(sig, CX + CW - 36, ly + 14, F('500', 26), C.sub, 'right');
+        y += bh;
       }
-      // 집에서 관리법
+      // ── 집에서 관리법
       if (tips.length) {
-        section('집에서 관리법');
-        ctx.font = '30px ' + font;
-        tips.forEach(t => {
-          const lines = wrap(t, W - pad * 2 - 40);
-          lines.forEach((l, i) => { text((i === 0 ? '·  ' : '   ') + l, pad, y, '30px ' + font, C.text); y += 42; });
-          y += 6;
+        y += 80; y = heading('집에서 이렇게 돌봐 주세요', y); y += 6;
+        tips.forEach((t, i) => {
+          const lines = wrap(t, CW - 80, F('400', 30));
+          if (draw) { ctx.fillStyle = T.chip === 'dark' ? C.dark : tint(0.14); ctx.beginPath(); ctx.arc(CX + 22, y + 20, 22, 0, Math.PI * 2); ctx.fill(); }
+          text(String(i + 1), CX + 22, y + 30, F('bold', 26), T.chip === 'dark' ? '#fff' : accent, 'center');
+          lines.forEach((l, j) => text(l, CX + 72, y + 31 + j * 44, F('400', 30), C.text));
+          y += Math.max(1, lines.length) * 44 + 20;
         });
+        y -= 20;
       }
-      // 다음 미용 추천
+      // ── 다음 미용 추천
       if (record.nextVisitDate) {
-        y += 40;
-        if (draw) { ctx.fillStyle = accent; this._roundRect(ctx, pad, y - 10, W - pad * 2, 96, 20); ctx.fill(); }
-        text('다음 미용 추천  ' + App.formatDate(record.nextVisitDate), W / 2, y + 50, 'bold 34px ' + font, '#fff', 'center');
-        y += 96;
+        y += 76;
+        const th = 168;
+        const filled = T.ticket !== 'line';
+        const fill = T.ticket === 'dark' ? C.dark : accent;
+        if (filled) box(CX, y, CW, th, R(30), fill); else stroke(CX, y, CW, th, R(30), accent, 3);
+        if (draw && T.ticket === 'fill') {
+          ctx.fillStyle = T.card ? '#FFFFFF' : (bgColor || '#fff');
+          ctx.beginPath(); ctx.arc(CX, y + th / 2, 18, 0, Math.PI * 2); ctx.fill();
+          ctx.beginPath(); ctx.arc(CX + CW, y + th / 2, 18, 0, Math.PI * 2); ctx.fill();
+        }
+        const fg = filled ? '#fff' : C.text;
+        text('다음 미용 추천일', CX + 48, y + 62, F('500', 28), filled ? 'rgba(255,255,255,0.8)' : C.sub);
+        text(kDate(record.nextVisitDate, false), CX + 48, y + 124, F('800', 48), T.ticket === 'dark' ? '#fff' : (filled ? fg : accent));
+        if (daysToNext && daysToNext > 0) {
+          const s = daysToNext % 7 === 0 ? `${daysToNext / 7}주 뒤` : `${daysToNext}일 뒤`;
+          setFont(F('bold', 28));
+          const w = ctx.measureText(s).width + 44;
+          box(CX + CW - 44 - w, y + th / 2 - 28, w, 56, 28, filled ? (T.ticket === 'dark' ? accent : 'rgba(255,255,255,0.2)') : tint(0.12));
+          text(s, CX + CW - 44 - w / 2, y + th / 2 + 10, F('bold', 28), filled ? '#fff' : accent, 'center');
+        }
+        y += th;
       }
-      // 꼬리 — 내용이 짧으면 남는 높이를 여기서 채워 꼬리가 바닥에 붙게 한다
-      y += 56 + extra;
-      if (draw) { ctx.fillStyle = C.line; ctx.fillRect(pad, y, W - pad * 2, 2); }
-      y += 52;
-      if (reviewLink) { text('리뷰 남겨주시면 큰 힘이 돼요', W / 2, y, '28px ' + font, C.sub, 'center'); y += 42; }
-      text([shopName, shopPhone].filter(Boolean).join(' · '), W / 2, y, 'bold 30px ' + font, accent, 'center');
-      y += 72;
-      return y;
+      // ── 가게 정보
+      y += 70;
+      if (draw) { ctx.fillStyle = T.tileLine || C.line; ctx.fillRect(CX, y, CW, 2); }
+      y += 64;
+      text(shopName, ax, y, F('bold', 32), C.text, aa); y += 44;
+      if (shopPhone) { text(shopPhone, ax, y, F('500', 28), C.sub, aa); y += 40; }
+      if (reviewLink) { y += 6; text('리뷰 남겨주시면 큰 힘이 돼요 ♡', ax, y, F('500', 26), accent, aa); y += 36; }
+      y += 34;
+      return { cardH: y - cardTop, H: y + M + (T.card ? 10 : 20) };
     };
-    const contentH = run(false);
-    // 내용 높이에 맞춘다 (예전엔 최소 1350px 이라 '오늘 한 것' 한 줄뿐이면 아래가 크게 비었다)
-    const H = contentH;
-    canvas.height = H;
+    const m = run(false, 0);
+    canvas.height = m.H;
     ctx = canvas.getContext('2d');
-    ctx.fillStyle = '#FFFFFF'; ctx.fillRect(0, 0, W, H);
-    run(true, H - contentH);
+    run(true, m.cardH);
     return canvas;
   },
 
   async showReport(recordId) {
     const record = await DB.get('records', recordId);
     if (!record) { App.showToast('기록을 찾을 수 없습니다.', 'error'); return; }
-    const [pet, customer, shopName, shopPhone, logo, reviewLink, ds] = await Promise.all([
+    const [pet, customer, shopName, shopPhone, logo, reviewLink, ds, reportTheme] = await Promise.all([
       record.petId ? DB.get('pets', record.petId) : null,
       record.customerId ? DB.get('customers', record.customerId) : null,
-      DB.getSetting('shopName'), DB.getSetting('shopPhone'), DB.getSetting('shopLogo'), DB.getSetting('shopReviewLink'), DB.getSetting('cardTemplateSettings')
+      DB.getSetting('shopName'), DB.getSetting('shopPhone'), DB.getSetting('shopLogo'), DB.getSetting('shopReviewLink'), DB.getSetting('cardTemplateSettings'), DB.getSetting('reportTheme')
     ]);
     App.showToast('리포트를 만드는 중...', 'info', { duration: 1500 });
     let canvas;
     try {
-      canvas = await this.buildReportCanvas(record, { pet, shopName: shopName || '펫살롱', shopPhone: shopPhone || '', logo, reviewLink: reviewLink || '', accent: ds?.mainColor || '#6366F1' });
+      canvas = await this.buildReportCanvas(record, { pet, shopName: shopName || '펫살롱', shopPhone: shopPhone || '', logo, reviewLink: reviewLink || '', accent: ds?.mainColor || '#6366F1', theme: reportTheme || 'warm' });
     } catch (err) { console.error('리포트 생성 실패:', err); App.showToast('리포트를 만들지 못했습니다.', 'error'); return; }
     canvas.toBlob(async (blob) => {
       canvas.width = canvas.height = 0; // 다 쓴 리포트 캔버스 메모리 반환 (iOS)

@@ -32,6 +32,7 @@ node tests/run.js pricing    # 파일 이름에 'pricing' 이 들어간 것만
 | `format.test.js` | 금액 표시, 전화번호(+82, 02, 0505), 문자 템플릿(빈 변수·'문의:' 줄 제거·'$' 안전), 반려견 사이즈/가격 기준 |
 | `money.test.js` | 기록 합계 `calcRecordTotals`(할인·추가 요금·할인 초과 차단·기본가/추가 옵션 서비스(무료)), 정액권 나누기 `calcPrepaidUse`(전액·일부+나머지 수단·잔액 0/마이너스·수정 시 금액 증감), 미수금 `getUnpaidAmount` |
 | `prepaid.test.js` | 정액권 잔액(충전·사용·환불·조정), `splitOf`, 기록 수정 시 쓸 수 있는 금액(`availableIn`/`availableFor`), 저장 뒤 장부 맞추기(`syncRecordUse`), 영수증 사용 후 잔액(`balanceAfterIn`/`balanceAfter`), 이번 달 실입금 `monthCollected` |
+| `style.test.js` | 스타일 칩으로 고른 스타일이 서비스 표시에 두 번 나오지 않음, 추가로 붙는 분류(스타일·추가 옵션·단독 케어), 추가 항목 값 정하기 `resolveExtraPrice`(코스 포함 0원 → 이 아이 가격 → 코스별 다른 값 → 메뉴 값), 이 아이 가격 `getPetPrice` |
 | `dates.test.js` | 오늘(KST), 날짜 파싱·포맷, 월·연 경계 남은 일수, 시점 표현, 생일 기준 나이 |
 
 다루지 않는 것: 기록 저장 폼의 화면 흐름(입력값 읽기·확인창 — 금액 식 자체는 `calcRecordTotals` 로 테스트), 매출 화면(`revenue.js`), 동기화(`sync.js`). 이 부분 계산은 화면 없이 부를 수 있는 함수로 빼면 테스트를 붙일 수 있습니다.

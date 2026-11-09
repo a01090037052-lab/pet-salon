@@ -1,7 +1,7 @@
 // ========== Services Page ==========
 App.pages.services = {
-  _categoryLabels: { grooming: '미용 코스', addon: '추가 옵션', care: '단독 케어' },
-  _categoryOrder: ['grooming', 'addon', 'care'],
+  _categoryLabels: { grooming: '미용 코스', style: '스타일 추가', addon: '추가 옵션', care: '단독 케어' },
+  _categoryOrder: ['grooming', 'style', 'addon', 'care'],
 
   _sortServices(services) {
     const catOrder = this._categoryOrder;
@@ -557,9 +557,13 @@ App.pages.services = {
     if (id && !service) { App.showToast('서비스를 찾을 수 없습니다.', 'error'); return; }
     const table = await App.getPriceBands();
     const bandsOff = !!table.bandsOff;
-    const allServices = id ? null : await DB.getAll('services');
+    const allServices = await DB.getAll('services');
+    // 스타일 추가의 '코스별 다른 값' 칸에 보일 미용 코스들 (+ 지금은 없는 코스 이름으로 남은 값)
+    const courseList = allServices.filter(x => x.isActive !== false && (x.category || 'grooming') === 'grooming' && x.id !== id).map(x => App.normalizeServiceName(x.name)).filter(Boolean);
+    const byCourse = service.byCourse || {};
+    Object.keys(byCourse).forEach(k => { if (!courseList.includes(k)) courseList.push(k); });
     // 단일가(flat) / 몸무게 구간 가격(weight)
-    const pricing = id ? App.getServicePricing(service, table) : { mode: this._defaultPricingMode(allServices, table), flat: 0, prices: {} };
+    const pricing = id ? App.getServicePricing(service, table) : { mode: this._defaultPricingMode(id ? null : allServices, table), flat: 0, prices: {} };
     const isFree = !!pricing.free;
     const byBand = pricing.mode === 'weight' && !bandsOff;
     // 구간 칸 값 — 서비스 가격이 옛 구간 id 로 남아 있어도 지금 구간표 기준으로 보여 준다
@@ -591,28 +595,39 @@ App.pages.services = {
           <label class="form-label">분류</label>
           <div id="f-category-chips" style="display:flex;gap:6px;flex-wrap:wrap">
             <button type="button" class="payment-chip${(service.category || 'grooming') === 'grooming' ? ' active' : ''}" data-value="grooming">${App.icon('scissors')} 미용 코스</button>
+            <button type="button" class="payment-chip${service.category === 'style' ? ' active' : ''}" data-value="style">${App.icon('scissors')} 스타일 추가</button>
             <button type="button" class="payment-chip${service.category === 'addon' ? ' active' : ''}" data-value="addon">${App.icon('sparkle')} 추가 옵션</button>
             <button type="button" class="payment-chip${service.category === 'care' ? ' active' : ''}" data-value="care">${App.icon('drop')} 단독 케어</button>
           </div>
           <input type="hidden" id="f-category" value="${service.category || 'grooming'}">
-          <div class="form-hint" style="margin-top:6px">미용 코스 = 주 서비스 · 추가 옵션 = 기록의 추가 항목에만 · 단독 케어 = 둘 다</div>
+          <!-- 분류 설명은 물음표를 눌렀을 때만 (1.08: 늘 보이던 세 줄 설명을 뺐다) -->
+          <button type="button" id="f-category-help" class="btn btn-ghost btn-sm" aria-expanded="false" style="min-height:40px;padding:0 6px;color:var(--text-muted);font-size:0.93rem">${App.icon('info')} 분류가 뭔가요?</button>
+          <div id="f-category-help-body" class="form-hint" style="display:none;margin-top:2px;line-height:1.6">
+            <b>미용 코스</b> — 몸 미용. 전체미용·스포팅·가위컷처럼 그날의 주 서비스<br>
+            <b>스타일 추가</b> — 얼굴·부분 모양. 테디컷·곰돌이컷처럼 코스에 더해 받는 값<br>
+            <b>추가 옵션</b> — 약욕·엉킴 제거처럼 코스에 붙이는 것<br>
+            <b>단독 케어</b> — 발톱·귀청소처럼 단독으로도, 추가로도 받는 것
+          </div>
+          <label id="f-styleIncluded-wrap" style="display:${(service.category || 'grooming') === 'grooming' ? 'flex' : 'none'};align-items:center;gap:6px;margin-top:4px;min-height:44px;font-size:0.93rem;cursor:pointer">
+            <input type="checkbox" id="f-styleIncluded" ${service.styleIncluded ? 'checked' : ''} style="width:18px;height:18px;cursor:pointer">
+            <span>스타일 추가 요금 안 받음 <span style="color:var(--text-muted)">(이 코스 값에 이미 들어 있음 — 예: 전체 가위컷)</span></span>
+          </label>
         </div>
 
         <!-- 가격 — 몸무게 구간별 / 모든 구간 같은 가격(단일가) / 무료 -->
         <div class="form-group">
-          <label class="form-label">가격 (원) <span style="color:var(--text-muted);font-size:0.93rem;font-weight:400">(비워 두면 &lsquo;가격 미입력&rsquo; — 상담 후 결정)</span></label>
-          <label style="display:flex;align-items:center;gap:6px;margin-bottom:8px;min-height:44px;font-size:0.93rem;cursor:pointer">
-            <input type="checkbox" id="f-price-free" ${isFree ? 'checked' : ''} style="width:18px;height:18px;cursor:pointer">
-            <span>무료 서비스 (0원)</span>
-          </label>
+          <label class="form-label">가격</label>
+          <!-- 가격 방식 — 버튼 하나로 고른다 (1.08: 체크박스 두 개 → 버튼). 실제 상태는 아래 숨긴 체크박스가 들고 있다 -->
+          <div id="f-price-mode" style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px">
+            <button type="button" class="payment-chip${!isFree && !byBand ? ' active' : ''}" data-mode="flat">한 가격</button>
+            <button type="button" class="payment-chip${!isFree && byBand ? ' active' : ''}" data-mode="weight" style="${bandsOff ? 'display:none' : ''}">몸무게별</button>
+            <button type="button" class="payment-chip${isFree ? ' active' : ''}" data-mode="free">무료</button>
+          </div>
+          <label style="display:none"><input type="checkbox" id="f-price-free" ${isFree ? 'checked' : ''}> 무료</label>
           <div id="f-price-area" style="display:${isFree ? 'none' : 'block'}">
-            <label style="display:${bandsOff ? 'none' : 'flex'};align-items:center;gap:6px;margin-bottom:8px;min-height:44px;font-size:0.93rem;cursor:pointer">
-              <input type="checkbox" id="f-price-flat" ${byBand ? '' : 'checked'} style="width:18px;height:18px;cursor:pointer">
-              <span>모든 몸무게 같은 가격 (단일가)</span>
-            </label>
+            <label style="display:none"><input type="checkbox" id="f-price-flat" ${byBand ? '' : 'checked'}> 단일가</label>
             <div id="f-price-flat-field" style="display:${byBand ? 'none' : 'block'}">
-              <input type="number" id="f-priceFlat" value="${flatVal}" placeholder="가격 입력" min="0" step="1000" inputmode="numeric">
-              ${bandsOff ? '<div class="form-hint" style="margin-top:4px">매장 설정이 &lsquo;몸무게 구간 사용 안 함&rsquo;이라 단일가만 써요.</div>' : ''}
+              <input type="number" id="f-priceFlat" value="${flatVal}" placeholder="가격 (원)" min="0" step="1000" inputmode="numeric">
             </div>
             <div id="f-price-band-fields" style="display:${byBand ? 'block' : 'none'}">
               ${table.bands.map((b, i) => `
@@ -630,8 +645,19 @@ App.pages.services = {
               </details>
               <div class="form-hint" style="margin-top:4px">구간은 설정 › 운영 설정 › 가격 구간에서 바꿔요.</div>
             </div>
-            ${id ? '' : this._bandsOffHint(table)}
           </div>
+          <div class="form-hint" style="margin-top:4px">비워 두면 &lsquo;가격 미입력&rsquo; — 기록할 때 직접 넣어요.</div>
+        </div>
+
+        <!-- 스타일 추가만: 코스별 다른 값 (1.08) — 같은 테디컷이라도 스포팅에서는 +1만5천처럼 코스마다 값이 다를 때. 비우면 위 가격 -->
+        <div class="form-group" id="f-bycourse-group" style="display:${service.category === 'style' ? 'block' : 'none'}">
+          <label class="form-label">코스별 다른 값 <span style="color:var(--text-muted);font-size:0.93rem;font-weight:400">(비우면 위 가격 그대로)</span></label>
+          ${courseList.length ? courseList.map(c => `
+          <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">
+            <span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-weight:600;font-size:0.93rem">${App.escapeHtml(c)}</span>
+            <input type="number" class="f-bycourse" data-course="${App.escapeHtml(c)}" value="${byCourse[c] !== undefined && byCourse[c] !== null && byCourse[c] !== '' ? Number(byCourse[c]) : ''}" placeholder="위 가격" min="0" step="1000" inputmode="numeric" style="width:130px;flex:none">
+          </div>`).join('') : '<div class="form-hint">미용 코스를 먼저 등록하면 여기에 코스가 보여요.</div>'}
+          <div class="form-hint" style="margin-top:4px">기록할 때 고른 코스에 맞는 값이 자동으로 들어가요. 코스에 '스타일 값 포함'이 켜져 있으면 0원.</div>
         </div>
 
         <!-- 자주 안 쓰는 설정은 접어 둔다 -->
@@ -641,7 +667,7 @@ App.pages.services = {
           </summary>
           <div style="padding:4px 0 8px">
             <div class="form-group" id="f-overkg-group" style="${showOver ? '' : 'display:none'}">
-              <label class="form-label">${headKg}kg 넘는 아이 추가 요금</label>
+              <label class="form-label">${headKg}kg 넘는 큰 아이 추가 요금</label>
               ${bandsOff ? `<div class="form-hint" style="margin:0 0 6px">구간을 꺼도 이 서비스만 따로 정한 추가 요금은 반려견 몸무게로 계속 붙어요. 받지 않으려면 '추가 요금 없음'을 고르세요.</div>` : ''}
               <label class="svc-radio" id="f-overkg-inherit-label"><input type="radio" name="f-overkg" value="inherit" ${overMode === 'inherit' ? 'checked' : ''}> 매장 기본 <span id="f-overkg-inherit-note" style="color:var(--text-muted);font-size:0.93rem"></span></label>
               <label class="svc-radio"><input type="radio" name="f-overkg" value="off" ${overMode === 'off' ? 'checked' : ''}> 추가 요금 없음</label>
@@ -654,7 +680,7 @@ App.pages.services = {
             </div>
             <label style="display:flex;align-items:center;gap:6px;margin-bottom:14px;min-height:44px;font-size:0.93rem;cursor:pointer">
               <input type="checkbox" id="f-fromPrice" ${pricing.fromPrice ? 'checked' : ''} style="width:18px;height:18px;cursor:pointer">
-              <span>'~부터'로 표시 (예: 40,000원~ — 상태에 따라 더 받을 수 있음)</span>
+              <span>가격표에 '~부터'로 표시 <span style="color:var(--text-muted)">(예: 40,000원~)</span></span>
             </label>
             <!-- 포함 항목 — 이 서비스에 기본 포함되는 작업 -->
             <div class="form-group">
@@ -785,6 +811,10 @@ App.pages.services = {
         document.querySelectorAll('#f-category-chips .payment-chip').forEach(b => b.classList.remove('active'));
         btn.classList.add('active');
         $('f-category').value = btn.dataset.value;
+        const sw = $('f-styleIncluded-wrap'); if (sw) sw.style.display = btn.dataset.value === 'grooming' ? 'flex' : 'none';
+        const bc = $('f-bycourse-group'); if (bc) bc.style.display = btn.dataset.value === 'style' ? 'block' : 'none';
+        // 새 서비스: 분류에 맞는 가격 방식으로 (미용 코스 = 몸무게별, 나머지 = 한 가격). 직접 고른 뒤엔 안 바꾼다
+        if (!id && !priceModeTouched && !$('f-price-free')?.checked) setPriceMode(btn.dataset.value === 'grooming' && !bandsOff ? 'weight' : 'flat');
         setOverDefault();
       });
     });
@@ -821,6 +851,27 @@ App.pages.services = {
     // 무료 서비스 체크 → 가격 칸 숨김
     $('f-price-free')?.addEventListener('change', (e) => {
       $('f-price-area').style.display = e.target.checked ? 'none' : 'block';
+      syncPriceModeChips();
+    });
+    // 가격 방식 버튼 ↔ 숨긴 체크박스
+    const syncPriceModeChips = () => {
+      const mode = $('f-price-free')?.checked ? 'free' : curMode();
+      document.querySelectorAll('#f-price-mode .payment-chip').forEach(b => b.classList.toggle('active', b.dataset.mode === mode));
+    };
+    let priceModeTouched = !!id;
+    const setPriceMode = (mode) => {
+      const freeCb = $('f-price-free'), flatCb = $('f-price-flat');
+      if (!freeCb || !flatCb) return;
+      if ((mode === 'free') !== freeCb.checked) { freeCb.checked = mode === 'free'; freeCb.dispatchEvent(new Event('change')); }
+      if (mode !== 'free') { const wantFlat = mode === 'flat' || bandsOff; if (flatCb.checked !== wantFlat) { flatCb.checked = wantFlat; flatCb.dispatchEvent(new Event('change')); } }
+      syncPriceModeChips();
+    };
+    document.querySelectorAll('#f-price-mode .payment-chip').forEach(b => b.addEventListener('click', () => { priceModeTouched = true; setPriceMode(b.dataset.mode); }));
+    $('f-price-flat')?.addEventListener('change', syncPriceModeChips);
+    // 분류 설명 펼치기
+    $('f-category-help')?.addEventListener('click', () => {
+      const body = $('f-category-help-body'); const open = body.style.display === 'none';
+      body.style.display = open ? 'block' : 'none'; $('f-category-help').setAttribute('aria-expanded', open ? 'true' : 'false');
     });
 
     // 단일가 ↔ 구간 가격 전환 — 값을 서로 옮겨 준다
@@ -975,7 +1026,13 @@ App.pages.services = {
     if (read.error) return;
     const pricing = read.pricing;
 
-    const data = { name, description, pricing, category, isActive: true, includedItems };
+    const data = { name, description, pricing, category, isActive: true, includedItems, styleIncluded: category === 'grooming' && !!$('f-styleIncluded')?.checked };
+    // 스타일 추가의 코스별 다른 값 — 적힌 칸만 저장 (빈 칸 = 기본 가격)
+    if (category === 'style') {
+      const bc = {};
+      document.querySelectorAll('.f-bycourse').forEach(inp => { const v = inp.value.trim(); if (v !== '' && Number(v) >= 0) bc[inp.dataset.course] = Number(v); });
+      data.byCourse = bc;
+    } else data.byCourse = undefined;
     App.applyLegacyPrices(data, table); // 구버전 기기용 priceSmall/Medium/Large + 서명
     const priceSig = (p) => JSON.stringify({
       m: p.mode, f: Number(p.flat) || 0, z: !!p.free,
@@ -1011,7 +1068,9 @@ App.pages.services = {
         $('f-priceFlat') && ($('f-priceFlat').value = '');
         document.querySelectorAll('.f-band-price').forEach(i => { i.value = ''; });
         if ($('f-fill-base')) $('f-fill-base').value = '';
-        if ($('f-price-free')?.checked) { $('f-price-free').checked = false; $('f-price-area').style.display = 'block'; }
+        if ($('f-price-free')?.checked) { $('f-price-free').checked = false; $('f-price-free').dispatchEvent(new Event('change')); }
+        document.querySelectorAll('.f-bycourse').forEach(i => { i.value = ''; });
+        if ($('f-styleIncluded')) $('f-styleIncluded').checked = false;
         if ($('f-fromPrice')) $('f-fromPrice').checked = false;
         document.querySelectorAll('#f-included-chips .payment-chip.active').forEach(b => b.classList.remove('active'));
         if ($('f-included-custom-list')) $('f-included-custom-list').innerHTML = '';
@@ -1053,6 +1112,27 @@ App.pages.services = {
           if (!next.includes(val)) next.push(val);
         });
         await DB.setSetting('serviceHistory', next);
+      }
+
+      // 이 아이 가격(pet.customPrices)·스타일의 코스별 다른 값(byCourse)은 이름으로 들고 있다 — 같이 옮긴다
+      const pets = await DB.getAll('pets');
+      for (const p of pets) {
+        if (p.customPrices && Object.prototype.hasOwnProperty.call(p.customPrices, oldNorm) && oldNorm !== newNorm) {
+          const next = Object.assign({}, p.customPrices);
+          if (!Object.prototype.hasOwnProperty.call(next, newNorm)) next[newNorm] = next[oldNorm];
+          delete next[oldNorm];
+          p.customPrices = next;
+          await DB.update('pets', p);
+        }
+      }
+      const styleSvcs = (await DB.getAll('services')).filter(sv => sv.category === 'style' && sv.byCourse && Object.prototype.hasOwnProperty.call(sv.byCourse, oldNorm));
+      for (const sv of styleSvcs) {
+        if (oldNorm === newNorm) break;
+        const next = Object.assign({}, sv.byCourse);
+        if (!Object.prototype.hasOwnProperty.call(next, newNorm)) next[newNorm] = next[oldNorm];
+        delete next[oldNorm];
+        sv.byCourse = next;
+        await DB.update('services', sv);
       }
 
       const light = await DB.getAllLight('records', ['photoBefore', 'photoAfter', 'photo3', 'photo4', 'memo']);

@@ -12,6 +12,7 @@ const App = {
       }
       this.setupNavigation();
       this.setupSidebar();
+      this.setupNoZoom();
       this.setupModal();
       this.setupKeyboard();
       this.setupBottomNav();
@@ -141,6 +142,14 @@ const App = {
       window.visualViewport.addEventListener('resize', adjustModal);
       window.visualViewport.addEventListener('scroll', adjustModal);
     }
+  },
+
+  // 휴대폰에서 두 손가락이 닿아 화면이 확대되고, 확대된 채로 옆으로 밀리던 문제 (1.08)
+  // 아이폰은 화면 설정(user-scalable=no)을 무시하므로 확대 동작 자체를 막는다.
+  setupNoZoom() {
+    const stop = (e) => e.preventDefault();
+    ['gesturestart', 'gesturechange', 'gestureend'].forEach(t => document.addEventListener(t, stop, { passive: false }));
+    document.addEventListener('touchmove', (e) => { if (e.touches && e.touches.length > 1) e.preventDefault(); }, { passive: false });
   },
 
   setupKeyboard() {
@@ -2173,6 +2182,12 @@ const App = {
   async getRecentServicePrice(petId, serviceName, sizeOrWeight) {
     const name = this.normalizeServiceName(serviceName);
     if (!name) return null;
+    // 이 아이 가격이 정해져 있으면 그게 먼저 (몸무게·메뉴 변경과 상관없이)
+    if (petId) {
+      const pet = await DB.get('pets', Number(petId)).catch(() => null);
+      const pp = this.getPetPrice(pet, name);
+      if (pp !== null) return pp;
+    }
     const menu = await this.getMenuPrice(name, sizeOrWeight);
     const petRecords = petId ? (await DB.getByIndex('records', 'petId', Number(petId)))
       .filter(r => this.normalizeServiceName(r.service) === name && Number(r.servicePrice) > 0)
@@ -2215,12 +2230,45 @@ const App = {
   },
 
   // 미용 기록의 서비스 표시 (신/구 호환)
+  // 메뉴 분류 중 '추가로 붙는 것' — 추가 옵션·단독 케어·스타일 추가(1.08). 기록 폼에서 태그로 붙고 가격이 더해진다
+  isExtraCategory(cat) { return cat === 'addon' || cat === 'care' || cat === 'style'; },
+
+  // 이 아이 가격 (반려견 상세에서 서비스마다 정해 둔 값, pet.customPrices[서비스명]) — 있으면 메뉴 값보다 먼저 쓴다. 0원도 값이다
+  getPetPrice(pet, serviceName) {
+    const name = this.normalizeServiceName(serviceName);
+    const v = pet && pet.customPrices && name ? pet.customPrices[name] : undefined;
+    if (v === undefined || v === null || v === '') return null;
+    const n = Number(v);
+    return Number.isFinite(n) && n >= 0 ? n : null;
+  },
+
+  // 추가로 붙는 항목(스타일·추가 옵션·단독 케어) 값 정하기. 순서:
+  // 1) 스타일인데 고른 코스가 '스타일 값 포함' → 0원  2) 이 아이 가격  3) 스타일의 '코스별 다른 값'(svc.byCourse[코스명])  4) 메뉴 값
+  // courses: 고른 코스 메뉴(합친 코스면 여러 개). 돌려주는 why 로 화면에 이유를 적는다
+  resolveExtraPrice(svc, basePrice, { courses = [], pet = null } = {}) {
+    const isStyle = svc && svc.category === 'style';
+    if (isStyle && courses.some(c => c && c.styleIncluded)) return { price: 0, why: 'included' };
+    const pp = this.getPetPrice(pet, svc && svc.name);
+    if (pp !== null) return { price: pp, why: 'pet' };
+    if (isStyle && svc.byCourse) {
+      for (const c of courses) {
+        const k = this.normalizeServiceName(c && c.name);
+        const v = k ? svc.byCourse[k] : undefined;
+        if (v !== undefined && v !== null && v !== '') return { price: Number(v) || 0, why: 'course' };
+      }
+    }
+    return { price: basePrice, why: 'menu' };
+  },
+
   getRecordServiceDisplay(r, serviceMap) {
     // 새 구조: service + style + addons
     if (r.service) {
       let display = r.service;
       if (r.style) display += ' (' + r.style + ')';
-      if (r.addons && r.addons.length) display += ' + ' + r.addons.join(', ');
+      // 스타일 칩으로 고른 스타일은 추가 항목에도 들어 있다 — 괄호에 이미 보이면 뒤에서 또 쓰지 않는다
+      const styleParts = new Set(String(r.style || '').split(/\s*[+,·]\s*/).map(x => this.normalizeServiceName(x)).filter(Boolean));
+      const addons = (r.addons || []).filter(a => !styleParts.has(this.normalizeServiceName(a)));
+      if (addons.length) display += ' + ' + addons.join(', ');
       return display;
     }
     // 기존 구조: serviceNames / serviceIds
@@ -2986,8 +3034,8 @@ const App = {
     const active = services.filter(s => s.isActive !== false);
     if (active.length === 0) return '<p style="color:var(--text-muted)">등록된 서비스가 없습니다. 서비스 메뉴에서 먼저 등록해주세요.</p>';
     const table = await this.getPriceBands();
-    const catLabels = { grooming: '미용 코스', addon: '추가 옵션', care: '단독 케어' };
-    const catOrder = ['grooming', 'addon', 'care'];
+    const catLabels = { grooming: '미용 코스', style: '스타일 추가', addon: '추가 옵션', care: '단독 케어' };
+    const catOrder = ['grooming', 'style', 'addon', 'care'];
 
     // 카테고리별 그룹 + sortOrder 정렬
     const grouped = {};

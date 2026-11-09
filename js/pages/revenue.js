@@ -151,9 +151,15 @@ App.pages.revenue = {
     const lastMonthRevenue = monthlyRevMap[lastMonth] || 0;
     const lastMonthVariableCost = Number(variableCosts[lastMonth]) || 0;
     const lastMonthProfit = lastMonthRevenue - fixedCost - lastMonthVariableCost;
-    // 손익 카드의 '전월 대비'도 페이스 카드와 같은 정의(지난달 같은 일차까지)를 쓴다.
-    // 예전엔 '이번 달 지금까지 vs 지난달 전체'라 5일엔 -85%, 상단엔 +10% 가 동시에 보였다.
-    const monthChange = pacingChange;
+    // 건수·1회 평균 (1.08) — 매출이 오른 게 손님이 늘어서인지, 한 번에 더 받아서인지 한눈에
+    const monthCount = monthRecords.length;
+    const monthAvg = monthCount ? Math.round(monthRevenue / monthCount) : 0;
+    const lastMonthRecs = records.filter(r => r.date && r.date.startsWith(lastMonth));
+    const lastMonthAvg = lastMonthRecs.length ? Math.round(lastMonthRecs.reduce((s, r) => s + App.getRecordAmount(r), 0) / lastMonthRecs.length) : 0;
+    const avgChange = lastMonthAvg && monthAvg ? Math.round((monthAvg - lastMonthAvg) / lastMonthAvg * 100) : null;
+    const noCost = fixedCost === 0 && variableCost === 0;
+
+
     const daysInMonth = new Date(year, month + 1, 0).getDate();
     const monthData = [];
     let monthMax = 1;
@@ -321,6 +327,10 @@ App.pages.revenue = {
                 <div style="font-size:0.93rem;color:var(--text-muted);margin-top:2px">이번 달에 들어온 돈${prepaidAll.length ? ' · 정액권 충전 포함' : ''}</div>
               </div>
             </div>
+            <div class="rev-mini-stats">
+              <div><span>미용</span><strong>${monthCount}건</strong></div>
+              <div><span>1회 평균</span><strong>${monthCount ? App.formatCurrency(monthAvg) : '-'}</strong>${avgChange !== null ? `<em style="color:${avgChange >= 0 ? 'var(--success)' : 'var(--danger)'}">지난달보다 ${avgChange >= 0 ? '+' : ''}${avgChange}%</em>` : ''}</div>
+            </div>
             ${prepaidAll.length ? `<div class="rev-prepaid-line">정액권: 이번 달 충전 ${App.formatCurrency(monthCharge)}${monthRefund ? ' · 환불 ' + App.formatCurrency(monthRefund) : ''}${byMethod.adjustOut ? ' · 조정으로 줄인 잔액 ' + App.formatCurrency(byMethod.adjustOut) + ' <span style="color:var(--text-muted)">(노쇼 예약금 등 — 돌려주지 않은 돈)</span>' : ''} · 남은 잔액 합계 ${App.formatCurrency(prepaidOutstanding)}</div>` : ''}
             ${monthComp > 0 ? `<div style="margin-top:10px;padding-top:8px;border-top:1px solid var(--border-light);display:flex;justify-content:space-between;font-size:0.93rem;color:var(--text-secondary)"><span>서비스로 제공한 금액 <span style="color:var(--text-muted)">(매출 제외)</span></span><span>${App.formatCurrency(monthComp)}</span></div>` : ''}
             ${unpaidRecs.length > 0 ? `
@@ -445,9 +455,9 @@ App.pages.revenue = {
               <span>매출</span>
               <strong style="color:var(--success)">${App.formatCurrency(monthRevenue)}</strong>
             </div>
-            <div style="display:flex;justify-content:space-between;padding:10px 0;border-bottom:1px solid var(--border)">
+            <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;padding:10px 0;border-bottom:1px solid var(--border)">
               <span>고정비</span>
-              <strong class="text-danger">-${App.formatCurrency(fixedCost)}</strong>
+              ${fixedCost > 0 ? `<strong class="text-danger">-${App.formatCurrency(fixedCost)}</strong>` : `<a href="#settings" style="color:var(--primary);font-weight:600;font-size:0.93rem;min-height:44px;display:inline-flex;align-items:center">월세 등 넣기 (설정 › 매장 관리) &rarr;</a>`}
             </div>
             <div style="display:flex;justify-content:space-between;align-items:center;padding:10px 0;border-bottom:1px solid var(--border)">
               <span>변동비 (이번 달)</span>
@@ -471,7 +481,8 @@ App.pages.revenue = {
               <span>받은 돈 기준</span>
               <span>${(monthCollected - totalCost) >= 0 ? '+' : ''}${App.formatCurrency(monthCollected - totalCost)}</span>
             </div>` : ''}
-            <div style="background:var(--bg);border-radius:20px;height:28px;overflow:hidden;margin-top:8px;position:relative">
+            ${noCost ? `<div style="font-size:0.93rem;color:var(--text-muted);margin-top:4px">비용을 넣지 않아 순이익이 매출과 같게 보여요.</div>` : ''}
+            <div style="background:var(--bg);border-radius:20px;height:28px;overflow:hidden;margin-top:8px;position:relative${noCost ? ';display:none' : ''}">
               <div style="height:100%;width:${Math.min(100, Math.max(0, profitMargin))}%;background:${profit >= 0 ? 'var(--success)' : 'var(--danger)'};border-radius:20px;transition:width 0.3s"></div>
               <span style="position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);font-size:0.93rem;font-weight:700">
                 이익률 ${profitMargin}%
@@ -486,10 +497,6 @@ App.pages.revenue = {
               <div style="flex:1;background:var(--bg);border-radius:var(--radius);padding:12px;text-align:center">
                 <div style="font-size:0.93rem;color:var(--text-muted)">지난달 순이익</div>
                 <div style="font-weight:700">${App.formatCurrency(lastMonthProfit)}</div>
-              </div>
-              <div style="flex:1;background:var(--bg);border-radius:var(--radius);padding:12px;text-align:center">
-                <div style="font-size:0.93rem;color:var(--text-muted)">지난달 이맘때보다</div>
-                <div style="font-weight:700;color:${monthChange === null ? 'var(--text-muted)' : monthChange >= 0 ? 'var(--success)' : 'var(--danger)'}">${monthChange === null ? '-' : (monthChange >= 0 ? App.icon('arrow-up','ico-sm') : App.icon('arrow-down','ico-sm')) + ' ' + Math.abs(monthChange) + '%'}</div>
               </div>
             </div>
           </div>

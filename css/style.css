@@ -1231,6 +1231,9 @@ a.stat-card { display: flex; }
   align-items: center;
   justify-content: center;
 }
+/* 새 고객 등록 칸이 열려 있는 동안엔 창 아래 '닫기·저장'을 숨긴다 — 버튼이 두 벌이라 헷갈리고, 키패드 위에 떠서 칸을 가렸다.
+   등록·취소를 누르면 다시 보인다 */
+.modal:has(.search-select-dropdown-form.open) .modal-footer { display: none !important; }
 /* 드롭다운 안에서 신규 등록 폼이 열렸을 때 — 모바일 키보드 위로 스크롤되도록 */
 .search-select-dropdown-form {
   max-height: 60vh;
@@ -1681,6 +1684,9 @@ a.stat-card { display: flex; }
   }
   /* Mobile overflow prevention */
   html, body { overflow-x: hidden; max-width: 100vw; }
+  /* hidden 만으로는 아이폰에서 손가락으로 옆으로 끌면 화면이 따라 움직였다 — clip 은 옆 스크롤 자체를 없앤다 */
+  @supports (overflow: clip) { html, body { overflow-x: clip; } }
+  html, body { overscroll-behavior-x: none; }
   .data-table { display: block; overflow-x: auto; -webkit-overflow-scrolling: touch; }
   .data-table td { max-width: 150px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .stats-grid { overflow: hidden; }
@@ -1694,7 +1700,10 @@ a.stat-card { display: flex; }
   /* 드롭다운 안의 인라인 신규 등록 폼은 40vh 에 가두지 않는다 — 키보드가 올라오면 '등록' 버튼이 아래로 숨었다 */
   .modal .search-select-dropdown.search-select-dropdown-form { max-height: none; position: static; }
   .modal .search-select-dropdown.open { overflow-y: auto; -webkit-overflow-scrolling: touch; }
-  .modal-body:has(.search-select-dropdown.open) { overflow: visible; }
+  /* 고객 고르기 목록(떠 있는 목록)만 창 밖으로 보이게 한다.
+     새 고객 등록 칸(.search-select-dropdown-form)이 열렸을 때까지 이걸 걸면 창 본문이 스크롤을 잃고
+     등록 칸이 창 밖으로 넘쳐 '닫기·저장' 버튼 위아래로 겹쳐 보였다 (1.08 아이폰 화면) */
+  .modal-body:has(.search-select-dropdown.open:not(.search-select-dropdown-form)) { overflow: visible; }
   .mobile-card { overflow: hidden; word-break: break-word; }
   .mobile-card-actions { flex-wrap: wrap; }
 }
@@ -3814,6 +3823,15 @@ body { line-height: 1.5; font-variant-numeric: tabular-nums; }
 .prepaid-amt { flex-shrink: 0; font-size: max(0.9rem, 13px); }
 .prepaid-amt.neg { color: var(--text-secondary); }
 .prepaid-preview { margin-top: 4px; padding: 10px 12px; background: var(--bg); border-radius: var(--radius); font-size: max(0.9rem, 13px); display: flex; justify-content: space-between; }
+/* 분석 요약 칸 — 휴대폰 2×2, 넓은 화면 한 줄 4칸 (1.08) */
+.an-kpis { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+@media (min-width: 769px) { .an-kpis { grid-template-columns: repeat(4, minmax(0, 1fr)); } }
+/* 매출 요약 아래 작은 숫자 두 칸 — 건수·1회 평균 (1.08) */
+.rev-mini-stats { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-top: 12px; padding-top: 10px; border-top: 1px solid var(--border-light); }
+.rev-mini-stats > div { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 8px; }
+.rev-mini-stats span { font-size: max(0.85rem, 13px); color: var(--text-secondary); font-weight: 600; }
+.rev-mini-stats strong { font-size: 1.05rem; font-weight: 800; }
+.rev-mini-stats em { font-style: normal; font-size: max(0.8rem, 13px); font-weight: 600; flex-basis: 100%; }
 .rev-prepaid-line { margin-top: 10px; padding-top: 8px; border-top: 1px solid var(--border-light); font-size: max(0.8rem, 13px); color: var(--text-secondary); }
 
 /* ===== 고객 상세: 컴퓨터(1100px+)에서 두 단 =====

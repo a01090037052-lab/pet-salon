@@ -646,7 +646,7 @@ App.pages.analytics = {
       <!-- 매출 / 방문 / 고객 요약 (지난 기간 대비 비교) -->
       <div class="card" style="margin-bottom:16px">
         <div class="card-body">
-          <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px">
+          <div class="an-kpis">
             <div style="text-align:center;padding:14px 8px 10px;background:var(--bg);border-radius:var(--radius);position:relative;min-width:0">
               ${cmpCorner(totalRev, prevTotalRev)}
               <div style="font-size:${this._compactWon(totalRev).length > 9 ? '0.84rem' : this._compactWon(totalRev).length > 7 ? '0.95rem' : '1.1rem'};font-weight:800;color:var(--primary);line-height:1.2;white-space:nowrap" title="${App.formatCurrency(totalRev)}">${this._compactWon(totalRev)}</div>
@@ -661,6 +661,11 @@ App.pages.analytics = {
               ${cmpCorner(periodCustomerIds.length, prevCustomerCount)}
               <div style="font-size:1.1rem;font-weight:800;color:var(--success);line-height:1.2;white-space:nowrap">${periodCustomerIds.length.toLocaleString('ko-KR')}명</div>
               <div style="font-size:0.93rem;color:var(--text-secondary);margin-top:4px;white-space:nowrap">고객</div>
+            </div>
+            <div style="text-align:center;padding:14px 8px 10px;background:var(--bg);border-radius:var(--radius);position:relative;min-width:0">
+              ${cmpCorner(records.length ? Math.round(totalRev / records.length) : 0, prevVisitCount ? Math.round(prevTotalRev / prevVisitCount) : 0)}
+              <div style="font-size:1.1rem;font-weight:800;color:var(--warning-text-strong, var(--text-primary));line-height:1.2;white-space:nowrap">${records.length ? this._compactWon(Math.round(totalRev / records.length)) : '-'}</div>
+              <div style="font-size:0.93rem;color:var(--text-secondary);margin-top:4px;white-space:nowrap">1회 평균</div>
             </div>
           </div>
           ${totalComp > 0 ? `<div style="margin-top:10px;display:flex;justify-content:space-between;font-size:0.93rem;color:var(--text-secondary)"><span>서비스로 제공한 금액 <span style="color:var(--text-muted)">(매출 제외)</span></span><span>${App.formatCurrency(totalComp)}</span></div>` : ''}

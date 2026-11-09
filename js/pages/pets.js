@@ -409,14 +409,71 @@ App.pages.pets = {
       </div>`;
       })()}
 
+      <!-- 이 아이 가격 (1.08): 서비스마다 이 아이에게 받는 값. 기록할 때 메뉴 값보다 먼저 들어간다 -->
+      <div class="detail-section" id="pet-prices">
+        <h3 class="detail-section-title" style="display:flex;align-items:center;justify-content:space-between;gap:8px">이 아이 가격
+          <button type="button" class="btn btn-sm btn-secondary" id="btn-pet-price-add" data-id="${pet.id}" style="min-height:40px">+ 추가</button></h3>
+        ${(() => {
+          const cp = pet.customPrices && typeof pet.customPrices === 'object' ? Object.entries(pet.customPrices).filter(([k, v]) => k && v !== '' && v !== null && v !== undefined) : [];
+          if (!cp.length) return '<p style="color:var(--text-muted);font-size:0.93rem;margin:4px 0 0">아직 없어요. 미용 기록에서 기본가를 고치고 <strong>이 아이 가격으로 기억</strong>을 켜거나, 여기서 추가하세요. 견종·털 상태 때문에 늘 다르게 받는 값을 적어 두면 다음부터 자동으로 들어가요.</p>';
+          return '<div class="pet-info-grid">' + cp.sort((a, b) => a[0].localeCompare(b[0], 'ko')).map(([k, v]) => `<button type="button" class="info-item pet-price-row" data-id="${pet.id}" data-service="${App.escapeHtml(k)}" style="text-align:left;cursor:pointer;min-height:44px"><label>${App.escapeHtml(k)}</label><span>${App.formatCurrency(Number(v))}</span></button>`).join('') + '</div><div class="form-hint" style="margin-top:4px">누르면 고치거나 지울 수 있어요.</div>';
+        })()}
+      </div>
+
       <div style="display:flex;justify-content:flex-end;margin:24px 0 8px">
         <button class="btn btn-ghost btn-delete-pet" data-id="${pet.id}" style="min-height:44px;color:var(--danger)">반려견 삭제</button>
       </div>
     `;
   },
 
+  // 이 아이 가격 추가·수정 — 서비스 고르기 + 값. 지우기는 값 칸을 비우고 저장
+  async showPetPriceForm(petId, serviceName) {
+    const pet = await DB.get('pets', petId);
+    if (!pet) return;
+    const services = (await DB.getAll('services')).filter(s => s.isActive !== false && App.normalizeServiceName(s.name));
+    const catLabel = { grooming: '미용 코스', style: '스타일 추가', addon: '추가 옵션', care: '단독 케어' };
+    const order = ['grooming', 'style', 'addon', 'care'];
+    const cp = pet.customPrices || {};
+    const cur = serviceName ? Number(cp[serviceName]) : '';
+    const names = new Set(services.map(s => App.normalizeServiceName(s.name)));
+    const opts = order.map(c => {
+      const list = services.filter(s => (s.category || 'grooming') === c).sort((a, b) => (a.name || '').localeCompare(b.name || '', 'ko'));
+      return list.length ? `<optgroup label="${catLabel[c]}">${list.map(s => { const n = App.normalizeServiceName(s.name); return `<option value="${App.escapeHtml(n)}"${n === serviceName ? ' selected' : ''}>${App.escapeHtml(n)}</option>`; }).join('')}</optgroup>` : '';
+    }).join('') + (serviceName && !names.has(serviceName) ? `<option value="${App.escapeHtml(serviceName)}" selected>${App.escapeHtml(serviceName)} (메뉴에 없음)</option>` : '');
+    App.showModal({
+      title: serviceName ? `${pet.name} · ${serviceName} 가격` : `${pet.name} 이 아이 가격 추가`,
+      content: `
+        <div class="form-group">
+          <label class="form-label">서비스</label>
+          <select id="pp-service" ${serviceName ? 'disabled' : ''}>${serviceName ? '' : '<option value="">고르세요</option>'}${opts}</select>
+        </div>
+        <div class="form-group">
+          <label class="form-label">이 아이에게 받는 값 (원)</label>
+          <input type="number" id="pp-price" value="${cur === '' || !Number.isFinite(cur) ? '' : cur}" placeholder="예: 45000" min="0" step="1000" inputmode="numeric">
+          <div class="form-hint" style="margin-top:4px">기록할 때 메뉴·몸무게 가격 대신 이 값이 먼저 들어가요.${serviceName ? ' 비우고 저장하면 지워져요.' : ''}</div>
+        </div>`,
+      onSave: async () => {
+        const svc = serviceName || App.normalizeServiceName(document.getElementById('pp-service')?.value);
+        const raw = (document.getElementById('pp-price')?.value || '').trim();
+        if (!svc) { App.showToast('서비스를 고르세요.', 'error'); return; }
+        const fresh = await DB.get('pets', petId);
+        if (!fresh) return;
+        const next = Object.assign({}, fresh.customPrices || {});
+        if (raw === '') { if (!serviceName) { App.showToast('값을 넣으세요.', 'error'); return; } delete next[svc]; }
+        else { const n = Number(raw); if (!(n >= 0)) { App.showToast('값을 확인하세요.', 'error'); return; } next[svc] = n; }
+        fresh.customPrices = next;
+        await DB.update('pets', fresh);
+        App.showToast(raw === '' ? '이 아이 가격을 지웠어요.' : '이 아이 가격을 저장했어요.');
+        App.closeModal();
+        App.handleRoute();
+      }
+    });
+  },
+
   async init(params) {
     document.getElementById('btn-add-pet')?.addEventListener('click', () => this.showForm());
+    document.getElementById('btn-pet-price-add')?.addEventListener('click', (e) => this.showPetPriceForm(Number(e.currentTarget.dataset.id)));
+    document.querySelectorAll('.pet-price-row').forEach(b => b.addEventListener('click', (e) => this.showPetPriceForm(Number(e.currentTarget.dataset.id), e.currentTarget.dataset.service)));
     // 최근 미용 사진 전·후 토글
     document.querySelectorAll('.rec-photo-item .rec-ba button').forEach(btn => {
       btn.addEventListener('click', (e) => {
