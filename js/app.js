@@ -202,7 +202,7 @@ const App = {
   peopleTabsHtml(active) {
     try { localStorage.setItem('peopleTab', active); } catch (_) {}
     const tab = (key, href, label) => `<a href="${href}" class="people-tab${active === key ? ' active' : ''}" role="tab" aria-selected="${active === key}">${label}</a>`;
-    return `<div class="people-tabs" role="tablist" aria-label="목록 보기">${tab('customers', '#customers', `${this.icon('user')} 보호자별`)}${tab('pets', '#pets', `${this.icon('paw')} 반려견별`)}</div>`;
+    return `<div class="people-tabs" role="tablist" aria-label="목록 보기">${tab('customers', '#customers', '보호자')}${tab('pets', '#pets', '반려견')}</div>`;
   },
 
   setupBottomNav() {
