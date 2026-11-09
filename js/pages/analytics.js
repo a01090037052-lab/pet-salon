@@ -551,7 +551,7 @@ App.pages.analytics = {
       const sign = diff > 0 ? '+' : '';
       const color = diff > 0 ? 'var(--success)' : 'var(--danger)';
       const arrow = diff > 0 ? App.icon('arrow-up','ico-sm') : App.icon('arrow-down','ico-sm');
-      return `<span style="position:absolute;top:6px;right:8px;font-size:0.86rem;color:${color};font-weight:700;line-height:1">${sign}${pct}%${arrow}</span>`;
+      return `<span class="an-kpi-cmp" style="display:block;margin-top:4px;font-size:0.82rem;color:${color};font-weight:700;line-height:1">${sign}${pct}%${arrow}</span>`;
     };
 
     // ===== 렌더링 =====
@@ -849,17 +849,17 @@ App.pages.analytics = {
             const filled = monthlyTrend.filter(m => m.rev > 0);
             const tAvg = filled.length > 0 ? Math.round(filled.reduce((s, m) => s + m.rev, 0) / filled.length) : 0;
             return `<div style="position:relative;height:220px;padding:0 8px;margin-left:36px">
-              <div style="position:absolute;left:0;right:0;bottom:45%;border-bottom:1px dashed var(--border-light)"><span style="position:absolute;left:-38px;top:-8px;font-size:0.86rem;color:var(--text-muted)">${Math.round(tMax * 0.5 / 10000)}만</span></div>
-              <div style="position:absolute;left:0;right:0;bottom:90%;border-bottom:1px dashed var(--border-light)"><span style="position:absolute;left:-38px;top:-8px;font-size:0.86rem;color:var(--text-muted)">${Math.round(tMax / 10000)}만</span></div>
+              <div style="position:absolute;left:0;right:0;bottom:107px;border-bottom:1px dashed var(--border-light)"><span style="position:absolute;left:-38px;top:-8px;font-size:0.86rem;color:var(--text-muted)">${Math.round(tMax * 0.5 / 10000)}만</span></div>
+              <div style="position:absolute;left:0;right:0;bottom:166px;border-bottom:1px dashed var(--border-light)"><span style="position:absolute;left:-38px;top:-8px;font-size:0.86rem;color:var(--text-muted)">${Math.round(tMax / 10000)}만</span></div>
               <div style="display:flex;gap:12px;height:180px;position:relative;z-index:1">
                 ${monthlyTrend.map(m => {
-                  const barH = m.rev > 0 ? Math.max(8, Math.round((m.rev / tMax) * 130)) : 4;
+                  const barH = m.rev > 0 ? Math.max(8, Math.round((m.rev / tMax) * 118)) : 4; // 막대가 아래 월·건수 글자를 덮지 않게 (1.08)
                   const isCurrent = m.month === thisMonthKey;
                   const barBg = m.rev === 0 ? 'var(--border-light)' : isCurrent ? 'linear-gradient(to top,var(--success),#34D399)' : 'linear-gradient(to top,var(--primary),#818CF8)';
                   const label = m.rev >= 10000 ? Math.round(m.rev / 10000) + '만' : (m.rev > 0 ? App.formatCurrency(m.rev) : '');
                   return `<div style="flex:1;position:relative;text-align:center;min-width:0" title="${m.month}: ${App.formatCurrency(m.rev)} (${m.count}건)">
                     <span style="font-size:0.93rem;color:${isCurrent ? 'var(--success)' : 'var(--text-secondary)'};font-weight:800;position:absolute;top:0;left:0;right:0;overflow:hidden;text-overflow:clip;white-space:nowrap">${label}</span>
-                    <div style="position:absolute;bottom:36px;left:8%;right:8%;height:${barH}px;background:${barBg};border-radius:8px 8px 0 0"></div>
+                    <div style="position:absolute;bottom:48px;left:8%;right:8%;height:${barH}px;background:${barBg};border-radius:8px 8px 0 0"></div>
                     <div style="position:absolute;bottom:0;left:0;right:0;text-align:center">
                       <div style="font-size:0.93rem;font-weight:${isCurrent ? '800' : '600'};color:${isCurrent ? 'var(--primary)' : 'var(--text-muted)'}">${m.label}</div>
                       <div style="font-size:0.93rem;color:var(--text-muted)">${m.count}건</div>

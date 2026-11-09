@@ -3823,7 +3823,15 @@ body { line-height: 1.5; font-variant-numeric: tabular-nums; }
 .prepaid-amt { flex-shrink: 0; font-size: max(0.9rem, 13px); }
 .prepaid-amt.neg { color: var(--text-secondary); }
 .prepaid-preview { margin-top: 4px; padding: 10px 12px; background: var(--bg); border-radius: var(--radius); font-size: max(0.9rem, 13px); display: flex; justify-content: space-between; }
+/* 입력 칸 안 지우기(×) — 서비스 칸 (1.08). .form-group 은 이미 position:relative */
+input.has-clear { padding-right: 44px; }
+.input-clear { position: absolute; right: 6px; top: 30px; width: 36px; height: 36px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 1.3rem; line-height: 1; color: var(--text-muted); background: var(--bg); z-index: 2; }
+.input-clear[hidden] { display: none; }
+/* 스타일 칩의 값 글자 — inline-flex 라 이름과 사이 공백이 사라진다 */
+.style-pick-chip .style-pick-price { margin-left: 6px; }
 /* 분석 요약 칸 — 휴대폰 2×2, 넓은 화면 한 줄 4칸 (1.08) */
+.an-kpis > div { display: flex; flex-direction: column; align-items: center; }
+.an-kpis > div .an-kpi-cmp { order: 3; }
 .an-kpis { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
 @media (min-width: 769px) { .an-kpis { grid-template-columns: repeat(4, minmax(0, 1fr)); } }
 /* 매출 요약 아래 작은 숫자 두 칸 — 건수·1회 평균 (1.08) */

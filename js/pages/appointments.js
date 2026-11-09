@@ -1335,13 +1335,40 @@ App.pages.appointments = {
     // ========== Event Handlers ==========
     // 서비스 칩 바인딩 (반려견 변경 시 사이즈별 가격으로 다시 그린 뒤에도 재사용)
     // 예상 금액 — 고른 서비스의 메뉴 가격 합 (몸무게 구간·초과 요금 반영). 실제 금액은 미용 기록에서 정해진다
-    const updateEstimate = () => {
+    // 1.08: 기록 폼과 같은 순서로 값을 정한다 — 코스는 이 아이 가격 → 메뉴 값, 스타일·옵션은 App.resolveExtraPrice(코스 포함 0원 → 이 아이 가격 → 코스별 다른 값 → 메뉴 값).
+    // 칩의 가격 글자도 그 값으로 바꿔 보여 준다 (예전엔 메뉴 기본값만 더해 기록 폼에서 금액이 달라졌다)
+    let apptPet = initialPet; // 아래 반려견 변경에서 바뀐다 (updateEstimate 가 먼저 쓰므로 여기서 선언)
+    let svcCache = null;
+    let estimateSeq = 0;
+    const updateEstimate = async () => {
       const el = document.getElementById('f-appt-estimate');
       if (!el) return;
+      const seq = ++estimateSeq;
       const picked = Array.from(document.querySelectorAll('input[name="serviceIds"]:checked'));
       if (picked.length === 0) { el.style.display = 'none'; return; }
-      const sum = picked.reduce((t, cb) => t + (Number(cb.dataset.price) || 0), 0);
-      const unknown = picked.some(cb => cb.dataset.needsWeight === '1');
+      if (!svcCache) svcCache = await DB.getAll('services');
+      if (seq !== estimateSeq || !el.isConnected) return;
+      const byId = {}; svcCache.forEach(sv => { byId[sv.id] = sv; });
+      const pickedSvcs = picked.map(cb => byId[Number(cb.value)]).filter(Boolean);
+      const courses = pickedSvcs.filter(sv => (sv.category || 'grooming') === 'grooming');
+      let sum = 0, unknown = false;
+      for (const cb of picked) {
+        const sv = byId[Number(cb.value)];
+        const base = Number(cb.dataset.price) || 0;
+        let price = base, why = 'menu';
+        if (sv && App.isExtraCategory(sv.category)) ({ price, why } = App.resolveExtraPrice(sv, base, { courses, pet: apptPet }));
+        else if (sv) { const pp = App.getPetPrice(apptPet, sv.name); if (pp !== null) { price = pp; why = 'pet'; } }
+        if (cb.dataset.needsWeight === '1' && why === 'menu') unknown = true;
+        sum += price;
+        // 칩 글자: 메뉴 값과 다르면 실제 들어갈 값 + 이유
+        const pe = cb.closest('.service-chip')?.querySelector('.service-chip-price');
+        if (pe) {
+          if (!pe.dataset.menuHtml) pe.dataset.menuHtml = pe.innerHTML;
+          pe.innerHTML = why === 'menu' ? pe.dataset.menuHtml : `${why === 'included' ? '포함' : App.formatCurrency(price)}<small class="service-chip-band">${why === 'included' ? '코스에 들어 있음' : why === 'pet' ? '이 아이 가격' : '이 코스 값'}</small>`;
+        }
+      }
+      // 고르지 않은 칩은 메뉴 글자로 되돌린다
+      document.querySelectorAll('input[name="serviceIds"]:not(:checked)').forEach(cb => { const pe = cb.closest('.service-chip')?.querySelector('.service-chip-price'); if (pe && pe.dataset.menuHtml) pe.innerHTML = pe.dataset.menuHtml; });
       el.style.display = 'block';
       el.innerHTML = `<div style="display:flex;justify-content:space-between;align-items:center;gap:8px"><span style="color:var(--text-secondary)">예상 금액</span><strong>${unknown && sum === 0 ? '-' : App.formatCurrency(sum)}</strong></div>`
         + (unknown ? '<div style="font-size:0.93rem;color:var(--text-muted);margin-top:2px">몸무게를 넣으면 구간 가격으로 계산돼요</div>' : '');
@@ -1381,7 +1408,6 @@ App.pages.appointments = {
     // 반려견이 바뀌면 그 아이의 구간 가격으로 칩을 다시 그린다 (선택한 서비스는 유지)
     let chipRenderSeq = 0;
     let lastSizeType = initialBasis;
-    let apptPet = initialPet;
     const rerenderChips = async () => {
       const seq = ++chipRenderSeq;
       const sizeType = App.getPetPriceBasis(apptPet);
@@ -1399,7 +1425,8 @@ App.pages.appointments = {
     document.getElementById('f-petId')?.addEventListener('change', async (e) => {
       const petId = Number(e.target.value);
       apptPet = petId ? await DB.get('pets', petId) : null;
-      rerenderChips();
+      await rerenderChips();
+      updateEstimate(); // 몸무게 구간이 같아도 이 아이 가격은 다를 수 있다
     });
 
     // 빠른 시간 칩

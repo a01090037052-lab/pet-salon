@@ -668,8 +668,9 @@ App.pages.records = {
   // 미용 코스(grooming)가 없으면 첫 번째를 주 서비스로 (예: 목욕만 단독 케어로 예약)
   _splitAppointmentServices(picked) {
     const list = (picked || []).filter(Boolean);
-    let courses = list.filter(s => s.category === 'grooming');
-    if (!courses.length && list.length) courses = [list[0]];
+    let courses = list.filter(s => (s.category || 'grooming') === 'grooming');
+    // 코스가 없으면 단독 케어(발톱만 등)를 주 서비스로. 스타일·추가 옵션만 고른 예약은 첫 항목
+    if (!courses.length && list.length) courses = [list.find(s => s.category === 'care') || list.find(s => s.category !== 'style') || list[0]];
     return { courses, extras: list.filter(s => !courses.includes(s)) };
   },
   // 합친 주 서비스 이름 → 코스 이름들 (메뉴에 그 이름 그대로 있는 경우는 호출하는 쪽에서 먼저 확인)
@@ -786,11 +787,15 @@ App.pages.records = {
           servicePrice += m ? (Number(m.price) || 0) : 0;
         }
         serviceName = courseNames.join(this._COURSE_SEP);
+        // 코스 가격도 이 아이 가격이 있으면 그걸로 (getRecentServicePrice 와 같은 순서)
+        if (apPet && courseNames.length === 1) { const pp = App.getPetPrice(apPet, courseNames[0]); if (pp !== null) servicePrice = pp; }
+        const courseSvcs = courses.map(c => allSvcs.find(sv => sv.id === c.id) || c);
         for (const s of extras) {
           const nm = App.normalizeServiceName(s.name);
           if (!nm || addons.includes(nm)) continue;
           const m = await App.getMenuPrice(nm, apSize, allSvcs);
-          const p = m ? m.price : 0;
+          // 예약에서 넘어온 추가 항목도 기록 폼과 같은 순서로 (포함 0원 → 이 아이 가격 → 코스별 값 → 메뉴 값)
+          const p = m ? App.resolveExtraPrice(m.service, Number(m.price) || 0, { courses: courseSvcs, pet: apPet }).price : 0;
           addons.push(nm);
           prefillAddonPrices[nm] = p;
           addonPrice += p;
@@ -892,8 +897,9 @@ App.pages.records = {
         <div class="form-row">
           <div class="form-group" style="flex:2">
             <label class="form-label">서비스 <span class="required">*</span></label>
-            <input type="text" id="f-service" value="${App.escapeHtml(record.service || (record.serviceNames ? record.serviceNames[0] || '' : ''))}" placeholder="예: 전체미용, 목욕" autocomplete="off">
-            <div class="search-select-dropdown" id="service-dropdown" style="position:absolute;z-index:10;background:var(--bg-white);border:1px solid var(--border);border-radius:var(--radius);box-shadow:var(--shadow);max-height:min(45vh,360px);overflow-y:auto;display:none;width:100%"></div>
+            <input type="text" id="f-service" class="has-clear" value="${App.escapeHtml(record.service || (record.serviceNames ? record.serviceNames[0] || '' : ''))}" placeholder="예: 전체미용, 목욕" autocomplete="off">
+            <button type="button" class="input-clear" id="f-service-clear" aria-label="서비스 지우기" hidden>&times;</button>
+            <div class="search-select-dropdown" id="service-dropdown" style="position:absolute;background:var(--bg-white);border:1px solid var(--border);border-radius:var(--radius);box-shadow:var(--shadow);max-height:min(45vh,360px);overflow-y:auto;display:none;width:100%"></div>
           </div>
           <div class="form-group" style="flex:1">
             <label class="form-label" for="f-servicePrice">기본가</label>
@@ -954,7 +960,7 @@ App.pages.records = {
           }).join('')}</div>
           <div class="form-hint" id="f-addon-comp-hint" style="margin-top:-2px;margin-bottom:6px${compList.length ? '' : ';display:none'}">항목 옆 <strong>서비스 제공</strong>을 누르면 금액에서 빠져요</div>
           <input type="text" id="f-addon-input" placeholder="눌러서 고르거나 직접 입력" autocomplete="off">
-          <div class="search-select-dropdown" id="addon-dropdown" style="position:absolute;z-index:10;background:var(--bg-white);border:1px solid var(--border);border-radius:var(--radius);box-shadow:var(--shadow);max-height:min(45vh,360px);overflow-y:auto;display:none;width:100%"></div>
+          <div class="search-select-dropdown" id="addon-dropdown" style="position:absolute;background:var(--bg-white);border:1px solid var(--border);border-radius:var(--radius);box-shadow:var(--shadow);max-height:min(45vh,360px);overflow-y:auto;display:none;width:100%"></div>
         </div>
         <!-- 합계 + 결제 수단 (필수 매출 정보) -->
         <div class="form-group" id="final-price-display" style="background:var(--bg);border-radius:var(--radius);padding:12px 16px;display:flex;justify-content:space-between;align-items:center">
@@ -1045,7 +1051,7 @@ App.pages.records = {
           <div class="form-group">
             <label class="form-label">스타일 메모 <span style="color:var(--text-muted);font-size:0.93rem">(선택 — 위 스타일 칩을 고르면 자동으로 채워져요)</span></label>
             <input type="text" id="f-style" value="${App.escapeHtml(record.style || '')}" placeholder="예: 테디베어컷, 하이바+스포팅" autocomplete="off">
-            <div class="search-select-dropdown" id="style-dropdown" style="position:absolute;z-index:10;background:var(--bg-white);border:1px solid var(--border);border-radius:var(--radius);box-shadow:var(--shadow);max-height:150px;overflow-y:auto;display:none;width:100%"></div>
+            <div class="search-select-dropdown" id="style-dropdown" style="position:absolute;background:var(--bg-white);border:1px solid var(--border);border-radius:var(--radius);box-shadow:var(--shadow);max-height:150px;overflow-y:auto;display:none;width:100%"></div>
           </div>
           <!-- 금액: '추가 금액' 하나만 받는다. 예전 '추가 요금'(extraCharge)은 값이 있는 옛 기록에서만 보이고, 합계·저장 식은 그대로 -->
           <div class="form-row">
@@ -1585,6 +1591,20 @@ App.pages.records = {
     };
     serviceInput?.addEventListener('change', runPriceFill);
     serviceInput?.addEventListener('input', App.debounce(runPriceFill, 400));
+    // 서비스 지우기(×): 다른 서비스를 고르려고 글자를 하나씩 지우던 불편 (1.08). 누르면 비우고 목록을 바로 연다
+    const serviceClear = document.getElementById('f-service-clear');
+    const syncServiceClear = () => { if (serviceClear) serviceClear.hidden = !(serviceInput && serviceInput.value); };
+    serviceInput?.addEventListener('input', syncServiceClear);
+    serviceInput?.addEventListener('change', syncServiceClear);
+    syncServiceClear();
+    serviceClear?.addEventListener('click', () => {
+      if (!serviceInput) return;
+      serviceInput.value = '';
+      servicePriceManual = false; // 새 서비스를 고르면 가격을 다시 자동으로
+      this._modalDirty = true;
+      serviceInput.dispatchEvent(new Event('change'));
+      serviceInput.focus(); // focus 로 목록이 열린다
+    });
 
     // 메뉴 추가 항목 가격을 지금 몸무게·코스 기준으로 다시 맞춘다 (몸무게를 바꾸거나 코스를 바꿨을 때)
     // 한 번에 하나씩 차례로 돈다 (몸무게·코스 변경이 겹쳐도 같은 태그 값을 두 번 빼거나 더하지 않게).
@@ -5382,7 +5402,8 @@ App.pages.records = {
   // 리포트 디자인 (1.08 시안) — 같은 내용을 네 가지 느낌으로. 설정값 reportTheme (고르는 화면은 사장님이 시안을 고른 뒤 정함 — 지금은 늘 warm)
   REPORT_THEMES: {
     warm: { label: '따뜻한', bg: '#F6F1EA', card: true, band: 'glow', align: 'center', r: 1, tile: '#FAF8F5', tileLine: null, heading: 'bar', ticket: 'fill', chip: 'soft', kicker: '오늘의 미용 알림장', title: 800 },
-    clean: { label: '깔끔한', bg: '#FFFFFF', card: false, band: 'none', align: 'left', r: 0.35, tile: null, tileLine: '#E5E7EB', heading: 'rule', ticket: 'line', chip: 'line', kicker: '미용 리포트', title: 700 },
+    clean: { label: '깔끔한', bg: '#FFFFFF', card: false, band: 'none', align: 'left', r: 0.35, tile: null, tileLine: '#E5E7EB', heading: 'rule', ticket: 'line', chip: 'line', kicker: '', title: 700, status: 'list' },
+    accent: { label: '포인트', bg: '#FFFFFF', card: false, band: 'topbar', align: 'left', r: 0.4, tile: 'tint', tileLine: null, heading: 'rule-accent', ticket: 'soft', chip: 'accent', kicker: '미용 리포트', title: 800 },
     modern: { label: '모던', bg: '#EEF0F3', card: true, band: 'dark', align: 'left', r: 0.55, tile: '#F4F5F7', tileLine: null, heading: 'num', ticket: 'dark', chip: 'dark', kicker: '미용 리포트', title: 800 },
     pastel: { label: '파스텔', bg: 'tint', card: true, band: 'dots', align: 'center', r: 1.5, tile: 'tint', tileLine: null, heading: 'pill', ticket: 'fill', chip: 'soft', kicker: '오늘도 예뻐졌어요', title: 800 }
   },
@@ -5390,7 +5411,7 @@ App.pages.records = {
   async buildReportCanvas(record, info) {
     const { pet, shopName, shopPhone, logo, reviewLink } = info;
     // 기록에 있는 것만 쓰고(빈 칸은 통째로 뺀다), 이미지는 저장하지 않고 즉석에서 만든다.
-    const T = this.REPORT_THEMES[info.theme] || this.REPORT_THEMES.warm;
+    const T = this.REPORT_THEMES[info.theme] || this.REPORT_THEMES.clean;
     const W = 1080, M = T.card ? 44 : 0, P = T.card ? 60 : 80;
     const CX = M + P, CW = W - (M + P) * 2;
     const R = (n) => Math.round(n * T.r);
@@ -5435,6 +5456,8 @@ App.pages.records = {
     if (record.earStatus) status.push(['귀', L.earStatus[record.earStatus] || record.earStatus, this._reportTone('earStatus', record.earStatus)]);
     if (record.mattingLevel) status.push(['털 엉킴', L.mattingLevel[record.mattingLevel] || record.mattingLevel, this._reportTone('mattingLevel', record.mattingLevel)]);
     const memo = String(record.memo || '').trim().replace(/\s+/g, ' ').slice(0, 140);
+    // 오늘 잰 몸무게 — 보호자가 궁금해하는 숫자 (기록에 있을 때만)
+    const weightTxt = Number(record.weightAtVisit) > 0 ? App.formatKg(record.weightAtVisit) + 'kg' : '';
     let daysToNext = null;
     if (record.nextVisitDate && record.date) {
       const a = new Date(record.date + 'T00:00:00'), b = new Date(record.nextVisitDate + 'T00:00:00');
@@ -5473,6 +5496,12 @@ App.pages.records = {
           if (draw) { ctx.fillStyle = '#E5E7EB'; ctx.fillRect(CX + tw + 20, yy - 9, CW - tw - 20, 2); }
           return yy + 44;
         }
+        if (T.heading === 'rule-accent') {
+          text(title, CX, yy, F('bold', 28), accent);
+          setFont(F('bold', 28)); const tw = ctx.measureText(title).width;
+          if (draw) { ctx.fillStyle = accent; ctx.fillRect(CX, yy + 12, 56, 4); ctx.fillStyle = '#E5E7EB'; ctx.fillRect(CX + tw + 20, yy - 9, CW - tw - 20, 2); }
+          return yy + 56;
+        }
         if (T.heading === 'num') {
           text(String(secNo).padStart(2, '0'), CX, yy, F('800', 30), accent);
           text(title, CX + 56, yy, F('bold', 32), C.dark);
@@ -5496,6 +5525,11 @@ App.pages.records = {
           ctx.fillStyle = g; ctx.fillRect(0, 0, W, 420);
         } else if (T.band === 'dark') {
           ctx.fillStyle = C.dark; ctx.fillRect(0, 0, W, 520);
+        } else if (T.band === 'topbar') {
+          // 맨 위 가게 색 띠 + 아래로 옅게 번지는 색
+          ctx.fillStyle = accent; ctx.fillRect(0, 0, W, 14);
+          const g = ctx.createLinearGradient(0, 14, 0, 300); g.addColorStop(0, tint(0.10)); g.addColorStop(1, tint(0));
+          ctx.fillStyle = g; ctx.fillRect(0, 14, W, 286);
         } else if (T.band === 'dots') {
           // 물방울 장식
           [[90, 90, 60, 0.18], [980, 150, 90, 0.14], [1010, 40, 30, 0.2], [60, 260, 26, 0.16], [880, 300, 22, 0.2]].forEach(([x, yy, r, a]) => { ctx.fillStyle = tint(a); ctx.beginPath(); ctx.arc(x, yy, r, 0, Math.PI * 2); ctx.fill(); });
@@ -5514,7 +5548,7 @@ App.pages.records = {
         y += 70;
         text(T.kicker, CX, y, F('600', 28), accent, 'left'); y += 84;
         text(`${pet?.name || '우리 아이'}`, CX, y, F('800', 84), '#fff', 'left'); y += 60;
-        text(kDate(record.date, true) + (record.groomer ? '  ·  담당 ' + record.groomer : ''), CX, y, F('500', 30), 'rgba(255,255,255,0.7)', 'left');
+        text(kDate(record.date, true) + (weightTxt ? '  ·  ' + weightTxt : '') + (record.groomer ? '  ·  담당 ' + record.groomer : ''), CX, y, F('500', 30), 'rgba(255,255,255,0.7)', 'left');
         y += 60;
       } else { y += 16; }
       // ── 카드 시작
@@ -5529,9 +5563,11 @@ App.pages.records = {
         y = cardTop + P;
       } else {
         y = cardTop + (T.card ? 74 : 40);
-        text(T.kicker, ax, y, F('600', 28), accent, aa); y += 76;
-        text(`${pet?.name || '우리 아이'}의 미용 리포트`, ax, y, F(String(T.title), 62), C.text, aa); y += 58;
-        const s = kDate(record.date, true) + (record.groomer ? '  ·  담당 ' + record.groomer : '');
+        if (T.kicker) { text(T.kicker, ax, y, F('600', 28), accent, aa); y += 76; } else y += 40;
+        text(`${pet?.name || '우리 아이'}의 미용 리포트`, ax, y, F(String(T.title), 62), C.text, aa);
+        if (T.heading === 'rule-accent' && draw) { ctx.fillStyle = accent; ctx.fillRect(CX, y + 22, 72, 6); } // 제목 아래 짧은 포인트 선
+        y += 58;
+        const s = kDate(record.date, true) + (weightTxt ? '  ·  ' + weightTxt : '') + (record.groomer ? '  ·  담당 ' + record.groomer : '');
         if (T.align === 'center') {
           setFont(F('500', 28)); const w = ctx.measureText(s).width + 56;
           box((W - w) / 2, y - 8, w, 54, 27, tileFill || '#F5F5F4');
@@ -5582,6 +5618,7 @@ App.pages.records = {
           if (T.chip === 'soft') { bgc = big ? tint(0.12) : (tileFill || '#F5F5F4'); fill = big ? accent : C.text; }
           if (T.chip === 'dark') { bgc = big ? C.dark : '#F4F5F7'; fill = big ? '#fff' : C.text; }
           if (T.chip === 'line') { bgc = null; fill = big ? C.text : C.sub; }
+          if (T.chip === 'accent') { bgc = big ? accent : tint(0.08); fill = big ? '#fff' : accent; }
           if (bgc) box(x, y, w, h, R(h / 2), bgc);
           if (T.chip === 'line' || (T.chip === 'soft' && !big)) stroke(x, y, w, h, R(h / 2), big ? C.text : (T.chip === 'line' ? '#D1D5DB' : C.line), 2);
           text(lbl, x + padX, y + h / 2 + (big ? 11 : 10), f, fill);
@@ -5594,6 +5631,20 @@ App.pages.records = {
       // ── 오늘 상태 (2칸 타일)
       if (status.length) {
         y += 80; y = heading('오늘 상태', y);
+        if (T.status === 'list') {
+          // 한 줄에 하나 — 칸이 홀수일 때 비는 자리 없이 단정하게
+          const rh = 68;
+          status.forEach(([k, v, tone], i) => {
+            const yy = y + i * rh;
+            text(k, CX, yy + 44, F('500', 28), C.sub);
+            const val = fit(v, CW - 300, F('bold', 30));
+            setFont(F('bold', 30)); const vw = ctx.measureText(val).width;
+            text(val, CX + CW, yy + 44, F('bold', 30), C.text, 'right');
+            if (draw) { ctx.fillStyle = tone; ctx.beginPath(); ctx.arc(CX + CW - vw - 22, yy + 34, 9, 0, Math.PI * 2); ctx.fill(); }
+            if (draw && i < status.length - 1) { ctx.fillStyle = '#F0F0F0'; ctx.fillRect(CX, yy + rh - 1, CW, 2); }
+          });
+          y += status.length * rh - 10;
+        } else {
         const gap = 16, tw = (CW - gap) / 2, th = 112;
         status.forEach(([k, v, tone], i) => {
           const col = i % 2, row = Math.floor(i / 2);
@@ -5605,6 +5656,7 @@ App.pages.records = {
           text(fit(v, tw - 90, F('bold', 32)), x + 60, yy + 92, F('bold', 32), C.text);
         });
         y += Math.ceil(status.length / 2) * (th + gap) - gap;
+        }
       }
       // ── 미용사 한마디
       if (memo) {
@@ -5612,9 +5664,10 @@ App.pages.records = {
         const lines = wrap(memo, CW - 100, F('500', 32));
         const sig = record.groomer ? '— 담당 ' + record.groomer : '— ' + shopName;
         const bh = 54 + lines.length * 50 + 60;
-        if (T.heading === 'rule') { if (draw) { ctx.fillStyle = accent; ctx.fillRect(CX, y, 6, bh); } }
+        const ruleish = T.heading === 'rule' || T.heading === 'rule-accent';
+        if (ruleish) { if (draw) { ctx.fillStyle = accent; ctx.fillRect(CX, y, 6, bh); } }
         else box(CX, y, CW, bh, R(28), T.chip === 'dark' ? '#F4F5F7' : tint(0.08));
-        if (T.heading !== 'rule') text('“', CX + 26, y + 72, F('bold', 80), T.chip === 'dark' ? accent : tint(0.35));
+        if (!ruleish) text('“', CX + 26, y + 72, F('bold', 80), T.chip === 'dark' ? accent : tint(0.35));
         let ly = y + 70;
         lines.forEach(l => { text(l, CX + 70, ly, F('500', 32), C.text); ly += 50; });
         text(sig, CX + CW - 36, ly + 14, F('500', 26), C.sub, 'right');
@@ -5636,9 +5689,11 @@ App.pages.records = {
       if (record.nextVisitDate) {
         y += 76;
         const th = 168;
-        const filled = T.ticket !== 'line';
+        const soft = T.ticket === 'soft';
+        const filled = T.ticket !== 'line' && !soft;
         const fill = T.ticket === 'dark' ? C.dark : accent;
-        if (filled) box(CX, y, CW, th, R(30), fill); else stroke(CX, y, CW, th, R(30), accent, 3);
+        if (soft) { box(CX, y, CW, th, R(30), tint(0.10)); if (draw) { ctx.fillStyle = accent; ctx.fillRect(CX, y + 30, 8, th - 60); } }
+        else if (filled) box(CX, y, CW, th, R(30), fill); else stroke(CX, y, CW, th, R(30), accent, 3);
         if (draw && T.ticket === 'fill') {
           ctx.fillStyle = T.card ? '#FFFFFF' : (bgColor || '#fff');
           ctx.beginPath(); ctx.arc(CX, y + th / 2, 18, 0, Math.PI * 2); ctx.fill();
@@ -5651,8 +5706,8 @@ App.pages.records = {
           const s = daysToNext % 7 === 0 ? `${daysToNext / 7}주 뒤` : `${daysToNext}일 뒤`;
           setFont(F('bold', 28));
           const w = ctx.measureText(s).width + 44;
-          box(CX + CW - 44 - w, y + th / 2 - 28, w, 56, 28, filled ? (T.ticket === 'dark' ? accent : 'rgba(255,255,255,0.2)') : tint(0.12));
-          text(s, CX + CW - 44 - w / 2, y + th / 2 + 10, F('bold', 28), filled ? '#fff' : accent, 'center');
+          box(CX + CW - 44 - w, y + th / 2 - 28, w, 56, 28, filled ? (T.ticket === 'dark' ? accent : 'rgba(255,255,255,0.2)') : (soft ? accent : tint(0.12)));
+          text(s, CX + CW - 44 - w / 2, y + th / 2 + 10, F('bold', 28), filled || soft ? '#fff' : accent, 'center');
         }
         y += th;
       }
@@ -5660,7 +5715,7 @@ App.pages.records = {
       y += 70;
       if (draw) { ctx.fillStyle = T.tileLine || C.line; ctx.fillRect(CX, y, CW, 2); }
       y += 64;
-      text(shopName, ax, y, F('bold', 32), C.text, aa); y += 44;
+      text(shopName, ax, y, F('bold', 32), T.heading === 'rule-accent' ? accent : C.text, aa); y += 44;
       if (shopPhone) { text(shopPhone, ax, y, F('500', 28), C.sub, aa); y += 40; }
       if (reviewLink) { y += 6; text('리뷰 남겨주시면 큰 힘이 돼요 ♡', ax, y, F('500', 26), accent, aa); y += 36; }
       y += 34;
@@ -5684,7 +5739,7 @@ App.pages.records = {
     App.showToast('리포트를 만드는 중...', 'info', { duration: 1500 });
     let canvas;
     try {
-      canvas = await this.buildReportCanvas(record, { pet, shopName: shopName || '펫살롱', shopPhone: shopPhone || '', logo, reviewLink: reviewLink || '', accent: ds?.mainColor || '#6366F1', theme: reportTheme || 'warm' });
+      canvas = await this.buildReportCanvas(record, { pet, shopName: shopName || '펫살롱', shopPhone: shopPhone || '', logo, reviewLink: reviewLink || '', accent: ds?.mainColor || '#6366F1', theme: reportTheme || 'clean' });
     } catch (err) { console.error('리포트 생성 실패:', err); App.showToast('리포트를 만들지 못했습니다.', 'error'); return; }
     canvas.toBlob(async (blob) => {
       canvas.width = canvas.height = 0; // 다 쓴 리포트 캔버스 메모리 반환 (iOS)
