@@ -4124,3 +4124,16 @@ input.has-clear { padding-right: 44px; }
 .cloud-photo-line { color: var(--text-muted); font-size: max(0.88rem, 13px); }
 .cloud-photo-notice { display: flex; align-items: center; gap: 10px; padding: 12px 14px; margin-bottom: 16px; border-radius: var(--radius); background: var(--warning-bg-soft, #FFFBEB); border: 1px solid var(--warning-border-soft, #FDE68A); font-size: max(0.9rem, 13px); }
 .cloud-photo-notice .flex-1 { flex: 1; min-width: 0; }
+
+/* 사진 카드 — 사진 느낌(필터) 견본 */
+.card-filter-row { display: flex; gap: 8px; overflow-x: auto; padding-bottom: 4px; -webkit-overflow-scrolling: touch; }
+.card-filter-btn { flex: 0 0 auto; display: flex; flex-direction: column; align-items: center; gap: 4px; padding: 4px; background: none; border: 2px solid transparent; border-radius: 10px; font-size: max(0.8rem, 13px); color: var(--text-secondary); cursor: pointer; }
+.card-filter-btn.active { border-color: var(--primary); color: var(--primary); font-weight: 700; }
+.card-filter-thumb { width: 56px; height: 56px; border-radius: 8px; background: linear-gradient(135deg, #E2E8F0, #CBD5E1) center / cover no-repeat; }
+/* 사진 카드 — 내 프레임 줄 (많아도 옆으로 넘겨 본다) */
+.card-frame-row { display: flex; gap: 8px; overflow-x: auto; width: 100%; padding: 2px 0 4px; -webkit-overflow-scrolling: touch; }
+.card-frame-btn { flex: 0 0 auto; width: 84px; flex-direction: column; gap: 4px; padding: 6px; }
+.card-frame-thumb { display: flex; align-items: center; justify-content: center; width: 70px; height: 84px; border-radius: 6px; background: repeating-conic-gradient(#E5E7EB 0 25%, #fff 0 50%) 0 0 / 12px 12px; overflow: hidden; }
+.card-frame-thumb img { max-width: 100%; max-height: 100%; object-fit: contain; display: block; }
+.card-frame-name { font-size: max(0.78rem, 12px); font-weight: 700; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.card-frame-holes { font-size: 11px; color: var(--text-muted); }

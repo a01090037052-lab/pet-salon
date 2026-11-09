@@ -3137,8 +3137,8 @@ App.pages.records = {
     // 마이그레이션된 사진은 photos 스토어에서 로드, 아니면 인라인
     const photoBefore = record.photoBefore || (record.photoBeforeId ? await DB.getPhoto(record.photoBeforeId) : null);
     const photoAfter = record.photoAfter || (record.photoAfterId ? await DB.getPhoto(record.photoAfterId) : null);
-    const imgBefore = await this._loadImg(photoBefore);
-    const imgAfter = await this._loadImg(photoAfter, photoAfter === photoBefore);
+    let imgBefore = await this._loadImg(photoBefore);
+    let imgAfter = await this._loadImg(photoAfter, photoAfter === photoBefore);
 
     // 9-Point + Zoom 메타 attach (record._photoMetas 사용)
     const _photoMetas = record._photoMetas || {};
@@ -3205,10 +3205,17 @@ App.pages.records = {
     // 3·4번째 사진도 로드 (photos 스토어 fallback 포함)
     const photo3Raw = record.photo3 || (record.photo3Id ? await DB.getPhoto(record.photo3Id) : null);
     const photo4Raw = record.photo4 || (record.photo4Id ? await DB.getPhoto(record.photo4Id) : null);
-    const img3 = await this._loadImg(photo3Raw, photo3Raw === photoBefore || photo3Raw === photoAfter);
-    const img4 = await this._loadImg(photo4Raw, photo4Raw === photoBefore || photo4Raw === photoAfter || photo4Raw === photo3Raw);
+    let img3 = await this._loadImg(photo3Raw, photo3Raw === photoBefore || photo3Raw === photoAfter);
+    let img4 = await this._loadImg(photo4Raw, photo4Raw === photoBefore || photo4Raw === photoAfter || photo4Raw === photo3Raw);
     if (img3) img3._meta = _photoMetas.photo3 || { offsetX: 0, offsetY: 0, zoom: 1.0 };
     if (img4) img4._meta = _photoMetas.photo4 || { offsetX: 0, offsetY: 0, zoom: 1.0 };
+    // 사진 느낌(필터) — 모든 칸에 같이
+    if (s.photoFilter && s.photoFilter !== 'none') {
+      imgBefore = this._filteredImg(imgBefore, s.photoFilter);
+      imgAfter = this._filteredImg(imgAfter, s.photoFilter);
+      img3 = this._filteredImg(img3, s.photoFilter);
+      img4 = this._filteredImg(img4, s.photoFilter);
+    }
 
     // Build photo slots based on available images
     const photos3 = [imgBefore || imgAfter, imgAfter || imgBefore, img3 || imgBefore || imgAfter];
@@ -3278,8 +3285,25 @@ App.pages.records = {
     const canvas = document.createElement('canvas');
     let ctx;
 
+    // ===== 내 프레임 (사진 칸을 찾은 덮는 PNG) — 카드 크기·칸 자리는 프레임 그림을 그대로 따른다 =====
+    // 글자(이름·날짜)는 프레임 디자인에 맡기고 그리지 않는다. 사진이 칸보다 적으면 돌려 가며 채운다
+    const _frameHoles = (Array.isArray(s.frameHoles) && s.frameHoles.length && s.customOverlayImage) ? s.frameHoles : null;
+    if (_frameHoles) {
+      const fw = (s.frameSize && s.frameSize.w) || 1080, fh = (s.frameSize && s.frameSize.h) || 1350;
+      const W = 1080, H = Math.max(1, Math.round(W * fh / fw));
+      canvas.width = W; canvas.height = H;
+      ctx = canvas.getContext('2d');
+      ctx.fillStyle = '#FFFFFF'; ctx.fillRect(0, 0, W, H);
+      const list = [imgBefore, imgAfter, img3, img4].filter(Boolean);
+      _frameHoles.forEach((hl, i) => {
+        const x = Math.round(hl.x * W), y = Math.round(hl.y * H);
+        const w = Math.round(hl.w * W), h = Math.round(hl.h * H);
+        _drawPhoto(ctx, list.length ? list[i % list.length] : null, x, y, w, h);
+      });
+    }
+
     // ===== Layout A: strip4 (4컷 가로 4:3 strip) =====
-    if (layout === 'strip4') {
+    else if (layout === 'strip4') {
       const W = 400, H = 1200;
       canvas.width = W; canvas.height = H;
       ctx = canvas.getContext('2d');
@@ -3913,6 +3937,172 @@ App.pages.records = {
     dark: { name: '다크', color: '#0F172A' }
   },
 
+  // ===== 사진 느낌(필터) — 포토부스처럼 한 번 고르면 모든 칸에 같이 들어간다 =====
+  // 기기마다 같게 나오도록 캔버스 filter 대신 화소를 직접 바꾼다 (아이폰 옛 버전은 ctx.filter 가 없다)
+  // sat 채도 · con 대비 · bri 밝기 · mul/add 색(빨강·초록·파랑) · grain 필름 입자 · glow 뽀샤시 번짐
+  _CARD_FILTERS: {
+    none: { name: '원본' },
+    bw: { name: '흑백', sat: 0, con: 1.12 },
+    soft: { name: '뽀샤시', sat: 0.92, con: 0.9, bri: 1.05, add: [12, 10, 10], glow: 0.3 },
+    film: { name: '필름', sat: 0.78, con: 0.92, mul: [1.02, 1, 0.94], add: [14, 12, 10], grain: 7 },
+    warm: { name: '따뜻하게', sat: 1.06, mul: [1.07, 1.01, 0.9], add: [4, 0, -2] },
+    cool: { name: '시원하게', sat: 0.95, mul: [0.93, 1, 1.07], add: [0, 2, 8] }
+  },
+  // 화소 배열(RGBA)에 필터 값을 그대로 적용한다 — 테스트에서 바로 부를 수 있게 순수 함수
+  _applyFilterPixels(data, p) {
+    if (!p) return data;
+    const sat = p.sat ?? 1, con = p.con ?? 1, bri = p.bri ?? 1;
+    const mul = p.mul || [1, 1, 1], add = p.add || [0, 0, 0], grain = p.grain || 0;
+    for (let i = 0; i < data.length; i += 4) {
+      const r = data[i], g = data[i + 1], b = data[i + 2];
+      const l = 0.299 * r + 0.587 * g + 0.114 * b;
+      const n = grain ? (Math.random() - 0.5) * 2 * grain : 0;
+      const ch = [r, g, b];
+      for (let k = 0; k < 3; k++) {
+        let v = l + (ch[k] - l) * sat;
+        v = (v - 128) * con + 128;
+        v = v * bri * mul[k] + add[k] + n;
+        data[i + k] = v < 0 ? 0 : (v > 255 ? 255 : Math.round(v));
+      }
+    }
+    return data;
+  },
+  // 사진(이미지)에 필터를 입힌 캔버스를 돌려준다. 같은 사진·같은 필터는 다시 계산하지 않는다
+  // (사진마다 마지막 필터 하나만 들고 있다 — 아이폰 캔버스 메모리 한도)
+  _filterCache: (typeof WeakMap !== 'undefined') ? new WeakMap() : null,
+  _filteredImg(img, key) {
+    const p = this._CARD_FILTERS[key];
+    if (!img || !p || key === 'none') return img;
+    const cached = this._filterCache && this._filterCache.get(img);
+    if (cached && cached.key === key) { cached.canvas._meta = img._meta; return cached.canvas; }
+    try {
+      const r = Math.min(1, 1400 / Math.max(img.width, img.height));
+      const c = document.createElement('canvas');
+      c.width = Math.max(1, Math.round(img.width * r)); c.height = Math.max(1, Math.round(img.height * r));
+      this._paintFiltered(c, img, p);
+      if (cached) cached.canvas.width = cached.canvas.height = 0;
+      if (this._filterCache) this._filterCache.set(img, { key, canvas: c });
+      c._meta = img._meta;
+      return c;
+    } catch (e) {
+      console.warn('사진 필터 실패:', e);
+      return img;
+    }
+  },
+  // 캔버스 c 를 img 로 채우고 필터 p 를 입힌다 (카드용·작은 견본 공용)
+  _paintFiltered(c, img, p, cover) {
+    const x = c.getContext('2d', { willReadFrequently: true });
+    if (cover) this._drawImageCover(x, img, 0, 0, c.width, c.height);
+    else x.drawImage(img, 0, 0, c.width, c.height);
+    const d = x.getImageData(0, 0, c.width, c.height);
+    this._applyFilterPixels(d.data, p);
+    x.putImageData(d, 0, 0);
+    if (p.glow) {
+      // 작게 줄였다 늘리면 흐린 사본이 된다 — 밝게 겹쳐 뽀샤시하게
+      const s = document.createElement('canvas');
+      s.width = Math.max(1, Math.round(c.width / 12)); s.height = Math.max(1, Math.round(c.height / 12));
+      s.getContext('2d').drawImage(c, 0, 0, s.width, s.height);
+      x.save();
+      x.globalAlpha = p.glow; x.globalCompositeOperation = 'screen'; x.imageSmoothingQuality = 'high';
+      x.drawImage(s, 0, 0, c.width, c.height);
+      x.restore();
+      s.width = s.height = 0;
+    }
+  },
+
+  // ===== 내 프레임 '사진 칸' 자동 찾기 =====
+  // 덮는 프레임(PNG)에서 투명하게 뚫린 자리를 찾아 그 자리에 사진을 넣는다 — 어떤 크기·칸 수의 프레임이든 맞는다.
+  // alpha: 투명도 배열(0~255), w·h: 그 크기. 돌려주는 칸은 프레임 가로·세로에 대한 비율 {x, y, w, h}, 위→아래·왼→오른 순서
+  _findHolesInAlpha(alpha, w, h) {
+    const THR = 100, MAX = 8;
+    const seen = new Uint8Array(w * h);
+    const found = [];
+    const stack = [];
+    for (let start = 0; start < w * h; start++) {
+      if (seen[start] || alpha[start] >= THR) continue;
+      let minX = w, maxX = -1, minY = h, maxY = -1, count = 0;
+      seen[start] = 1; stack.push(start);
+      while (stack.length) {
+        const i = stack.pop();
+        const px = i % w, py = (i - px) / w;
+        count++;
+        if (px < minX) minX = px; if (px > maxX) maxX = px;
+        if (py < minY) minY = py; if (py > maxY) maxY = py;
+        const nb = [px > 0 ? i - 1 : -1, px < w - 1 ? i + 1 : -1, py > 0 ? i - w : -1, py < h - 1 ? i + w : -1];
+        for (const j of nb) if (j >= 0 && !seen[j] && alpha[j] < THR) { seen[j] = 1; stack.push(j); }
+      }
+      const bw = maxX - minX + 1, bh = maxY - minY + 1;
+      // 너무 작은 자리(글자 틈·점 무늬)나 가는 선 모양은 사진 칸이 아니다
+      if (count < w * h * 0.01 || bw < w * 0.08 || bh < h * 0.03 || count < bw * bh * 0.4) continue;
+      found.push({ minX, minY, bw, bh, count });
+    }
+    found.sort((a, b) => b.count - a.count);
+    const holes = found.slice(0, MAX).map(f => {
+      // 가장자리 한 칸씩 넓혀 사진이 프레임 밑으로 살짝 들어가게 (경계에 흰 틈이 안 생긴다)
+      const x0 = Math.max(0, f.minX - 1), y0 = Math.max(0, f.minY - 1);
+      const x1 = Math.min(w, f.minX + f.bw + 1), y1 = Math.min(h, f.minY + f.bh + 1);
+      const r4 = (v) => Math.round(v * 10000) / 10000;
+      return { x: r4(x0 / w), y: r4(y0 / h), w: r4((x1 - x0) / w), h: r4((y1 - y0) / h) };
+    });
+    // 같은 줄(세로 가운데가 칸 높이 절반 안)이면 왼쪽부터, 아니면 위부터
+    holes.sort((a, b) => {
+      const ay = a.y + a.h / 2, by = b.y + b.h / 2;
+      if (Math.abs(ay - by) < Math.min(a.h, b.h) / 2) return a.x - b.x;
+      return ay - by;
+    });
+    return holes;
+  },
+  // 프레임 그림에서 사진 칸을 찾는다 → { holes, fw, fh } (JPG 처럼 투명한 곳이 없으면 holes 는 빈 배열)
+  async _detectFrameHoles(src) {
+    const img = await this._loadImg(src, true);
+    if (!img || !img.width || !img.height) return { holes: [], fw: 0, fh: 0 };
+    const r = Math.min(1, 300 / img.width, 1000 / img.height);
+    const w = Math.max(1, Math.round(img.width * r)), h = Math.max(1, Math.round(img.height * r));
+    const c = document.createElement('canvas');
+    c.width = w; c.height = h;
+    const x = c.getContext('2d', { willReadFrequently: true });
+    x.drawImage(img, 0, 0, w, h);
+    let holes = [];
+    try {
+      const d = x.getImageData(0, 0, w, h).data;
+      const alpha = new Uint8Array(w * h);
+      for (let i = 0; i < w * h; i++) alpha[i] = d[i * 4 + 3];
+      holes = this._findHolesInAlpha(alpha, w, h);
+    } catch (e) { console.warn('프레임 칸 찾기 실패:', e); }
+    c.width = c.height = 0;
+    return { holes, fw: img.width, fh: img.height };
+  },
+  // 이 카드 설정에서 쓰는 사진 장수 — 칸을 찾은 내 프레임이면 프레임 칸 수(최대 4장), 아니면 레이아웃 장수
+  // 사진 느낌 견본 — 첫 사진으로 작게 그린다 (첫 사진이 바뀔 때만 다시)
+  async _refreshFilterThumbs() {
+    const row = document.getElementById('card-pick-filter');
+    if (!row) return;
+    const src = (this._cardPhotos || []).find(Boolean) || null;
+    if (src === this._filterThumbSrc) return;
+    this._filterThumbSrc = src;
+    const img = src ? await this._loadImg(src) : null;
+    if (src !== this._filterThumbSrc) return; // 그새 사진이 또 바뀌었다
+    row.querySelectorAll('.card-filter-thumb').forEach(el => {
+      const p = this._CARD_FILTERS[el.dataset.key];
+      if (!img || !p) { el.style.backgroundImage = ''; return; }
+      try {
+        const c = document.createElement('canvas');
+        c.width = c.height = 112;
+        const keep = img._meta; img._meta = null;
+        if (el.dataset.key === 'none') this._drawImageCover(c.getContext('2d'), img, 0, 0, 112, 112);
+        else this._paintFiltered(c, img, p, true);
+        img._meta = keep;
+        el.style.backgroundImage = `url(${c.toDataURL('image/jpeg', 0.8)})`;
+        c.width = c.height = 0;
+      } catch (_) { el.style.backgroundImage = ''; }
+    });
+  },
+  _cardPhotoCount(f) {
+    const holes = f && f.settings && f.settings.frameHoles;
+    if (Array.isArray(holes) && holes.length) return Math.min(4, holes.length);
+    return (this._CARD_LAYOUTS[f && f.layout] && this._CARD_LAYOUTS[f.layout].photos) || 1;
+  },
+
   // 미용 기록 폼에서 즉석 새 서비스 등록 (모달 충돌 회피 — inline form)
   _showQuickAddService(suggestedName) {
     const form = document.getElementById('quickadd-service-form');
@@ -4162,7 +4352,8 @@ App.pages.records = {
     c.width = W; c.height = H;
     const x = c.getContext('2d');
     x.fillStyle = '#FFFFFF'; x.fillRect(0, 0, W, H);
-    if (layout === 'photobooth') {
+    // 네컷처럼 세로로 긴 카드(내 프레임 포함)는 두 줄을 나란히
+    if (layout === 'photobooth' || card.height / card.width >= 2.4) {
       const h = H, w = Math.round(card.width * (h / card.height));
       const gap = Math.max(0, Math.floor((W - w * 2) / 3));
       x.drawImage(card, gap, 0, w, h);
@@ -4614,7 +4805,7 @@ App.pages.records = {
     this._cardPreviewToken = token;
     this._autoCardLayout((this._cardPhotos || []).filter(Boolean).length);
     const f = await this._readCardForm(this._cardPetName || '');
-    const count = (this._CARD_LAYOUTS[f.layout] && this._CARD_LAYOUTS[f.layout].photos) || 1;
+    const count = this._cardPhotoCount(f);
     const nAll = (this._cardPhotos || []).filter(Boolean).length;
     this._markLayoutRecs(nAll);
     const photos = (this._cardPhotos || []).slice(0, count);
@@ -4638,7 +4829,15 @@ App.pages.records = {
     this._renderStickerLayer();
     // 칸보다 사진이 적으면 어떻게 나오는지 알려준다 (반복 채우지 않고 칸 수를 줄인다)
     const note = document.getElementById('card-live-note');
-    if (note) {
+    this._refreshFilterThumbs();
+    const fHoles = f.settings && f.settings.frameHoles;
+    if (note && fHoles && fHoles.length) {
+      const n = photos.filter(Boolean).length;
+      note.hidden = false;
+      note.textContent = `프레임 모양대로 만들어요 · 사진 칸 ${fHoles.length}개` +
+        (n < fHoles.length ? ` (사진 ${n}장을 돌려 가며 넣어요)` : '') +
+        (nAll > count ? ` · 앞 ${count}장만 써요` : '');
+    } else if (note) {
       const n = photos.filter(Boolean).length;
       // 피드·스토리는 1장이 기본이라 1장일 때는 안내가 필요 없다
       const isSplit = ['feed', 'story', 'feed4', 'story4'].includes(f.layout);
@@ -4731,6 +4930,9 @@ App.pages.records = {
       customAccentColor: theme === 'custom' ? (ds.customAccentColor || '#6366F1') : null,
       customBgImage: theme === 'custom' ? (ds.customBgImage || null) : null,
       customOverlayImage: theme === 'custom' ? (ds.customOverlayImage || null) : null,
+      frameHoles: theme === 'custom' && ds.customOverlayImage && Array.isArray(ds.frameHoles) ? ds.frameHoles : null,
+      frameSize: theme === 'custom' && ds.customOverlayImage ? (ds.frameSize || null) : null,
+      photoFilter: this._CARD_FILTERS[ds.photoFilter] ? ds.photoFilter : 'none',
       fontKey: this._CARD_FONTS[ds.fontKey] ? ds.fontKey : 'system',
       // 그리기 코드는 customShow* 이름을 쓰지만 이제 모든 테마에 적용된다 (예전 커스텀 전용 값은 이어받는다)
       customShowPet: (ds.showPet ?? ds.customShowPet) !== false,
@@ -4788,10 +4990,16 @@ App.pages.records = {
       settings.customTextColor = this._appliedFrame.textColor || '#1A1A1A';
       settings.customBgColor = '#FFFFFF';
       settings.lastUsedFrameId = appliedFrameId;
+      const fr = this._appliedFrame;
+      settings.frameHoles = isOverlay && Array.isArray(fr.holes) && fr.holes.length ? fr.holes : null;
+      settings.frameSize = settings.frameHoles ? { w: fr.fw, h: fr.fh } : null;
     } else {
       settings.lastUsedFrameId = null;
       settings.customOverlayImage = null;
+      settings.frameHoles = null;
+      settings.frameSize = null;
     }
+    settings.photoFilter = document.querySelector('#card-pick-filter .card-filter-btn.active')?.dataset.key || settings.photoFilter || 'none';
     settings.fontKey = document.querySelector('#card-pick-font .card-font-btn.active')?.dataset.key || settings.fontKey || 'system';
     // 커스텀 테마 설정 저장 — 프레임을 고른 경우는 제외 (예전엔 커스텀 색·배경이 프레임을 덮어썼다)
     if (theme === 'custom' && !(appliedFrameId && this._appliedFrame)) {
@@ -4882,6 +5090,19 @@ App.pages.records = {
     const THEMES = this._CARD_THEMES;
     // 사용자 프레임 라이브러리 (활성 + 이미지 있는 것만)
     this._cardFramesCache = (await DB.getSetting('customFrames')) || [];
+    // 예전에 올린 덮는 프레임은 사진 칸을 아직 안 찾았다 — 처음 한 번 찾아 저장한다
+    const _noHoles = this._cardFramesCache.filter(f => f.mode === 'overlay' && f.image && !Array.isArray(f.holes));
+    if (_noHoles.length) {
+      for (const f of _noHoles) {
+        try { const r = await this._detectFrameHoles(f.image); f.holes = r.holes; f.fw = r.fw; f.fh = r.fh; }
+        catch (e) { console.warn('프레임 칸 찾기 실패:', e); }
+      }
+      try {
+        const all = (await DB.getSetting('customFrames')) || [];
+        all.forEach(f => { const d = _noHoles.find(x => x.id === f.id); if (d && Array.isArray(d.holes)) { f.holes = d.holes; f.fw = d.fw; f.fh = d.fh; } });
+        await DB.setSetting('customFrames', all);
+      } catch (e) { console.warn('프레임 칸 저장 실패:', e); }
+    }
     const userFrames = this._cardFramesCache.filter(f => f.enabled !== false && f.image);
     const selectedFrameId = saved.lastUsedFrameId || null;
 
@@ -4935,6 +5156,12 @@ App.pages.records = {
           <div id="card-photo-slots" class="card-slots-row"></div>
           <div id="card-photo-adjust" class="card-photo-adjust"></div>
         </div>
+        <div class="form-group">
+          <label class="form-label">사진 느낌 <span style="font-size:0.93rem;color:var(--text-muted);font-weight:400">· 모든 칸에 같이 들어가요</span></label>
+          <div id="card-pick-filter" class="card-filter-row">
+            ${Object.entries(this._CARD_FILTERS).map(([k, fl]) => `<button type="button" class="card-filter-btn${(this._CARD_FILTERS[saved.photoFilter] ? saved.photoFilter : 'none') === k ? ' active' : ''}" data-key="${k}"><span class="card-filter-thumb" data-key="${k}"></span><span>${fl.name}</span></button>`).join('')}
+          </div>
+        </div>
         </div>
         <div class="card-tabpanel" data-panel="layout" hidden>
         <div class="form-group">
@@ -4981,13 +5208,13 @@ App.pages.records = {
                 <span style="font-size:0.93rem;color:${t.color}">${t.name}</span>
               </button>
             `).join('')}
-            ${userFrames.map(f => `
-              <button type="button" class="card-pick-btn${selectedFrameId === f.id ? ' active' : ''}" data-key="frame:${f.id}" data-frame-id="${App.escapeHtml(f.id)}" style="border-color:${f.accentColor};position:relative;overflow:hidden">
-                ${f.image ? `<span style="position:absolute;inset:0;background-image:url('${f.image}');background-size:cover;background-position:center;opacity:0.25"></span>` : ''}
-                <span style="font-size:1.1rem;position:relative">${App.icon('image')}</span>
-                <span style="font-size:0.93rem;color:${f.accentColor};position:relative;font-weight:700">${App.escapeHtml(f.name)}</span>
+            ${userFrames.length ? `<div class="card-frame-row" aria-label="내 프레임">${userFrames.map(f => `
+              <button type="button" class="card-pick-btn card-frame-btn${selectedFrameId === f.id ? ' active' : ''}" data-key="frame:${App.escapeHtml(f.id)}" data-frame-id="${App.escapeHtml(f.id)}" title="${App.escapeHtml(f.name)}">
+                <span class="card-frame-thumb"><img src="${f.image}" alt="" loading="lazy"></span>
+                <span class="card-frame-name">${App.escapeHtml(f.name)}</span>
+                ${f.mode === 'overlay' && Array.isArray(f.holes) && f.holes.length ? `<small class="card-frame-holes">사진 ${f.holes.length}칸</small>` : ''}
               </button>
-            `).join('')}
+            `).join('')}</div>` : ''}
             <!-- '커스텀' 테마 값은 아래 '직접 꾸미기'를 펼치면 켜진다 (칸은 숨겨 두고 선택 상태만 담는다) -->
             <button type="button" class="card-pick-btn${selectedTheme === 'custom' && !selectedFrameId ? ' active' : ''}" data-key="custom" style="display:none" aria-hidden="true" tabindex="-1"></button>
           </div>
@@ -5127,7 +5354,7 @@ App.pages.records = {
       `,
       onSave: async () => {
         const f = await this._readCardForm(cardPetName);
-        const count = (LAYOUTS[f.layout] && LAYOUTS[f.layout].photos) || 1;
+        const count = this._cardPhotoCount(f);
         const photos = this._cardPhotos.slice(0, count);
         if (!photos.some(Boolean)) { App.showToast('사진을 최소 1장 선택해주세요.', 'error'); return; }
         await DB.setSetting('cardDesignSettings', f.settings);
@@ -5167,6 +5394,15 @@ App.pages.records = {
           btn.classList.add('active');
         });
       });
+      // 사진 느낌(필터)
+      const filterRow = document.getElementById('card-pick-filter');
+      if (filterRow) filterRow.onclick = (e) => {
+        const b = e.target.closest('.card-filter-btn');
+        if (!b) return;
+        filterRow.querySelectorAll('.card-filter-btn').forEach(x => x.classList.toggle('active', x === b));
+        this._scheduleCardPreview();
+      };
+      this._filterThumbSrc = null;
       // 탭: 한 번에 한 묶음만 보여 창이 길어지지 않게
       const tabsEl = document.querySelector('.card-tabs');
       if (tabsEl) tabsEl.onclick = (e) => {

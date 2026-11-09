@@ -224,7 +224,7 @@ App.pages.settings = {
           <div class="card-body">
             <div id="frame-library-list" style="display:flex;flex-direction:column;gap:8px;margin-bottom:12px"></div>
             <button type="button" id="btn-add-frame" class="btn btn-secondary" style="width:100%;min-height:44px">${App.icon('plus')} 새 프레임 추가</button>
-            <div class="form-hint" style="margin-top:8px">시즌·이벤트별 프레임을 만들어 사진 카드 생성 시 선택할 수 있어요. 최대 5개.</div>
+            <div class="form-hint" style="margin-top:8px">시즌·이벤트별 프레임을 만들어 사진 카드에서 고를 수 있어요. 사진 자리를 투명하게 비운 PNG면 칸을 자동으로 찾아요. 최대 20개.</div>
           </div>
         </div>
 
@@ -1582,6 +1582,9 @@ App.pages.settings = {
     this._refreshSmsPreviews();
   },
 
+  // 내 프레임 최대 개수 — 그림은 이 기기에만 저장된다(동기화 안 함). 많이 두면 사진 카드 창이 늦게 열린다
+  MAX_FRAMES: 20,
+
   // 프레임 라이브러리 렌더링
   async _renderFrameLibrary() {
     const frames = (await DB.getSetting('customFrames')) || [];
@@ -1589,8 +1592,8 @@ App.pages.settings = {
     const countEl = document.getElementById('frame-lib-count');
     const addBtn = document.getElementById('btn-add-frame');
     if (!listEl) return;
-    if (countEl) countEl.textContent = `${frames.length}/5`;
-    if (addBtn) addBtn.disabled = frames.length >= 5;
+    if (countEl) countEl.textContent = `${frames.length}/${this.MAX_FRAMES}`;
+    if (addBtn) addBtn.disabled = frames.length >= this.MAX_FRAMES;
     if (frames.length === 0) {
       listEl.innerHTML = `
         <div style="text-align:center;padding:28px 16px;background:var(--bg);border-radius:var(--radius);border:2px dashed var(--border)">
@@ -1666,7 +1669,8 @@ App.pages.settings = {
           <label class="form-label">배경 이미지 <span style="color:var(--text-muted);font-weight:400">(피그마·캔바로 만든 PNG/JPG)</span></label>
           <div id="f-frame-preview" style="margin-bottom:8px">${frame.image ? `<img src="${frame.image}" style="max-width:200px;border-radius:8px;border:1px solid var(--border)">` : '<div style="color:var(--text-muted);font-size:0.93rem">이미지 미선택</div>'}</div>
           <input type="file" id="f-frame-image" accept="image/*">
-          <div class="form-hint">카드 크기: 피드 1080×1350 · 스토리 1080×1920 · 네컷 1080×3267. 배경은 JPG, 덮기는 투명 PNG.</div>
+          <div class="form-hint">크기는 자유예요. 사진이 들어갈 자리를 <b>투명하게 비운 PNG</b>를 올리면 칸을 자동으로 찾아 사진을 맞춰 넣어요 (칸 1~8개). 추천 크기: 네컷 세로 1080×3240 · 피드 1080×1350 · 스토리 1080×1920.</div>
+          <div id="f-frame-holes-msg" class="form-hint" style="font-weight:600">${frame.mode === 'overlay' && Array.isArray(frame.holes) ? (frame.holes.length ? `사진 칸 ${frame.holes.length}개를 찾았어요.` : '투명한 사진 칸을 찾지 못했어요.') : ''}</div>
         </div>
         <div class="form-group">
           <label class="form-label">방식</label>
@@ -1674,7 +1678,7 @@ App.pages.settings = {
             <label class="card-toggle"><input type="radio" name="f-frame-mode" value="bg" ${frame.mode !== 'overlay' ? 'checked' : ''}> 배경 (사진 뒤에 깔기)</label>
             <label class="card-toggle"><input type="radio" name="f-frame-mode" value="overlay" ${frame.mode === 'overlay' ? 'checked' : ''}> 덮기 (사진 위에 얹기)</label>
           </div>
-          <div class="form-hint">덮기: 사진이 보일 칸을 투명하게 뚫은 PNG. 아래 가이드를 받아 그 위에 디자인하면 칸 위치가 정확히 맞아요.</div>
+          <div class="form-hint">덮기: 투명한 칸에 사진이 들어가고, 카드 크기·글자는 프레임 그림을 그대로 따라요. 배경: 앱의 틀(네컷·피드 등) 뒤에 그림을 깔아요. 투명한 칸이 있는 PNG를 고르면 '덮기'로 자동으로 바뀌어요.</div>
           <div class="frame-guide-row">
             <select id="f-frame-guide-layout" aria-label="가이드 레이아웃">
               ${(() => {
@@ -1733,6 +1737,16 @@ App.pages.settings = {
             img.src = image;
           });
         }
+        const mode = document.querySelector('input[name="f-frame-mode"]:checked')?.value === 'overlay' ? 'overlay' : 'bg';
+        // 덮기 프레임은 사진 칸(투명한 자리)을 찾아 둔다 — 그림이 그대로면 예전 값을 쓴다
+        let holes = null, fw = frame.fw || 0, fh = frame.fh || 0;
+        if (mode === 'overlay' && image) {
+          if (image === frame.image && Array.isArray(frame.holes)) holes = frame.holes;
+          else {
+            const r = await App.pages.records._detectFrameHoles(image);
+            holes = r.holes; fw = r.fw; fh = r.fh;
+          }
+        }
         const updated = {
           id: frame.id,
           name,
@@ -1740,7 +1754,10 @@ App.pages.settings = {
           accentColor: document.getElementById('f-frame-accent').value,
           textColor: document.getElementById('f-frame-text').value,
           enabled: document.getElementById('f-frame-enabled').checked,
-          mode: document.querySelector('input[name="f-frame-mode"]:checked')?.value === 'overlay' ? 'overlay' : 'bg',
+          mode,
+          holes,
+          fw,
+          fh,
           guideLayout: document.getElementById('f-frame-guide-layout')?.value || frame.guideLayout || 'feed',
           createdAt: frame.createdAt || new Date().toISOString()
         };
@@ -1748,7 +1765,7 @@ App.pages.settings = {
         const idx = all.findIndex(f => f.id === updated.id);
         if (idx >= 0) all[idx] = updated;
         else {
-          if (all.length >= 5) { App.showToast('프레임은 최대 5개까지 등록 가능합니다.', 'error'); return; }
+          if (all.length >= this.MAX_FRAMES) { App.showToast(`프레임은 최대 ${this.MAX_FRAMES}개까지 등록할 수 있어요.`, 'error'); return; }
           all.push(updated);
         }
         await DB.setSetting('customFrames', all);
@@ -1756,6 +1773,30 @@ App.pages.settings = {
         App.showToast(frameId ? '프레임이 수정되었습니다.' : '새 프레임이 추가되었습니다.');
         await this._renderFrameLibrary();
       }
+    });
+    // 그림을 고르면 바로 보여 주고 사진 칸을 찾아 알려 준다 (투명한 칸이 있으면 '덮기'로)
+    document.getElementById('f-frame-image')?.addEventListener('change', (ev) => {
+      const file = ev.target.files && ev.target.files[0];
+      const msg = document.getElementById('f-frame-holes-msg');
+      const prev = document.getElementById('f-frame-preview');
+      if (!file) return;
+      const reader = new FileReader();
+      reader.onload = async (e) => {
+        const src = e.target.result;
+        if (prev) prev.innerHTML = `<img src="${src}" style="max-width:200px;max-height:240px;border-radius:8px;border:1px solid var(--border);background:repeating-conic-gradient(#E5E7EB 0 25%, #fff 0 50%) 0 0 / 12px 12px">`;
+        try {
+          const r = await App.pages.records._detectFrameHoles(src);
+          const radio = (v) => document.querySelector(`input[name="f-frame-mode"][value="${v}"]`);
+          if (r.holes.length) {
+            if (radio('overlay')) radio('overlay').checked = true;
+            if (msg) msg.textContent = `사진 칸 ${r.holes.length}개를 찾았어요. 위에서부터 순서대로 사진이 들어가요.`;
+          } else {
+            if (radio('bg')) radio('bg').checked = true;
+            if (msg) msg.textContent = '투명한 사진 칸이 없어요 — 배경으로 깔아 쓸게요. 칸에 사진을 넣으려면 그 자리를 투명하게 지운 PNG로 올려 주세요.';
+          }
+        } catch (_) { if (msg) msg.textContent = ''; }
+      };
+      reader.readAsDataURL(file);
     });
     // 칸 위치 가이드 저장 — 지금 사진 카드 설정 그대로 그린 이미지 (사진 칸에 1~4 번호)
     document.getElementById('f-frame-guide')?.addEventListener('click', async (ev) => {
