@@ -445,7 +445,7 @@ App.pages.services = {
     const ids = (cur.target === 'all' ? services : services.filter(s => (s.category || 'grooming') === cur.target)).map(s => s.id);
     try {
       const tbl = await App.getPriceBands();
-      const now = new Date().toISOString();
+      const now = App.formatLocalDate(new Date()); // 가격 변경일 — 한국 날짜 (UTC 면 새벽 변경이 전날로 적혔다)
       let count = 0;
       for (const sid of ids) {
         const svc = await DB.get('services', sid);
@@ -507,7 +507,7 @@ App.pages.services = {
       name: copyName,
       isActive: true,
       favorite: false,
-      priceChangedAt: new Date().toISOString()
+      priceChangedAt: App.formatLocalDate(new Date())
     };
     delete newSvc.id;
     delete newSvc.createdAt;
@@ -1049,13 +1049,13 @@ App.pages.services = {
       data.favorite = existing.favorite;
       // 가격 변경 감지 → priceChangedAt 갱신
       const priceChanged = priceSig(App.getServicePricing(existing, table)) !== priceSig(pricing);
-      data.priceChangedAt = priceChanged ? new Date().toISOString() : existing.priceChangedAt;
+      data.priceChangedAt = priceChanged ? App.formatLocalDate(new Date()) : existing.priceChangedAt;
       Object.assign(existing, data);
       await DB.update('services', existing);
       this._copySaved = true;
       App.showToast(opts.isCopy ? '복사본을 저장했어요.' : '서비스가 수정되었습니다.');
     } else {
-      data.priceChangedAt = new Date().toISOString();
+      data.priceChangedAt = App.formatLocalDate(new Date());
       await DB.add('services', data);
       if (!pricing.free) this._rememberPricingMode(pricing.mode);
       if (opts.cont) {

@@ -570,7 +570,7 @@ App.pages.dashboard = {
                     const temperament = pet?.temperament ? App.escapeHtml(pet.temperament) : '';
                     const photoSrc = pet?.photoThumb || pet?.photo;
                     const sent = !!a.reminderSentAt;
-                    const breedSize = [pet?.breed, pet?.weight ? pet.weight + 'kg' : null].filter(Boolean).join(' · ');
+                    const breedSize = [pet?.breed, pet?.weight ? App.formatKg(pet.weight) + 'kg' : null].filter(Boolean).join(' · ');
                     return `
                       <div class="reminder-item" data-id="${a.id}" style="${sent ? 'opacity:0.55' : ''}">
                         <a href="#pets/${a.petId}" class="reminder-pet-photo" onclick="event.stopPropagation()">

@@ -57,3 +57,19 @@ describe('반려견 나이 (calculatePetAge) — 생일 당일 기준', () => {
   test('딱 1년: 2025-11-05 → 1살', () => assert.equal(App.calculatePetAge('2025-11-05'), '1살'));
   test('1년 안 됨: 2026-03-01 → "1살 미만"', () => assert.equal(App.calculatePetAge('2026-03-01'), '1살 미만'));
 });
+
+describe('오래 안 온 반려견 (사진 정리 기준)', () => {
+  const App = at('2026-11-09T10:00:00+09:00');
+  test('2년 전 날짜 — 윤년·연말 넘김', () => {
+    assert.equal(App.oldPetCutoff('2026-11-09'), '2024-11-09');
+    assert.equal(App.oldPetCutoff('2028-02-29'), '2026-03-01'); // 윤일은 2년 전 3/1 (하루 늦게 — 더 보수적)
+    assert.equal(App.oldPetCutoff('2027-01-01'), '2025-01-01');
+  });
+  test('마지막 방문이 2년보다 오래면 참, 딱 2년·그 뒤·방문일 없음은 거짓', () => {
+    assert.equal(App.isPetAbsentLong({ lastVisitDate: '2024-11-08' }, '2026-11-09'), true);
+    assert.equal(App.isPetAbsentLong({ lastVisitDate: '2024-11-09' }, '2026-11-09'), false);
+    assert.equal(App.isPetAbsentLong({ lastVisitDate: '2026-10-01' }, '2026-11-09'), false);
+    assert.equal(App.isPetAbsentLong({}, '2026-11-09'), false);
+    assert.equal(App.isPetAbsentLong(null, '2026-11-09'), false);
+  });
+});

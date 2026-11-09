@@ -40,6 +40,8 @@ const App = {
       await this.applyTheme();
       // 예약 알림 (Web Push): 이 기기 등록 확인 → 알림 목록 올리기. 다시 보일 때도 (기다리지 않는다)
       this.Push.ensureDevice().then(() => this.Push.scheduleUpload());
+      // 서비스워커가 '구독이 바뀌었다'고 알리면 다시 등록
+      try { navigator.serviceWorker?.addEventListener('message', (e) => { if (e.data && e.data.type === 'pushsubscriptionchange') this.Push.ensureDevice().then(() => this.Push.scheduleUpload(true)); }); } catch (_) {}
       document.addEventListener('visibilitychange', () => {
         if (document.visibilityState === 'visible') this.Push.ensureDevice().then(() => this.Push.scheduleUpload());
       });
@@ -423,7 +425,8 @@ const App = {
 
   async migratePetSizes() {
     if (DB.mode === 'server') return;
-    if (localStorage.getItem('petSizeMigrated') === '1') return;
+    // 표시를 기기 설정이 아니라 데이터와 함께(IDB settings) 둔다 — 옛 백업을 복원하면 다시 돌아야 한다
+    if (await DB.getSetting('petSizeMigrated')) return;
     const map = { '소형': 'small', '중형': 'medium', '대형': 'large' };
     try {
       const pets = await DB.getAllLight('pets', ['photo', 'photoThumb']);
@@ -434,7 +437,7 @@ const App = {
         full.size = map[full.size];
         await DB.update('pets', full);
       }
-      localStorage.setItem('petSizeMigrated', '1');
+      await DB.setSetting('petSizeMigrated', 1);
       if (targets.length > 0) console.info(`[migrate] pet.size 정규화 ${targets.length}건`);
     } catch (e) {
       console.warn('pet size migration failed', e);
@@ -446,10 +449,17 @@ const App = {
     const today = new Date().toDateString();
     const lastCheck = localStorage.getItem('lastIntegrityCheck');
     if (lastCheck === today) return; // 하루 1회만
+    // 첫 화면이 그려진 뒤 한가할 때 돈다 (기록 전체를 읽으므로 켜자마자 돌면 첫 화면이 멈칫했다)
+    await new Promise(r => (window.requestIdleCallback ? requestIdleCallback(() => r(), { timeout: 8000 }) : setTimeout(r, 4000)));
     try {
       const report = await DB.runIntegrityCheck();
       if (!report) return;
       localStorage.setItem('lastIntegrityCheck', today);
+      // 같은 하루 1회: 2년 넘게 안 온 반려견의 기기 사진 정리 (마지막 1회만)
+      try {
+        const pruned = await this.pruneOldPetLocalPhotos();
+        if (pruned > 0) this.showToast(`2년 넘게 안 온 반려견 사진 ${pruned}장을 정리했어요 (마지막 방문 사진은 남김).`, 'info', { duration: 5000 });
+      } catch (e) { console.warn('오래 안 온 반려견 사진 정리 실패:', e); }
       if (report.repaired > 0) {
         console.log('[Integrity] 자동 보수 완료:', report);
         this.showToast(
@@ -2206,7 +2216,10 @@ const App = {
     }
     // 메뉴에 없는 자유 입력 서비스 — 과거 기록에서 추정
     if (petRecords[0]) return Number(petRecords[0].servicePrice);
-    const records = await DB.getAllLight('records', ['photoBefore', 'photoAfter', 'photo3', 'photo4', 'memo', 'condition', 'skinStatus', 'earStatus', 'mattingLevel']);
+    // 메뉴에 없는 이름을 치는 동안 글자마다 기록 전체를 읽지 않게 60초 캐시 (몇 년치면 수천 건)
+    const cache = this._recentPriceScan;
+    const records = cache && Date.now() - cache.at < 60000 ? cache.list
+      : (this._recentPriceScan = { at: Date.now(), list: await DB.getAllLight('records', ['photoBefore', 'photoAfter', 'photo3', 'photo4', 'memo', 'condition', 'skinStatus', 'earStatus', 'mattingLevel']) }).list;
     const same = records.filter(r => this.normalizeServiceName(r.service) === name && Number(r.servicePrice) > 0);
     if (same.length === 0) return null;
     const { weight, size } = this._parseWeightOrSize(sizeOrWeight);
@@ -3251,6 +3264,9 @@ const App = {
       try {
         const key = await DB.getSetting('pushKey');
         if (!key) return;
+        // 이 기기에서 알림을 켠 적이 없으면 올리지 않는다 — 서버는 목록을 통째로 바꾸므로,
+        // 동기화 없이 백업만 받은 기기가 자기 예약만 올리면 다른 기기 알림이 다 지워졌다
+        if (!(await DB.getSetting('pushDevice'))) return;
         if (typeof navigator !== 'undefined' && navigator.onLine === false) {
           if (!this._onlineWait) {
             this._onlineWait = true;
@@ -3369,7 +3385,8 @@ const App = {
         const vapid = st.json && st.json.vapid;
         if (!vapid) return;
         const storedVapid = await DB.getSetting('pushVapid');
-        if (sub && storedVapid === vapid) return;
+        // 브라우저가 구독 주소를 바꿨으면(endpoint 다름) 다시 등록 — 안 하면 알림이 조용히 끊긴다
+        if (sub && storedVapid === vapid && (!marker.endpoint || marker.endpoint === sub.endpoint)) return;
         const fresh = await this._subscribe(vapid, !!sub);
         let r = await this._fetch('/register', { subscription: fresh.toJSON(), label: this._label() }, key);
         if (r.status === 401 && await this._rekey(key)) r = await this._fetch('/register', { subscription: fresh.toJSON(), label: this._label() }, key);
@@ -3758,7 +3775,7 @@ const App = {
             const photoHtml = hasPhoto
               ? `<img src="${this.escapeHtml(p.photoThumb || p.photo)}" alt="${this.escapeHtml(p.name)}">`
               : this.icon('paw', 'ico-lg');
-            const details = [p.breed, p.weight ? p.weight + 'kg' : null].filter(Boolean).join(' | ');
+            const details = [p.breed, p.weight ? this.formatKg(p.weight) + 'kg' : null].filter(Boolean).join(' | ');
             const notes = [p.temperament, p.healthNotes, p.allergies].filter(Boolean);
             return `
               <div class="gs-pet-item">
@@ -4114,9 +4131,31 @@ const App = {
     if (migratedCount > 0) this.showToast(`예전 방식으로 저장된 사진 ${migratedCount}장을 정리했어요. 이제 반려견 상세에서 보입니다.`, 'info', { duration: 6000 });
   },
 
-  async pruneRecordPhotos(petId, exceptId) {
+  // 2년 넘게 안 온 반려견은 이 기기에도 마지막 1회 사진만 남긴다 ('전부 보관'이어도) — 한 번 왔다 간 아이들 사진이 몇 년 쌓이면 수백 MB
+  OLD_PET_YEARS: 2,
+  oldPetCutoff(today) {
+    const d = new Date(String(today || this.getToday()) + 'T00:00:00');
+    d.setFullYear(d.getFullYear() - this.OLD_PET_YEARS);
+    return this.formatLocalDate(d);
+  },
+  isPetAbsentLong(pet, today) {
+    const last = pet && pet.lastVisitDate;
+    return !!last && last < this.oldPetCutoff(today);
+  },
+  async pruneOldPetLocalPhotos() {
+    if (DB.mode === 'server') return 0;
+    const pets = await DB.getAllLight('pets', ['photo', 'photoThumb', 'memo', 'healthNotes', 'temperament', 'preferredStyle']);
+    const today = this.getToday();
+    let n = 0;
+    for (const p of pets) {
+      if (!this.isPetAbsentLong(p, today)) continue;
+      try { n += await this.pruneRecordPhotos(p.id, null, 1); } catch (e) { console.warn('오래 안 온 반려견 사진 정리 실패:', p.id, e); }
+    }
+    return n;
+  },
+  async pruneRecordPhotos(petId, exceptId, keepOverride) {
     if (!petId) return 0;
-    const keep = await this.getRecordPhotoKeep();
+    const keep = keepOverride != null ? keepOverride : await this.getRecordPhotoKeep();
     if (!keep) return 0;
     const recs = (await DB.getByIndex('records', 'petId', Number(petId)))
       .filter(r => this._recordHasPhoto(r))

@@ -437,6 +437,7 @@ App.pages.settings = {
               <small style="display:block;margin-top:6px;color:var(--text-muted);line-height:1.5">
                 미용 기록의 전·후 사진은 반려견마다 최근 몇 회만 남기고 오래된 사진을 자동으로 지웁니다 (글 기록은 남습니다).
                 폰과 데스크탑이 같은 기준을 쓰고, 사진은 600px 축소본으로 기기 간에 함께 보입니다.
+                <strong>2년 넘게 안 온 반려견</strong>은 어떤 설정이어도 마지막 방문 사진만 남깁니다 (하루 한 번 자동).
               </small>
               <div id="record-photo-keep-result" style="margin-top:6px;font-size:0.93rem"></div>
             </div>
@@ -1083,6 +1084,19 @@ App.pages.settings = {
 
     // Tab 1: 매장 관리 전체 저장 (취소하면 false)
     const saveShop = async () => {
+      // 미용사 목록 — 빼는 미용사가 기록에 있으면 먼저 묻는다 (쓰기 시작한 뒤 취소하면 반만 저장됐다)
+      const inputs0 = document.querySelectorAll('.groomer-input');
+      const groomers0 = Array.from(inputs0).map(i => i.value.trim()).filter(Boolean);
+      const prevGroomers0 = await DB.getSetting('groomers') || [];
+      const removed0 = prevGroomers0.filter(g => !groomers0.includes(g));
+      if (removed0.length > 0) {
+        const records = await DB.getAllLight('records', ['photoBefore', 'photoAfter', 'memo']);
+        const usedRemoved = removed0.filter(g => records.some(r => r.groomer === g));
+        if (usedRemoved.length > 0) {
+          const ok = await App.confirm(`"${App.escapeHtml(usedRemoved.join(', '))}" 미용사가 기존 기록에 사용 중입니다.<br>목록에서 빼도 기존 기록에는 이름이 남아요.`, { okLabel: '빼고 저장', danger: false });
+          if (!ok) return false;
+        }
+      }
       // 매장 정보
       await DB.setSetting('shopName', document.getElementById('s-shopName').value.trim());
       await DB.setSetting('shopPhone', document.getElementById('s-shopPhone').value.trim());
@@ -1090,20 +1104,7 @@ App.pages.settings = {
       await DB.setSetting('shopReviewLink', (document.getElementById('s-shopReviewLink')?.value || '').trim());
       await DB.setSetting('revisitDays', Number(document.getElementById('s-revisitDays').value) || 30);
       await App.applyShopName();
-      // 미용사 목록 (삭제된 미용사가 기존 기록에 있으면 경고)
-      const inputs = document.querySelectorAll('.groomer-input');
-      const groomers = Array.from(inputs).map(i => i.value.trim()).filter(Boolean);
-      const prevGroomers = await DB.getSetting('groomers') || [];
-      const removed = prevGroomers.filter(g => !groomers.includes(g));
-      if (removed.length > 0) {
-        const records = await DB.getAllLight('records', ['photoBefore', 'photoAfter', 'memo']);
-        const usedRemoved = removed.filter(g => records.some(r => r.groomer === g));
-        if (usedRemoved.length > 0) {
-          const ok = await App.confirm(`"${App.escapeHtml(usedRemoved.join(', '))}" 미용사가 기존 기록에 사용 중입니다.<br>목록에서 빼도 기존 기록에는 이름이 남아요.`, { okLabel: '빼고 저장', danger: false });
-          if (!ok) return false;
-        }
-      }
-      await DB.setSetting('groomers', groomers);
+      await DB.setSetting('groomers', groomers0);
       // 휴무일
       const checks = document.querySelectorAll('input[name="closedDay"]:checked');
       const closedDays = Array.from(checks).map(cb => Number(cb.value));
@@ -1118,7 +1119,7 @@ App.pages.settings = {
       App.showToast('매장 관리 설정이 저장되었습니다.');
       return true;
     };
-    document.getElementById('btn-save-tab-shop')?.addEventListener('click', () => saveShop());
+    document.getElementById('btn-save-tab-shop')?.addEventListener('click', () => saveShop().catch(e => { console.error('매장 설정 저장 실패:', e); App.showToast('저장 중 오류가 났어요. 다시 시도해 주세요.', 'error'); }));
 
     // 로고 업로드/제거
     document.getElementById('s-logo-upload')?.addEventListener('click', () => document.getElementById('s-logo-file')?.click());
@@ -1206,7 +1207,7 @@ App.pages.settings = {
       App.showToast('운영 설정이 저장되었습니다.');
       return true;
     };
-    document.getElementById('btn-save-tab-operation')?.addEventListener('click', () => saveOperation());
+    document.getElementById('btn-save-tab-operation')?.addEventListener('click', () => saveOperation().catch(e => { console.error('운영 설정 저장 실패:', e); App.showToast('저장 중 오류가 났어요. 다시 시도해 주세요.', 'error'); }));
     this.renderPushCard();
     this._tabSavers = { shop: saveShop, operation: saveOperation };
 
@@ -1281,7 +1282,9 @@ App.pages.settings = {
       const file = e.target.files[0];
       if (!file) return;
 
-      const confirmed = await App.confirm('고른 백업 파일로 <strong>지금 데이터를 모두 바꿉니다.</strong><br>바꾸기 전에 지금 데이터를 자동으로 따로 보관해요. <small style="color:var(--text-muted)">(사진 제외)</small>', { okLabel: '복원' });
+      const syncOn = typeof Sync !== 'undefined' && Sync.isEnabled && Sync.isEnabled();
+      const confirmed = await App.confirm('고른 백업 파일로 <strong>지금 데이터를 모두 바꿉니다.</strong><br>바꾸기 전에 지금 데이터를 자동으로 따로 보관해요. <small style="color:var(--text-muted)">(사진 제외)</small>'
+        + (syncOn ? '<br><span style="color:var(--danger);font-weight:700">동기화 중: 다른 기기와 클라우드도 이 파일 내용으로 바뀝니다.</span> 백업 이후에 다른 기기에서 넣은 기록은 사라져요.' : ''), { okLabel: '복원' });
       if (!confirmed) {
         e.target.value = '';
         return;
@@ -1353,7 +1356,16 @@ App.pages.settings = {
         //  rolled-back — insert 실패 후 snapshot 으로 자동 복구 완료
         //  dirty       — 자동 복구까지 실패 → 이때만 자동 백업으로 되돌리기 제안
         // (예전엔 어느 경우든 되돌리기를 제안해서, 이미 정상인 DB를 사진 없는 사본으로 덮어썼다)
-        if (err.dbState === 'untouched' || err.dbState === 'rolled-back') {
+        if (err.dbState === 'photos-partial') {
+          // 데이터는 다 들어갔고 사진만 일부 빠졌다 — 정상 복원과 같은 뒷정리를 하고 솔직히 알린다
+          try {
+            if (App.migratePetVisitStats) await App.migratePetVisitStats(true);
+            if (App.migratePriceBands) await App.migratePriceBands(true);
+            if (typeof Sync !== 'undefined' && Sync.afterImport) Sync.afterImport();
+          } catch (_) {}
+          App.showToast(err.message, 'info', { duration: 9000 });
+          App.handleRoute();
+        } else if (err.dbState === 'untouched' || err.dbState === 'rolled-back') {
           App.showToast(err.message || '복원 중 오류가 발생했습니다. 파일을 확인해주세요.', 'error');
         } else {
           const autoBackup = await DB.getSetting('_autoBackupBeforeImport');

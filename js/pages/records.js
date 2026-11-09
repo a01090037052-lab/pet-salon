@@ -751,6 +751,39 @@ App.pages.records = {
     this._pendingAddonReprice = null;
     // 예약에서 넘어온 추가 항목의 메뉴 가격 (태그 data-price — 제거 시 정확히 빼기 위함)
     const prefillAddonPrices = {};
+    // 옛 기록 수정: service 가 없고 serviceIds/serviceNames 만 있으면 — 첫 이름을 서비스로, 나머지는 추가 항목으로 (예전엔 서비스가 비어 저장이 막히거나 나머지 이름이 지워졌다)
+    if (id && !record.service) {
+      let names = Array.isArray(record.serviceNames) ? record.serviceNames.filter(Boolean) : [];
+      if (!names.length && Array.isArray(record.serviceIds) && record.serviceIds.length) {
+        const svcAll = await DB.getAll('services');
+        names = record.serviceIds.map(sid => svcAll.find(sv => sv.id === sid)?.name).filter(Boolean);
+      }
+      if (names.length) {
+        record = { ...record, service: names[0], addons: (record.addons && record.addons.length) ? record.addons : names.slice(1) };
+      }
+    }
+
+    // 수정 모드: 기존 추가 항목 태그에 값을 매긴다 — 지우거나 스타일 칩을 끄면 그만큼 추가 금액이 줄게 (예전엔 0원 태그라 금액이 안 줄었다)
+    if (id && Array.isArray(record.addons) && record.addons.length) {
+      try {
+        const compNames = new Set(Array.isArray(record.complimentary) ? record.complimentary.filter(c => c && !c.main).map(c => App.normalizeServiceName(c.name)) : []);
+        const paidNames = record.addons.map(a => App.normalizeServiceName(a)).filter(nm => nm && !compNames.has(nm));
+        const addonTotal = Number(record.addonPrice) || 0;
+        if (paidNames.length === 1) prefillAddonPrices[record.addons.find(a => App.normalizeServiceName(a) === paidNames[0])] = addonTotal;
+        else if (paidNames.length > 1) {
+          const svcAll = await DB.getAll('services');
+          const basis = Number(record.weightAtVisit) > 0 ? Number(record.weightAtVisit) : null;
+          let left = addonTotal;
+          for (const a of record.addons) {
+            const nm = App.normalizeServiceName(a);
+            if (!paidNames.includes(nm)) continue;
+            const m = await App.getMenuPrice(nm, basis, svcAll).catch(() => null);
+            const v = Math.min(Number(m && m.price) || 0, Math.max(0, left));
+            prefillAddonPrices[a] = v; left -= v;
+          }
+        }
+      } catch (e) { console.warn('추가 항목 값 매기기 실패:', e); }
+    }
 
     // 미래 날짜 예약을 오늘 완료하려 하면 한 번 묻는다 — 다른 날 예약 카드를 잘못 누른 경우를 막는다 (사장님 결정 2026-11-06)
     const earlyAsked = fromAppointment && App._earlyMoveConfirmedId != null && String(App._earlyMoveConfirmedId) === String(fromAppointment.id);
@@ -840,8 +873,11 @@ App.pages.records = {
     // 정액권으로 (일부) 낸 기록이면 정액권 칩이 켜진 채로 연다. 나머지 결제 수단은 paymentMethod 에 있다
     const pfMode = Number(record.prepaidUsed) > 0 || record.paymentMethod === 'prepaid';
     const pfRest0 = pfMode && record.paymentMethod && record.paymentMethod !== 'prepaid' ? record.paymentMethod : 'card';
+    // 기본가: servicePrice 가 있으면 그 값(0원도 값). 없는 옛 기록만 총액에서 추가 금액을 뺀 값 — 예전엔 0원이면 총액을 넣어 추가 금액이 두 번 들어갔다
+    const mainPriceOf = (r) => r.servicePrice != null && r.servicePrice !== '' ? (Number(r.servicePrice) || 0) : Math.max(0, (Number(r.totalPrice) || 0) - (Number(r.addonPrice) || 0));
+    this._mainPriceOf = mainPriceOf;
     this._formTotal = record.finalPrice != null ? Number(record.finalPrice) || 0
-      : (Number(record.servicePrice || record.totalPrice) || 0) + (Number(record.addonPrice) || 0) - (Number(record.discount) || 0) + (Number(record.extraCharge) || 0);
+      : mainPriceOf(record) + (Number(record.addonPrice) || 0) - (Number(record.discount) || 0) + (Number(record.extraCharge) || 0);
     // 담당 미용사 칸: 미용사 2명 이상 등록 시에만 보인다. 등록 명단에 없는 이름이 이미 적힌 기록이면 그 값을 볼 수 있게 보인다
     const registeredGroomers = (await DB.getSetting('groomers')) || [];
     const showGroomerField = registeredGroomers.length >= 2 || !!(record.groomer && !registeredGroomers.includes(record.groomer));
@@ -880,7 +916,7 @@ App.pages.records = {
         </div>
         <div class="form-group">
           <label class="form-label">날짜 <span class="required">*</span></label>
-          <input type="date" id="f-date" value="${record.date || App.getToday()}">
+          <input type="date" id="f-date" value="${record.date || App.getToday()}" max="${App.getToday()}">
         </div>
         <!-- 오늘 몸무게 → 몸무게 구간 가격 (가격보다 먼저 — 몸무게로 기본가가 정해진다)
              구간 사용 안 함이면 숨긴다. 고른 서비스가 몸무게 가격이 아니고 반려견 몸무게가 있으면 '상세 옵션'으로 옮긴다 -->
@@ -903,7 +939,7 @@ App.pages.records = {
           </div>
           <div class="form-group" style="flex:1">
             <label class="form-label" for="f-servicePrice">기본가</label>
-            <input type="number" id="f-servicePrice" class="${mainComp ? 'is-free' : ''}" value="${mainComp ? (Number(mainComp.price) || '') : (record.servicePrice || record.totalPrice || '')}" placeholder="0" min="0" step="1000">
+            <input type="number" id="f-servicePrice" class="${mainComp ? 'is-free' : ''}" value="${mainComp ? (Number(mainComp.price) || '') : (id || record.servicePrice != null ? (mainPriceOf(record) || '') : '')}" placeholder="0" min="0" step="1000">
           </div>
         </div>
         <div id="f-band-info" style="margin:-6px 0 12px;font-size:0.93rem;color:var(--text-secondary);line-height:1.4"></div>
@@ -965,7 +1001,7 @@ App.pages.records = {
         <!-- 합계 + 결제 수단 (필수 매출 정보) -->
         <div class="form-group" id="final-price-display" style="background:var(--bg);border-radius:var(--radius);padding:12px 16px;display:flex;justify-content:space-between;align-items:center">
           <span style="font-weight:700">합계</span>
-          <span id="final-price-value" style="font-size:1.2rem;font-weight:800;color:var(--primary)">${App.formatCurrency(record.finalPrice != null ? record.finalPrice : (record.servicePrice || record.totalPrice || 0) + (record.addonPrice || 0) - (record.discount || 0) + (record.extraCharge || 0))}</span>
+          <span id="final-price-value" style="font-size:1.2rem;font-weight:800;color:var(--primary)">${App.formatCurrency(record.finalPrice != null ? record.finalPrice : mainPriceOf(record) + (record.addonPrice || 0) - (record.discount || 0) + (record.extraCharge || 0))}</span>
         </div>
         <div id="f-comp-summary" style="display:none;margin:-8px 0 12px;font-size:0.93rem;color:var(--success, #16a34a)"></div>
         <div class="form-group">
@@ -1365,7 +1401,14 @@ App.pages.records = {
       exclude: (v) => Array.from(addonTagsEl?.querySelectorAll('.addon-tag') || []).some(t => this._addonTagName(t) === App.normalizeServiceName(v)),
       onSelect: (v) => { addAddonTag(v); if (addonInput) addonInput.value = ''; }
     });
-    const addAddonTag = async (name) => {
+    this._pendingAddonAdds = new Set();
+    const addAddonTag = (name) => {
+      const p = addAddonTagNow(name).catch(err => console.warn('추가 항목 넣기 실패:', err));
+      this._pendingAddonAdds.add(p);
+      p.finally(() => this._pendingAddonAdds.delete(p));
+      return p;
+    };
+    const addAddonTagNow = async (name) => {
       const nm = App.normalizeServiceName(name);
       if (!nm || !addonTagsEl) return;
       addonTagsEl.insertAdjacentHTML('beforeend', this._addonTagHtml(nm, 0, {}));
@@ -1647,7 +1690,7 @@ App.pages.records = {
       if (wrap) {
         const cur = currentWeight();
         const petW = formPet ? Number(formPet.weight) || 0 : 0;
-        const differs = !bandsOff && !!(formPet && cur && Math.abs(cur - petW) > 0.001);
+        const differs = !bandsOff && !!(formPet && cur && App.formatKg(cur) !== App.formatKg(petW)); // 표시 단위로 같으면(9.01 vs 9) 묻지 않는다
         wrap.style.display = differs ? 'flex' : 'none';
         const lbl = document.getElementById('f-update-pet-weight-label');
         if (lbl && differs) lbl.textContent = `반려견 몸무게도 업데이트 (${petW ? App.formatKg(petW) + 'kg' : '미입력'} → ${App.formatKg(cur)}kg)`;
@@ -1950,6 +1993,13 @@ App.pages.records = {
       if (!pet) return;
       let first = null, latest = null, count = 0;
       petRecords.forEach(r => { if (!r.date) return; count++; if (!first || r.date < first) first = r.date; if (!latest || r.date > latest) latest = r.date; });
+      // '기록 없이 완료'한 예약도 방문이다 — 기록만 보고 다시 셈하면 그 방문이 사라져 재방문 알림이 한 달 일찍 떴다
+      try {
+        const appts = await DB.getByIndex('appointments', 'petId', petId);
+        const today = App.getToday();
+        const recApptIds = new Set(petRecords.map(r => r.appointmentId).filter(Boolean).map(Number));
+        appts.forEach(a => { if (a.status === 'completed' && a.date && a.date <= today && !recApptIds.has(Number(a.id)) && (!latest || a.date > latest)) latest = a.date; });
+      } catch (_) {}
       if ((pet.lastVisitDate || null) !== latest || (pet.firstVisitDate || null) !== first || (pet.visitCount || 0) !== count) {
         pet.lastVisitDate = latest;
         pet.firstVisitDate = first;
@@ -2077,6 +2127,10 @@ App.pages.records = {
       if (this._pendingPriceFill) {
         try { await this._pendingPriceFill; } catch (e) { /* 조회 실패 시 입력된 값으로 진행 */ }
         this._pendingPriceFill = null;
+      }
+      // 추가 항목을 고르자마자 저장 — 값이 붙기 전에 읽어 0원으로 저장되지 않게 기다린다
+      if (this._pendingAddonAdds && this._pendingAddonAdds.size) {
+        try { await Promise.all([...this._pendingAddonAdds]); } catch (e) { /* ignore */ }
       }
       // 코스·몸무게를 바꾼 직후 바로 저장 — 추가 항목(스타일 포함 0원 등) 값 다시 맞추기가 끝난 뒤 금액을 읽는다
       if (this._pendingAddonReprice) {
@@ -2245,7 +2299,8 @@ App.pages.records = {
       }
 
       // 현금영수증 (현금 결제일 때만 의미)
-      const cashReceiptYn = document.getElementById('f-cashReceipt')?.checked || false;
+      // 카드·이체로 바꾸면 현금영수증 표시는 숨겨질 뿐 체크가 남아 세무 자료에 'Y'로 나갔다 — 현금이 실제로 오갈 때만
+      const cashReceiptYn = paymentMethod === 'cash' && (document.getElementById('f-cashReceipt')?.checked || false);
       const cashReceiptNo = document.getElementById('f-cashReceiptNo')?.value?.trim() || '';
 
       const data = { customerId, petId, date, groomer, nextVisitDate, service, serviceId, servicePrice, serviceCategory, addons, addonServiceIds, addonPrice, style, serviceNames, totalPrice, discount, extraCharge, finalPrice, memo, paymentMethod, cashReceiptYn, cashReceiptNo, appointmentId, status, condition, cooperativeness, skinStatus, earStatus, mattingLevel };
@@ -2429,6 +2484,8 @@ App.pages.records = {
         const appt = await DB.get('appointments', Number(record.appointmentId));
         if (appt && appt.status === 'completed') {
           appt.status = 'confirmed';
+          // 다른 날 예약을 오늘로 옮겨 완료했던 것이면 원래 날짜로 되돌린다 (예전엔 오늘 날짜에 '확정'으로 남아 지난 예약이 됐다)
+          if (appt.movedFromDate) { appt.date = appt.movedFromDate; delete appt.movedFromDate; }
           await DB.update('appointments', appt);
         }
       }
@@ -2511,7 +2568,7 @@ App.pages.records = {
 
     // 결제 수단별 집계
     const paymentBreakdown = {};
-    const paymentMethods = ['cash', 'card', 'transfer', 'unpaid'];
+    const paymentMethods = ['cash', 'card', 'transfer', 'unpaid', 'none']; // none = 수단 미선택(옛 기록) — 빠지면 칸 합이 총액과 안 맞는다
     paymentMethods.forEach(m => { paymentBreakdown[m] = { count: 0, amount: 0 }; });
     todayRecs.forEach(r => {
       // 정액권으로 일부 낸 기록은 정액권 몫과 나머지 결제 수단 몫으로 나눠 센다
@@ -2639,7 +2696,10 @@ App.pages.records = {
 
     // Date picker change handler
     document.getElementById('report-date-picker')?.addEventListener('change', (e) => {
-      this.showDailyReport(e.target.value);
+      // 창 위에 창을 또 열면 뒤로가기 기록이 쌓여 먹통이 됐다 — 닫고 다시 연다
+      const d = e.target.value;
+      App.closeModal();
+      setTimeout(() => this.showDailyReport(d), 220);
     });
   },
 
@@ -2858,7 +2918,7 @@ App.pages.records = {
     const setVal = (id, val) => { const el = document.getElementById(id); if (el && val != null) el.value = val; };
     setVal('f-service', last.service || '');
     const lastMainComp = Array.isArray(last.complimentary) ? last.complimentary.find(c => c && c.main) : null;
-    setVal('f-servicePrice', lastMainComp ? (Number(lastMainComp.price) || 0) : (last.servicePrice || last.totalPrice || 0));
+    setVal('f-servicePrice', lastMainComp ? (Number(lastMainComp.price) || 0) : (this._mainPriceOf ? this._mainPriceOf(last) : (Number(last.servicePrice) || 0)));
     // 무료(서비스) 상태도 그대로 가져온다 — 기본가·추가 금액이 '무료 항목을 뺀 값'으로 저장돼 있어서, 무료 표시 없이 가져오면 금액이 맞지 않는다
     const mainFreeBtn = document.getElementById('f-main-free');
     if (mainFreeBtn) {
@@ -2917,7 +2977,7 @@ App.pages.records = {
 
   // r(기록)을 함께 주면 정액권으로 일부 낸 기록을 '정액권+카드'처럼 보여 준다
   getPaymentLabel(method, r) {
-    const labels = { cash: '현금', card: '카드', transfer: '계좌이체', unpaid: '미결제', prepaid: '정액권' };
+    const labels = { cash: '현금', card: '카드', transfer: '계좌이체', unpaid: '미결제', prepaid: '정액권', none: '수단 미선택' };
     const base = labels[method] || '-';
     if (r && method !== 'prepaid' && Number(r.prepaidUsed) > 0) return '정액권+' + (method === 'unpaid' ? '미결제' : base);
     return base;

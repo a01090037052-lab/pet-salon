@@ -276,6 +276,8 @@ App.pages.revenue = {
           </div>
           <div class="card-body chart-wrapper">
             ${(() => {
+              // 이번 주 기록이 하나도 없으면 빈 그래프(0만·0만 눈금) 대신 한 줄
+              if (weekRevenue === 0) return '<p style="color:var(--text-muted);text-align:center;padding:12px 0">이번 주 기록이 아직 없어요</p>';
               const niceMax = (v) => { if (v <= 0) return 100000; const mag = Math.pow(10, Math.floor(Math.log10(v))); const norm = v / mag; return Math.ceil(norm * 4) / 4 * mag; };
               const gMax = niceMax(weekMax);
               const weekAvgDays = weekData.filter(d => d.date <= today);

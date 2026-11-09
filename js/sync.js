@@ -108,8 +108,8 @@ const Sync = {
       if (!this.isEnabled() || this._s.deviceNo == null || !this.ID_STORES.includes(store) || !DB.db) return Promise.resolve(null);
       const p = (this._idChain[store] || Promise.resolve()).then(() => this._nextId(store));
       this._idChain[store] = p.catch(() => {});
-      return p.catch(() => null);
-    } catch (_) { return Promise.resolve(null); }
+      return p; // 실패하면 그대로 오류 — 자동 번호로 빠지면 다른 기기 대역과 겹칠 수 있다
+    } catch (e) { return Promise.reject(e); }
   },
 
   // db.js 쓰기 훅 (트랜잭션 커밋 후). 절대 throw 하지 않는다.
@@ -145,8 +145,27 @@ const Sync = {
     try {
       if (!this.isEnabled()) return;
       this._photoSig = {};
-      this.pushAll({ replace: true, progress: true }).catch(e => this._fail(e));
+      // 아직 연결 전(SDK 로드 전·오프라인)이면 '올릴 것 있음' 표시만 남긴다 — 연결되면 _connect 가 올린다.
+      // (예전엔 여기서 조용히 실패해 복원한 내용이 클라우드에 영영 안 올라가고 기기마다 데이터가 갈렸다)
+      if (!this._fs || !this._user || navigator.onLine === false) {
+        if (this._s) { this._s.pendingReplace = true; this._saveNow().catch(() => {}); }
+        if (typeof App !== 'undefined' && App.showToast) App.showToast('복원한 내용은 인터넷이 연결되면 다른 기기에도 자동으로 맞춰져요.', 'info', { duration: 6000 });
+        this._connect();
+        return;
+      }
+      this._runPendingReplace();
     } catch (e) { console.warn('Sync.afterImport 오류:', e); }
+  },
+
+  // 복원·되돌리기 뒤 클라우드를 이 기기 내용으로 맞추기 — 실패하면 표시를 남겨 다음 연결 때 다시
+  _runPendingReplace() {
+    if (this._s) { this._s.pendingReplace = true; this._saveLater(); }
+    return this.pushAll({ replace: true, progress: true })
+      .then(() => { if (this._s) { delete this._s.pendingReplace; this._saveLater(); } })
+      .catch(e => {
+        this._fail(e);
+        if (typeof App !== 'undefined' && App.showToast) App.showToast('복원한 내용을 클라우드에 아직 올리지 못했어요. 인터넷이 되면 자동으로 다시 올립니다.', 'info', { duration: 6000 });
+      });
   },
 
   // 전체 초기화 후 — 'sync' 설정도 지워졌으므로 연결을 끊고 꺼진 상태로 돌아간다
@@ -612,7 +631,8 @@ const Sync = {
         if (!this._acceptUser(user)) return;
         this._user = user;
         this._startListeners();
-        this.flush();
+        if (this._s && this._s.pendingReplace) this._runPendingReplace(); // 복원 뒤 못 올린 것 (pushAll 끝에 flush)
+        else this.flush();
       } catch (e) { this._fail(e); }
       finally { this._connecting = null; this._emit(); }
     })();
@@ -1045,7 +1065,8 @@ const Sync = {
     this._failAt = {}; // 새로 시작하면 받은 기준 시각(실패한 문서 앞)부터 다시 받는다
     // 첫 삭제 표시 묶음을 반영하면(또는 20초가 지나면) 보내기를 시작한다 (flush 가 기다린다)
     let tombDone;
-    this._tombReady = new Promise(r => { tombDone = r; setTimeout(r, 20000); });
+    // 느린 회선에서 20초 안에 못 받으면 지운 기록을 다시 올려 되살릴 수 있었다 → 2분까지 기다린다 (오류·오프라인이면 바로 풀림)
+    this._tombReady = new Promise(r => { tombDone = r; setTimeout(r, 120000); });
     this._pruneTombstones().catch(e => console.warn('Sync: 삭제 표시 정리 실패', e));
     const TS = firebase.firestore.Timestamp;
     this._retryPendingRecordPhotos();
@@ -1731,8 +1752,13 @@ const Sync = {
       req.onsuccess = () => {
         const cur = req.result;
         const max = cur ? Number(cur.key) : 0;
-        const next = Math.max(max + 1, lo + 1, (this._lastId[store] || 0) + 1);
+        // 마지막으로 쓴 번호를 설정에도 남긴다 — 앱을 껐다 켠 뒤 지운 기록의 번호를 새 기록이 다시 쓰면,
+        // 다른 기기에서 옛 기록의 사진이 새 기록에 붙었다
+        const saved = (this._s.lastIds && this._s.lastIds[store]) || 0;
+        const next = Math.max(max + 1, lo + 1, (this._lastId[store] || 0) + 1, saved + 1);
         this._lastId[store] = next;
+        this._s.lastIds = Object.assign({}, this._s.lastIds, { [store]: next });
+        this._saveLater();
         resolve(next);
       };
       req.onerror = () => reject(req.error);

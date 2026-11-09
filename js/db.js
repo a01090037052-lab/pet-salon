@@ -141,7 +141,8 @@ const DB = {
     }
     // 동기화 중이면 기기별 id 대역에서 번호를 받는다 (두 기기가 같은 id 를 만들지 않게). 꺼져 있으면 null → autoIncrement.
     if (data.id == null && typeof Sync !== 'undefined' && Sync.allocId) {
-      try { const nid = await Sync.allocId(storeName); if (nid != null) data.id = nid; } catch (_) {}
+      const nid = await Sync.allocId(storeName); // 실패하면 저장 오류로 알린다 (조용히 자동 번호를 쓰면 다른 기기 기록을 덮을 수 있다)
+      if (nid != null) data.id = nid;
     }
     return new Promise((resolve, reject) => {
       // 요청 성공(onsuccess)이 아니라 트랜잭션 커밋(oncomplete) 시점에 resolve 한다.
@@ -202,6 +203,17 @@ const DB = {
       const req = this._idbStore(storeName, 'readonly').getAll();
       req.onsuccess = () => resolve(req.result || []);
       req.onerror = () => reject(req.error);
+    });
+  },
+
+  // 기기 전용 필드(사진 참조 등)만 고칠 때 — updatedAt 을 올리지 않고 동기화도 타지 않는다
+  _putLocalOnly(storeName, data) {
+    return new Promise((resolve, reject) => {
+      const tx = this.db.transaction(storeName, 'readwrite');
+      tx.objectStore(storeName).put(data);
+      tx.oncomplete = () => resolve();
+      tx.onerror = () => reject(tx.error);
+      tx.onabort = () => reject(tx.error);
     });
   },
 
@@ -814,6 +826,8 @@ const DB = {
 
     // 1b. 구버전 백업 마이그레이션
     data = await this._migrateBackup(data);
+    // 복원 전에 아직 못 보낸 변경(편지함)을 비운다 — 백업에 없는 기록이 복원 뒤 클라우드로 올라가 되살아나지 않게
+    try { if (typeof Sync !== 'undefined' && Sync.isEnabled && Sync.isEnabled() && Sync._clearQueue) await Sync._clearQueue(); } catch (_) {}
 
     // ⚠ 사진 보호: '사진 제외 백업'은 photos: [] 로 저장된다. 이를 복원 대상에 넣으면
     //   photos 스토어가 통째로 clear 되어 기기의 사진이 전부 사라진다 (되돌릴 수 없음).
@@ -821,7 +835,7 @@ const DB = {
     const skipPhotos = data._excludePhotos === true || !Array.isArray(data.photos) || data.photos.length === 0;
     const storeNames = Object.keys(data).filter(
       k => !k.startsWith('_') && this.stores[k] && Array.isArray(data[k]) && !(skipPhotos && k === 'photos') && !this._localOnlyStores.includes(k)
-    );
+    ).sort((a, b) => (a === 'photos') - (b === 'photos')); // 사진은 맨 마지막 — 사진에서 실패해도 데이터는 다 들어가 있게
 
     // 기기 내부 설정(_autoBackup*)은 복원으로 덮어쓰지 않는다 — 복원 직후 "되돌리기"의 유일한 근거이므로.
     let preservedSettings = [];
@@ -892,8 +906,10 @@ const DB = {
     }
 
     // 3. 스토어별로 청크 단위 insert — 실패 시 snapshot으로 자동 rollback
+    let curStore = null;
     try {
       for (const storeName of storeNames) {
+        curStore = storeName;
         const items = data[storeName];
         for (let i = 0; i < items.length; i += CHUNK_SIZE) {
           const chunk = items.slice(i, i + CHUNK_SIZE);
@@ -927,6 +943,14 @@ const DB = {
       }
     } catch (insertError) {
       console.error(`importAll insert 실패 — snapshot으로 rollback 시도:`, insertError);
+      // 사진 단계에서 실패(용량 부족 등): 데이터는 이미 다 들어갔다. 되돌리면 사진만 옛것·새것이 섞여 다른 아이 사진이 붙는다 → 되돌리지 않고 솔직히 알린다
+      if (curStore === 'photos') {
+        await this._restoreInternalSettings(preservedSettings).catch(() => {});
+        try { localStorage.removeItem('__petsalon_import_snapshot__'); } catch (_) {}
+        const err = new Error('고객·기록은 복원됐지만 사진 일부를 넣지 못했어요 (저장 공간 부족일 수 있어요). 사진 없는 기록은 다음 미용 때 다시 찍어 주세요.');
+        err.dbState = 'photos-partial';
+        throw err;
+      }
       try {
         await this._rollbackFromSnapshot(snapshot, preservedSettings);
         try { localStorage.removeItem('__petsalon_import_snapshot__'); } catch (_) {}
@@ -1010,6 +1034,7 @@ const DB = {
       stores.forEach(sn => tx.objectStore(sn).clear());
       tx.oncomplete = resolve;
       tx.onerror = () => reject(tx.error);
+      tx.onabort = () => reject(tx.error || new Error('rollback clear aborted'));
     });
     // 2) re-insert
     for (const sn of stores) {
@@ -1074,7 +1099,7 @@ const DB = {
           if (!photoIds.has(p.photoId)) {
             report.orphanPhotoRefs++;
             p.photoId = null;
-            await this.update('pets', p);
+            await this._putLocalOnly('pets', p); // 이 기기 사진 참조만 고치는 것 — 수정 시각을 올리면 다른 기기의 수정을 덮는다
             report.repaired++;
           } else {
             referencedPhotoIds.add(p.photoId);
@@ -1098,7 +1123,7 @@ const DB = {
             }
           }
         }
-        if (changed) await this.update('records', r);
+        if (changed) await this._putLocalOnly('records', r);
       }
 
       // 3) photos 스토어에서 어디서도 참조 안 되는 orphan 정리 — 바로 지우지 않는다.

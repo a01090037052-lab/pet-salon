@@ -294,7 +294,7 @@ App.pages.customers = {
                 }
                 <div>
                   <div class="pet-name">${App.escapeHtml(p.name)}</div>
-                  <div class="pet-breed">${App.escapeHtml(p.breed || '견종 미입력')} | ${p.weight ? p.weight + 'kg' : '체중 미입력'}</div>
+                  <div class="pet-breed">${App.escapeHtml(p.breed || '견종 미입력')} | ${p.weight ? App.formatKg(p.weight) + 'kg' : '체중 미입력'}</div>
                   ${petNotes.length > 0 ? `<div style="font-size:0.93rem;color:var(--danger);margin-top:4px;line-height:1.3">${App.icon('alert', 'ico-sm')} ${petNotes.map(n => App.escapeHtml(n)).join(', ')}</div>` : ''}
                 </div>
               </div>
@@ -748,7 +748,7 @@ App.pages.customers = {
         `이미 등록된 연락처입니다.<br><strong>${App.escapeHtml(App.getCustomerLabel(duplicate))}</strong><br>해당 고객 정보를 여시겠습니까?`,
         { okLabel: '고객 열기', danger: false }
       );
-      if (go) { App.closeModal(); App.navigate('customers/' + duplicate.id); return; }
+      if (go) { App.closeModal(); setTimeout(() => App.navigate('customers/' + duplicate.id), 180); return; } // 확인창의 history.back 이 끝난 뒤 이동
       App.highlightField('f-phone');
       return;
     }

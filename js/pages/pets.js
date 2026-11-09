@@ -122,7 +122,7 @@ App.pages.pets = {
             : `<div style="width:60px;height:60px;border-radius:14px;background:linear-gradient(135deg,var(--primary-light),var(--info-light));display:flex;align-items:center;justify-content:center;font-size:1.6rem;color:var(--primary)">${App.icon('paw', 'ico-lg')}</div>`;
 
           const opacityStyle = isInactive ? 'opacity:0.55;' : '';
-          const breedWeight = (p.breed || '견종 미입력') + (p.weight ? ' · ' + p.weight + 'kg' : '');
+          const breedWeight = (p.breed || '견종 미입력') + (p.weight ? ' · ' + App.formatKg(p.weight) + 'kg' : '');
 
           return `<div class="pet-list-item" data-id="${p.id}" data-search="${App.escapeHtml((p.name||'')+' '+(p.breed||'')+' '+(owner?.name||'')+' '+(owner?.phone||'')+' '+(p.memo||'')+' '+(p.healthNotes||'')+' '+(p.allergies||''))}" style="display:flex;align-items:center;gap:12px;padding:14px 14px 14px 12px;background:var(--bg-white);border:1px solid var(--border-light);border-left:4px solid ${barColor};border-radius:var(--radius);cursor:pointer;margin-bottom:8px;box-shadow:var(--shadow-xs);${opacityStyle}">
             <div style="flex-shrink:0">${photo}</div>
@@ -227,7 +227,7 @@ App.pages.pets = {
           <h2>${App.escapeHtml(pet.name)}</h2>
           <div class="detail-meta">
             <span>${App.escapeHtml(pet.breed || '견종 미입력')}</span>
-            <span>${pet.weight ? pet.weight + 'kg' : ''}</span>
+            <span>${pet.weight ? App.formatKg(pet.weight) + 'kg' : ''}</span>
             ${weighIns.length >= 2 ? `<span class="pet-weight-trend" tabindex="0" title="${App.escapeHtml(weighIns.map(r => App.formatDate(r.date) + ' ' + Number(r.weightAtVisit) + 'kg').join(' / '))}" style="color:var(--text-muted);cursor:help" onclick="App.showToast(this.title, 'info', { duration: 5000 })">최근 몸무게 ${weighIns.map(r => Number(r.weightAtVisit)).join(' → ')}kg</span>` : ''}
             <span>보호자: <a href="#customers/${pet.customerId}" style="color:var(--primary)">${App.escapeHtml(App.getCustomerLabel(customer))}</a></span>
             ${customer?.phone ? `<a href="tel:${App.escapeHtml(App.phoneDigits(customer.phone))}" style="color:var(--primary)" aria-label="전화" title="전화">${App.icon('phone')}</a> <a href="sms:${App.escapeHtml(App.phoneDigits(customer.phone))}" style="color:var(--primary)" aria-label="문자" title="문자">${App.icon('message')}</a>` : ''}
@@ -390,7 +390,7 @@ App.pages.pets = {
       ${(() => {
         // 반려견 정보 — 비어 있는 항목은 숨기고, 짧은 값은 두 칸씩 (예전엔 '기록 없음'·'-' 줄이 열 개 가까이 이어졌다)
         const short = [
-          ['견종', pet.breed], ['몸무게', pet.weight ? pet.weight + 'kg' : ''], ['나이', age !== '-' ? age : ''],
+          ['견종', pet.breed], ['몸무게', pet.weight ? App.formatKg(pet.weight) + 'kg' : ''], ['나이', age !== '-' ? age : ''],
           ['성별', [this.getGenderLabel(pet.gender) === '-' ? '' : this.getGenderLabel(pet.gender), pet.neutered ? '중성화' : ''].filter(Boolean).join(' · ')],
           ['사이즈', this.getSizeLabel(pet.size, pet.weight)], ['권장 주기', pet.groomingCycle ? pet.groomingCycle + '일' : '']
         ].filter(([, v]) => v && v !== '-');
@@ -985,6 +985,8 @@ App.pages.pets = {
           if (r[f]) await DB.deletePhoto(r[f]).catch(() => {});
         }
       }
+      // 방문 횟수 기반 보호자 태그(신규·일반·단골) 다시 셈 — 기록이 함께 지워졌으니
+      try { await App.pages.records._recalcCustomerTag(pet.customerId); } catch (e) { console.warn('태그 재계산 실패:', e); }
       App.showToast('삭제되었습니다.');
       App.navigate('pets');
     } catch (err) {
