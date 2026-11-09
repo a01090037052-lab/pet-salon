@@ -5508,8 +5508,12 @@ App.pages.records = {
 
       // 인덱스 쿼리로 기간 내 records만 로드 (장기 누적 시 필수)
       const filtered = await DB.getByDateRange('records', 'date', start, end);
+      // 정액권 충전·환불·노쇼 예약금 (매출과 따로 내보낸다)
+      const ppRows = this._prepaidExportRows(await Prepaid.getAllEntries(), {}, start, end);
+      const ppCount = (k) => ppRows.filter(p => p.kind === k).length;
+      const ppLine = ppRows.length ? `<div style="margin-top:8px;font-size:0.93rem;color:var(--text-muted)">정액권 충전 ${ppCount('정액권 충전')}건 · 환불 ${ppCount('정액권 환불')}건 · 노쇼 예약금 ${ppCount('노쇼 예약금')}건 (매출과 따로 표시)</div>` : '';
       // 데이터 없으면 명확한 안내
-      if (filtered.length === 0) {
+      if (filtered.length === 0 && ppRows.length === 0) {
         preview.innerHTML = `
           <div style="padding:20px;text-align:center;background:var(--bg);border-radius:var(--radius);border:1px dashed var(--border)">
             <div style="font-size:1.6rem;margin-bottom:6px">${App.icon('file')}</div>
@@ -5562,13 +5566,14 @@ App.pages.records = {
             <span style="color:${breakdown.unpaid.count > 0 ? 'var(--danger)' : 'var(--text-secondary)'}">미결제</span>
             <span style="font-weight:600;color:${breakdown.unpaid.count > 0 ? 'var(--danger)' : 'inherit'}">${App.formatCurrency(breakdown.unpaid.amount)} <span style="color:var(--text-muted);font-weight:400;font-size:0.93rem">(${breakdown.unpaid.count}건)</span></span>
           </div>
+          ${ppLine}
         </div>
       `;
 
       const shopName = await DB.getSetting('shopName') || '펫살롱';
       const fnameBase = `${shopName}_매출내역_${start}_${end}`;
       if (filenameEl) filenameEl.innerHTML = `<div>CSV: ${fnameBase}.csv</div><div>JSON: ${fnameBase}.json</div>`;
-      setBtnsDisabled(filtered.length === 0);
+      setBtnsDisabled(filtered.length === 0 && ppRows.length === 0);
     };
 
     // 기간 버튼 클릭
@@ -5620,21 +5625,70 @@ App.pages.records = {
     await updatePreview(thisMonthStart, today);
   },
 
+  // 세무 장부 구분 (장부 구분: 사료/용품 판매 · 미용(그루밍) · 호텔/위탁 · 분양 · 목욕 · 기타매출).
+  // courses = [{ name, category }] — 주 서비스(합친 코스면 코스마다). 이름에 '목욕'이 있고 미용 코스(목욕이 아닌 grooming)가 없으면 '목욕',
+  // 그 밖(미용 코스·추가 옵션·단독 케어)은 모두 '미용(그루밍)'
+  _taxCategoryLabel(courses) {
+    const list = (courses || []).filter(c => c && c.name);
+    const hasBath = list.some(c => String(c.name).includes('목욕'));
+    const hasGrooming = list.some(c => (c.category || 'grooming') === 'grooming' && !String(c.name).includes('목욕'));
+    return hasBath && !hasGrooming ? '목욕' : '미용(그루밍)';
+  },
+
+  // 정액권 장부 중 돈이 오간 줄 → 내보내기 행 (매출과 따로). 사용(use)은 미용 기록 매출 안에 이미 있어 넣지 않는다.
+  //  - 충전(charge): 받은 돈(amount, 보너스 제외) · 결제 방법 method
+  //  - 환불(refund): 돌려준 돈(amount, 양수) · 돌려준 방법 method
+  //  - 노쇼 예약금: 조정(adjust) 중 잔액을 줄이고(credit<0) 메모에 '노쇼'가 있는 줄 — 금액은 줄인 잔액,
+  //    결제 방법은 그 손님이 그날까지 마지막으로 충전한 방법 ('예약금' 메모 충전 우선)
+  //  start~end(포함) 날짜 순. 현금영수증 정보는 장부에 없어서 null
+  _prepaidExportRows(entries, customerMap, start, end) {
+    const label = (m) => ({ cash: '현금', card: '카드', transfer: '계좌이체' })[m] || '';
+    const all = entries || [];
+    const depositMethod = (e) => {
+      const charges = all.filter(c => c.type === 'charge' && Number(c.customerId) === Number(e.customerId) && (c.date || '') <= (e.date || ''))
+        .sort((a, b) => (b.date || '').localeCompare(a.date || '') || (Number(b.id) || 0) - (Number(a.id) || 0));
+      const c = charges.find(x => String(x.memo || '').includes('예약금')) || charges[0];
+      return c ? c.method : '';
+    };
+    const rows = [];
+    all.filter(e => e && e.date && e.date >= start && e.date <= end).forEach(e => {
+      let kind = null, amount = 0, method = '';
+      if (e.type === 'charge') { kind = '정액권 충전'; amount = Number(e.amount) || 0; method = e.method; }
+      else if (e.type === 'refund') { kind = '정액권 환불'; amount = Math.abs(Number(e.amount) || 0); method = e.method; }
+      else if (e.type === 'adjust' && (Number(e.credit) || 0) < 0 && String(e.memo || '').includes('노쇼')) {
+        kind = '노쇼 예약금'; amount = -(Number(e.credit) || 0); method = depositMethod(e);
+      }
+      if (!kind || !amount) return;
+      rows.push({
+        txId: 'P-' + e.id, date: e.date, kind,
+        customerName: App.getCustomerLabel((customerMap || {})[e.customerId]) || '',
+        paymentLabel: label(method), amount, cashReceiptYn: null, memo: e.memo || ''
+      });
+    });
+    return rows.sort((a, b) => a.date.localeCompare(b.date) || a.txId.localeCompare(b.txId, undefined, { numeric: true }));
+  },
+
   // ========== Export 공통 데이터 빌더 ==========
   async _buildExportData(start, end) {
-    const [records, customers, pets, services] = await Promise.all([
+    const [records, customers, pets, services, prepaidAll] = await Promise.all([
       DB.getByDateRange('records', 'date', start, end),
       DB.getAll('customers'),
       DB.getAll('pets'),
-      DB.getAll('services')
+      DB.getAll('services'),
+      Prepaid.getAllEntries()
     ]);
 
     const customerMap = {}; customers.forEach(c => { customerMap[c.id] = c; });
     const petMap = {}; pets.forEach(p => { petMap[p.id] = p; });
 
-    const mapCategoryToTax = (cat) => {
-      const map = { grooming: '미용(그루밍)', addon: '미용(그루밍)', care: '케어' };
-      return map[cat] || '미용(그루밍)';
+    // 장부 구분 — 주 서비스(합친 코스면 코스마다)의 이름·분류로
+    const svcById = {}; services.forEach(s => { svcById[s.id] = s; });
+    const svcByName = (nm) => services.find(s => App.normalizeServiceName(s.name) === App.normalizeServiceName(nm));
+    const taxLabelOf = (r, category) => {
+      const courses = Array.isArray(r.courses) && r.courses.length
+        ? r.courses.map(c => ({ name: c.name, category: (svcById[c.serviceId] || svcByName(c.name) || {}).category || 'grooming' }))
+        : [{ name: r.service || (r.serviceNames || [])[0] || '', category }];
+      return this._taxCategoryLabel(courses);
     };
 
     const resolveCategory = (r) => {
@@ -5670,7 +5724,7 @@ App.pages.records = {
         id: r.id,
         date: r.date || '',
         category,
-        categoryLabel: mapCategoryToTax(category),
+        categoryLabel: taxLabelOf(r, category),
         customerName: App.getCustomerLabel(customer) || '',
         petName: pet?.name || '',
         serviceName: r.service || '',
@@ -5692,9 +5746,12 @@ App.pages.records = {
 
     const totalAmount = enriched.reduce((sum, r) => sum + r.amount, 0);
 
+    const prepaidEntries = this._prepaidExportRows(prepaidAll, customerMap, start, end);
+
     return {
       meta: { shopName, period: { start, end }, exportedAt: new Date().toISOString(), totalRecords: enriched.length, totalAmount },
-      records: enriched
+      records: enriched,
+      prepaidEntries
     };
   },
 
@@ -5702,7 +5759,7 @@ App.pages.records = {
   async downloadCSV(start, end) {
     try {
       const data = await this._buildExportData(start, end);
-      if (!data.records.length) {
+      if (!data.records.length && !data.prepaidEntries.length) {
         App.showToast('해당 기간 기록이 없습니다.', 'warning');
         return;
       }
@@ -5725,7 +5782,7 @@ App.pages.records = {
       // 헤더 1줄 — 엑셀 기준 (현금영수증 번호는 ="010…" 로 감싸 앞자리 0 유지 — 다른 프로그램에선 그대로 문자열로 보임)
       lines.push([
         '거래번호', '날짜', '구분', '고객명', '펫이름', '결제수단', '공급가액',
-        '현금영수증', '현금영수증번호', '서비스명', '미용사', '메모'
+        '현금영수증', '현금영수증번호', '서비스명', '미용사', '메모', '기록번호'
       ].join(','));
 
       data.records.forEach(r => {
@@ -5733,7 +5790,16 @@ App.pages.records = {
           r.txId, r.date, r.categoryLabel, r.customerName, r.petName,
           r.paymentLabel, r.amount,
           r.cashReceiptYn, keepText(r.cashReceiptNo),
-          r.serviceName, r.groomer, r.memo
+          r.serviceName, r.groomer, r.memo, r.id
+        ].map(csvEsc).join(','));
+      });
+      // 정액권 충전·환불·노쇼 예약금 — 매출 행 뒤에 따로 (거래번호 P-…, 기록번호 빈칸)
+      data.prepaidEntries.forEach(p => {
+        lines.push([
+          p.txId, p.date, p.kind, p.customerName, '',
+          p.paymentLabel, p.amount,
+          p.cashReceiptYn == null ? '' : (p.cashReceiptYn ? 'Y' : 'N'), '',
+          '', '', p.memo, ''
         ].map(csvEsc).join(','));
       });
 
@@ -5752,7 +5818,7 @@ App.pages.records = {
       // 완료 토스트는 그대로 떠서 받아진 줄 알게 된다. (세무 자료 경로라 치명적)
       setTimeout(() => URL.revokeObjectURL(url), 60000);
 
-      App.showToast(`CSV 다운로드 완료 (${data.records.length}건)`, 'info');
+      App.showToast(`CSV 다운로드 완료 (${data.records.length}건${data.prepaidEntries.length ? ` + 정액권 ${data.prepaidEntries.length}건` : ''})`, 'info');
     } catch (err) {
       console.error('CSV export error:', err);
       App.showToast('CSV 내보내기 중 오류가 발생했습니다.', 'error');
@@ -5763,7 +5829,7 @@ App.pages.records = {
   async downloadJSON(start, end) {
     try {
       const data = await this._buildExportData(start, end);
-      if (!data.records.length) {
+      if (!data.records.length && !data.prepaidEntries.length) {
         App.showToast('해당 기간 기록이 없습니다.', 'warning');
         return;
       }
@@ -5792,7 +5858,9 @@ App.pages.records = {
           memoCombined: r.memo,
           createdAt: r.createdAt,
           updatedAt: r.updatedAt
-        }))
+        })),
+        // 정액권 충전·환불·노쇼 예약금 (매출과 따로) — { txId, date, kind, customerName, paymentLabel, amount, cashReceiptYn, memo }
+        prepaidEntries: data.prepaidEntries
       };
 
       const jsonContent = JSON.stringify(out, null, 2);
@@ -5807,7 +5875,7 @@ App.pages.records = {
       // CSV 내보내기와 동일 — iOS 비동기 다운로드 대응 (즉시 revoke 시 조용히 실패)
       setTimeout(() => URL.revokeObjectURL(url), 60000);
 
-      App.showToast(`JSON 다운로드 완료 (${data.records.length}건)`, 'info');
+      App.showToast(`JSON 다운로드 완료 (${data.records.length}건${data.prepaidEntries.length ? ` + 정액권 ${data.prepaidEntries.length}건` : ''})`, 'info');
     } catch (err) {
       console.error('JSON export error:', err);
       App.showToast('JSON 내보내기 중 오류가 발생했습니다.', 'error');

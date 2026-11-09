@@ -244,3 +244,52 @@ describe('합친 코스 가격 (_comboPrice) — 몸무게를 바꾸면 다시 �
     }
   });
 });
+
+// ---------- v192: 세무 내보내기 — 장부 구분 · 정액권 돈 움직임 행 ----------
+describe('세무 장부 구분 (_taxCategoryLabel)', () => {
+  const { App } = loadApp({ files: ['js/app.js', 'js/pages/records.js'] });
+  const R = App.pages.records;
+  test('목욕만(단독 케어·미용 분류 모두) → 목욕', () => {
+    assert.equal(R._taxCategoryLabel([{ name: '목욕', category: 'care' }]), '목욕');
+    assert.equal(R._taxCategoryLabel([{ name: '목욕+드라이', category: 'grooming' }]), '목욕');
+  });
+  test('미용 코스가 있으면 목욕이 섞여도 미용(그루밍)', () => {
+    assert.equal(R._taxCategoryLabel([{ name: '목욕', category: 'care' }, { name: '위생미용', category: 'grooming' }]), '미용(그루밍)');
+  });
+  test('케어·추가 옵션·미용 → 미용(그루밍) (케어 구분은 없다)', () => {
+    for (const c of ['care', 'addon', 'grooming', undefined]) assert.equal(R._taxCategoryLabel([{ name: '발톱', category: c }]), '미용(그루밍)');
+    assert.equal(R._taxCategoryLabel([]), '미용(그루밍)');
+  });
+});
+
+describe('정액권 내보내기 행 (_prepaidExportRows)', () => {
+  const { App } = loadApp({ files: ['js/app.js', 'js/pages/records.js'] });
+  const R = App.pages.records;
+  const plain = (x) => JSON.parse(JSON.stringify(x));
+  const cm = { 1: { id: 1, name: '김보호' } };
+  const entries = [
+    { id: 10, customerId: 1, type: 'charge', amount: 300000, bonus: 30000, credit: 330000, method: 'card', date: '2026-11-02', memo: '' },
+    { id: 11, customerId: 1, type: 'charge', amount: 20000, bonus: 0, credit: 20000, method: 'transfer', date: '2026-11-03', memo: '예약금' },
+    { id: 12, customerId: 1, type: 'use', amount: 50000, credit: -50000, recordId: 5, date: '2026-11-04' },
+    { id: 13, customerId: 1, type: 'adjust', amount: -20000, credit: -20000, date: '2026-11-05', memo: '노쇼 예약금' },
+    { id: 14, customerId: 1, type: 'refund', amount: 90000, credit: -100000, method: 'cash', date: '2026-11-06', memo: '이사' },
+    { id: 15, customerId: 1, type: 'adjust', amount: 5000, credit: 5000, date: '2026-11-06', memo: '장부 옮김' },
+    { id: 16, customerId: 1, type: 'charge', amount: 100000, credit: 100000, method: 'cash', date: '2026-12-01' },
+  ];
+  const rows = plain(R._prepaidExportRows(entries, cm, '2026-11-01', '2026-11-30'));
+  test('충전·환불·노쇼 예약금만, 사용·일반 조정·기간 밖은 뺀다', () => {
+    assert.deepEqual(rows.map(r => [r.txId, r.kind]), [['P-10', '정액권 충전'], ['P-11', '정액권 충전'], ['P-13', '노쇼 예약금'], ['P-14', '정액권 환불']]);
+  });
+  test('금액은 실제 돈 (보너스 제외, 환불은 돌려준 돈 양수)', () => {
+    assert.deepEqual(rows.map(r => r.amount), [300000, 20000, 20000, 90000]);
+  });
+  test('노쇼 예약금 결제수단 = 그날까지 마지막 예약금 충전 방법', () => {
+    assert.equal(rows[2].paymentLabel, '계좌이체');
+    assert.deepEqual([rows[0].paymentLabel, rows[3].paymentLabel], ['카드', '현금']);
+  });
+  test('고객명·메모, 현금영수증은 모름(null)', () => {
+    assert.equal(rows[3].customerName, '김보호');
+    assert.equal(rows[3].memo, '이사');
+    assert.equal(rows[0].cashReceiptYn, null);
+  });
+});
