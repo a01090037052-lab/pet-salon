@@ -50,3 +50,58 @@ describe('새 틀', () => {
     ['plain', 'studio', 'magazine'].forEach(k => assert.equal(R._cardPhotoCount({ layout: k, settings: {} }), 1));
   });
 });
+
+describe('떼어 낸 사진 가장자리 다듬기', () => {
+  // 100×100: 가운데 60×60 털(빨강), 둘레 3칸 배경 띠(초록)가 남은 사진
+  const make = () => {
+    const w = 100, h = 100, d = new Uint8ClampedArray(w * h * 4);
+    for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
+      const q = (y * w + x) * 4;
+      if (x >= 20 && x < 80 && y >= 20 && y < 80) d.set([200, 50, 50, 255], q);
+      else if (x >= 17 && x < 83 && y >= 17 && y < 83) d.set([0, 200, 0, 255], q);
+    }
+    return { w, h, d };
+  };
+  const px = (d, w, x, y) => Array.from(d.slice((y * w + x) * 4, (y * w + x) * 4 + 4));
+  test('보통: 초록 띠가 사라지고(털 색으로) 가운데는 그대로', () => {
+    const { w, h, d } = make();
+    R._refineCutout(d, w, h, 2, null);
+    for (let x = 14; x < 22; x++) { const p = px(d, w, x, 50); assert.ok(p[3] === 0 || p[1] < 100, `x=${x} ${p}`); }
+    assert.deepEqual(px(d, w, 50, 50), [200, 50, 50, 255]);
+  });
+  test('가장자리는 부드럽게 (중간 투명도가 생긴다)', () => {
+    const { w, h, d } = make();
+    R._refineCutout(d, w, h, 2, null);
+    const a = [];
+    for (let x = 14; x < 30; x++) a.push(px(d, w, x, 50)[3]);
+    assert.ok(a.some(v => v > 0 && v < 255), a.join(','));
+  });
+  test('끄기: 그대로', () => {
+    const { w, h, d } = make(); const before = d.slice();
+    R._refineCutout(d, w, h, 0, null);
+    assert.deepEqual(Array.from(d), Array.from(before));
+  });
+  test('지우기 붓 → 투명, 되살리기 붓 → 원래대로', () => {
+    const { w, h, d } = make();
+    R._refineCutout(d, w, h, 0, [{ m: -1, r: 5, p: [50, 50] }]);
+    assert.equal(px(d, w, 50, 50)[3], 0);
+    const m2 = make();
+    R._refineCutout(m2.d, w, h, 3, [{ m: 1, r: 4, p: [18, 50] }]);
+    assert.deepEqual(px(m2.d, w, 18, 50), [0, 200, 0, 255]);
+  });
+  test('사진 끝에서 잘린 몸통은 끝선이 깎이지 않는다', () => {
+    const w = 60, h = 60, d = new Uint8ClampedArray(w * h * 4);
+    for (let y = 20; y < h; y++) for (let x = 10; x < 50; x++) d.set([180, 150, 120, 255], (y * w + x) * 4);
+    R._refineCutout(d, w, h, 3, null);
+    assert.equal(d[((h - 1) * w + 30) * 4 + 3], 255);
+  });
+  test('아주 작은 그림은 다듬지 않는다 (사라지지 않게)', () => {
+    const d = new Uint8ClampedArray(10 * 10 * 4).fill(255);
+    R._refineCutout(d, 10, 10, 3, null);
+    assert.equal(d[3], 255);
+  });
+  test('붓 선은 점 사이를 메운다', () => {
+    const mask = R._strokeMask([{ m: -1, r: 2, p: [10, 10, 40, 10] }], 50, 20);
+    for (let x = 10; x <= 40; x++) assert.equal(mask[10 * 50 + x], -1, `x=${x}`);
+  });
+});

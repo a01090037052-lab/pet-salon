@@ -4238,3 +4238,21 @@ input.has-clear { padding-right: 44px; }
 .card-help > summary { cursor: pointer; color: var(--primary); font-weight: 600; min-height: 32px; display: flex; align-items: center; }
 .card-help ol { margin: 4px 0 0; padding-left: 20px; line-height: 1.6; }
 .fm .form-group[hidden] { display: none; }
+/* 떼어 낸 사진 가장자리 손질 화면 (2026-11-10) */
+.cutout-ed { position: fixed; inset: 0; z-index: 10001; background: var(--bg-white); display: flex; flex-direction: column; padding-top: env(safe-area-inset-top); padding-bottom: env(safe-area-inset-bottom); }
+.cutout-ed-top { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 8px 12px; border-bottom: 1px solid var(--border); }
+.cutout-ed-top b { font-size: 1rem; }
+.cutout-ed-stage { position: relative; flex: 1; min-height: 0; overflow: hidden; background: #E5E7EB; }
+.cutout-ed-stage canvas { display: block; touch-action: none; }
+.cutout-ed-busy { position: absolute; top: 10px; left: 50%; transform: translateX(-50%); background: rgba(17,24,39,.75); color: #fff; font-size: 13px; padding: 4px 12px; border-radius: 14px; pointer-events: none; }
+.cutout-ed-busy[hidden] { display: none; }
+.cutout-ed-bar { padding: 8px 12px 10px; display: flex; flex-direction: column; gap: 6px; border-top: 1px solid var(--border); }
+.cutout-ed-row { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.cutout-ed-row .card-tstyle-btn { min-height: 36px; }
+.cutout-ed-row input[type=range] { flex: 1; min-width: 120px; }
+.cutout-ed-lb { width: 72px; flex: 0 0 auto; font-size: max(0.82rem, 13px); font-weight: 700; color: var(--text-muted); }
+.cutout-ed-hint { font-size: max(0.78rem, 12px); color: var(--text-muted); line-height: 1.5; }
+.card-cutout-btn { margin-top: 4px; }
+
+.cutout-ed-actions { display: flex; gap: 6px; }
+.cutout-ed-lb { width: 64px; }
