@@ -3177,7 +3177,7 @@ App.pages.records = {
     if (s.customAccentColor) mainColor = s.customAccentColor;
     const _customBgImg = s.customBgImage ? await this._loadImg(s.customBgImage) : null;
     // 배경색 한 줄(자동·연보라·분홍…)에서 고른 색 — 모든 틀에 같이 (포인트 색은 배경색을 진하게)
-    if (s.bgPick && (s.bgPick === 'auto' || this._STUDIO_COLORS[s.bgPick])) {
+    if (s.bgPick && (s.bgPick === 'auto' || this._STUDIO_COLORS[s.bgPick] || /^#[0-9a-f]{6}$/i.test(s.bgPick))) {
       bgColor = this._studioColor({ studioColor: s.bgPick }, imgBefore || imgAfter);
       mainColor = this._mixHex(bgColor, '#000000', 0.5);
     }
@@ -3220,6 +3220,8 @@ App.pages.records = {
     let img4 = await this._loadImg(photo4Raw, photo4Raw === photoBefore || photo4Raw === photoAfter || photo4Raw === photo3Raw);
     if (img3) img3._meta = _photoMetas.photo3 || { offsetX: 0, offsetY: 0, zoom: 1.0 };
     if (img4) img4._meta = _photoMetas.photo4 || { offsetX: 0, offsetY: 0, zoom: 1.0 };
+    // 얼굴만 오린 사진은 바닥 그림자를 그리지 않는다 (떠 있는 얼굴 아래 그림자가 어색하다)
+    [[imgBefore, photoBefore], [imgAfter, photoAfter], [img3, photo3Raw], [img4, photo4Raw]].forEach(([im, src]) => { if (im) im._face = this._isFaceCut(src); });
     // 사진 느낌(필터) — 모든 칸에 같이
     if (s.photoFilter && s.photoFilter !== 'none') {
       imgBefore = this._filteredImg(imgBefore, s.photoFilter);
@@ -3256,7 +3258,8 @@ App.pages.records = {
       if (img && this._imgHasAlpha(img)) {
         // 배경 지운 사진 — 칸을 배경색보다 살짝 진한(어두운 배경이면 밝은) 색으로 채우고 강아지를 잘리지 않게 세운다
         ctx.beginPath(); ctx.rect(x, y, w, h); ctx.clip();
-        ctx.fillStyle = this._mixHex(bgColor, darkBg ? '#FFFFFF' : '#000000', 0.07); ctx.fillRect(x, y, w, h);
+        const sc = s.slotColor && s.slotColor !== 'auto' ? (s.slotColor === 'white' ? '#FFFFFF' : (this._STUDIO_COLORS[s.slotColor]?.hex || s.slotColor)) : this._mixHex(bgColor, darkBg ? '#FFFFFF' : '#000000', 0.07);
+        ctx.fillStyle = sc; ctx.fillRect(x, y, w, h);
         this._drawCutout(ctx, img, x + w * 0.06, y + h * 0.06, w * 0.88, h * 0.9);
       } else if (img) {
         this._drawImageCover(ctx, img, x, y, w, h);
@@ -3501,11 +3504,13 @@ App.pages.records = {
     else if (layout === 'plain') {
       const mainImg = imgAfter || imgBefore;
       const fixed = { '45': 4 / 5, '11': 1, '916': 9 / 16 }[s.plainRatio];
-      const r = Math.min(2, Math.max(0.45, fixed || (mainImg ? mainImg.width / mainImg.height : 4 / 5)));
+      // 떼어 낸 사진은 '사진 그대로'면 강아지 모양에 딱 맞아 여백이 없다 → 4:5 카드에 여유 있게
+      const cutMain = mainImg && this._imgHasAlpha(mainImg);
+      const r = Math.min(2, Math.max(0.45, fixed || (mainImg && !cutMain ? mainImg.width / mainImg.height : 4 / 5)));
       const W = 1080, H = Math.round(W / r);
       canvas.width = W; canvas.height = H;
       ctx = canvas.getContext('2d');
-      if (mainImg && this._imgHasAlpha(mainImg)) {
+      if (cutMain) {
         ctx.fillStyle = bgColor; ctx.fillRect(0, 0, W, H);
         if (_customBgImg) this._drawImageCover(ctx, _customBgImg, 0, 0, W, H);
         this._drawCutout(ctx, mainImg, 70, 70, W - 140, H - 110);
@@ -4147,6 +4152,129 @@ App.pages.records = {
     warm: { name: '따뜻하게', sat: 1.06, mul: [1.07, 1.01, 0.9], add: [4, 0, -2] },
     cool: { name: '시원하게', sat: 0.95, mul: [0.93, 1, 1.07], add: [0, 2, 8] }
   },
+  // ===== 한 가지 색 천 앞 사진 → 배경 떼기 (2026-11-10) =====
+  // 방송국 초록 천과 같은 원리: 천 색과 얼마나 다른지로 투명도를 정하고(털 끝은 반투명), 털에 비친 천 색을 걷어 낸다.
+  // 순수 함수: 그림 둘레 칸들의 가운데 값으로 천 색을 짐작한다. 돌려주는 값 { color:[r,g,b], spread } — spread 가 크면 한 가지 색이 아니다
+  _guessKeyColor(data, w, h) {
+    const rs = [], gs = [], bs = [];
+    const take = (x, y) => { const q = (y * w + x) * 4; rs.push(data[q]); gs.push(data[q + 1]); bs.push(data[q + 2]); };
+    const step = Math.max(1, Math.floor(Math.max(w, h) / 200));
+    for (let x = 0; x < w; x += step) { take(x, 0); take(x, Math.min(h - 1, 2)); take(x, h - 1); }
+    for (let y = 0; y < h; y += step) { take(0, y); take(Math.min(w - 1, 2), y); take(w - 1, y); }
+    const med = (a) => { const s = a.slice().sort((p, q) => p - q); return s[s.length >> 1]; };
+    const color = [med(rs), med(gs), med(bs)];
+    const ds = rs.map((r, i) => this._keyDist(r, gs[i], bs[i], color)).sort((p, q) => p - q);
+    return { color, spread: ds[Math.floor(ds.length * 0.7)] || 0 };
+  },
+  // 색 차이 — 밝기보다 색깔 차이를 크게 본다 (천의 그림자·주름은 같은 색으로)
+  _keyDist(r, g, b, c) {
+    const y = 0.299 * r + 0.587 * g + 0.114 * b, y0 = 0.299 * c[0] + 0.587 * c[1] + 0.114 * c[2];
+    const cb = b - y, cr = r - y, cb0 = c[2] - y0, cr0 = c[0] - y0;
+    return Math.hypot(cb - cb0, cr - cr0) + Math.abs(y - y0) * 0.25;
+  },
+  // 순수 함수: data(RGBA)를 바꿔 천 색을 투명하게. tol: 이만큼 가까우면 완전히 투명 (클수록 많이 지움)
+  // 털 끝(천과 섞인 곳)은 반투명으로 두고, 가장자리 둘레의 섞인 색은 '보이는 색 = a·털 + (1-a)·천' 으로 천 색을 걷어 낸다
+  _chromaKey(data, w, h, color, tol) {
+    const N = w * h, D = new Float32Array(N), hist = new Uint32Array(512);
+    for (let i = 0; i < N; i++) {
+      const q = i * 4, d = this._keyDist(data[q], data[q + 1], data[q + 2], color);
+      D[i] = d; hist[Math.min(511, d | 0)]++;
+    }
+    // 강아지 쪽 색이 천과 얼마나 먼지 (위쪽 10%) — 섞인 정도를 재는 잣대
+    let acc = 0, far = 0;
+    for (let k = 511; k >= 0; k--) { acc += hist[k]; if (acc >= N * 0.1) { far = k; break; } }
+    const t1 = Math.max(4, tol), t2 = t1 + Math.max(30, 0.35 * (far - t1));
+    const A = new Uint8Array(N);
+    for (let i = 0; i < N; i++) {
+      let a = D[i] <= t1 ? 0 : (D[i] >= t2 ? 1 : (D[i] - t1) / (t2 - t1));
+      if (a <= 0.06) a = 0;
+      A[i] = Math.round(a * data[i * 4 + 3]);
+    }
+    const near = this._alphaMin(A, w, h, 4); // 투명한 곳 가까이 (가장자리 둘레)
+    const [br, bg, bb] = color;
+    for (let i = 0; i < N; i++) {
+      const q = i * 4;
+      if (A[i] && near[i] < 255 && far > t1) {
+        const m = Math.max(0.15, Math.min(1, D[i] / far)); // 털이 섞인 비율 짐작
+        if (m < 0.92) {
+          data[q] = Math.max(0, Math.min(255, (data[q] - (1 - m) * br) / m));
+          data[q + 1] = Math.max(0, Math.min(255, (data[q + 1] - (1 - m) * bg) / m));
+          data[q + 2] = Math.max(0, Math.min(255, (data[q + 2] - (1 - m) * bb) / m));
+        }
+      }
+      data[q + 3] = A[i];
+    }
+    return data;
+  },
+  // 순수 함수: 다각형 안쪽 칸을 255 로 (짝수-홀수 규칙). pts: [x0,y0,x1,y1,…]
+  _polyFill(pts, w, h) {
+    const m = new Uint8Array(w * h), n = pts.length / 2;
+    if (n < 3) return m;
+    const xs = [];
+    for (let y = 0; y < h; y++) {
+      const yc = y + 0.5;
+      xs.length = 0;
+      for (let i = 0, j = n - 1; i < n; j = i++) {
+        const yi = pts[i * 2 + 1], yj = pts[j * 2 + 1];
+        if ((yi > yc) !== (yj > yc)) xs.push(pts[i * 2] + (yc - yi) / (yj - yi) * (pts[j * 2] - pts[i * 2]));
+      }
+      xs.sort((a, b) => a - b);
+      for (let k = 0; k + 1 < xs.length; k += 2) {
+        const a = Math.max(0, Math.ceil(xs[k] - 0.5)), b = Math.min(w - 1, Math.floor(xs[k + 1] - 0.5));
+        for (let x = a; x <= b; x++) m[y * w + x] = 255;
+      }
+    }
+    return m;
+  },
+  // 순수 함수: 손으로 그은 선을 같은 간격 점 n 개로 (끌어서 고칠 점)
+  _resamplePath(p, n, closed) {
+    const pts = []; for (let i = 0; i + 1 < p.length; i += 2) pts.push([p[i], p[i + 1]]);
+    if (pts.length < 2) return p.slice();
+    if (closed) pts.push(pts[0]);
+    const seg = []; let total = 0;
+    for (let i = 1; i < pts.length; i++) { const d = Math.hypot(pts[i][0] - pts[i - 1][0], pts[i][1] - pts[i - 1][1]); seg.push(d); total += d; }
+    const out = [], cnt = closed ? n : n - 1;
+    for (let k = 0; k <= cnt; k++) {
+      if (closed && k === cnt) break;
+      let t = total * k / cnt, i = 0;
+      while (i < seg.length - 1 && t > seg[i]) { t -= seg[i]; i++; }
+      const f = seg[i] ? Math.min(1, t / seg[i]) : 0;
+      out.push(Math.round(pts[i][0] + (pts[i + 1][0] - pts[i][0]) * f), Math.round(pts[i][1] + (pts[i + 1][1] - pts[i][1]) * f));
+    }
+    return out;
+  },
+  // 순수 함수: 점들을 부드러운 곡선(캣멀-롬)으로 이은 촘촘한 선
+  _smoothPath(cp, closed) {
+    const P = []; for (let i = 0; i + 1 < cp.length; i += 2) P.push([cp[i], cp[i + 1]]);
+    const n = P.length; if (n < 3) return cp.slice();
+    const at = (i) => closed ? P[(i + n) % n] : P[Math.max(0, Math.min(n - 1, i))];
+    const out = [], segs = closed ? n : n - 1;
+    for (let i = 0; i < segs; i++) {
+      const p0 = at(i - 1), p1 = at(i), p2 = at(i + 1), p3 = at(i + 2);
+      for (let k = 0; k < 8; k++) {
+        const t = k / 8, t2 = t * t, t3 = t2 * t;
+        for (let c = 0; c < 2; c++) out.push(0.5 * (2 * p1[c] + (-p0[c] + p2[c]) * t + (2 * p0[c] - 5 * p1[c] + 4 * p2[c] - p3[c]) * t2 + (-p0[c] + 3 * p1[c] - 3 * p2[c] + p3[c]) * t3));
+      }
+    }
+    if (!closed) out.push(P[n - 1][0], P[n - 1][1]);
+    return out;
+  },
+  // 얼굴만 남기기 — 'cut'(턱 아래 선: 선 아래를 지움) · 'lasso'(둘레: 안쪽만 남김). 경계는 부드럽게
+  _faceMask(face, w, h) {
+    if (!face || !face.p || face.p.length < 4) return null;
+    const p = face.p.slice();
+    let poly;
+    if (face.k === 'cut') {
+      // 왼쪽→오른쪽 순서로 맞추고 양 끝을 그림 끝까지 늘린 뒤 아래쪽을 막는다
+      if (p[0] > p[p.length - 2]) { const r = []; for (let i = p.length - 2; i >= 0; i -= 2) r.push(p[i], p[i + 1]); p.splice(0, p.length, ...r); }
+      poly = [-2, p[1], ...p, w + 2, p[p.length - 1], w + 2, h + 2, -2, h + 2];
+    } else poly = p;
+    const raw = this._polyFill(poly, w, h);
+    const r = Math.max(2, Math.round(Math.max(w, h) / 300));
+    const soft = this._alphaBlur(this._alphaBlur(raw, w, h, r), w, h, r);
+    if (face.k === 'cut') for (let i = 0; i < soft.length; i++) soft[i] = 255 - soft[i];
+    return soft; // 남길 정도 0~255
+  },
   // ===== 떼어 낸 사진 가장자리 다듬기 (2026-11-10) =====
   // 아이폰으로 떼어 낸 사진은 털 둘레에 배경색 띠(초록·분홍·회색)가 남고 선이 딱딱하다.
   // ① 가장자리를 조금 깎고 ② 깎은 곳 둘레 색을 바로 안쪽 털 색으로 바꾸고 ③ 살짝 흐려 털처럼 부드럽게 한다.
@@ -4204,20 +4332,26 @@ App.pages.records = {
   },
   // 붓질(지우기·되살리기) 목록 → 칸마다 -1(지움) / 1(되살림) / 0
   // 붓질: { m: -1|1, r: 반지름(그림 화소), p: [x0,y0,x1,y1,…] }
-  _strokeMask(strokes, w, h) {
-    if (!strokes || !strokes.length) return null;
+  // 붓질에 c(색)가 있으면 '비슷한 색만 지우기' — src(RGBA)에서 그 색과 가까운 칸만
+  _strokeMask(strokes, w, h, src) {
+    const brush = (strokes || []).filter(st => st && (st.m === 1 || st.m === -1));
+    if (!brush.length) return null;
     const mask = new Int8Array(w * h);
+    let col = null, tol = 0;
     const dot = (cx, cy, r, m) => {
       const x0 = Math.max(0, Math.floor(cx - r)), x1 = Math.min(w - 1, Math.ceil(cx + r));
       const y0 = Math.max(0, Math.floor(cy - r)), y1 = Math.min(h - 1, Math.ceil(cy + r));
       const rr = r * r;
       for (let y = y0; y <= y1; y++) for (let x = x0; x <= x1; x++) {
         const dx = x - cx, dy = y - cy;
-        if (dx * dx + dy * dy <= rr) mask[y * w + x] = m;
+        if (dx * dx + dy * dy > rr) continue;
+        if (col && src) { const q = (y * w + x) * 4; if (this._keyDist(src[q], src[q + 1], src[q + 2], col) > tol) continue; }
+        mask[y * w + x] = m;
       }
     };
-    for (const st of strokes) {
+    for (const st of brush) {
       const p = st.p || [], r = Math.max(1, st.r || 10);
+      col = st.c || null; tol = st.t || 30;
       for (let i = 0; i < p.length; i += 2) {
         if (i >= 2) { // 앞 점과 사이를 메운다 (손가락을 빨리 움직여도 끊기지 않게)
           const px = p[i - 2], py = p[i - 1], dx = p[i] - px, dy = p[i + 1] - py;
@@ -4231,10 +4365,11 @@ App.pages.records = {
   },
   // 순수 함수: 떼어 낸 사진(RGBA, w×h)을 다듬는다. data 를 바꿔서 돌려준다.
   // level 0~3 (끄기·약하게·보통·강하게), strokes: 붓질 목록, orig: 원래 RGBA (되살리기용, 없으면 data 그대로를 원본으로 본다)
-  _refineCutout(data, w, h, level, strokes, orig) {
+  // restore: 되살리기 붓이 가져올 원래 그림 (단색 천 사진이면 천을 지우기 전 사진), 없으면 src
+  _refineCutout(data, w, h, level, strokes, orig, restore) {
     const N = w * h;
     const src = orig || data.slice();
-    const mask = this._strokeMask(strokes, w, h);
+    const mask = this._strokeMask(strokes, w, h, restore || src);
     const A = new Uint8Array(N);
     for (let i = 0; i < N; i++) A[i] = (mask && mask[i] < 0) ? 0 : src[i * 4 + 3];
     const out = new Uint8Array(N);
@@ -4284,77 +4419,122 @@ App.pages.records = {
       for (let i = 0; i < N; i++) { const q = i * 4; data[q] = src[q]; data[q + 1] = src[q + 1]; data[q + 2] = src[q + 2]; data[q + 3] = A[i]; }
     }
     // 되살리기 붓: 원래 그대로
-    if (mask) for (let i = 0; i < N; i++) if (mask[i] > 0) { const q = i * 4; data[q] = src[q]; data[q + 1] = src[q + 1]; data[q + 2] = src[q + 2]; data[q + 3] = src[q + 3]; }
+    const rs = restore || src;
+    if (mask) for (let i = 0; i < N; i++) if (mask[i] > 0) { const q = i * 4; data[q] = rs[q]; data[q + 1] = rs[q + 1]; data[q + 2] = rs[q + 2]; data[q + 3] = rs[q + 3]; }
+    // 얼굴만 남기기 (마지막 턱 선·마지막 둘레)
+    const faces = (strokes || []).filter(st => st && (st.k === 'cut' || st.k === 'lasso'));
+    const lastCut = faces.filter(f => f.k === 'cut').pop(), lastLasso = faces.filter(f => f.k === 'lasso').pop();
+    for (const f of [lastCut, lastLasso]) {
+      const fm = this._faceMask(f, w, h);
+      if (fm) for (let i = 0; i < N; i++) data[i * 4 + 3] = (data[i * 4 + 3] * fm[i] / 255) | 0;
+    }
     return data;
   },
   // 떼어 낸 사진 원본·다듬기 값 기억 (다듬은 사진 주소 → { orig, level, strokes }) — 카드 창을 새로 열면 비운다
   _cutoutSrc: new Map(),
+  _isFaceCut(src) {
+    const info = src && this._cutoutSrc.get(src);
+    return !!(info && (info.strokes || []).some(t => t && (t.k === 'cut' || t.k === 'lasso')));
+  },
   // 칸에 없는 사진의 기억은 버린다 (큰 글자열이라 쌓이면 아이폰 메모리를 먹는다)
   _pruneCutoutSrc() {
     const live = new Set((this._cardPhotos || []).filter(Boolean));
     for (const k of [...this._cutoutSrc.keys()]) if (!live.has(k)) this._cutoutSrc.delete(k);
   },
-  // 원본(투명 사진 주소)을 다듬어 새 주소로 — 기억해 두고 돌려준다
-  async _refineToUrl(orig, level, strokes) {
+  // 떼기 순서 (손질 화면·자동 다듬기 공용): 원본 → (단색 천이면) 천 색 지우기 → 가장자리 다듬기·붓질 → 얼굴만 남기기
+  // raw: 원본 RGBA (바뀌지 않는다). info: { level, strokes, key: { color, tol } | null }
+  _cutoutRender(raw, w, h, info) {
+    const base = raw.slice();
+    if (info.key) this._chromaKey(base, w, h, info.key.color, info.key.tol);
+    const out = base.slice();
+    this._refineCutout(out, w, h, info.level || 0, info.strokes || [], base, raw);
+    return out;
+  },
+  // 원본을 다듬어 새 주소로 — 기억해 두고 돌려준다
+  async _refineToUrl(orig, level, strokes, key) {
     const img = await this._loadImg(orig, true);
     if (!img) return orig;
     const c = document.createElement('canvas'); c.width = img.width; c.height = img.height;
     const x = c.getContext('2d', { willReadFrequently: true });
     x.drawImage(img, 0, 0);
     const d = x.getImageData(0, 0, c.width, c.height);
-    this._refineCutout(d.data, c.width, c.height, level, strokes, d.data.slice());
+    const info = { orig, level, strokes: strokes || [], key: key || null };
+    d.data.set(this._cutoutRender(d.data, c.width, c.height, info));
     x.putImageData(d, 0, 0);
     const url = c.toDataURL('image/png');
     c.width = c.height = 0;
-    this._cutoutSrc.set(url, { orig, level, strokes: strokes || [] });
+    this._cutoutSrc.set(url, info);
     return url;
   },
 
-  // ===== 가장자리 손질 화면 (자동 다듬기 단계 + 지우기·되살리기 붓, 두 손가락 확대) =====
+  // ===== 떼기·손질 화면 =====
+  // 떼어 낸 사진: 가장자리 다듬기 단계 · 지우기/비슷한 색만 지우기/되살리기 붓 · 얼굴만(턱 아래 선, 둘레) · 스티커로 저장
+  // 일반 사진: 위에 더해 '한 가지 색 천' 지우기 (천 색 자동 짐작, 찍어서 고르기, 지우는 정도)
   async _openCutoutEditor(slot) {
     const cur = this._cardPhotos[slot];
     if (!cur || this._cutoutOpening || document.querySelector('.cutout-ed')) return; // 두 번 눌러도 하나만
     this._cutoutOpening = true;
-    const info = this._cutoutSrc.get(cur) || { orig: cur, level: 0, strokes: [] };
-    const img = await this._loadImg(info.orig, true).catch(() => null);
+    const known = this._cutoutSrc.get(cur);
+    const img = await this._loadImg(known ? known.orig : cur, true).catch(() => null);
     this._cutoutOpening = false;
     if (!img) { App.showToast('사진을 읽지 못했어요.', 'error'); return; }
     const W = img.width, H = img.height;
     const oc = document.createElement('canvas'); oc.width = W; oc.height = H;
     const ox = oc.getContext('2d', { willReadFrequently: true }); ox.drawImage(img, 0, 0);
-    const origData = ox.getImageData(0, 0, W, H).data;
+    let raw;
+    try { raw = ox.getImageData(0, 0, W, H).data; } catch (e) { oc.width = oc.height = 0; App.showToast('사진을 읽지 못했어요.', 'error'); return; }
+    const isCut = this._alphaShare(raw) > 0.03;
+    let guess = null;
+    const info = known ? { ...known, key: known.key ? { color: known.key.color.slice(), tol: known.key.tol } : null,
+      strokes: (known.strokes || []).map(t => ({ ...t, p: t.p.slice(), cp: t.cp ? t.cp.slice() : undefined, c: t.c ? t.c.slice() : undefined })) }
+      : (isCut ? { orig: cur, level: 0, strokes: [], key: null }
+        : (guess = this._guessKeyColor(raw, W, H), { orig: cur, level: 0, strokes: [], key: { color: guess.color, tol: Math.round(Math.min(60, Math.max(14, guess.spread * 1.3 + 8))) } }));
+    const keyMode = !!info.key;
+    if (keyMode && !guess) guess = this._guessKeyColor(raw, W, H);
     const work = document.createElement('canvas'); work.width = W; work.height = H;
     const wx = work.getContext('2d', { willReadFrequently: true });
-    const st = { level: info.level, strokes: (info.strokes || []).map(s => ({ ...s, p: s.p.slice() })), tool: 'erase', brush: 36, bg: 'check',
-      scale: 1, tx: 0, ty: 0, busy: false, dirty: false, closed: false, saving: false };
-    const bgOf = { check: null, black: '#111111', white: '#FFFFFF', card: null };
-    const esc = App.escapeHtml;
+    const st = { tool: keyMode ? 'smart' : 'erase', brush: 36, bg: 'check', scale: 1, tx: 0, ty: 0, busy: false, dirty: false, closed: false, saving: false, path: null };
+    let base = raw; // 천 색을 지운 뒤 그림 (비슷한 색 붓의 색 고르기용)
+    const bgOf = { black: '#111111', white: '#FFFFFF' };
+    const hex = (c) => '#' + c.map(v => Math.round(v).toString(16).padStart(2, '0')).join('');
     const ov = document.createElement('div');
     ov.className = 'cutout-ed';
+    const chip = (attr, k, label) => `<button type="button" class="card-tstyle-btn" data-${attr}="${k}">${label}</button>`;
     ov.innerHTML = `
       <div class="cutout-ed-top">
         <button type="button" class="btn btn-sm btn-ghost" data-act="cancel">취소</button>
-        <b>가장자리 손질</b>
-        <span class="cutout-ed-actions"><button type="button" class="btn btn-sm btn-secondary" data-act="undo" aria-label="한 번 되돌리기">↶ 되돌리기</button>
+        <b>${keyMode ? '배경 지우기' : '가장자리 손질'}</b>
+        <span class="cutout-ed-actions"><button type="button" class="btn btn-sm btn-secondary" data-act="undo" aria-label="한 번 되돌리기">↶</button>
         <button type="button" class="btn btn-sm btn-primary" data-act="done">완료</button></span>
       </div>
-      <div class="cutout-ed-stage"><canvas></canvas><div class="cutout-ed-busy" hidden>다듬는 중…</div></div>
+      <div class="cutout-ed-stage"><canvas></canvas><div class="cutout-ed-busy" hidden>다듬는 중…</div><div class="cutout-ed-tip" hidden></div></div>
       <div class="cutout-ed-bar">
-        <div class="cutout-ed-row"><span class="cutout-ed-lb">자동 다듬기</span>
-          ${Object.entries(this._CUTOUT_LEVELS).map(([k, n]) => `<button type="button" class="card-tstyle-btn" data-level="${k}">${esc(n)}</button>`).join('')}</div>
-        <div class="cutout-ed-row"><span class="cutout-ed-lb">손으로</span>
-          <button type="button" class="card-tstyle-btn" data-tool="erase">지우기</button>
-          <button type="button" class="card-tstyle-btn" data-tool="restore">되살리기</button>
-          <button type="button" class="card-tstyle-btn" data-tool="move">옮기기</button></div>
-        <div class="cutout-ed-row"><span class="cutout-ed-lb">붓 크기</span><input type="range" min="10" max="90" step="2" value="${st.brush}" data-brush></div>
-        <div class="cutout-ed-row"><span class="cutout-ed-lb">바탕 보기</span>
-          <button type="button" class="card-tstyle-btn" data-bg="check">격자</button>
-          <button type="button" class="card-tstyle-btn" data-bg="black">검정</button>
-          <button type="button" class="card-tstyle-btn" data-bg="white">흰색</button></div>
-        <div class="cutout-ed-hint">남은 배경 덩어리는 '지우기'로 문지르고, 너무 지운 곳은 '되살리기'. 두 손가락으로 크게 볼 수 있어요.</div>
+        ${keyMode ? `<div class="cutout-ed-row"><span class="cutout-ed-lb">천 색</span>
+          <i class="cutout-ed-swatch" style="background:${hex(info.key.color)}"></i>
+          ${chip('tool', 'pick', '찍어서 고르기')}
+          <label class="cutout-ed-slider">덜 <input type="range" min="4" max="90" step="1" value="${info.key.tol}" data-tol aria-label="지우는 정도"> 더</label></div>
+          ${guess && guess.spread > 40 ? '<div class="cutout-ed-warn">배경이 한 가지 색이 아니라 깔끔하지 않을 수 있어요. 남은 곳은 붓으로 지우세요.</div>' : ''}` : ''}
+        <div class="cutout-ed-row"><span class="cutout-ed-lb">가장자리</span>
+          ${Object.entries(this._CUTOUT_LEVELS).map(([k, n]) => chip('level', k, n)).join('')}</div>
+        <div class="cutout-ed-row"><span class="cutout-ed-lb">붓</span>
+          ${chip('tool', 'smart', '비슷한 색만 지우기')}${chip('tool', 'erase', '지우기')}${chip('tool', 'restore', '되살리기')}${chip('tool', 'move', '옮기기')}</div>
+        <div class="cutout-ed-row"><span class="cutout-ed-lb">얼굴만</span>
+          ${chip('tool', 'cut', '턱 아래 선 긋기')}${chip('tool', 'lasso', '둘레 그리기')}
+          <button type="button" class="card-tstyle-btn" data-act="sticker">내 스티커로 저장</button></div>
+        <div class="cutout-ed-row"><span class="cutout-ed-lb">붓 크기</span><input type="range" min="10" max="90" step="2" value="${st.brush}" data-brush>
+          ${chip('bg', 'check', '격자')}${chip('bg', 'black', '검정')}${chip('bg', 'white', '흰색')}</div>
       </div>`;
     document.body.appendChild(ov);
-    const cv = ov.querySelector('canvas'), stage = ov.querySelector('.cutout-ed-stage'), busyEl = ov.querySelector('.cutout-ed-busy');
+    const cv = ov.querySelector('canvas'), stage = ov.querySelector('.cutout-ed-stage'), busyEl = ov.querySelector('.cutout-ed-busy'), tipEl = ov.querySelector('.cutout-ed-tip');
+    const TIPS = {
+      smart: '처음 댄 곳과 비슷한 색만 지워요 — 남은 배경을 문지르세요. 털은 덜 지워져요.',
+      erase: '문지른 곳을 모두 지워요.',
+      restore: '너무 지운 곳을 문지르면 원래대로 돌아와요.',
+      move: '한 손가락으로 옮기고, 두 손가락으로 크게 보세요.',
+      cut: '턱 바로 아래를 한 번 그으면 그 아래가 지워져요. 그은 뒤 점을 끌어 턱선에 딱 맞추세요.',
+      lasso: '머리 위·귀 바깥은 빈 곳으로 크게, 턱 아래만 정확히 한 바퀴. 그은 뒤 점을 끌어 맞추세요.',
+      pick: '사진에서 천(배경)을 한 번 누르면 그 색을 지워요.'
+    };
     const dpr = Math.min(2, window.devicePixelRatio || 1);
     let fit = 1;
     const resize = () => {
@@ -4364,9 +4544,7 @@ App.pages.records = {
       fit = Math.min(cv.width / W, cv.height / H) * 0.94;
       draw();
     };
-    // 화면 ↔ 그림 좌표
     const view = () => { const s = fit * st.scale; return { s, ox: (cv.width - W * s) / 2 + st.tx * dpr, oy: (cv.height - H * s) / 2 + st.ty * dpr }; };
-    // 그림이 화면 밖으로 다 나가지 않게
     const clampPan = () => {
       const r = stage.getBoundingClientRect(), s = fit * st.scale / dpr;
       const mx = Math.max(0, (W * s - r.width) / 2 + r.width * 0.3), my = Math.max(0, (H * s - r.height) / 2 + r.height * 0.3);
@@ -4374,6 +4552,7 @@ App.pages.records = {
     };
     const toImg = (cx, cy) => { const r = cv.getBoundingClientRect(), v = view(); return [((cx - r.left) * dpr - v.ox) / v.s, ((cy - r.top) * dpr - v.oy) / v.s]; };
     const draw = () => {
+      if (st.closed) return;
       const g = cv.getContext('2d'), v = view();
       g.setTransform(1, 0, 0, 1, 0, 0);
       g.clearRect(0, 0, cv.width, cv.height);
@@ -4383,6 +4562,29 @@ App.pages.records = {
       } else { g.fillStyle = bgOf[st.bg]; g.fillRect(0, 0, cv.width, cv.height); }
       g.imageSmoothingQuality = 'high';
       g.drawImage(work, v.ox, v.oy, W * v.s, H * v.s);
+      // 고칠 수 있는 턱 선·둘레와 점
+      const ef = editFace();
+      if (ef && !st.path) {
+        const pp = ef.p;
+        g.save(); g.lineWidth = 2 * dpr; g.strokeStyle = '#7C3AED'; g.setLineDash([6 * dpr, 5 * dpr]);
+        g.beginPath();
+        for (let i = 0; i < pp.length; i += 2) { const X = v.ox + pp[i] * v.s, Y = v.oy + pp[i + 1] * v.s; i ? g.lineTo(X, Y) : g.moveTo(X, Y); }
+        if (ef.k === 'lasso') g.closePath();
+        g.stroke(); g.setLineDash([]);
+        for (let i = 0; i < ef.cp.length; i += 2) {
+          const X = v.ox + ef.cp[i] * v.s, Y = v.oy + ef.cp[i + 1] * v.s;
+          g.beginPath(); g.arc(X, Y, 9 * dpr, 0, Math.PI * 2); g.fillStyle = '#FFFFFF'; g.fill(); g.lineWidth = 3 * dpr; g.strokeStyle = '#7C3AED'; g.stroke();
+        }
+        g.restore();
+      }
+      // 그리는 중인 턱 선·둘레
+      if (st.path && st.path.length >= 4) {
+        g.save(); g.lineWidth = 3 * dpr; g.strokeStyle = '#EF4444'; g.setLineDash([8 * dpr, 6 * dpr]);
+        g.beginPath();
+        for (let i = 0; i < st.path.length; i += 2) { const X = v.ox + st.path[i] * v.s, Y = v.oy + st.path[i + 1] * v.s; i ? g.lineTo(X, Y) : g.moveTo(X, Y); }
+        if (st.tool === 'lasso') g.closePath();
+        g.stroke(); g.restore();
+      }
     };
     const recompute = () => {
       if (st.busy) { st.dirty = true; return; }
@@ -4390,20 +4592,32 @@ App.pages.records = {
       setTimeout(() => {
         if (st.closed) return;
         try {
-          const d = wx.createImageData(W, H);
-          d.data.set(origData);
-          this._refineCutout(d.data, W, H, st.level, st.strokes, origData);
+          // 천 색 지우기는 천 색·정도가 바뀔 때만 다시 (붓질마다 다시 하면 아이폰에서 느리다)
+          if (info.key) {
+            const kk = info.key.color.join(',') + '|' + info.key.tol;
+            if (st.keyCache !== kk) { base = raw.slice(); this._chromaKey(base, W, H, info.key.color, info.key.tol); st.keyCache = kk; }
+          } else base = raw;
+          const out = base.slice();
+          this._refineCutout(out, W, H, info.level || 0, info.strokes, base, raw);
+          const d = wx.createImageData(W, H); d.data.set(out);
           wx.putImageData(d, 0, 0);
-        } catch (e) { console.warn('가장자리 다듬기 실패:', e); }
+        } catch (e) { console.warn('떼기 계산 실패:', e); }
         st.busy = false; busyEl.hidden = true; draw();
         if (st.dirty) { st.dirty = false; recompute(); }
       }, 30);
     };
     const sync = () => {
-      ov.querySelectorAll('[data-level]').forEach(b => b.classList.toggle('active', Number(b.dataset.level) === st.level));
+      ov.querySelectorAll('[data-level]').forEach(b => b.classList.toggle('active', Number(b.dataset.level) === (info.level || 0)));
       ov.querySelectorAll('[data-tool]').forEach(b => b.classList.toggle('active', b.dataset.tool === st.tool));
       ov.querySelectorAll('[data-bg]').forEach(b => b.classList.toggle('active', b.dataset.bg === st.bg));
-      const u = ov.querySelector('[data-act="undo"]'); if (u) u.disabled = !st.strokes.length;
+      const u = ov.querySelector('[data-act="undo"]'); if (u && !st.saving) u.disabled = !info.strokes.length;
+      const sw = ov.querySelector('.cutout-ed-swatch'); if (sw && info.key) sw.style.background = hex(info.key.color);
+      // 도구를 바꿀 때만 안내를 잠깐 (강아지를 가리지 않게)
+      if (st.tipFor !== st.tool) {
+        st.tipFor = st.tool;
+        tipEl.textContent = TIPS[st.tool] || ''; tipEl.hidden = !TIPS[st.tool];
+        clearTimeout(st.tipT); st.tipT = setTimeout(() => { tipEl.hidden = true; }, 3500);
+      }
       cv.style.cursor = st.tool === 'move' ? 'grab' : 'crosshair';
     };
     const close = () => {
@@ -4413,24 +4627,26 @@ App.pages.records = {
       ov.remove(); work.width = work.height = oc.width = oc.height = 0;
     };
     ov._close = close; // 카드 창이 닫힐 때(뒤로 가기 등)도 정리되게
+    const waitIdle = async () => { while (st.busy || st.dirty) { if (st.closed) return false; await new Promise(r => setTimeout(r, 50)); } return !st.closed; };
     ov.addEventListener('click', async (e) => {
-      const b = e.target.closest('button'); if (!b) return;
-      if (b.dataset.level != null) { st.level = Number(b.dataset.level); recompute(); }
+      const b = e.target.closest('button'); if (!b || st.saving) return;
+      if (b.dataset.level != null) { info.level = Number(b.dataset.level); recompute(); }
       else if (b.dataset.tool) st.tool = b.dataset.tool;
       else if (b.dataset.bg) { st.bg = b.dataset.bg; draw(); }
-      else if (b.dataset.act === 'undo') { st.strokes.pop(); recompute(); }
-      else if (b.dataset.act === 'cancel') { if (!st.saving) close(); return; }
+      else if (b.dataset.act === 'undo') { info.strokes.pop(); recompute(); }
+      else if (b.dataset.act === 'cancel') { close(); return; }
+      else if (b.dataset.act === 'sticker') {
+        if (!(await waitIdle())) return;
+        await this._saveCutoutSticker(work);
+      }
       else if (b.dataset.act === 'done') {
-        if (st.saving) return;
         st.saving = true;
         ov.querySelectorAll('button').forEach(x => { x.disabled = true; });
-        // 마지막 계산이 끝난 뒤 저장
-        while (st.busy || st.dirty) { if (st.closed) return; await new Promise(r => setTimeout(r, 50)); }
-        if (st.closed || !ov.isConnected) return;
+        if (!(await waitIdle()) || !ov.isConnected) return;
         const url = work.toDataURL('image/png');
         if (this._cardPhotos[slot] === cur) {
           this._cardPhotos[slot] = url;
-          this._cutoutSrc.set(url, { orig: info.orig, level: st.level, strokes: st.strokes });
+          this._cutoutSrc.set(url, { orig: info.orig, level: info.level || 0, strokes: info.strokes, key: info.key || null });
           this._pruneCutoutSrc();
           this._refreshPhotoPreview(slot);
           this._scheduleCardPreview();
@@ -4441,43 +4657,94 @@ App.pages.records = {
       sync();
     });
     ov.querySelector('[data-brush]').addEventListener('input', (e) => { st.brush = Number(e.target.value); });
-    // 손가락: 하나 = 붓(또는 옮기기), 둘 = 확대·이동
+    ov.querySelector('[data-tol]')?.addEventListener('change', (e) => { info.key.tol = Number(e.target.value); recompute(); });
+    // 손가락: 하나 = 붓·선(또는 옮기기), 둘 = 확대·이동
     const pts = new Map();
-    let stroke = null, pinch = null, pan = null, snap = null;
+    let stroke = null, pinch = null, pan = null, snap = null, hdrag = null;
+    // 지금 도구(턱 선·둘레)로 고칠 수 있는 마지막 선 — 점(cp)이 있는 것
+    function editFace() {
+      if (st.tool !== 'cut' && st.tool !== 'lasso') return null;
+      for (let i = info.strokes.length - 1; i >= 0; i--) { const t = info.strokes[i]; if (t.k === st.tool) return t.cp ? t : null; }
+      return null;
+    }
+    const sample = (ix, iy) => { const x = Math.max(0, Math.min(W - 1, Math.round(ix))), y = Math.max(0, Math.min(H - 1, Math.round(iy))), q = (y * W + x) * 4; return [raw[q], raw[q + 1], raw[q + 2]]; };
     const dab = (ix, iy, r) => {
-      // 그리는 동안은 바로 보이게 작업 그림에 직접 (손을 떼면 전체를 다시 다듬는다)
-      wx.save(); wx.beginPath(); wx.arc(ix, iy, r, 0, Math.PI * 2); wx.clip();
-      if (stroke.m < 0) wx.clearRect(ix - r, iy - r, r * 2, r * 2);
-      else {
-        const x0 = Math.max(0, Math.floor(ix - r)), y0 = Math.max(0, Math.floor(iy - r));
-        const ww = Math.min(W, Math.ceil(ix + r)) - x0, hh = Math.min(H, Math.ceil(iy + r)) - y0;
-        if (ww > 0 && hh > 0) { wx.clearRect(x0, y0, ww, hh); wx.drawImage(oc, x0, y0, ww, hh, x0, y0, ww, hh); }
+      // 그리는 동안은 바로 보이게 작업 그림에 직접 (손을 떼면 전체를 다시 계산한다)
+      const x0 = Math.max(0, Math.floor(ix - r)), y0 = Math.max(0, Math.floor(iy - r));
+      const ww = Math.min(W, Math.ceil(ix + r)) - x0, hh = Math.min(H, Math.ceil(iy + r)) - y0;
+      if (ww <= 0 || hh <= 0) return;
+      if (stroke.c) {
+        const d = wx.getImageData(x0, y0, ww, hh), rr = r * r;
+        for (let y = 0; y < hh; y++) for (let x = 0; x < ww; x++) {
+          const dx = x0 + x - ix, dy = y0 + y - iy; if (dx * dx + dy * dy > rr) continue;
+          const q = ((y0 + y) * W + x0 + x) * 4;
+          if (this._keyDist(raw[q], raw[q + 1], raw[q + 2], stroke.c) <= stroke.t) d.data[(y * ww + x) * 4 + 3] = 0;
+        }
+        wx.putImageData(d, x0, y0);
+        return;
       }
+      wx.save(); wx.beginPath(); wx.arc(ix, iy, r, 0, Math.PI * 2); wx.clip();
+      wx.clearRect(x0, y0, ww, hh);
+      if (stroke.m > 0) wx.drawImage(oc, x0, y0, ww, hh, x0, y0, ww, hh);
       wx.restore();
     };
+    // 비슷한 색만 지우기 — 한 번 움직인 구간을 한 번에 (칸마다 읽고 쓰지 않게)
+    const smartSeg = (ax, ay, bx, by, r, n) => {
+      const x0 = Math.max(0, Math.floor(Math.min(ax, bx) - r)), y0 = Math.max(0, Math.floor(Math.min(ay, by) - r));
+      const x1 = Math.min(W, Math.ceil(Math.max(ax, bx) + r)), y1 = Math.min(H, Math.ceil(Math.max(ay, by) + r));
+      const ww = x1 - x0, hh = y1 - y0; if (ww <= 0 || hh <= 0) return;
+      const d = wx.getImageData(x0, y0, ww, hh), rr = r * r;
+      const cs = []; for (let k = 1; k <= n; k++) cs.push(ax + (bx - ax) * k / n, ay + (by - ay) * k / n);
+      for (let y = 0; y < hh; y++) for (let x = 0; x < ww; x++) {
+        const gx = x0 + x, gy = y0 + y;
+        let inside = false;
+        for (let k = 0; k < cs.length && !inside; k += 2) { const dx = gx - cs[k], dy = gy - cs[k + 1]; inside = dx * dx + dy * dy <= rr; }
+        if (!inside) continue;
+        const q = (gy * W + gx) * 4;
+        if (this._keyDist(raw[q], raw[q + 1], raw[q + 2], stroke.c) <= stroke.t) d.data[(y * ww + x) * 4 + 3] = 0;
+      }
+      wx.putImageData(d, x0, y0);
+    };
     cv.addEventListener('pointerdown', (e) => {
-      cv.setPointerCapture(e.pointerId);
+      try { cv.setPointerCapture(e.pointerId); } catch (_) {}
       pts.set(e.pointerId, [e.clientX, e.clientY]);
       if (pts.size >= 2) {
-        // 두 손가락 — 그리던 선은 버리고(그리기 전 모습으로) 확대로. 세 번째 손가락은 무시
-        if (stroke) { st.strokes.pop(); stroke = null; if (snap) { wx.putImageData(snap, 0, 0); snap = null; } sync(); }
-        pan = null;
+        // 두 손가락 — 그리던 것은 버리고 확대로. 세 번째 손가락은 무시
+        if (stroke) { info.strokes.pop(); stroke = null; if (snap) { wx.putImageData(snap, 0, 0); snap = null; } }
+        st.path = null; pan = null;
+        if (hdrag) { const moved = !!hdrag.s; hdrag = null; if (moved) recompute(); }
         if (pts.size === 2) {
           const [a, b] = [...pts.values()];
           pinch = { d: Math.hypot(a[0] - b[0], a[1] - b[1]), scale: st.scale, tx: st.tx, ty: st.ty, mx: (a[0] + b[0]) / 2, my: (a[1] + b[1]) / 2 };
         }
-        draw();
+        draw(); sync();
         return;
       }
       if (pinch) return;
       if (st.tool === 'move') { pan = { x: e.clientX, y: e.clientY, tx: st.tx, ty: st.ty }; return; }
-      if (st.busy) return; // 다듬는 중에는 붓을 받지 않는다 (계산이 붓 자국을 덮어쓴다)
-      try { snap = wx.getImageData(0, 0, W, H); } catch (_) { snap = null; }
       const [ix, iy] = toImg(e.clientX, e.clientY);
+      if (st.tool === 'pick') {
+        if (!info.key) return;
+        info.key.color = sample(ix, iy); st.tool = 'smart'; recompute(); sync(); return;
+      }
+      if (st.tool === 'cut' || st.tool === 'lasso') {
+        const ef = editFace();
+        if (ef) {
+          // 점 가까이(손가락 크기) 누르면 그 점을 끈다 — 되돌리기로 돌아갈 수 있게 선을 하나 새로 쌓는다
+          const hitR = 26 * dpr / view().s;
+          let best = -1, bd = hitR;
+          for (let i = 0; i < ef.cp.length; i += 2) { const d = Math.hypot(ef.cp[i] - ix, ef.cp[i + 1] - iy); if (d < bd) { bd = d; best = i; } }
+          if (best >= 0) { hdrag = { src: ef, s: null, i: best }; return; } // 움직일 때 선을 하나 새로 쌓는다 (톡 누르기만 하면 그대로)
+        }
+        st.path = [Math.round(ix), Math.round(iy)]; draw(); return;
+      }
+      if (st.busy) return; // 계산 중에는 붓을 받지 않는다 (계산이 붓 자국을 덮어쓴다)
+      try { snap = wx.getImageData(0, 0, W, H); } catch (_) { snap = null; }
       const r = st.brush / 2 * dpr / view().s;
-      stroke = { m: st.tool === 'erase' ? -1 : 1, r: Math.round(r * 10) / 10, p: [Math.round(ix), Math.round(iy)] };
-      st.strokes.push(stroke);
-      dab(ix, iy, r); draw();
+      stroke = { m: st.tool === 'restore' ? 1 : -1, r: Math.round(r * 10) / 10, p: [Math.round(ix), Math.round(iy)] };
+      if (st.tool === 'smart') { stroke.c = sample(ix, iy); stroke.t = 34; }
+      info.strokes.push(stroke);
+      dab(ix, iy, stroke.r); draw();
     });
     cv.addEventListener('pointermove', (e) => {
       if (!pts.has(e.pointerId)) return;
@@ -4486,7 +4753,7 @@ App.pages.records = {
         const [a, b] = [...pts.values()];
         const d = Math.hypot(a[0] - b[0], a[1] - b[1]);
         const ns = Math.max(1, Math.min(8, pinch.scale * d / Math.max(1, pinch.d)));
-        // 손가락 가운데 아래 지점이 그대로 있게 (가운데 기준 좌표)
+        // 손가락 가운데 아래 지점이 그대로 있게
         const rc = cv.getBoundingClientRect(), cx = rc.left + rc.width / 2, cy = rc.top + rc.height / 2;
         const k = ns / pinch.scale, mx = (a[0] + b[0]) / 2, my = (a[1] + b[1]) / 2;
         st.scale = ns;
@@ -4495,11 +4762,19 @@ App.pages.records = {
         clampPan(); draw(); return;
       }
       if (pan) { st.tx = pan.tx + e.clientX - pan.x; st.ty = pan.ty + e.clientY - pan.y; clampPan(); draw(); return; }
+      const [ix, iy] = toImg(e.clientX, e.clientY);
+      if (hdrag) {
+        if (!hdrag.s) { hdrag.s = { k: hdrag.src.k, cp: hdrag.src.cp.slice(), p: hdrag.src.p.slice() }; info.strokes.push(hdrag.s); sync(); }
+        hdrag.s.cp[hdrag.i] = Math.round(ix); hdrag.s.cp[hdrag.i + 1] = Math.round(iy);
+        hdrag.s.p = this._smoothPath(hdrag.s.cp, hdrag.s.k === 'lasso');
+        draw(); return;
+      }
+      if (st.path) { st.path.push(Math.round(ix), Math.round(iy)); draw(); return; }
       if (stroke) {
-        const [ix, iy] = toImg(e.clientX, e.clientY);
         const p = stroke.p, lx = p[p.length - 2], ly = p[p.length - 1];
         const n = Math.ceil(Math.hypot(ix - lx, iy - ly) / Math.max(1, stroke.r / 2));
-        for (let k = 1; k <= n; k++) dab(lx + (ix - lx) * k / n, ly + (iy - ly) * k / n, stroke.r);
+        if (stroke.c) smartSeg(lx, ly, ix, iy, stroke.r, n);
+        else for (let k = 1; k <= n; k++) dab(lx + (ix - lx) * k / n, ly + (iy - ly) * k / n, stroke.r);
         p.push(Math.round(ix), Math.round(iy));
         draw();
       }
@@ -4508,19 +4783,67 @@ App.pages.records = {
       pts.delete(e.pointerId);
       if (pts.size < 2 && pinch) {
         pinch = null;
-        // 한 손가락이 남으면 그 자리에서 이어서 옮기기 (붓은 새로 대야 그린다)
         if (pts.size === 1 && st.tool === 'move') { const [p] = [...pts.values()]; pan = { x: p[0], y: p[1], tx: st.tx, ty: st.ty }; }
       }
-      if (!pts.size) { pan = null; snap = null; if (stroke) { stroke = null; recompute(); sync(); } }
+      if (pts.size) return;
+      pan = null; snap = null;
+      if (hdrag) { const moved = !!hdrag.s; hdrag = null; if (moved) { recompute(); sync(); } return; }
+      if (st.path) {
+        const path = st.path; st.path = null;
+        let x0 = Infinity, x1 = -Infinity, y0 = Infinity, y1 = -Infinity;
+        for (let i = 0; i < path.length; i += 2) { x0 = Math.min(x0, path[i]); x1 = Math.max(x1, path[i]); y0 = Math.min(y0, path[i + 1]); y1 = Math.max(y1, path[i + 1]); }
+        const minSpan = Math.max(W, H) * 0.05;
+        const okPath = st.tool === 'lasso' ? (x1 - x0 > minSpan && y1 - y0 > minSpan) : (x1 - x0 > minSpan && x1 - x0 > (y1 - y0) * 1.5);
+        if (!okPath && path.length >= 2) {
+          // 살짝 닿은 것·세로로 그은 것은 버린다 (사진이 통째로 지워지지 않게)
+          tipEl.textContent = st.tool === 'lasso' ? '얼굴 둘레를 크게 한 바퀴 그려 주세요.' : '턱 아래를 옆으로(왼쪽↔오른쪽) 그어 주세요.';
+          tipEl.hidden = false; clearTimeout(st.tipT); st.tipT = setTimeout(() => { tipEl.hidden = true; }, 3000);
+          draw(); sync(); return;
+        }
+        if (path.length >= 6) {
+          // 고칠 점으로 줄이고(둘레 14개·턱 선 9개) 부드러운 곡선으로
+          const closed = st.tool === 'lasso';
+          const cp = this._resamplePath(path, closed ? 14 : 9, closed);
+          info.strokes.push({ k: st.tool, cp, p: this._smoothPath(cp, closed) });
+          recompute();
+        } else draw();
+        sync();
+      }
+      if (stroke) { stroke = null; recompute(); sync(); }
     };
     cv.addEventListener('pointerup', up);
     cv.addEventListener('pointercancel', up);
-    // 컴퓨터: 마우스 휠로 확대
     cv.addEventListener('wheel', (e) => { e.preventDefault(); if (!e.deltaY) return; st.scale = Math.max(1, Math.min(8, st.scale * (e.deltaY < 0 ? 1.15 : 1 / 1.15))); clampPan(); draw(); }, { passive: false });
     window.addEventListener('resize', resize);
     sync();
     requestAnimationFrame(() => { resize(); recompute(); });
   },
+  // 손질한 그림을 투명한 곳을 잘라 내 스티커로 저장 (얼굴만 오린 것을 다른 카드에 붙이기)
+  async _saveCutoutSticker(canvas) {
+    try { return await this._saveCutoutStickerInner(canvas); }
+    catch (e) { console.warn('스티커 저장 실패:', e); App.showToast('스티커를 저장하지 못했어요.', 'error'); }
+  },
+  async _saveCutoutStickerInner(canvas) {
+    if (!canvas || !canvas.width) return;
+    const list = (this._customStickers || (await DB.getSetting('customStickers')) || []).slice();
+    if (!canvas.width) return;
+    if (list.length >= (this.MAX_CUSTOM_STICKERS || 30)) { App.showToast(`내 스티커는 ${this.MAX_CUSTOM_STICKERS}개까지예요. 정리 후 저장해주세요.`, 'error'); return; }
+    const W = canvas.width, H = canvas.height;
+    const d = canvas.getContext('2d', { willReadFrequently: true }).getImageData(0, 0, W, H).data;
+    let x0 = W, y0 = H, x1 = -1, y1 = -1;
+    for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) if (d[(y * W + x) * 4 + 3] > 8) { if (x < x0) x0 = x; if (x > x1) x1 = x; if (y < y0) y0 = y; if (y > y1) y1 = y; }
+    if (x1 < 0) { App.showToast('남은 그림이 없어요.', 'error'); return; }
+    const cw = x1 - x0 + 1, ch = y1 - y0 + 1, r = Math.min(1, 600 / Math.max(cw, ch));
+    const c = document.createElement('canvas'); c.width = Math.max(1, Math.round(cw * r)); c.height = Math.max(1, Math.round(ch * r));
+    c.getContext('2d').drawImage(canvas, x0, y0, cw, ch, 0, 0, c.width, c.height);
+    const image = c.toDataURL('image/png'); c.width = c.height = 0;
+    list.unshift({ id: 'u' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6), image, createdAt: new Date().toISOString() });
+    this._customStickers = list;
+    await DB.setSetting('customStickers', list);
+    this._renderCustomStickerButtons?.();
+    App.showToast('내 스티커에 저장했어요. 스티커 탭 → 레트로 줄 맨 앞에서 붙이세요.');
+  },
+
   // ===== 사진관·잡지 표지·틀 없이 도우미 (2026-11-10) =====
   // 사진에 투명한 곳이 있나 (아이폰에서 강아지만 떼어 낸 사진) — 작게 줄여 3% 넘게 투명하면 '배경 지운 사진'
   _alphaCache: (typeof WeakMap !== 'undefined') ? new WeakMap() : null,
@@ -4650,12 +4973,12 @@ App.pages.records = {
   // 배경 지운 사진을 상자 안에 바닥 맞춰 놓고, 발밑 그림자를 그린다 (확대·위치 슬라이더 반영)
   _drawCutout(ctx, img, bx, by, bw, bh, noFloor) {
     const m = img._meta || {};
-    const z = Math.max(1, Math.min(3, m.zoom || 1));
+    const z = Math.max(0.3, Math.min(3, m.zoom || 1));
     const sc = Math.min(bw / img.width, bh / img.height) * z;
     const w = img.width * sc, h = img.height * sc;
     const x = bx + (bw - w) / 2 - (m.offsetX || 0) / 100 * bw;
     const y = by + bh - h - (m.offsetY || 0) / 100 * bh;
-    if (!noFloor) {
+    if (!noFloor && !img._face) {
       ctx.save();
       ctx.translate(x + w / 2, y + h - 4); ctx.scale(1, 0.13);
       const g = ctx.createRadialGradient(0, 0, 0, 0, 0, w * 0.42);
@@ -4718,7 +5041,7 @@ App.pages.records = {
     const p = this._CARD_FILTERS[key];
     if (!img || !p || key === 'none') return img;
     const cached = this._filterCache && this._filterCache.get(img);
-    if (cached && cached.key === key) { cached.canvas._meta = img._meta; return cached.canvas; }
+    if (cached && cached.key === key) { cached.canvas._meta = img._meta; cached.canvas._face = img._face; return cached.canvas; }
     try {
       const r = Math.min(1, 1400 / Math.max(img.width, img.height));
       const c = document.createElement('canvas');
@@ -4726,7 +5049,7 @@ App.pages.records = {
       this._paintFiltered(c, img, p);
       if (cached) cached.canvas.width = cached.canvas.height = 0;
       if (this._filterCache) this._filterCache.set(img, { key, canvas: c });
-      c._meta = img._meta;
+      c._meta = img._meta; c._face = img._face;
       return c;
     } catch (e) {
       console.warn('사진 필터 실패:', e);
@@ -4950,6 +5273,56 @@ App.pages.records = {
       : f.layout === 'plain' ? '틀 없이는 사진만 나와요 — 위 \'글자 넣기\'와 스티커로 꾸미세요.'
       : (off.length ? `이 틀에는 ${off.join('·')} 자리가 없어요 — 필요하면 위 '글자 넣기'로 넣으세요.` : '다음 방문일을 넣으면 손님이 다시 예약하기 쉬워요.');
   },
+  // 미리보기에서 강아지를 끌 수 있나: 사진 한 장 틀 + 떼어 낸 사진 + 내 프레임 아님
+  _photoDragOk() {
+    const layout = document.querySelector('#card-pick-layout .card-pick-btn.active')?.dataset.key;
+    if (!['plain', 'studio', 'magazine', 'single'].includes(layout)) return false;
+    if (String(document.querySelector('#card-pick-theme .card-pick-btn.active')?.dataset.key || '').startsWith('frame:')) return false;
+    return !!(this._slotCut && this._slotCut[0] && this._cardPhotos[0]);
+  },
+  _syncPhotoDrag() {
+    const ok = this._photoDragOk();
+    if (!ok) this._photoDragOn = false;
+    const on = ok && this._photoDragOn;
+    const lay = document.getElementById('card-sticker-layer');
+    if (lay) { lay.style.touchAction = on ? 'none' : ''; lay.classList.toggle('photo-drag', on); }
+    const mb = document.getElementById('card-live-move');
+    if (mb) {
+      mb.hidden = !ok || !!document.getElementById('card-live-img')?.hidden;
+      mb.classList.toggle('on', on); mb.setAttribute('aria-pressed', on ? 'true' : 'false');
+      mb.textContent = on ? '✓ 옮기기 끝' : '✥ 강아지 옮기기';
+    }
+    const live = document.querySelector('.card-live');
+    if (live) live.classList.toggle('photo-moving', on);
+  },
+  // 끄는 동안 미리보기를 자주(한 번에 하나씩) 다시 그린다
+  _photoDragPreview() {
+    if (this._pdragBusy) { this._pdragAgain = true; return; }
+    this._pdragBusy = true;
+    this._renderCardPreview().catch(() => {}).finally(() => {
+      this._pdragBusy = false;
+      if (this._pdragAgain) { this._pdragAgain = false; this._photoDragPreview(); }
+    });
+  },
+  _syncSlotSliders(slot) {
+    const m = this._cardPhotoMeta[slot] || {};
+    const zs = document.querySelector(`.card-zoom-slider[data-slot="${slot}"]`);
+    if (zs) zs.min = (this._slotCut || [])[slot] ? 30 : 100; // 값보다 범위를 먼저
+    const set = (sel, v, id, t) => { const el = document.querySelector(sel); if (el) el.value = v; const l = document.getElementById(id); if (l) l.textContent = t; };
+    set(`.card-x-slider[data-slot="${slot}"]`, Math.round(m.offsetX || 0), `card-x-label-${slot}`, Math.round(m.offsetX || 0) + '%');
+    set(`.card-y-slider[data-slot="${slot}"]`, Math.round(m.offsetY || 0), `card-y-label-${slot}`, Math.round(m.offsetY || 0) + '%');
+    set(`.card-zoom-slider[data-slot="${slot}"]`, Math.round((m.zoom || 1) * 100), `card-zoom-label-${slot}`, Math.round((m.zoom || 1) * 100) + '%');
+  },
+  // '사진 칸 색' 줄은 떼어 낸 사진이 칸 틀(네컷·2컷·피드·스토리·폴라로이드)에 들어갈 때만
+  _syncSlotColorRow() {
+    const row = document.getElementById('card-slot-color');
+    if (!row) return;
+    const layout = document.querySelector('#card-pick-layout .card-pick-btn.active')?.dataset.key;
+    const n = this._cardPhotoCount({ layout, settings: {} });
+    const anyCut = (this._slotCut || []).slice(0, n).some(Boolean);
+    const frame = String(document.querySelector('#card-pick-theme .card-pick-btn.active')?.dataset.key || '').startsWith('frame:');
+    row.hidden = !anyCut || frame || ['plain', 'studio', 'magazine'].includes(layout);
+  },
   // 틀 탭의 '배경색 ○○ 바꾸기' 줄에 지금 색을 보여 준다
   _syncBgLink(f) {
     const dot = document.getElementById('card-bg-link-dot'), nm = document.getElementById('card-bg-link-name');
@@ -4960,6 +5333,7 @@ App.pages.records = {
     let name, hex;
     if (st.bgPick === 'auto') { name = '자동'; hex = null; }
     else if (this._STUDIO_COLORS[st.bgPick]) { name = this._STUDIO_COLORS[st.bgPick].name; hex = this._STUDIO_COLORS[st.bgPick].hex; }
+    else if (/^#[0-9a-f]{6}$/i.test(st.bgPick || '')) { name = '직접 고른 색'; hex = st.bgPick; }
     else if (f.theme === 'custom') { name = st.customBgImage ? '배경 사진' : '직접 고른 색'; hex = st.customBgImage ? null : (st.customBgColor || '#FFFFFF'); }
     else { name = ({ classic: '흰색', film: '크림', pastel: '연분홍', dark: '남색' })[f.theme] || '흰색'; hex = this.CARD_TEMPLATES[f.theme]?.bgColor || '#FFFFFF'; }
     nm.textContent = name;
@@ -5167,7 +5541,7 @@ App.pages.records = {
           </div>
           <div class="photo-slider-row" style="display:flex;align-items:center;gap:6px;margin-bottom:3px">
             <span style="color:var(--text-muted);flex-shrink:0;min-width:30px">줌</span>
-            <input type="range" min="100" max="200" step="5" value="100" class="card-zoom-slider" data-slot="${i}" style="flex:1;height:36px;min-height:0;cursor:pointer">
+            <input type="range" min="${(this._slotCut || [])[i] ? 30 : 100}" max="300" step="5" value="100" class="card-zoom-slider" data-slot="${i}" style="flex:1;height:36px;min-height:0;cursor:pointer">
             <span id="card-zoom-label-${i}" style="color:var(--text-muted);flex-shrink:0;min-width:36px;text-align:right">100%</span>
           </div>
           <button type="button" class="card-reset-btn" data-slot="${i}" style="width:100%;margin-top:4px;padding:4px;font-size:0.93rem;border:1px solid var(--border);border-radius:4px;background:var(--bg-white);color:var(--text-muted);cursor:pointer">초기화</button>
@@ -5245,7 +5619,7 @@ App.pages.records = {
       const adj = document.getElementById(`card-adjust-${i}`);
       if (adj) adj.hidden = false;
     }
-    container.querySelectorAll('.card-adjust-btn').forEach(btn => btn.addEventListener('click', () => {
+    container.querySelectorAll('.card-adjust-btn:not(.card-cutout-btn)').forEach(btn => btn.addEventListener('click', () => {
       const ctrls = document.getElementById(`card-photo-controls-${btn.dataset.slot}`);
       if (!ctrls) return;
       const open = ctrls.style.display === 'none';
@@ -5840,9 +6214,21 @@ App.pages.records = {
     });
     this._bindTextMaker(needPhoto);
     // 끌어서 옮기기 — 손가락을 댄 지점과 스티커 가운데의 차이를 유지한다
-    let drag = null;
+    let drag = null, pdrag = null;
+    const pts = new Map();
     layer.onpointerdown = (e) => {
       const el = e.target.closest('.card-sticker');
+      if (!el && this._photoDragOn && this._photoDragOk()) {
+        // 떼어 낸 강아지 한 장 — 미리보기에서 끌어 옮기기, 두 손가락으로 크기
+        e.preventDefault();
+        if (this._stickerSel !== -1) { this._stickerSel = -1; this._renderStickerLayer(); }
+        try { layer.setPointerCapture(e.pointerId); } catch (_) {}
+        pts.set(e.pointerId, [e.clientX, e.clientY]);
+        const m = this._cardPhotoMeta[0] || (this._cardPhotoMeta[0] = { offsetX: 0, offsetY: 0, zoom: 1 });
+        const vals = [...pts.values()];
+        pdrag = { m0: { ...m }, p0: vals.map(v => v.slice()), d0: vals.length >= 2 ? Math.hypot(vals[0][0] - vals[1][0], vals[0][1] - vals[1][1]) : 0 };
+        return;
+      }
       if (!el) { if (this._stickerSel !== -1) { this._stickerSel = -1; this._renderStickerLayer(); } return; }
       e.preventDefault();
       const i = Number(el.dataset.i);
@@ -5854,6 +6240,23 @@ App.pages.records = {
       try { layer.setPointerCapture(e.pointerId); } catch (_) {}
     };
     layer.onpointermove = (e) => {
+      if (pdrag && pts.has(e.pointerId)) {
+        pts.set(e.pointerId, [e.clientX, e.clientY]);
+        const r = layer.getBoundingClientRect(); if (!r.width) return;
+        const m = this._cardPhotoMeta[0];
+        const layout = document.querySelector('#card-pick-layout .card-pick-btn.active')?.dataset.key;
+        const [fx, fy] = ({ plain: [0.87, 0.92], studio: [0.8, 0.65], magazine: [0.93, 0.65] })[layout] || [0.88, 0.7];
+        const vals = [...pts.values()];
+        if (vals.length >= 2 && pdrag.p0.length >= 2) {
+          const d = Math.hypot(vals[0][0] - vals[1][0], vals[0][1] - vals[1][1]);
+          m.zoom = Math.max(0.3, Math.min(3, pdrag.m0.zoom * d / Math.max(1, pdrag.d0)));
+        } else if (vals.length === 1 && pdrag.p0.length === 1) {
+          m.offsetX = Math.max(-50, Math.min(50, pdrag.m0.offsetX - (vals[0][0] - pdrag.p0[0][0]) / (r.width * fx) * 100));
+          m.offsetY = Math.max(-50, Math.min(50, pdrag.m0.offsetY - (vals[0][1] - pdrag.p0[0][1]) / (r.height * fy) * 100));
+        }
+        this._photoDragPreview();
+        return;
+      }
       if (!drag || e.pointerId !== drag.id) return;
       const r = layer.getBoundingClientRect();
       const st = this._cardStickers[drag.i];
@@ -5863,7 +6266,14 @@ App.pages.records = {
       const el = layer.querySelector(`.card-sticker[data-i="${drag.i}"]`);
       if (el) { el.style.left = st.x * 100 + '%'; el.style.top = st.y * 100 + '%'; }
     };
-    layer.onpointerup = layer.onpointercancel = () => { drag = null; };
+    layer.onpointerup = layer.onpointercancel = (e) => {
+      if (drag && e.pointerId === drag.id) drag = null;
+      if (pdrag) {
+        pts.delete(e.pointerId);
+        if (!pts.size) { pdrag = null; this._syncSlotSliders(0); this._refreshPhotoPreview(0); this._scheduleCardPreview(); }
+        else { const m = this._cardPhotoMeta[0]; const vals = [...pts.values()]; pdrag = { m0: { ...m }, p0: vals.map(v => v.slice()), d0: 0 }; }
+      }
+    };
     // 크기·회전 슬라이더는 고른 스티커의 모양만 바꾼다 (끌기처럼 — 레이어 전체를 다시 그리지 않게)
     const upd = (fn) => {
       const st = this._cardStickers[this._stickerSel];
@@ -5901,6 +6311,8 @@ App.pages.records = {
     const count = this._cardPhotoCount(f);
     this._updateTextSupport(f);
     this._syncBgLink(f);
+    this._syncSlotColorRow();
+    this._syncPhotoDrag();
     const nAll = (this._cardPhotos || []).filter(Boolean).length;
     this._markLayoutRecs(nAll);
     const photos = (this._cardPhotos || []).slice(0, count);
@@ -5921,6 +6333,7 @@ App.pages.records = {
     img.hidden = false;
     if (empty) empty.hidden = true;
     img.closest('.card-live')?.setAttribute('data-shape', f.layout);
+    this._syncPhotoDrag();
     this._renderStickerLayer();
     // 칸보다 사진이 적으면 어떻게 나오는지 알려준다 (반복 채우지 않고 칸 수를 줄인다)
     const note = document.getElementById('card-live-note');
@@ -6004,14 +6417,28 @@ App.pages.records = {
     const rowPct = (50 + (meta.offsetY || 0)) + '%';
     preview.innerHTML = `<img src="${photo}" style="width:100%;height:100%;object-fit:cover;object-position:${colPct} ${rowPct};transform:scale(${meta.zoom});transform-origin:${colPct} ${rowPct};transition:transform 0.12s,object-position 0.12s">`;
     preview.classList.remove('cutout');
-    // 배경 지운(투명) 사진이면 칸에 표시 — 앱이 알아봤는지 바로 알 수 있게
-    if (/^data:image\/(png|webp)/.test(photo)) {
-      this._loadImg(photo).then(im => {
-        if (this._cardPhotos[slot] !== photo || !im || !this._imgHasAlpha(im)) return;
-        preview.classList.add('cutout');
-        if (cutBtn) cutBtn.hidden = false;
-        if (!preview.querySelector('.card-slot-badge')) preview.insertAdjacentHTML('beforeend', '<span class="card-slot-badge">배경 지움</span>');
-      }).catch(() => {});
+    // 사진 아래 버튼: 떼어 낸 사진이면 '가장자리' 손질, 일반 사진이면 '배경 지우기'(한 가지 색 천 앞 사진)
+    const zs = document.querySelector(`.card-zoom-slider[data-slot="${slot}"]`);
+    this._slotCut = this._slotCut || []; this._slotCutSrc = this._slotCutSrc || [];
+    const apply = (cut) => {
+      this._slotCut[slot] = cut; this._slotCutSrc[slot] = photo;
+      preview.classList.toggle('cutout', cut);
+      if (cutBtn) { cutBtn.hidden = false; cutBtn.textContent = cut ? '✂ 가장자리' : '✂ 배경 지우기'; }
+      if (zs) {
+        // 값을 지키며 범위를 바꾼다 (떼어 낸 강아지는 줄여서 여백을 둘 수 있게 30%부터)
+        const v = Math.round(((this._cardPhotoMeta[slot] || {}).zoom || 1) * 100);
+        zs.min = cut ? 30 : 100; zs.value = v;
+      }
+      if (cut && !preview.querySelector('.card-slot-badge')) preview.insertAdjacentHTML('beforeend', '<span class="card-slot-badge">배경 지움</span>');
+      this._syncSlotColorRow?.();
+    };
+    if (this._slotCutSrc[slot] === photo) apply(!!this._slotCut[slot]); // 같은 사진이면 아는 값 그대로 (슬라이더가 튀지 않게)
+    else {
+      apply(false);
+      // 배경 지운(투명) 사진이면 칸에 표시 — 앱이 알아봤는지 바로 알 수 있게
+      if (/^data:image\/(png|webp)/.test(photo)) {
+        this._loadImg(photo).then(im => { if (this._cardPhotos[slot] === photo && im && this._imgHasAlpha(im)) apply(true); }).catch(() => {});
+      }
     }
   },
 
@@ -6047,7 +6474,8 @@ App.pages.records = {
       photoFilter: this._CARD_FILTERS[ds.photoFilter] ? ds.photoFilter : 'none',
       fontKey: this._CARD_FONTS[ds.fontKey] ? ds.fontKey : 'system',
       polaroidShape: ds.polaroidShape === 'square' ? 'square' : 'classic',
-      bgPick: (ds.bgPick === 'auto' || this._STUDIO_COLORS[ds.bgPick]) && theme !== 'custom' ? ds.bgPick : null,
+      bgPick: (ds.bgPick === 'auto' || this._STUDIO_COLORS[ds.bgPick] || /^#[0-9a-f]{6}$/i.test(ds.bgPick || '')) && theme !== 'custom' ? ds.bgPick : null,
+      slotColor: (ds.slotColor === 'white' || this._STUDIO_COLORS[ds.slotColor] || /^#[0-9a-f]{6}$/i.test(ds.slotColor || '')) ? ds.slotColor : 'auto',
       plainRatio: this._PLAIN_RATIOS[ds.plainRatio] ? ds.plainRatio : 'orig',
       // 그리기 코드는 customShow* 이름을 쓰지만 이제 모든 테마에 적용된다 (예전 커스텀 전용 값은 이어받는다)
       customShowPet: (ds.showPet ?? ds.customShowPet) !== false,
@@ -6082,6 +6510,7 @@ App.pages.records = {
     settings.layout = layout;
     settings.template = theme;
     settings.bgPick = bgPick;
+    settings.slotColor = document.querySelector('#card-slot-color [data-slotc].active')?.dataset.slotc || settings.slotColor || 'auto';
     // 로고 위치 / 크기 (모든 테마 공통)
     settings.logoPosition = document.getElementById('card-logo-position')?.value || 'top';
     settings.logoSize = document.getElementById('card-logo-size')?.value || 'medium';
@@ -6174,7 +6603,8 @@ App.pages.records = {
     const keptPhotos = keep ? (this._cardPhotos || []) : [];
     const keptMeta = keep ? (this._cardPhotoMeta || []) : [];
     this._cardPhotos = [];
-    if (!keep) this._cutoutSrc = new Map();
+    this._photoDragOn = false;
+    if (!keep) { this._cutoutSrc = new Map(); this._slotCut = []; this._slotCutSrc = []; }
     this._cardPhotoMeta = [];
     // 스티커: 새 카드는 비우고, '다시 꾸미기'는 붙인 그대로
     this._cardStickers = keep ? (this._cardStickers || []) : [];
@@ -6228,7 +6658,12 @@ App.pages.records = {
     const selectedFrameId = saved.lastUsedFrameId || null;
     // 배경색 줄에서 켜 둘 칸: 프레임이면 없음, 더 꾸미기면 custom, 파스텔·자동이면 bg:키, 아니면 테마
     const selectedBgKey = selectedFrameId ? null : (selectedTheme === 'custom' ? 'custom'
-      : ((saved.bgPick === 'auto' || this._STUDIO_COLORS[saved.bgPick]) ? 'bg:' + saved.bgPick : selectedTheme));
+      : ((saved.bgPick === 'auto' || this._STUDIO_COLORS[saved.bgPick] || /^#[0-9a-f]{6}$/i.test(saved.bgPick || '')) ? 'bg:' + saved.bgPick : selectedTheme));
+    // 직접 고른 색 (최근 6개) — 배경색·사진 칸 색 줄 끝에 남는다
+    const recentColors = ((await DB.getSetting('cardColorRecent')) || []).filter(c => /^#[0-9a-f]{6}$/i.test(c));
+    if (/^#[0-9a-f]{6}$/i.test(saved.bgPick || '') && !recentColors.includes(saved.bgPick)) recentColors.unshift(saved.bgPick);
+    if (/^#[0-9a-f]{6}$/i.test(saved.slotColor || '') && !recentColors.includes(saved.slotColor)) recentColors.unshift(saved.slotColor);
+    const selSlot = (saved.slotColor === 'white' || this._STUDIO_COLORS[saved.slotColor] || /^#[0-9a-f]{6}$/i.test(saved.slotColor || '')) ? saved.slotColor : 'auto';
 
     App.showModal({
       title: '사진 카드 만들기',
@@ -6243,6 +6678,8 @@ App.pages.records = {
             <img id="card-live-img" alt="사진 카드 미리보기" hidden>
             <div id="card-sticker-layer" class="card-sticker-layer" hidden></div>
             <button type="button" class="card-live-zoom" id="card-live-zoom" aria-label="크게 보기" title="크게 보기">⤢</button>
+            <!-- 떼어 낸 강아지 옮기기 — 켠 동안만 미리보기를 끌면 강아지가 움직인다 (꺼 두면 창이 그대로 스크롤된다) -->
+            <button type="button" class="card-live-move" id="card-live-move" hidden aria-pressed="false">✥ 강아지 옮기기</button>
           </div>
           <div id="card-live-empty" class="card-live-empty">${App.icon('image')} 사진을 고르면 여기에 미리 보여요</div>
           <div id="card-live-note" class="card-live-note" hidden></div>
@@ -6281,8 +6718,9 @@ App.pages.records = {
               <li>아이폰 사진 앱에서 강아지를 손가락으로 길게 눌러요.</li>
               <li>강아지만 떠오르면 [공유] → [이미지 저장]을 눌러요.</li>
               <li>저장된 사진을 여기 칸에 넣으면 '배경 지움' 표시가 붙고, 어느 틀에서든 강아지만 배경색 위에 올라가요 (발밑 그림자는 자동).</li>
-              <li>털 둘레에 남은 배경색 띠는 앱이 자동으로 다듬어요. 덩어리째 남은 배경은 칸 아래 [✂ 가장자리]에서 손가락으로 지우세요.</li>
-              <li>털 색과 확실히 다른 한 가지 색 천·벽 앞에서 찍으면 훨씬 깔끔하게 떨어져요.</li>
+              <li>털 둘레에 남은 배경색 띠는 앱이 자동으로 다듬어요. 덩어리째 남은 배경은 칸 아래 [✂ 가장자리]에서 지우고, 얼굴만 남길 수도 있어요.</li>
+              <li><b>더 깔끔하게:</b> 털 색과 다른 파랑·초록 천 앞에서 찍은 사진을 그대로 넣고 [✂ 배경 지우기]를 누르면 앱이 천 색만 지워 털 끝까지 보송하게 남겨요.</li>
+              <li>틀 없이·사진관·잡지 표지에서는 미리보기의 [✥ 강아지 옮기기]를 누르고 강아지를 끌어 옮기거나 두 손가락으로 크기를 바꿔요.</li>
             </ol>
           </details>
           <div id="card-photo-adjust" class="card-photo-adjust"></div>
@@ -6322,7 +6760,7 @@ App.pages.records = {
         <div id="plain-options" class="form-group" style="display:${selectedLayout === 'plain' ? 'block' : 'none'}">
           <label class="form-label">카드 비율</label>
           <div class="card-sticker-styles">
-            ${Object.entries(this._PLAIN_RATIOS).map(([k, n]) => `<button type="button" class="card-tstyle-btn${(this._PLAIN_RATIOS[saved.plainRatio] ? saved.plainRatio : 'orig') === k ? ' active' : ''}" data-ratio="${k}">${n}</button>`).join('')}
+            ${['orig', '45', '11', '916'].map(k => [k, this._PLAIN_RATIOS[k]]).map(([k, n]) => `<button type="button" class="card-tstyle-btn${(this._PLAIN_RATIOS[saved.plainRatio] ? saved.plainRatio : 'orig') === k ? ' active' : ''}" data-ratio="${k}">${n}</button>`).join('')}
           </div>
           <div class="form-hint">사진 위에 아무 틀도 없어요. '글자'·'스티커' 탭에서 꾸미세요.</div>
         </div>
@@ -6338,6 +6776,18 @@ App.pages.records = {
               ${[['bg:auto', '자동', 'auto'], ...Object.entries(THEMES).map(([k]) => [k, ({ classic: '흰색', film: '크림', pastel: '연분홍', dark: '남색' })[k] || THEMES[k].name, this.CARD_TEMPLATES[k]?.bgColor || '#FFFFFF']),
                 ...Object.entries(this._STUDIO_COLORS).map(([k, c]) => ['bg:' + k, c.name, c.hex])].map(([key, name, hex]) => `
                 <button type="button" class="card-pick-btn card-bg-chip${key === selectedBgKey ? ' active' : ''}" data-key="${key}"${hex === 'auto' ? ' data-auto="1"' : ` style="--c:${hex}"`}><i></i><span>${name}</span></button>`).join('')}
+              ${recentColors.map(c => `<button type="button" class="card-pick-btn card-bg-chip mine${'bg:' + c === selectedBgKey ? ' active' : ''}" data-key="bg:${c}" style="--c:${c}" title="직접 고른 색"><i></i></button>`).join('')}
+              <label class="card-bg-chip card-bg-add" title="원하는 색 고르기"><i>＋</i><span>직접</span><input type="color" id="card-bg-custom" value="${/^#[0-9a-f]{6}$/i.test(saved.bgPick || '') ? saved.bgPick : '#A58BD6'}" aria-label="배경색 직접 고르기"></label>
+            </div>
+            <!-- 사진 칸 색 — 떼어 낸 강아지 뒤 (네컷·2컷·피드·스토리·폴라로이드 칸). 떼어 낸 사진이 있을 때만 -->
+            <div id="card-slot-color" hidden>
+              <label class="form-label" style="margin-top:14px">사진 칸 색 <span class="card-sub">· 떼어 낸 강아지 뒤</span></label>
+              <div class="card-bg-row">
+                ${[['auto', '자동', null], ['white', '흰색', '#FFFFFF'], ['gray', '연회색', this._STUDIO_COLORS.gray.hex], ...Object.entries(this._STUDIO_COLORS).filter(([k]) => k !== 'gray').map(([k, c]) => [k, c.name, c.hex])].map(([k, name, h]) => `
+                  <button type="button" class="card-bg-chip${selSlot === k ? ' active' : ''}" data-slotc="${k}"${h ? ` style="--c:${h}"` : ' data-auto="1"'}><i></i><span>${name}</span></button>`).join('')}
+                ${recentColors.map(c => `<button type="button" class="card-bg-chip mine${selSlot === c ? ' active' : ''}" data-slotc="${c}" style="--c:${c}" title="직접 고른 색"><i></i></button>`).join('')}
+                <label class="card-bg-chip card-bg-add" title="원하는 색 고르기"><i>＋</i><span>직접</span><input type="color" id="card-slot-custom" value="${/^#[0-9a-f]{6}$/i.test(selSlot) ? selSlot : '#FFFFFF'}" aria-label="사진 칸 색 직접 고르기"></label>
+              </div>
             </div>
             ${userFrames.length ? `<label class="form-label" style="margin-top:14px">내 프레임 <span class="card-sub">· 고르면 프레임 모양 그대로 나와요</span></label>
             <div class="card-frame-row" aria-label="내 프레임">${userFrames.map(f => `
@@ -6549,6 +6999,11 @@ App.pages.records = {
         });
       });
       // 미리보기 크게 보기 (휴대폰에서 작게 보이는 카드를 화면 가득 — 스티커·글자까지)
+      document.getElementById('card-live-move')?.addEventListener('click', () => {
+        this._photoDragOn = !this._photoDragOn;
+        this._syncPhotoDrag();
+        if (this._photoDragOn) App.showToast('미리보기의 강아지를 끌어 옮기고, 두 손가락으로 크기를 바꾸세요.', 'info');
+      });
       const zoomBtn = document.getElementById('card-live-zoom');
       if (zoomBtn) zoomBtn.onclick = (e) => {
         e.stopPropagation();
@@ -6647,12 +7102,42 @@ App.pages.records = {
         themeBtns().forEach(b => b.classList.toggle('active', b === btn));
         if (btn !== customBtn) prevThemeBtn = btn;
       };
-      themeBtns().forEach(btn => {
-        if (btn === customBtn) return;
-        btn.addEventListener('click', () => {
-          activateTheme(btn);
-          if (customPanel) customPanel.open = false;
-        });
+      // 칸을 나중에 더해도(직접 고른 색) 눌리게 한곳에서 받는다
+      document.getElementById('card-pick-theme')?.addEventListener('click', (e) => {
+        const btn = e.target.closest('.card-pick-btn');
+        if (!btn || btn === customBtn) return;
+        activateTheme(btn);
+        if (customPanel) customPanel.open = false;
+      });
+      // 직접 고른 색 — 최근 목록에 남기고 그 색을 고른다
+      const rememberColor = async (c) => {
+        try { const list = ((await DB.getSetting('cardColorRecent')) || []).filter(x => x !== c); list.unshift(c); await DB.setSetting('cardColorRecent', list.slice(0, 6)); } catch (_) {}
+      };
+      const addMine = (row, attr, c) => {
+        let b = row.querySelector(`[${attr}="${attr === 'data-key' ? 'bg:' + c : c}"]`);
+        if (!b) {
+          b = document.createElement('button'); b.type = 'button';
+          b.className = (attr === 'data-key' ? 'card-pick-btn ' : '') + 'card-bg-chip mine';
+          b.setAttribute(attr, attr === 'data-key' ? 'bg:' + c : c); b.style.setProperty('--c', c); b.title = '직접 고른 색'; b.innerHTML = '<i></i>';
+          row.insertBefore(b, row.querySelector('.card-bg-add'));
+        }
+        return b;
+      };
+      document.getElementById('card-bg-custom')?.addEventListener('change', (e) => {
+        const c = e.target.value.toLowerCase();
+        addMine(e.target.closest('.card-bg-row'), 'data-key', c).click();
+        rememberColor(c);
+      });
+      const slotRow = document.querySelector('#card-slot-color .card-bg-row');
+      slotRow?.addEventListener('click', (e) => {
+        const b = e.target.closest('[data-slotc]'); if (!b) return;
+        slotRow.querySelectorAll('[data-slotc]').forEach(x => x.classList.toggle('active', x === b));
+        this._scheduleCardPreview();
+      });
+      document.getElementById('card-slot-custom')?.addEventListener('change', (e) => {
+        const c = e.target.value.toLowerCase();
+        addMine(slotRow, 'data-slotc', c).click();
+        rememberColor(c);
       });
       customPanel?.addEventListener('toggle', () => {
         if (customPanel.open) activateTheme(customBtn);

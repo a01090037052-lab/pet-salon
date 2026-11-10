@@ -105,3 +105,69 @@ describe('떼어 낸 사진 가장자리 다듬기', () => {
     for (let x = 10; x <= 40; x++) assert.equal(mask[10 * 50 + x], -1, `x=${x}`);
   });
 });
+
+describe('한 가지 색 천 지우기 · 얼굴만', () => {
+  const px = (d, w, x, y) => Array.from(d.slice((y * w + x) * 4, (y * w + x) * 4 + 4));
+  // 40×40 파란 천 가운데 20×20 크림색 강아지, 둘레 1칸은 반반 섞인 털, 그 바깥 1칸은 털이 조금(25%)
+  const scene = () => {
+    const w = 40, h = 40, d = new Uint8ClampedArray(w * h * 4), blue = [30, 90, 200], dog = [235, 215, 185];
+    const ring = (x, y, k) => x >= 10 - k && x < 30 + k && y >= 10 - k && y < 30 + k;
+    for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
+      const c = ring(x, y, 0) ? dog : ring(x, y, 1) ? dog.map((v, i) => (v + blue[i]) / 2)
+        : ring(x, y, 2) ? dog.map((v, i) => v * 0.25 + blue[i] * 0.75) : blue;
+      d.set([...c, 255], (y * w + x) * 4);
+    }
+    return { w, h, d, blue, dog };
+  };
+  test('천 색을 둘레에서 찾는다', () => {
+    const { w, h, d } = scene();
+    const g = R._guessKeyColor(d, w, h);
+    assert.deepEqual(Array.from(g.color), [30, 90, 200]);  // 천 색
+    assert.ok(g.spread < 5);
+  });
+  test('천은 투명, 강아지는 그대로, 섞인 털 끝은 반투명이고 파란 기가 빠진다', () => {
+    const { w, h, d, blue } = scene();
+    R._chromaKey(d, w, h, blue, 20);
+    assert.equal(px(d, w, 2, 2)[3], 0);
+    assert.deepEqual(px(d, w, 20, 20), [235, 215, 185, 255]);
+    const e = px(d, w, 9, 20);
+    assert.ok(Math.abs(e[0] - 235) < 20 && Math.abs(e[2] - 185) < 20, `섞인 털은 털 색으로 ${e}`);
+    const o = px(d, w, 8, 20);
+    assert.ok(o[3] > 0 && o[3] < 255, `털 끝 반투명 ${o}`);
+  });
+  test('다각형 채우기', () => {
+    const m = R._polyFill([2, 2, 8, 2, 8, 8, 2, 8], 10, 10);
+    assert.equal(m[5 * 10 + 5], 255); assert.equal(m[0], 0);
+  });
+  test('턱 아래 선: 선 아래는 지우고 위는 남긴다', () => {
+    const w = 60, h = 60;
+    const fm = R._faceMask({ k: 'cut', p: [5, 30, 55, 30] }, w, h);
+    assert.ok(fm[10 * w + 30] > 250); assert.ok(fm[50 * w + 30] < 5);
+  });
+  test('둘레: 안만 남긴다', () => {
+    const w = 60, h = 60;
+    const fm = R._faceMask({ k: 'lasso', p: [10, 10, 50, 10, 50, 50, 10, 50] }, w, h);
+    assert.ok(fm[30 * w + 30] > 250); assert.ok(fm[2 * w + 2] < 5);
+  });
+  test('비슷한 색만 지우는 붓은 다른 색(털)을 남긴다', () => {
+    const { w, h, d } = scene();
+    const out = d.slice();
+    R._refineCutout(out, w, h, 0, [{ m: -1, r: 30, p: [20, 20], c: [30, 90, 200], t: 30 }], d.slice());
+    assert.equal(px(out, w, 2, 2)[3], 0);
+    assert.equal(px(out, w, 20, 20)[3], 255);
+  });
+});
+
+describe('얼굴 선 점으로 고치기', () => {
+  test('그은 선을 같은 간격 점으로', () => {
+    assert.deepEqual(Array.from(R._resamplePath([0, 0, 100, 0], 5, false)), [0, 0, 25, 0, 50, 0, 75, 0, 100, 0]);
+  });
+  test('둘레는 닫힌 모양으로 점 n개', () => {
+    assert.equal(R._resamplePath([0, 0, 100, 0, 100, 100, 0, 100], 8, true).length, 16);
+  });
+  test('곡선은 점을 지난다 (첫 점·끝 점)', () => {
+    const p = R._smoothPath([0, 0, 50, 50, 100, 0], false);
+    assert.deepEqual([p[0], p[1]], [0, 0]);
+    assert.deepEqual([p[p.length - 2], p[p.length - 1]], [100, 0]);
+  });
+});

@@ -4256,3 +4256,30 @@ input.has-clear { padding-right: 44px; }
 
 .cutout-ed-actions { display: flex; gap: 6px; }
 .cutout-ed-lb { width: 64px; }
+/* 직접 고르기 동그라미 (2026-11-10) */
+.card-bg-chip { display: inline-flex; align-items: center; gap: 6px; min-height: 38px; padding: 4px 11px 4px 6px; border: 1.5px solid var(--border); border-radius: 20px; background: var(--bg-white); color: var(--text); font: inherit; font-size: max(0.85rem, 13px); cursor: pointer; }
+.card-bg-chip i { width: 24px; height: 24px; border-radius: 50%; background: var(--c); border: 1px solid rgba(0,0,0,.14); flex: 0 0 auto; font-style: normal; }
+.card-bg-chip[data-auto] i { background: conic-gradient(#F4B2C6, #F5D565, #A3D9C0, #74C6D8, #A58BD6, #F4B2C6); }
+.card-bg-chip.active { border-color: var(--primary); box-shadow: 0 0 0 2px rgba(var(--primary-rgb), 0.2); font-weight: 700; }
+.card-bg-chip.mine { padding: 4px; }
+.card-bg-add { position: relative; overflow: hidden; border-style: dashed; }
+.card-bg-add i { display: flex; align-items: center; justify-content: center; background: var(--bg); color: var(--primary); font-weight: 700; }
+.card-bg-add input[type=color] { position: absolute; inset: 0; width: 100%; height: 100%; opacity: 0; cursor: pointer; border: 0; padding: 0; }
+#card-slot-color[hidden] { display: none; }
+.cutout-ed-tip { position: absolute; left: 10px; right: 10px; bottom: 10px; background: rgba(17,24,39,.78); color: #fff; font-size: 13px; line-height: 1.45; padding: 6px 10px; border-radius: 10px; pointer-events: none; text-align: center; }
+.cutout-ed-tip[hidden] { display: none; }
+.cutout-ed-swatch { width: 26px; height: 26px; border-radius: 50%; border: 1px solid rgba(0,0,0,.2); display: inline-block; }
+.cutout-ed-slider { display: flex; align-items: center; gap: 6px; flex: 1; min-width: 160px; font-size: 13px; color: var(--text-muted); }
+.cutout-ed-slider input { flex: 1; }
+.cutout-ed-warn { font-size: 12px; color: #B45309; background: #FEF3C7; border-radius: 8px; padding: 4px 8px; }
+.card-sticker-layer.photo-drag { cursor: move; }
+/* 손질 화면 아래 칸을 작게 — 사진이 크게 보이게 */
+.cutout-ed-bar { gap: 4px; padding: 6px 10px 8px; max-height: 44vh; max-height: 44dvh; overflow-y: auto; }
+.cutout-ed-row { gap: 4px; }
+.cutout-ed-row .card-tstyle-btn { min-height: 32px; padding: 4px 9px; font-size: 13px; }
+.cutout-ed-lb { width: 52px; font-size: 12px; }
+.cutout-ed-slider { min-width: 120px; }
+.card-live-move { position: absolute; left: 6px; bottom: 6px; z-index: 3; min-height: 34px; padding: 0 12px; border-radius: 17px; border: none; background: rgba(15,23,42,.6); color: #fff; font-size: 13px; font-weight: 600; cursor: pointer; }
+.card-live-move[hidden] { display: none; }
+.card-live-move.on { background: var(--primary); }
+.card-live.photo-moving .card-live-stage { outline: 3px dashed var(--primary); outline-offset: 2px; border-radius: 6px; }
