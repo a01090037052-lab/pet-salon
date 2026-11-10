@@ -3201,6 +3201,9 @@ App.pages.records = {
 
     const petName = pet?.name || '';
     const dateStr = App.formatDate(record.date);
+    // 피드·스토리 아래 줄 — 서비스명·다음 방문일은 '글자' 탭에서 켰을 때만 (예전엔 이름을 켜면 서비스명이 늘 같이 나왔다)
+    const _svcLine = (s.showService && serviceNames) ? String(serviceNames) : '';
+    const _nvLine = (s.showNextVisit && record.nextVisitDate) ? '다음 방문 ' + App.formatDate(record.nextVisitDate) : '';
 
     // 3·4번째 사진도 로드 (photos 스토어 fallback 포함)
     const photo3Raw = record.photo3 || (record.photo3Id ? await DB.getPhoto(record.photo3Id) : null);
@@ -3426,45 +3429,59 @@ App.pages.records = {
 
     // ===== Layout D: single (1컷 증명사진) =====
     else if (layout === 'single') {
-      // ===== 폴라로이드 모던 미니멀 (1080×1080, 정사각, 옅은 크림 default + 사진 큼) =====
-      const W = 1080, H = 1080;
+      // ===== 폴라로이드 =====
+      // classic(기본): 진짜 폴라로이드처럼 아래 여백을 넓게 — 1080×1350(인스타 피드 4:5와 같은 비율), 아래에 이름·문구를 크게
+      // square: 정사각 1080×1080, 얇은 여백 (예전 '모던')
+      // 예전 '모던 920 / 미니멀 940' 은 사진이 20px 차이라 고르는 의미가 없었다
+      const isSquare = s.polaroidShape === 'square';
+      const W = 1080, H = isSquare ? 1080 : 1350;
       canvas.width = W; canvas.height = H;
       ctx = canvas.getContext('2d');
 
-      // 배경 — 사용자 커스텀 색이 있으면 그 색, 아니면 옅은 크림 (모던 폴라로이드 기본)
+      // 배경 — 사용자 커스텀 색이 있으면 그 색, 아니면 옅은 크림
       const polarBg = (s.template === 'custom' && s.customBgColor) ? s.customBgColor : '#FAFAF7';
       ctx.fillStyle = polarBg; ctx.fillRect(0, 0, W, H);
       if (_customBgImg) this._drawImageCover(ctx, _customBgImg, 0, 0, W, H);
 
-      // 사진 크기: 모던(default 920×920, pad 80) / 미니멀(940×940, pad 70)
-      const isPolaroidMinimal = s.polaroidSize === 'minimal';
-      const pad = isPolaroidMinimal ? 70 : 80;
+      const pad = isSquare ? 80 : 64;
       const photoS = W - pad * 2;
       const mainImg = imgAfter || imgBefore;
-
-      // 사진 아래 살짝 그림자
       ctx.save();
-      ctx.shadowColor = 'rgba(0,0,0,0.12)';
-      ctx.shadowBlur = 28;
-      ctx.shadowOffsetY = 8;
-      ctx.fillStyle = '#000';
-      ctx.fillRect(pad, pad, photoS, photoS);
+      ctx.shadowColor = 'rgba(0,0,0,0.12)'; ctx.shadowBlur = 28; ctx.shadowOffsetY = 8;
+      ctx.fillStyle = '#000'; ctx.fillRect(pad, pad, photoS, photoS);
       ctx.restore();
-
-      // 사진
       _drawPhoto(ctx, mainImg, pad, pad, photoS, photoS, 0);
 
-      // 하단 텍스트 (한 줄, 자유 텍스트 우선 — 헤드라인 비어있으면 반려견 이름)
-      const remainingY = pad + photoS;
-      const textCenterY = remainingY + (H - remainingY) / 2 + 10;
-      // 예전엔 다른 레이아웃의 지역 변수(_hasHeadline)를 참조해 폴라로이드가 항상 오류로 멈췄다
       const polarText = s.headline ? s.headline : (s.customShowPet ? petName : '');
       const polarTextColor = (s.template === 'custom' && s.customTextColor) ? s.customTextColor : '#1A1A1A';
-      ctx.fillStyle = polarTextColor;
-      ctx.font = 'bold 36px ' + fontFamily;
+      const subColor = s.customTextColor ? textSub : '#64748B';
       ctx.textAlign = 'center';
-      if (polarText) ctx.fillText(polarText, W / 2, textCenterY);
-      if (s.customShowDate) { ctx.fillStyle = s.customTextColor ? textSub : '#64748B'; ctx.font = '20px ' + fontFamily; ctx.fillText(dateStr, W / 2, textCenterY + (polarText ? 34 : 0)); }
+      const areaTop = pad + photoS, areaH = H - areaTop;
+      if (isSquare) {
+        const textCenterY = areaTop + areaH / 2 + 10;
+        ctx.fillStyle = polarTextColor; ctx.font = 'bold 36px ' + fontFamily;
+        if (polarText) ctx.fillText(this._truncText(ctx, polarText, W - pad * 2), W / 2, textCenterY);
+        if (s.customShowDate) { ctx.fillStyle = subColor; ctx.font = '20px ' + fontFamily; ctx.fillText(dateStr, W / 2, textCenterY + (polarText ? 34 : 0)); }
+      } else {
+        // 넓은 아래 여백: 큰 글자(이름·문구) → 날짜 → 매장명(작게, 맨 아래)
+        const lines = [];
+        if (polarText) lines.push({ t: polarText, font: 'bold 64px ' + fontFamily, color: polarTextColor, h: 76 });
+        if (s.customShowDate) lines.push({ t: dateStr, font: '28px ' + fontFamily, color: subColor, h: 44 });
+        const shopH = s.customShowShop ? 50 : 0;
+        const blockH = lines.reduce((sum, l) => sum + l.h, 0);
+        let y = areaTop + Math.max(40, (areaH - shopH - blockH) / 2) + 52;
+        lines.forEach(l => {
+          ctx.fillStyle = l.color; ctx.font = l.font;
+          let txt = l.t;
+          while (ctx.measureText(txt).width > W - pad * 2 && txt.length > 1) txt = txt.slice(0, -1);
+          ctx.fillText(txt === l.t ? txt : txt + '…', W / 2, y);
+          y += l.h;
+        });
+        if (s.customShowShop) {
+          if (_logoImg && _logoPos !== 'none') { const lh = 40 * _logoSizeMul, lw = _logoImg.width * (lh / _logoImg.height); ctx.drawImage(_logoImg, (W - lw) / 2, H - 40 - lh, lw, lh); }
+          else if (!_logoImg) { ctx.fillStyle = mainColor; ctx.font = 'bold 26px ' + fontFamily; ctx.fillText(shopName, W / 2, H - 46); }
+        }
+      }
     }
 
     // ===== Layout E: polaroid (폴라로이드) =====
@@ -3696,7 +3713,7 @@ App.pages.records = {
       // 아래 글자 자리를 먼저 잡고 남은 높이만 사진에 준다 — 예전엔 사진(1333px)이 카드(1350px) 밖으로 나가
       // 반려견 이름·날짜·헤드라인이 카드 밖에 그려져 보이지 않았다
       const _textH = 50 + (s.headline ? 44 : 0) + (s.subline ? 32 : 0) + (s.customShowPet ? 40 : 0)
-        + (serviceNames && s.customShowPet ? 35 : 0) + (s.customShowDate ? 30 : 0);
+        + (_svcLine ? 35 : 0) + (s.customShowDate ? 30 : 0) + (_nvLine ? 30 : 0);
       const photoH = Math.min(Math.round(photoW * 4 / 3), H - photoY - _textH - 30);
       if (layout === 'feed4') {
         _drawGrid4(ctx, [imgBefore, imgAfter, img3, img4], photoPad, photoY, photoW, photoH, 16, 18);
@@ -3711,8 +3728,8 @@ App.pages.records = {
       // 하단 정보 (헤드라인·서브 + 기존 정보)
       const ftY = photoY + photoH + 30;
       const _hasHeadline = !!s.headline, _hasSubline = !!s.subline;
-      const _extraH = (_hasHeadline ? 50 : 0) + (_hasSubline ? 36 : 0);
-      const hasFeedText = s.customShowPet || s.customShowDate || _hasHeadline || _hasSubline;
+      const _extraH = (_hasHeadline ? 50 : 0) + (_hasSubline ? 36 : 0) + (_svcLine ? 35 : 0) + (_nvLine ? 30 : 0);
+      const hasFeedText = s.customShowPet || s.customShowDate || _hasHeadline || _hasSubline || _svcLine || _nvLine;
       if (hasFeedText && _useTextBox) {
         ctx.fillStyle = 'rgba(255,255,255,0.85)';
         this._roundRect(ctx, 40, ftY - 10, W - 80, 120 + _extraH, 14); ctx.fill();
@@ -3721,8 +3738,9 @@ App.pages.records = {
       if (_hasHeadline) { ctx.fillStyle = textColor; ctx.font = 'bold 38px ' + fontFamily; ctx.fillText(s.headline, W / 2, _fty); _fty += 44; }
       if (_hasSubline) { ctx.fillStyle = textSub; ctx.font = '26px ' + fontFamily; ctx.fillText(s.subline, W / 2, _fty); _fty += 32; }
       if (s.customShowPet) { ctx.fillStyle = textColor; ctx.font = 'bold 42px ' + fontFamily; ctx.fillText(petName, W / 2, _fty); _fty += 40; }
-      if (serviceNames && s.customShowPet) { ctx.fillStyle = textSub; ctx.font = '28px ' + fontFamily; ctx.fillText(serviceNames, W / 2, _fty); _fty += 35; }
-      if (s.customShowDate) { ctx.fillStyle = textSub; ctx.font = '24px ' + fontFamily; ctx.fillText(dateStr, W / 2, _fty); }
+      if (_svcLine) { ctx.fillStyle = textSub; ctx.font = '28px ' + fontFamily; ctx.fillText(_svcLine, W / 2, _fty); _fty += 35; }
+      if (s.customShowDate) { ctx.fillStyle = textSub; ctx.font = '24px ' + fontFamily; ctx.fillText(dateStr, W / 2, _fty); _fty += 30; }
+      if (_nvLine) { ctx.fillStyle = mainColor; ctx.font = 'bold 24px ' + fontFamily; ctx.fillText(_nvLine, W / 2, _fty); }
     }
 
     // ===== 인스타 스토리 (9:16) =====
@@ -3753,7 +3771,7 @@ App.pages.records = {
       if (layout === 'story4') {
         // 아래 글자·매장명 자리를 빼고 남은 높이를 모두 사진에 (칸 하나가 세로로 긴 2:3 정도)
         const _sTextH = 60 + (s.headline ? 56 : 0) + (s.subline ? 40 : 0) + (s.customShowPet ? 45 : 0)
-          + (serviceNames && s.customShowPet ? 40 : 0) + (s.customShowDate ? 36 : 0);
+          + (_svcLine ? 40 : 0) + (s.customShowDate ? 36 : 0) + (_nvLine ? 36 : 0);
         photoH = H - photoY - _sTextH - (s.customShowShop ? 200 : 80);
         _drawGrid4(ctx, [imgBefore, imgAfter, img3, img4], photoPad, photoY, photoW, photoH, 18, 22);
       } else {
@@ -3767,8 +3785,8 @@ App.pages.records = {
       // 반려견 정보 (헤드라인·서브 + 기존)
       const infoY = photoY + photoH + 50;
       const _sHasHl = !!s.headline, _sHasSub = !!s.subline;
-      const _sExtraH = (_sHasHl ? 56 : 0) + (_sHasSub ? 40 : 0);
-      const hasStoryText = s.customShowPet || s.customShowDate || _sHasHl || _sHasSub;
+      const _sExtraH = (_sHasHl ? 56 : 0) + (_sHasSub ? 40 : 0) + (_svcLine ? 40 : 0) + (_nvLine ? 36 : 0);
+      const hasStoryText = s.customShowPet || s.customShowDate || _sHasHl || _sHasSub || _svcLine || _nvLine;
       if (hasStoryText && _useTextBox) {
         ctx.fillStyle = 'rgba(255,255,255,0.85)';
         this._roundRect(ctx, 60, infoY - 10, W - 120, 160 + _sExtraH, 16); ctx.fill();
@@ -3777,8 +3795,9 @@ App.pages.records = {
       if (_sHasHl) { ctx.fillStyle = textColor; ctx.font = 'bold 44px ' + fontFamily; ctx.fillText(s.headline, W / 2, _sty); _sty += 50; }
       if (_sHasSub) { ctx.fillStyle = textSub; ctx.font = '30px ' + fontFamily; ctx.fillText(s.subline, W / 2, _sty); _sty += 36; }
       if (s.customShowPet) { ctx.fillStyle = textColor; ctx.font = 'bold 48px ' + fontFamily; ctx.fillText(petName, W / 2, _sty); _sty += 45; }
-      if (serviceNames && s.customShowPet) { ctx.fillStyle = textSub; ctx.font = '32px ' + fontFamily; ctx.fillText(serviceNames, W / 2, _sty); _sty += 40; }
-      if (s.customShowDate) { ctx.fillStyle = textSub; ctx.font = '28px ' + fontFamily; ctx.fillText(dateStr, W / 2, _sty); }
+      if (_svcLine) { ctx.fillStyle = textSub; ctx.font = '32px ' + fontFamily; ctx.fillText(_svcLine, W / 2, _sty); _sty += 40; }
+      if (s.customShowDate) { ctx.fillStyle = textSub; ctx.font = '28px ' + fontFamily; ctx.fillText(dateStr, W / 2, _sty); _sty += 36; }
+      if (_nvLine) { ctx.fillStyle = mainColor; ctx.font = 'bold 28px ' + fontFamily; ctx.fillText(_nvLine, W / 2, _sty); }
 
       // 하단 브랜딩
       if (s.customShowShop) {
@@ -3868,6 +3887,18 @@ App.pages.records = {
     gaegu: { name: '개구 손글씨', family: 'Gaegu', css: 'Gaegu:wght@400;700' },
     nanumpen: { name: '나눔펜', family: 'Nanum Pen Script', css: 'Nanum+Pen+Script' },
     batang: { name: '고운바탕', family: 'Gowun Batang', css: 'Gowun+Batang:wght@400;700' },
+    // 2026-11-10 추가 — 모두 Google Fonts(OFL, 홍보물·상업 이용 가능)
+    gamja: { name: '감자꽃', family: 'Gamja Flower', css: 'Gamja+Flower' },
+    himelody: { name: '하이멜로디', family: 'Hi Melody', css: 'Hi+Melody' },
+    singleday: { name: '싱글데이', family: 'Single Day', css: 'Single+Day' },
+    dongle: { name: '동글', family: 'Dongle', css: 'Dongle:wght@400;700' },
+    bagel: { name: '베이글', family: 'Bagel Fat One', css: 'Bagel+Fat+One' },
+    blackhan: { name: '검은고딕', family: 'Black Han Sans', css: 'Black+Han+Sans' },
+    gasoek: { name: '가석', family: 'Gasoek One', css: 'Gasoek+One' },
+    orbit: { name: '오르빛', family: 'Orbit', css: 'Orbit' },
+    yeonsung: { name: '연성', family: 'Yeon Sung', css: 'Yeon+Sung' },
+    brush: { name: '나눔붓', family: 'Nanum Brush Script', css: 'Nanum+Brush+Script' },
+    dokdo: { name: '독도', family: 'Dokdo', css: 'Dokdo' },
     // 페이퍼로지 — Google Fonts 에 없어 눈누(jsDelivr) 글꼴 파일을 직접 붙인다
     paperlogy: { name: '페이퍼로지', family: 'Paperlogy', faces: [
       { weight: '400', url: 'https://cdn.jsdelivr.net/gh/projectnoonnu/2408-3@1.0/Paperlogy-4Regular.woff2' },
@@ -3888,11 +3919,30 @@ App.pages.records = {
   },
   MAX_CUSTOM_STICKERS: 24,
   // 글자 스티커 모양
+  // 글자 모양 (인스타 글자처럼) — 색은 아래 팔레트에서 따로 고른다. 예전 pink·dark 는 라벨+그 색으로 그린다
   _TEXT_STICKER_STYLES: {
+    plain: { name: '글자만' },
+    outline: { name: '테두리' },
+    box: { name: '배경 상자' },
+    glass: { name: '반투명' },
     bubble: { name: '말풍선' },
-    pink: { name: '분홍 라벨' },
-    dark: { name: '검정 라벨' },
-    outline: { name: '글자만' }
+    label: { name: '라벨' },
+    neon: { name: '네온' }
+  },
+  _TEXT_COLORS: ['#FFFFFF', '#1F2937', '#FF6B9A', '#F43F5E', '#FB923C', '#FACC15', '#34D399', '#38BDF8', '#6366F1', '#A78BFA', '#8B5E3C', '#F5E6D3'],
+  // 글자 모양 → 기본 색 (색을 안 고른 예전 글자 스티커)
+  _textStickerDefaults(style, color) {
+    if (style === 'pink') return { style: 'label', color: color || '#FF6B9A' };
+    if (style === 'dark') return { style: 'label', color: color || '#1F2937' };
+    const st = this._TEXT_STICKER_STYLES[style] ? style : 'bubble';
+    return { style: st, color: color || ((st === 'outline' || st === 'plain') ? '#1F2937' : '#FFFFFF') };
+  },
+  // 배경색이 밝으면 진한 글자, 어두우면 흰 글자
+  _isLightColor(hex) {
+    const c = String(hex || '').replace('#', '');
+    if (c.length < 6) return true;
+    const r = parseInt(c.slice(0, 2), 16), g = parseInt(c.slice(2, 4), 16), b = parseInt(c.slice(4, 6), 16);
+    return (0.299 * r + 0.587 * g + 0.114 * b) / 255 > 0.62;
   },
 
   _cardFontStack(key) {
@@ -4052,6 +4102,78 @@ App.pages.records = {
     });
     return holes;
   },
+  // 흰 네모 칸 찾기 (챗GPT 프레임처럼 사진 자리가 흰 네모로 비어 있는 그림) — data: RGBA 화소, w·h: 크기
+  // 그림 가장자리에 닿은 흰 곳(흰 바탕)은 칸이 아니다. 네모에 가깝고(채움 85% 이상) 충분히 큰 곳만.
+  // 돌려주는 값: [{ minX, minY, maxX, maxY, seed }] (seed: 그 칸 안의 흰 점 하나, 화소 번호)
+  _findWhiteBoxes(data, w, h) {
+    const white = (i) => data[i * 4 + 3] > 200 && data[i * 4] >= 238 && data[i * 4 + 1] >= 238 && data[i * 4 + 2] >= 238;
+    const seen = new Uint8Array(w * h);
+    const out = [];
+    const stack = [];
+    for (let start = 0; start < w * h; start++) {
+      if (seen[start] || !white(start)) continue;
+      let minX = w, maxX = -1, minY = h, maxY = -1, count = 0, edge = false;
+      seen[start] = 1; stack.push(start);
+      while (stack.length) {
+        const i = stack.pop();
+        const px = i % w, py = (i - px) / w;
+        count++;
+        if (px < minX) minX = px; if (px > maxX) maxX = px;
+        if (py < minY) minY = py; if (py > maxY) maxY = py;
+        if (px === 0 || py === 0 || px === w - 1 || py === h - 1) edge = true;
+        const nb = [px > 0 ? i - 1 : -1, px < w - 1 ? i + 1 : -1, py > 0 ? i - w : -1, py < h - 1 ? i + w : -1];
+        for (const j of nb) if (j >= 0 && !seen[j] && white(j)) { seen[j] = 1; stack.push(j); }
+      }
+      const bw = maxX - minX + 1, bh = maxY - minY + 1;
+      if (edge || count < w * h * 0.01 || bw < w * 0.08 || bh < h * 0.03 || count < bw * bh * 0.85) continue;
+      out.push({ minX, minY, maxX, maxY, seed: start });
+    }
+    return out.slice(0, 8);
+  },
+  // 흰 네모 칸을 투명하게 뚫은 새 그림을 만든다 → { image, count } (칸이 없으면 count 0)
+  async _whiteBoxesToHoles(src) {
+    const img = await this._loadImg(src, true);
+    if (!img || !img.width) return { image: src, count: 0 };
+    const w = img.width, h = img.height;
+    const c = document.createElement('canvas'); c.width = w; c.height = h;
+    const x = c.getContext('2d', { willReadFrequently: true });
+    x.drawImage(img, 0, 0);
+    let count = 0;
+    try {
+      const d = x.getImageData(0, 0, w, h);
+      const px = d.data;
+      const boxes = this._findWhiteBoxes(px, w, h);
+      const isWhite = (i) => px[i * 4 + 3] > 200 && px[i * 4] >= 238 && px[i * 4 + 1] >= 238 && px[i * 4 + 2] >= 238;
+      const light = (i) => px[i * 4] >= 205 && px[i * 4 + 1] >= 205 && px[i * 4 + 2] >= 205;
+      const clear = new Uint8Array(w * h);
+      for (const b of boxes) {
+        // 그 칸의 흰 부분만 지운다 (칸에 걸친 캐릭터·글자는 남는다)
+        const stack = [b.seed]; clear[b.seed] = 1;
+        while (stack.length) {
+          const i = stack.pop();
+          const qx = i % w, qy = (i - qx) / w;
+          const nb = [qx > 0 ? i - 1 : -1, qx < w - 1 ? i + 1 : -1, qy > 0 ? i - w : -1, qy < h - 1 ? i + w : -1];
+          for (const j of nb) if (j >= 0 && !clear[j] && isWhite(j)) { clear[j] = 1; stack.push(j); }
+        }
+        count++;
+      }
+      if (count) {
+        // 테두리에 남는 옅은 회색 한 줄(번짐)도 함께 지운다
+        const extra = [];
+        for (let i = 0; i < w * h; i++) {
+          if (clear[i]) continue;
+          const qx = i % w;
+          if (((qx > 0 && clear[i - 1]) || (qx < w - 1 && clear[i + 1]) || (i >= w && clear[i - w]) || (i + w < w * h && clear[i + w])) && light(i)) extra.push(i);
+        }
+        extra.forEach(i => { clear[i] = 1; });
+        for (let i = 0; i < w * h; i++) if (clear[i]) px[i * 4 + 3] = 0;
+        x.putImageData(d, 0, 0);
+      }
+    } catch (e) { console.warn('흰 칸 바꾸기 실패:', e); count = 0; }
+    const image = count ? c.toDataURL('image/png') : src;
+    c.width = c.height = 0;
+    return { image, count };
+  },
   // 프레임 그림에서 사진 칸을 찾는다 → { holes, fw, fh } (JPG 처럼 투명한 곳이 없으면 holes 는 빈 배열)
   async _detectFrameHoles(src) {
     const img = await this._loadImg(src, true);
@@ -4096,6 +4218,33 @@ App.pages.records = {
         c.width = c.height = 0;
       } catch (_) { el.style.backgroundImage = ''; }
     });
+  },
+  // 틀마다 '자동으로 넣는 정보'가 들어가는 자리 — 없는 것은 흐리게 하고 알려 준다 (예전엔 켜도 안 나와 헷갈렸다)
+  _TEXT_SUPPORT: {
+    photobooth: ['pet', 'date', 'shop'],
+    strip2: ['pet', 'date', 'shop', 'service', 'nextvisit'],
+    single: ['pet', 'date', 'shop'],
+    feed: ['pet', 'date', 'shop', 'service', 'nextvisit'],
+    story: ['pet', 'date', 'shop', 'service', 'nextvisit']
+  },
+  _updateTextSupport(f) {
+    const frameMode = !!(f.settings && Array.isArray(f.settings.frameHoles) && f.settings.frameHoles.length);
+    let ok = frameMode ? [] : (this._TEXT_SUPPORT[f.layout] || ['pet', 'date', 'shop']);
+    if (!frameMode && f.layout === 'single' && f.settings && f.settings.polaroidShape === 'square') ok = ['pet', 'date'];
+    const names = { pet: '반려견 이름', date: '날짜', shop: '매장명', service: '서비스명', nextvisit: '다음 방문일' };
+    const off = [];
+    Object.keys(names).forEach(k => {
+      const el = document.getElementById('card-show-' + k);
+      if (!el) return;
+      const on = ok.includes(k);
+      el.disabled = !on;
+      el.closest('label')?.classList.toggle('unsupported', !on);
+      if (!on) off.push(names[k]);
+    });
+    const hint = document.getElementById('card-text-support');
+    if (hint) hint.textContent = frameMode
+      ? '내 프레임은 정보를 넣지 않아요 — 위 \'글자 넣기\'로 원하는 자리에 넣으세요.'
+      : (off.length ? `이 틀에는 ${off.join('·')} 자리가 없어요 — 필요하면 위 '글자 넣기'로 넣으세요.` : '다음 방문일을 넣으면 손님이 다시 예약하기 쉬워요.');
   },
   _cardPhotoCount(f) {
     const holes = f && f.settings && f.settings.frameHoles;
@@ -4180,6 +4329,61 @@ App.pages.records = {
     });
   },
 
+  // 사진 파일 하나 → 줄인 dataURL (못 읽으면 null)
+  _readCardPhotoFile(file) {
+    return new Promise(resolve => {
+      const reader = new FileReader();
+      reader.onload = (ev) => App.resizeImage(ev.target.result, (compressed) => resolve(compressed || null), 1200, 0.85); // 카드 출력(1080px) 대응
+      reader.onerror = () => resolve(null);
+      reader.readAsDataURL(file);
+    });
+  },
+  // 여러 장 넣기: startSlot 칸 → 그 뒤 빈 칸 → 앞쪽 빈 칸 순서 (최대 4장). startSlot 이 없으면 빈 칸부터
+  // replaceFirst: 앞 칸 n개를 새 사진으로 바꾼다 (사진을 다 읽은 뒤에 비워서, 못 읽으면 원래 사진이 남는다)
+  async _addCardPhotos(files, startSlot, replaceFirst = 0) {
+    if (replaceFirst) {
+      const datas = [];
+      for (const fl of files.slice(0, 4)) { const d = await this._readCardPhotoFile(fl); if (d) datas.push(d); }
+      if (!datas.length) { App.showToast('사진을 읽지 못했어요. 다른 사진(JPG·PNG)을 골라 주세요.', 'error'); return; }
+      for (let k = 0; k < 4; k++) {
+        if (k >= replaceFirst && k >= datas.length) continue; // 나머지 칸은 그대로
+        const d = datas[k] || null;
+        this._cardPhotos[k] = d;
+        this._cardPhotoMeta[k] = { offsetX: 0, offsetY: 0, zoom: 1.0 };
+        if (this._cardUserPicked) this._cardUserPicked[k] = !!d;
+        this._refreshPhotoPreview(k); this._resetPhotoSliders(k);
+        const ctl = document.getElementById(`card-photo-controls-${k}`); if (ctl) ctl.style.display = 'none';
+        const adj = document.getElementById(`card-adjust-${k}`); if (adj) adj.hidden = !d;
+      }
+      if (files.length > 4) App.showToast('사진은 4장까지라 앞 4장만 넣었어요.', 'info');
+      this._scheduleCardPreview();
+      return;
+    }
+    const photos = this._cardPhotos || (this._cardPhotos = [null, null, null, null]);
+    const order = [];
+    if (startSlot != null) order.push(startSlot);
+    for (let k = 0; k < 4; k++) if (!order.includes(k) && !photos[k] && k > (startSlot ?? -1)) order.push(k);
+    for (let k = 0; k < 4; k++) if (!order.includes(k) && !photos[k]) order.push(k);
+    const list = files.slice(0, order.length);
+    if (files.length > order.length) App.showToast(`넣을 수 있는 칸이 ${order.length}개라 앞 ${order.length}장만 넣었어요.`, 'info');
+    let bad = 0;
+    for (let n = 0; n < list.length; n++) {
+      const data = await this._readCardPhotoFile(list[n]);
+      if (!data) { bad++; continue; }
+      const slot = order[n];
+      this._cardPhotos[slot] = data;
+      this._cardPhotoMeta[slot] = { offsetX: 0, offsetY: 0, zoom: 1.0 };
+      if (this._cardUserPicked) this._cardUserPicked[slot] = true;
+      this._refreshPhotoPreview(slot);
+      this._resetPhotoSliders(slot);
+      const adj = document.getElementById(`card-adjust-${slot}`);
+      if (adj) adj.hidden = false;
+    }
+    // HEIC 등 읽을 수 없는 사진은 빈 칸으로 조용히 남지 않게 알린다
+    if (bad) App.showToast(`${bad}장은 읽지 못했어요. 다른 사진(JPG·PNG)을 골라 주세요.`, 'error');
+    this._scheduleCardPreview();
+  },
+
   _renderPhotoSlots(count) {
     const container = document.getElementById('card-photo-slots');
     if (!container) return;
@@ -4199,7 +4403,7 @@ App.pages.records = {
     // 작은 칸 4개를 한 줄로 (예전 2×2 큰 칸은 사진만으로 화면 하나를 썼다)
     container.innerHTML = Array.from({ length: count }, (_, i) => `
       <div class="card-slot">
-        <input type="file" id="card-photo-${i}" accept="image/*" style="display:none">
+        <input type="file" id="card-photo-${i}" accept="image/*" multiple style="display:none">
         <div id="card-preview-${i}" class="card-slot-tile" role="button" aria-label="${i + 1}번 사진 고르기" onclick="document.getElementById('card-photo-${i}').click()">${App.icon('camera')}</div>
         <button type="button" class="card-slot-remove" data-slot="${i}" aria-label="${i + 1}번 사진 빼기" hidden>×</button>
         <!-- 위치·확대 조정은 필요할 때만 펼친다 (사진마다 슬라이더 3개가 늘 펼쳐져 창이 길었다) -->
@@ -4226,27 +4430,12 @@ App.pages.records = {
       </div>
     `).join('');
 
-    // 파일 선택 핸들러
+    // 파일 선택 핸들러 — 한 칸에서 여러 장을 고르면 그 칸부터 빈 칸 순서로 채운다
     for (let i = 0; i < count; i++) {
-      document.getElementById(`card-photo-${i}`)?.addEventListener('change', (e) => {
-        const file = e.target.files[0];
-        if (!file) return;
-        const reader = new FileReader();
-        reader.onload = (ev) => {
-          App.resizeImage(ev.target.result, (compressed) => {
-            // HEIC 등 읽을 수 없는 사진은 빈 칸으로 조용히 남지 않게 알린다
-            if (!compressed) { App.showToast('사진을 읽지 못했습니다. 다른 사진(JPG·PNG)을 골라 주세요.', 'error'); e.target.value = ''; return; }
-            this._cardPhotos[i] = compressed;
-            this._cardPhotoMeta[i] = { offsetX: 0, offsetY: 0, zoom: 1.0 };
-            if (this._cardUserPicked) this._cardUserPicked[i] = true;
-            this._refreshPhotoPreview(i);
-            this._resetPhotoSliders(i);
-            const adj = document.getElementById(`card-adjust-${i}`);
-            if (adj) adj.hidden = false;
-            this._scheduleCardPreview();
-          }, 1200, 0.85); // 카드 출력(1080px) 대응
-        };
-        reader.readAsDataURL(file);
+      document.getElementById(`card-photo-${i}`)?.addEventListener('change', async (e) => {
+        const files = [...(e.target.files || [])];
+        e.target.value = '';
+        if (files.length) await this._addCardPhotos(files, i);
       });
     }
 
@@ -4444,26 +4633,136 @@ App.pages.records = {
     const edit = document.getElementById('card-sticker-edit');
     const sel = list[this._stickerSel];
     // 편집 막대는 미리보기 바로 아래 — 스티커 탭에서 고른 동안만 (다른 탭에선 미리보기만 보이게)
-    const onStickerTab = this._cardTab === 'sticker';
+    const onStickerTab = this._cardTab === 'sticker' || this._cardTab === 'text';
     if (edit) edit.hidden = !sel || !onStickerTab;
     const hint = document.getElementById('card-sticker-hint');
     if (hint) hint.hidden = !!sel || !onStickerTab || !list.length || layer.hidden;
     // 스티커를 고른 동안은 미리보기를 크게 (작은 화면에서 손가락으로 옮기기 쉽게)
+    // 글자 탭에서는 아래 고르는 칸(모양·색·글꼴)이 보여야 해 키우지 않는다
     layer.closest('.card-live')?.classList.toggle('sticker-editing', !!sel && this._cardTab === 'sticker');
     if (sel) {
       const sz = document.getElementById('card-sticker-size'); if (sz) sz.value = Math.round(sel.size * 100);
       const rt = document.getElementById('card-sticker-rot'); if (rt) rt.value = sel.rot;
     }
-    // 글자 스티커를 고르면 글자·모양을 바로 고칠 수 있게
-    const tEdit = document.getElementById('card-sticker-textedit');
-    if (tEdit) {
-      tEdit.hidden = !(sel && sel.text != null);
-      if (sel && sel.text != null) {
-        const ti = document.getElementById('card-sticker-edittext');
-        if (ti && document.activeElement !== ti) ti.value = sel.text;
-        tEdit.querySelectorAll('[data-tstyle]').forEach(b => b.classList.toggle('active', b.dataset.tstyle === sel.style));
-      }
-    }
+    this._syncTextMaker();
+  },
+
+  // ===== 글자 넣기 (글자 탭) =====
+  // 글자 스티커를 고르면 그 글자를 고치고, 안 고르면 새로 붙일 글자를 준비한다. 마지막 모양·색·글꼴은 기억한다
+  _textLast() {
+    let v = {};
+    try { v = JSON.parse(localStorage.getItem('cardTextLast') || '{}') || {}; } catch (_) {}
+    return { style: this._TEXT_STICKER_STYLES[v.style] ? v.style : 'box', color: v.color || '#FFFFFF', fontKey: this._CARD_FONTS[v.fontKey] ? v.fontKey : null };
+  },
+  _saveTextLast(v) { try { localStorage.setItem('cardTextLast', JSON.stringify(v)); } catch (_) {} },
+  _textSelected() {
+    const st = (this._cardStickers || [])[this._stickerSel];
+    return st && st.text != null ? st : null;
+  },
+  // 고른 글자(또는 준비 중인 값)를 글자 탭 칸에 보여 준다
+  _syncTextMaker() {
+    const box = document.getElementById('card-text-maker');
+    if (!box) return;
+    const st = this._textSelected();
+    const draft = this._textDraft || (this._textDraft = { text: '', ...this._textLast() });
+    const cur = st ? { text: st.text, ...this._textStickerDefaults(st.style, st.color), fontKey: st.fontKey || 'system' } : draft;
+    const fk = cur.fontKey || document.querySelector('#card-pick-font .card-font-btn.active')?.dataset.key || 'system';
+    const ti = document.getElementById('card-text-input');
+    if (ti && document.activeElement !== ti) ti.value = cur.text || '';
+    box.querySelectorAll('#card-text-styles [data-tstyle]').forEach(b => b.classList.toggle('active', b.dataset.tstyle === cur.style));
+    box.querySelectorAll('#card-text-colors [data-color]').forEach(b => b.classList.toggle('active', b.dataset.color.toLowerCase() === String(cur.color || '').toLowerCase()));
+    box.querySelectorAll('#card-text-fonts [data-key]').forEach(b => b.classList.toggle('active', b.dataset.key === fk));
+    const add = document.getElementById('card-text-add');
+    const ed = document.getElementById('card-text-editing');
+    if (add) add.hidden = !!st;
+    if (ed) ed.hidden = !st;
+  },
+  _bindTextMaker(needPhoto) {
+    const box = document.getElementById('card-text-maker');
+    if (!box) return;
+    this._textDraft = { text: '', ...this._textLast() };
+    const curFont = () => document.querySelector('#card-pick-font .card-font-btn.active')?.dataset.key || 'system';
+    let timer = null;
+    // 고른 글자에 바꾼 값을 입힌다 — 글자 길이가 바뀌어도 글자 크기는 그대로 (그림 가로에 맞춰 size 를 고친다)
+    const apply = async (patch, now) => {
+      const st = this._textSelected();
+      if (!st) { Object.assign(this._textDraft, patch); this._syncTextMaker(); return; }
+      Object.assign(st, patch);
+      const { style, color } = this._textStickerDefaults(st.style, st.color);
+      st.style = style; st.color = color;
+      this._saveTextLast({ style, color, fontKey: st.fontKey });
+      this._syncTextMaker();
+      clearTimeout(timer);
+      const run = async () => {
+        // 글꼴 받는 동안 다른 값을 또 고르면 늦게 끝난 옛 그림이 덮어쓰지 않게 — 마지막 요청만 반영
+        const my = st._rev = (st._rev || 0) + 1;
+        const r = await this._makeTextSticker(st.text, st.style, st.fontKey || curFont(), st.color);
+        if (my !== st._rev) return;
+        if (st.w) st.size = Math.max(0.06, Math.min(1.2, st.size * r.w / st.w));
+        st.src = r.src; st.w = r.w;
+        this._renderStickerLayer();
+      };
+      if (now) await run(); else timer = setTimeout(run, 250);
+    };
+    const ti = document.getElementById('card-text-input');
+    if (ti) ti.oninput = () => {
+      // 세 줄까지만
+      const v = ti.value.split('\n').slice(0, 3).join('\n');
+      if (v !== ti.value) ti.value = v;
+      if (this._textSelected()) { if (v.trim()) apply({ text: v }); }
+      else this._textDraft.text = v;
+    };
+    box.querySelector('#card-text-quick')?.addEventListener('click', (e) => {
+      const b = e.target.closest('.card-text-chip');
+      if (!b) return;
+      if (ti) ti.value = b.dataset.text;
+      if (this._textSelected()) apply({ text: b.dataset.text }, true);
+      else this._textDraft.text = b.dataset.text;
+    });
+    box.querySelector('#card-text-styles')?.addEventListener('click', (e) => {
+      const b = e.target.closest('[data-tstyle]'); if (!b) return;
+      apply({ style: b.dataset.tstyle }, true);
+      if (!this._textSelected()) this._saveTextLast({ ...this._textLast(), style: b.dataset.tstyle });
+    });
+    box.querySelector('#card-text-colors')?.addEventListener('click', (e) => {
+      const b = e.target.closest('[data-color]'); if (!b) return;
+      apply({ color: b.dataset.color }, true);
+      if (!this._textSelected()) this._saveTextLast({ ...this._textLast(), color: b.dataset.color });
+    });
+    Object.keys(this._CARD_FONTS).forEach(k => this._attachCardFontCss(k));
+    box.querySelector('#card-text-fonts')?.addEventListener('click', (e) => {
+      const b = e.target.closest('[data-key]'); if (!b) return;
+      apply({ fontKey: b.dataset.key }, true);
+      if (!this._textSelected()) this._saveTextLast({ ...this._textLast(), fontKey: b.dataset.key });
+    });
+    const add = document.getElementById('card-text-add');
+    if (add) add.onclick = async () => {
+      if (needPhoto && needPhoto()) return;
+      const d = this._textDraft;
+      const text = String((ti && ti.value) || d.text || '').trim();
+      if (!text) { App.showToast('글자를 먼저 써 주세요.', 'info'); ti?.focus(); return; }
+      const fontKey = d.fontKey || curFont();
+      add.disabled = true;
+      try {
+        const r = await this._makeTextSticker(text, d.style, fontKey, d.color);
+        // 글자 수에 맞춰 처음 크기를 정한다 (짧은 글자가 카드 반을 덮지 않게)
+        const size = Math.max(0.22, Math.min(0.82, 0.1 + r.chars * 0.05));
+        const n = (this._cardStickers || []).filter(x => x.text != null).length;
+        this._cardStickers.push({ text, style: d.style, color: d.color, fontKey, src: r.src, w: r.w, x: 0.5, y: Math.min(0.85, 0.3 + n * 0.12), size, rot: 0 });
+        this._stickerSel = this._cardStickers.length - 1;
+        this._saveTextLast({ style: d.style, color: d.color, fontKey });
+        this._textDraft.text = '';
+        this._renderStickerLayer();
+      } finally { add.disabled = false; }
+    };
+    const done = document.getElementById('card-text-done');
+    if (done) done.onclick = () => {
+      this._stickerSel = -1;
+      if (ti) ti.value = '';
+      this._textDraft.text = '';
+      this._renderStickerLayer();
+    };
+    this._syncTextMaker();
   },
 
   _renderCustomStickerButtons() {
@@ -4536,40 +4835,65 @@ App.pages.records = {
     return url;
   },
 
-  // 글자 스티커 그림 만들기 — 고른 글꼴로 그리고, 모양(말풍선·라벨·글자만)을 입힌다
-  async _makeTextSticker(text, style, fontKey) {
-    const t = String(text || '').trim() || '안녕';
-    if (fontKey && fontKey !== 'system') await this._ensureCardFont(fontKey, t);
-    const font = `bold 88px ${this._cardFontStack(fontKey)}`;
+  // 글자 스티커 그림 만들기 — 글꼴·모양·색으로 그린다 (세 줄까지). { src, w } 를 돌려준다 (w: 그림 가로, 고칠 때 글자 크기 유지용)
+  async _makeTextSticker(text, style0, fontKey, color0) {
+    const lines = String(text || '').split('\n').map(l => l.trim()).filter(Boolean).slice(0, 3);
+    if (!lines.length) lines.push('안녕');
+    const { style, color } = this._textStickerDefaults(style0, color0);
+    if (fontKey && fontKey !== 'system') await this._ensureCardFont(fontKey, lines.join(''));
+    const fs = 88, lh = Math.round(fs * 1.22);
+    const font = `bold ${fs}px ${this._cardFontStack(fontKey)}`;
     const m = document.createElement('canvas').getContext('2d');
     m.font = font;
-    const tw = Math.ceil(m.measureText(t).width);
-    const padX = 56, padY = 40, th = 96, tail = style === 'bubble' ? 34 : 0, edge = 12;
-    const W = tw + padX * 2 + edge * 2, H = th + padY * 2 + tail + edge * 2;
+    const ws = lines.map(l => Math.ceil(m.measureText(l).width));
+    const maxW = Math.max(...ws);
+    const padX = { plain: 24, outline: 32, neon: 50, box: 40, glass: 56, bubble: 56, label: 64 }[style] || 40;
+    const padY = { plain: 16, outline: 24, neon: 44, box: 14, glass: 34, bubble: 34, label: 28 }[style] || 24;
+    const tail = style === 'bubble' ? 40 : 0, edge = 18;
+    const W = maxW + padX * 2 + edge * 2, H = lines.length * lh + padY * 2 + tail + edge * 2;
     const c = document.createElement('canvas'); c.width = W; c.height = H;
     const x = c.getContext('2d');
-    x.font = font; x.textAlign = 'center'; x.textBaseline = 'middle';
-    const bx = edge, by = edge, bw = W - edge * 2, bh = H - edge * 2 - tail;
-    const cx = W / 2, cy = by + bh / 2 + 4;
-    if (style === 'outline') {
-      x.lineJoin = 'round'; x.lineWidth = 22; x.strokeStyle = '#FFFFFF'; x.strokeText(t, cx, cy);
-      x.fillStyle = '#1F2937'; x.fillText(t, cx, cy);
+    x.font = font; x.textAlign = 'center'; x.textBaseline = 'middle'; x.lineJoin = 'round';
+    const light = this._isLightColor(color);
+    const onColor = light ? '#1F2937' : '#FFFFFF';
+    const cx = W / 2;
+    const ly = (i) => edge + padY + lh * i + lh / 2 + 4;
+    const rgba = (hex, a) => { const h = hex.replace('#', ''); return `rgba(${parseInt(h.slice(0, 2), 16)},${parseInt(h.slice(2, 4), 16)},${parseInt(h.slice(4, 6), 16)},${a})`; };
+    const blockX = edge, blockY = edge, blockW = W - edge * 2, blockH = H - edge * 2 - tail;
+    const texts = (fill) => { x.fillStyle = fill; lines.forEach((l, i) => x.fillText(l, cx, ly(i))); };
+    if (style === 'plain') {
+      x.save(); x.shadowColor = 'rgba(0,0,0,0.28)'; x.shadowBlur = 10; x.shadowOffsetY = 3; texts(color); x.restore();
+    } else if (style === 'outline') {
+      x.lineWidth = 20; x.strokeStyle = light ? '#1F2937' : '#FFFFFF';
+      lines.forEach((l, i) => x.strokeText(l, cx, ly(i)));
+      texts(color);
+    } else if (style === 'neon') {
+      x.save(); x.shadowColor = color; x.shadowBlur = 30;
+      for (let k = 0; k < 3; k++) texts('#FFFFFF');
+      x.restore();
+      x.lineWidth = 3; x.strokeStyle = color; lines.forEach((l, i) => x.strokeText(l, cx, ly(i)));
+    } else if (style === 'box') {
+      // 줄마다 글자 길이에 맞춘 상자 (인스타 글자 배경)
+      x.fillStyle = color;
+      lines.forEach((l, i) => { const bw = ws[i] + padX * 2; this._roundRect(x, cx - bw / 2, ly(i) - lh / 2 - padY / 2 - 2, bw, lh + padY + 4, 22); x.fill(); });
+      texts(onColor);
+    } else if (style === 'glass') {
+      x.fillStyle = rgba(color, 0.62);
+      this._roundRect(x, blockX, blockY, blockW, blockH, 34); x.fill();
+      texts(onColor);
     } else {
-      const bg = style === 'pink' ? '#FF6B9A' : style === 'dark' ? '#1F2937' : '#FFFFFF';
-      x.save();
-      x.shadowColor = 'rgba(0,0,0,0.18)'; x.shadowBlur = 10; x.shadowOffsetY = 4;
-      x.fillStyle = bg;
-      this._roundRect(x, bx, by, bw, bh, Math.min(bh / 2, 60)); x.fill();
+      // bubble · label
+      x.save(); x.shadowColor = 'rgba(0,0,0,0.18)'; x.shadowBlur = 12; x.shadowOffsetY = 4; x.fillStyle = color;
+      this._roundRect(x, blockX, blockY, blockW, blockH, style === 'label' ? Math.min(blockH / 2, blockW / 2) : Math.min(blockH / 2, 60)); x.fill();
       if (style === 'bubble') { // 꼬리
-        x.beginPath(); x.moveTo(bx + bw * 0.22, by + bh - 2); x.lineTo(bx + bw * 0.16, by + bh + tail); x.lineTo(bx + bw * 0.36, by + bh - 2); x.closePath(); x.fill();
+        x.beginPath(); x.moveTo(blockX + blockW * 0.22, blockY + blockH - 2); x.lineTo(blockX + blockW * 0.16, blockY + blockH + tail); x.lineTo(blockX + blockW * 0.36, blockY + blockH - 2); x.closePath(); x.fill();
       }
       x.restore();
-      x.fillStyle = style === 'bubble' ? '#1F2937' : '#FFFFFF';
-      x.fillText(t, cx, cy);
+      texts(onColor);
     }
-    const url = c.toDataURL('image/png');
+    const src = c.toDataURL('image/png');
     c.width = c.height = 0;
-    return url;
+    return { src, w: W, chars: Math.max(...lines.map(l => [...l].length)) };
   },
 
   // 올린 그림을 스티커로 다듬는다: 테두리가 한 가지 색이면 그 배경을 지우고(ChatGPT 의 흰 배경 등), 빈 여백을 잘라 400px 이하로
@@ -4642,8 +4966,9 @@ App.pages.records = {
         return;
       }
       if (e.target.closest('#card-sticker-text')) {
-        const tf = document.getElementById('card-sticker-textform');
-        if (tf) { tf.hidden = !tf.hidden; if (!tf.hidden) document.getElementById('card-sticker-textinput')?.focus(); }
+        // 글자는 '글자' 탭에서 (모양·색·글꼴을 한곳에서)
+        document.querySelector('.card-tab[data-tab="text"]')?.click();
+        setTimeout(() => document.getElementById('card-text-input')?.focus(), 50);
         return;
       }
       const btn = e.target.closest('.card-sticker-btn');
@@ -4718,34 +5043,7 @@ App.pages.records = {
         } catch (err) { console.warn('로고 스티커 실패:', err); App.showToast('로고 스티커를 만들지 못했어요.', 'error'); }
       };
     });
-    // 글자 스티커 붙이기
-    const tAdd = document.getElementById('card-sticker-textadd');
-    if (tAdd) tAdd.onclick = async () => {
-      if (needPhoto()) return;
-      const text = (document.getElementById('card-sticker-textinput')?.value || '').trim();
-      if (!text) { App.showToast('글자를 입력해주세요.', 'error'); return; }
-      const style = document.querySelector('#card-sticker-textform [data-tstyle].active')?.dataset.tstyle || 'bubble';
-      const fontKey = curFont();
-      const src = await this._makeTextSticker(text, style, fontKey);
-      this._cardStickers.push({ text, style, fontKey, src, x: 0.5, y: 0.3, size: 0.5, rot: 0 });
-      this._stickerSel = this._cardStickers.length - 1;
-      document.getElementById('card-sticker-textform').hidden = true;
-      this._renderStickerLayer();
-    };
-    document.querySelectorAll('#card-sticker-textform [data-tstyle]').forEach(b => {
-      b.onclick = () => { document.querySelectorAll('#card-sticker-textform [data-tstyle]').forEach(x => x.classList.remove('active')); b.classList.add('active'); };
-    });
-    // 고른 글자 스티커 고치기 (글자·모양)
-    const reText = async (patch) => {
-      const st = this._cardStickers[this._stickerSel];
-      if (!st || st.text == null) return;
-      Object.assign(st, patch);
-      st.src = await this._makeTextSticker(st.text, st.style, st.fontKey || curFont());
-      this._renderStickerLayer();
-    };
-    const et = document.getElementById('card-sticker-edittext');
-    if (et) et.onchange = () => { if (et.value.trim()) reText({ text: et.value.trim() }); };
-    document.querySelectorAll('#card-sticker-textedit [data-tstyle]').forEach(b => { b.onclick = () => reText({ style: b.dataset.tstyle }); });
+    this._bindTextMaker(needPhoto);
     // 끌어서 옮기기 — 손가락을 댄 지점과 스티커 가운데의 차이를 유지한다
     let drag = null;
     layer.onpointerdown = (e) => {
@@ -4806,6 +5104,7 @@ App.pages.records = {
     this._autoCardLayout((this._cardPhotos || []).filter(Boolean).length);
     const f = await this._readCardForm(this._cardPetName || '');
     const count = this._cardPhotoCount(f);
+    this._updateTextSupport(f);
     const nAll = (this._cardPhotos || []).filter(Boolean).length;
     this._markLayoutRecs(nAll);
     const photos = (this._cardPhotos || []).slice(0, count);
@@ -4934,6 +5233,7 @@ App.pages.records = {
       frameSize: theme === 'custom' && ds.customOverlayImage ? (ds.frameSize || null) : null,
       photoFilter: this._CARD_FILTERS[ds.photoFilter] ? ds.photoFilter : 'none',
       fontKey: this._CARD_FONTS[ds.fontKey] ? ds.fontKey : 'system',
+      polaroidShape: ds.polaroidShape === 'square' ? 'square' : 'classic',
       // 그리기 코드는 customShow* 이름을 쓰지만 이제 모든 테마에 적용된다 (예전 커스텀 전용 값은 이어받는다)
       customShowPet: (ds.showPet ?? ds.customShowPet) !== false,
       customShowDate: (ds.showDate ?? ds.customShowDate) !== false,
@@ -4979,7 +5279,7 @@ App.pages.records = {
     settings.showService = document.getElementById('card-show-service')?.checked || false;
     settings.showNextVisit = document.getElementById('card-show-nextvisit')?.checked || false;
     // 폴라로이드 사진 크기 (모던/미니멀)
-    settings.polaroidSize = document.querySelector('input[name="polaroidSize"]:checked')?.value || 'modern';
+    settings.polaroidShape = document.querySelector('#polaroid-options .card-tstyle-btn.active')?.dataset.shape || settings.polaroidShape || 'classic';
     // 사용자 프레임 선택 시 settings에 프레임 데이터 반영
     if (appliedFrameId && this._appliedFrame) {
       // 프레임 방식: 'overlay' 는 사진 위에 덮고, 그 밖(예전 프레임 포함)은 사진 뒤 배경
@@ -5118,19 +5418,14 @@ App.pages.records = {
           <div class="card-live-stage">
             <img id="card-live-img" alt="사진 카드 미리보기" hidden>
             <div id="card-sticker-layer" class="card-sticker-layer" hidden></div>
+            <button type="button" class="card-live-zoom" id="card-live-zoom" aria-label="크게 보기" title="크게 보기">⤢</button>
           </div>
           <div id="card-live-empty" class="card-live-empty">${App.icon('image')} 사진을 고르면 여기에 미리 보여요</div>
           <div id="card-live-note" class="card-live-note" hidden></div>
           <!-- 스티커를 고르면 크기·회전·삭제를 미리보기 바로 아래에 (예전엔 패널 맨 아래라 아래 고정 버튼에 가려 안 보였다) -->
           <div id="card-sticker-hint" class="card-sticker-hint" hidden>스티커를 눌러 크기·회전 조절</div>
           <div id="card-sticker-edit" class="card-sticker-edit" hidden>
-            <div id="card-sticker-textedit" class="card-sticker-textedit" hidden>
-              <input type="text" id="card-sticker-edittext" maxlength="24" aria-label="글자 고치기">
-              <div class="card-sticker-styles">
-                ${Object.entries(this._TEXT_STICKER_STYLES).map(([k, v]) => `<button type="button" class="card-tstyle-btn" data-tstyle="${k}">${v.name}</button>`).join('')}
-              </div>
-            </div>
-            <label class="card-sticker-slider">크기 <input type="range" id="card-sticker-size" min="6" max="70" step="1"></label>
+            <label class="card-sticker-slider">크기 <input type="range" id="card-sticker-size" min="6" max="100" step="1"></label>
             <label class="card-sticker-slider">회전 <input type="range" id="card-sticker-rot" min="-180" max="180" step="5"></label>
             <div class="card-sticker-actions">
               <button type="button" class="btn btn-sm btn-secondary" id="card-sticker-del">${App.icon('trash')} 이 스티커 삭제</button>
@@ -5150,7 +5445,9 @@ App.pages.records = {
         <div class="card-tabpanel" data-panel="photo">
         <div class="form-group">
           <div class="card-photo-head">
-            <label class="form-label" style="margin:0">사진 <span style="font-size:0.93rem;color:var(--text-muted);font-weight:400">· 1~4장, 칸을 눌러 사진첩에서 고르세요</span></label>
+            <label class="form-label" style="margin:0">사진 <span style="font-size:0.93rem;color:var(--text-muted);font-weight:400">· 1~4장</span></label>
+            <button type="button" class="btn btn-sm btn-primary" id="card-photo-multi-btn">${App.icon('image')} 여러 장 고르기</button>
+            <input type="file" id="card-photo-multi" accept="image/*" multiple hidden>
             ${poolCount ? `<button type="button" class="btn btn-sm btn-secondary" id="card-use-record-photos">${App.icon('image')} ${App.escapeHtml(ctx.poolLabel || '기록 사진')} 넣기 (${poolCount}장)</button>` : ''}
           </div>
           <div id="card-photo-slots" class="card-slots-row"></div>
@@ -5175,28 +5472,15 @@ App.pages.records = {
             `).join('')}
           </div>
         </div>
-        <!-- 폴라로이드 사진 크기 (폴라로이드 레이아웃 선택 시만 표시) -->
-        <div id="polaroid-options" class="form-group" style="display:${selectedLayout === 'single' ? 'block' : 'none'};padding:12px;background:var(--bg);border-radius:var(--radius);margin-bottom:12px">
-          <label class="form-label" style="font-size:0.93rem;margin-bottom:6px">사진 크기 <span style="color:var(--text-muted);font-weight:400">(폴라로이드)</span></label>
-          <div style="display:flex;flex-direction:column;gap:6px;width:100%">
-            <label class="checkbox-label" style="font-size:0.93rem;min-height:auto;padding:12px;cursor:pointer;border:1.5px solid ${(saved.polaroidSize || 'modern') === 'modern' ? 'var(--primary)' : 'var(--border)'};border-radius:8px;display:flex;align-items:center;gap:10px;width:100%;box-sizing:border-box;background:${(saved.polaroidSize || 'modern') === 'modern' ? 'var(--primary-light)' : 'var(--bg-white)'}">
-              <input type="radio" name="polaroidSize" value="modern" ${(saved.polaroidSize || 'modern') === 'modern' ? 'checked' : ''} style="flex-shrink:0">
-              <div style="flex:1;min-width:0">
-                <div style="font-weight:700;color:var(--text-primary)">모던</div>
-                <div style="font-size:0.93rem;color:var(--text-muted);margin-top:2px">사진 920×920 · 균등 여백</div>
-              </div>
-            </label>
-            <label class="checkbox-label" style="font-size:0.93rem;min-height:auto;padding:12px;cursor:pointer;border:1.5px solid ${saved.polaroidSize === 'minimal' ? 'var(--primary)' : 'var(--border)'};border-radius:8px;display:flex;align-items:center;gap:10px;width:100%;box-sizing:border-box;background:${saved.polaroidSize === 'minimal' ? 'var(--primary-light)' : 'var(--bg-white)'}">
-              <input type="radio" name="polaroidSize" value="minimal" ${saved.polaroidSize === 'minimal' ? 'checked' : ''} style="flex-shrink:0">
-              <div style="flex:1;min-width:0">
-                <div style="font-weight:700;color:var(--text-primary)">미니멀</div>
-                <div style="font-size:0.93rem;color:var(--text-muted);margin-top:2px">사진 940×940 · 사진 최대 강조</div>
-              </div>
-            </label>
+        <!-- 폴라로이드 모양 (폴라로이드 틀일 때만) — 예전 '사진 크기 모던/미니멀'은 20px 차이에 실제로 적용도 안 됐다 -->
+        <div id="polaroid-options" class="form-group" style="display:${selectedLayout === 'single' ? 'block' : 'none'}">
+          <label class="form-label">폴라로이드 모양</label>
+          <div class="card-sticker-styles">
+            <button type="button" class="card-tstyle-btn${saved.polaroidShape !== 'square' ? ' active' : ''}" data-shape="classic">아래 여백 넓게 (4:5)</button>
+            <button type="button" class="card-tstyle-btn${saved.polaroidShape === 'square' ? ' active' : ''}" data-shape="square">정사각 (1:1)</button>
           </div>
-          <div style="font-size:0.93rem;color:var(--text-muted);margin-top:6px">${App.icon('bulb')} 미니멀은 사진을 더 크게 — 사진 강조</div>
+          <div class="form-hint">아래 여백에 이름이나 '글자' 탭의 큰 제목이 크게 들어가요. 4:5는 인스타 피드에 그대로 올라가요.</div>
         </div>
-
         </div>
         <div class="card-tabpanel" data-panel="deco" hidden>
         <div class="form-group">
@@ -5219,6 +5503,7 @@ App.pages.records = {
             <button type="button" class="card-pick-btn${selectedTheme === 'custom' && !selectedFrameId ? ' active' : ''}" data-key="custom" style="display:none" aria-hidden="true" tabindex="-1"></button>
           </div>
         </div>
+        <div class="form-hint" style="margin:-6px 0 12px">내 프레임은 설정 → 매장 관리 → 내 프레임 라이브러리에서 '직접 만들기'로 만들 수 있어요.</div>
         <!-- 직접 꾸미기 — 빠른 색 조합 · 색 직접 고르기 · 배경 사진을 한곳에 접어 둔다. 펼치면 '직접 꾸민 색'이 적용되고, 접으면 고르던 테마로 돌아간다 -->
         <details id="card-custom-panel" class="card-more"${selectedTheme === 'custom' && !selectedFrameId ? ' open' : ''}>
           <summary>${App.icon('palette')} 직접 꾸미기 <span>색 · 배경 사진</span></summary>
@@ -5255,7 +5540,7 @@ App.pages.records = {
               <input type="file" id="card-custom-bgimg" accept="image/*" style="display:none">
               <button type="button" class="btn btn-sm btn-secondary" id="card-custom-bgimg-btn">${saved.customBgImage ? '이미지 변경' : '이미지 선택'}</button>
               <span id="card-custom-bgimg-name" style="font-size:0.93rem;color:var(--text-muted)">${saved.customBgImage ? App.icon('check') + ' 설정됨' : ''}</span>
-              ${saved.customBgImage ? '<button type="button" class="btn btn-sm btn-danger" id="card-custom-bgimg-remove">제거</button>' : ''}
+              <button type="button" class="btn btn-sm btn-danger" id="card-custom-bgimg-remove"${saved.customBgImage ? '' : ' hidden'}>삭제</button>
             </div>
           </div>
         </details>
@@ -5297,21 +5582,35 @@ App.pages.records = {
               <button type="button" class="card-tstyle-btn" data-logo="label">라벨</button>
             </div>
           </div>
-          <div id="card-sticker-textform" class="card-sticker-textform" hidden>
-            <input type="text" id="card-sticker-textinput" maxlength="24" placeholder="예: 오늘도 예뻐요">
-            <div class="card-sticker-styles">
-              ${Object.entries(this._TEXT_STICKER_STYLES).map(([k, v], i) => `<button type="button" class="card-tstyle-btn${i === 0 ? ' active' : ''}" data-tstyle="${k}">${v.name}</button>`).join('')}
-            </div>
-            <button type="button" class="btn btn-sm btn-primary" id="card-sticker-textadd">붙이기</button>
-            <div class="form-hint">글꼴은 '꾸미기' 탭에서 고른 사진 카드 글꼴을 써요.</div>
-          </div>
         </div>
         </div>
         <div class="card-tabpanel" data-panel="text" hidden>
         <!-- 카드에 넣을 글자 — 켜고 끄는 정보 + 직접 쓰는 문구를 한곳에 (예전엔 '카드에 넣을 글자'·'자유 텍스트'·'표시 항목' 세 곳으로 나뉘어 헷갈렸다)
              이름·날짜·매장명은 테마와 상관없이 켜고 끈다 (늘 들어가면 촌스러울 수 있다 — 사장님 의견) -->
+        <!-- 글자 넣기 — 스티커처럼 어느 틀·프레임에든 원하는 자리에 (인스타 글자처럼 모양·색·글꼴) -->
+        <div class="form-group card-text-maker" id="card-text-maker">
+          <label class="form-label">글자 넣기 <span style="font-size:0.93rem;color:var(--text-muted);font-weight:400">· 어느 틀이든, 미리보기에서 끌어 옮겨요</span></label>
+          <textarea id="card-text-input" rows="2" maxlength="40" placeholder="글자를 쓰세요 (줄바꿈으로 세 줄까지)"></textarea>
+          <div class="card-text-quick" id="card-text-quick">
+            ${[cardPetName ? cardPetName + '의 첫 미용' : '', cardPetName ? cardPetName + ' 미용 완료 ✨' : '미용 완료 ✨', '오늘도 예뻐요', '보송보송', 'Fresh Cut ✂️', '감사합니다 ♥', '다음에 또 만나요'].filter(Boolean).map(t => `<button type="button" class="card-text-chip" data-text="${App.escapeHtml(t)}">${App.escapeHtml(t)}</button>`).join('')}
+          </div>
+          <div class="card-text-row"><span class="card-text-row-label">모양</span>
+            <div class="card-sticker-styles" id="card-text-styles">${Object.entries(this._TEXT_STICKER_STYLES).map(([k, v]) => `<button type="button" class="card-tstyle-btn" data-tstyle="${k}">${v.name}</button>`).join('')}</div>
+          </div>
+          <div class="card-text-row"><span class="card-text-row-label">색</span>
+            <div class="card-text-colors" id="card-text-colors">${this._TEXT_COLORS.map(c => `<button type="button" class="card-text-color" data-color="${c}" style="background:${c}" aria-label="색 ${c}"></button>`).join('')}</div>
+          </div>
+          <div class="card-text-row"><span class="card-text-row-label">글꼴</span>
+            <div class="card-font-row" id="card-text-fonts">${Object.entries(this._CARD_FONTS).map(([k, f]) => `<button type="button" class="card-font-btn" data-key="${k}" style="font-family:${App.escapeHtml(this._cardFontStack(k))}">${f.name}</button>`).join('')}</div>
+          </div>
+          <div class="card-text-actions">
+            <button type="button" class="btn btn-primary" id="card-text-add">${App.icon('plus')} 글자 붙이기</button>
+            <div id="card-text-editing" class="card-text-editing" hidden>고른 글자를 고치는 중이에요 <button type="button" class="btn btn-sm btn-secondary" id="card-text-done">다 됐어요</button></div>
+          </div>
+        </div>
+
         <div class="form-group">
-          <label class="form-label">카드에 넣을 글자 <span style="font-size:0.93rem;color:var(--text-muted);font-weight:400">· 다 끄면 사진만 남아요</span></label>
+          <label class="form-label">자동으로 넣는 정보 <span style="font-size:0.93rem;color:var(--text-muted);font-weight:400">· 틀마다 정해진 자리에</span></label>
           <div class="card-text-toggles">
             <label class="card-toggle"><input type="checkbox" id="card-show-pet" ${saved.showPet !== false ? 'checked' : ''}> 반려견 이름</label>
             <label class="card-toggle"><input type="checkbox" id="card-show-date" ${saved.showDate !== false ? 'checked' : ''}> 날짜</label>
@@ -5319,13 +5618,16 @@ App.pages.records = {
             <label class="card-toggle"><input type="checkbox" id="card-show-service" ${saved.showService ? 'checked' : ''}> 서비스명</label>
             <label class="card-toggle"><input type="checkbox" id="card-show-nextvisit" ${saved.showNextVisit ? 'checked' : ''}> 다음 방문일</label>
           </div>
-          <div class="form-hint" style="margin-top:6px">다음 방문일을 넣으면 손님이 다시 예약하기 쉬워요.</div>
-          <label class="form-label" style="font-size:0.93rem;margin:12px 0 6px">직접 쓰는 문구 <span style="color:var(--text-muted);font-weight:400">(빈 칸은 안 나와요 · 이모지 가능)</span></label>
+          <div class="form-hint" id="card-text-support" style="margin-top:6px">다음 방문일을 넣으면 손님이 다시 예약하기 쉬워요.</div>
+        </div>
+        <details class="card-more">
+          <summary>틀에 고정된 문구 <span>제목 · 인사</span></summary>
+          <div class="form-hint" style="margin:0 0 8px">일부 틀에만 정해진 자리에 나와요. 원하는 자리에 넣으려면 위 '글자 넣기'를 쓰세요.</div>
           <input type="text" id="card-headline" placeholder="큰 제목 (예: {반려견명}의 첫 미용 ✨)" value="${App.escapeHtml(withPet(saved.headline))}" maxlength="40" style="width:100%;margin-bottom:6px;min-height:40px;font-size:max(16px,0.9rem)">
           <input type="text" id="card-subline" placeholder="작은 제목 (예: 행복한 하루)" value="${App.escapeHtml(withPet(saved.subline))}" maxlength="50" style="width:100%;margin-bottom:6px;min-height:40px;font-size:max(16px,0.9rem)">
           <input type="text" id="card-footer" placeholder="맨 아래 인사 (기본: 감사합니다 ♥)" value="${App.escapeHtml(withPet(saved.footerMessage))}" maxlength="60" style="width:100%;min-height:40px;font-size:max(16px,0.9rem)">
-          <div class="form-hint" style="margin-top:6px">큰 제목은 피드·스토리·폴라로이드, 작은 제목은 피드·스토리 틀에 나와요.</div>
-        </div>
+          <div class="form-hint" style="margin-top:6px">큰 제목: 피드·스토리·폴라로이드 · 작은 제목: 피드·스토리 · 인사: 2컷.</div>
+        </details>
 
         <!-- 매장 로고 위치/크기 (모든 테마 공통) — 자주 안 바꿔 접어 둔다 -->
         <details class="card-more">
@@ -5378,12 +5680,11 @@ App.pages.records = {
           if (polarOpts) polarOpts.style.display = btn.dataset.key === 'single' ? 'block' : 'none';
         });
       });
-      // 폴라로이드 라디오 선택 시 시각 피드백
-      document.querySelectorAll('input[name="polaroidSize"]').forEach(radio => {
-        radio.addEventListener('change', () => {
-          document.querySelectorAll('input[name="polaroidSize"]').forEach(r => {
-            r.closest('label').style.borderColor = r.checked ? 'var(--primary)' : 'var(--border)';
-          });
+      // 폴라로이드 모양
+      document.querySelectorAll('#polaroid-options [data-shape]').forEach(b => {
+        b.addEventListener('click', () => {
+          document.querySelectorAll('#polaroid-options [data-shape]').forEach(x => x.classList.toggle('active', x === b));
+          this._scheduleCardPreview();
         });
       });
       // 글꼴: 버튼 글자도 그 글꼴로 보이게 CSS 를 붙여 두고, 고르면 미리보기가 다시 그려진다
@@ -5394,6 +5695,40 @@ App.pages.records = {
           btn.classList.add('active');
         });
       });
+      // 미리보기 크게 보기 (휴대폰에서 작게 보이는 카드를 화면 가득 — 스티커·글자까지)
+      const zoomBtn = document.getElementById('card-live-zoom');
+      if (zoomBtn) zoomBtn.onclick = (e) => {
+        e.stopPropagation();
+        const stage = document.querySelector('.card-live-stage');
+        const im = document.getElementById('card-live-img');
+        if (!stage || !im || im.hidden) return;
+        const ov = document.createElement('div');
+        ov.className = 'card-zoom-overlay';
+        const clone = stage.cloneNode(true);
+        clone.querySelectorAll('[id]').forEach(el => el.removeAttribute('id'));
+        clone.querySelector('.card-live-zoom')?.remove();
+        clone.querySelectorAll('.card-sticker.sel').forEach(el => el.classList.remove('sel'));
+        ov.appendChild(clone);
+        ov.insertAdjacentHTML('beforeend', '<div class="card-zoom-close">눌러서 닫기</div>');
+        ov.onclick = () => ov.remove();
+        document.body.appendChild(ov);
+      };
+      // 사진첩에서 여러 장 한 번에 (빈 칸부터 채움)
+      const multiBtn = document.getElementById('card-photo-multi-btn');
+      const multiIn = document.getElementById('card-photo-multi');
+      if (multiBtn && multiIn) {
+        multiBtn.onclick = () => multiIn.click();
+        multiIn.onchange = async () => {
+          const files = [...(multiIn.files || [])];
+          multiIn.value = '';
+          if (!files.length) return;
+          // 지금 틀이 쓰는 칸이 다 차 있으면 새로 고른 사진으로 처음부터 바꾼다 (폴라로이드 1칸이면 그 사진을 바꿈)
+          const f = await this._readCardForm(this._cardPetName || '');
+          const count = this._cardPhotoCount(f);
+          const full = (this._cardPhotos || []).slice(0, count).every(Boolean);
+          await this._addCardPhotos(files, null, full ? count : 0);
+        };
+      }
       // 사진 느낌(필터)
       const filterRow = document.getElementById('card-pick-filter');
       if (filterRow) filterRow.onclick = (e) => {
@@ -5427,7 +5762,7 @@ App.pages.records = {
       if (mb) {
         // addEventListener 는 창을 열 때마다 쌓여 사진·프레임을 메모리에 붙잡았다 — on* 속성은 덮어써서 하나만 남는다
         // 스티커 크기·회전·글자 입력은 카드 그림과 무관 (스티커는 위 레이어에 따로 그린다) — 무거운 미리보기를 다시 만들지 않는다
-        const skip = (e) => !!e.target.closest?.('#card-sticker-edit, #card-sticker-textform, #card-sticker-logoform, #card-sticker-file');
+        const skip = (e) => !!e.target.closest?.('#card-sticker-edit, #card-text-maker, #card-sticker-logoform, #card-sticker-file');
         mb.oninput = (e) => { if (!skip(e)) this._scheduleCardPreview(); };
         mb.onchange = (e) => { if (!skip(e)) this._scheduleCardPreview(); };
         mb.onclick = (e) => {
@@ -5498,6 +5833,12 @@ App.pages.records = {
             this._scheduleCardPreview();
             const nameEl = document.getElementById('card-custom-bgimg-name');
             if (nameEl) nameEl.innerHTML = App.icon('check') + ' 설정됨';
+            // 고른 바로 뒤에도 지울 수 있게 (예전엔 창을 다시 열어야 '제거'가 보였다)
+            const rmBtn = document.getElementById('card-custom-bgimg-remove');
+            if (rmBtn) rmBtn.hidden = false;
+            const chBtn = document.getElementById('card-custom-bgimg-btn');
+            if (chBtn) chBtn.textContent = '이미지 변경';
+            e.target.value = ''; // 같은 사진을 다시 골라도 바뀌게
             // 배경색 피커 숨김 (이미지가 대신함)
             const colorsPanel = document.getElementById('card-custom-colors');
             if (colorsPanel) colorsPanel.style.display = 'none';
@@ -5509,10 +5850,14 @@ App.pages.records = {
         this._customBgImage = null;
         const nameEl = document.getElementById('card-custom-bgimg-name');
         if (nameEl) nameEl.textContent = '';
-        document.getElementById('card-custom-bgimg-remove')?.remove();
+        const rmBtn = document.getElementById('card-custom-bgimg-remove');
+        if (rmBtn) rmBtn.hidden = true;
+        const chBtn = document.getElementById('card-custom-bgimg-btn');
+        if (chBtn) chBtn.textContent = '이미지 선택';
         // 배경색 피커 복원
         const colorsPanel = document.getElementById('card-custom-colors');
         if (colorsPanel) colorsPanel.style.display = '';
+        this._scheduleCardPreview();
       });
     }, 100);
   },

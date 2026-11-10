@@ -4137,3 +4137,67 @@ input.has-clear { padding-right: 44px; }
 .card-frame-thumb img { max-width: 100%; max-height: 100%; object-fit: contain; display: block; }
 .card-frame-name { font-size: max(0.78rem, 12px); font-weight: 700; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .card-frame-holes { font-size: 11px; color: var(--text-muted); }
+
+/* ===== 사진 카드 2026-11-10: 글자 넣기 · 정보 자리 · 배경 삭제 · 휴대폰 화면 ===== */
+#card-custom-bgimg-remove[hidden], #card-text-add[hidden] { display: none; }
+.card-text-maker textarea { width: 100%; min-height: 64px; resize: vertical; font-size: max(16px, 0.95rem); padding: 10px 12px; border: 1.5px solid var(--border); border-radius: var(--radius); }
+.card-text-quick { display: flex; gap: 6px; overflow-x: auto; padding: 8px 0 2px; scrollbar-width: none; }
+.card-text-quick::-webkit-scrollbar { display: none; }
+.card-text-chip { flex: 0 0 auto; min-height: 34px; padding: 0 12px; border: 1px dashed var(--border); border-radius: 17px; background: var(--bg); color: var(--text-secondary); font: inherit; font-size: max(0.82rem, 13px); cursor: pointer; white-space: nowrap; }
+.card-text-row { display: flex; align-items: center; gap: 10px; margin-top: 10px; min-width: 0; }
+.card-text-row-label { flex: 0 0 34px; font-size: max(0.82rem, 13px); font-weight: 700; color: var(--text-secondary); }
+.card-text-row > :not(.card-text-row-label) { flex: 1; min-width: 0; }
+#card-text-styles { flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; }
+#card-text-styles::-webkit-scrollbar { display: none; }
+#card-text-styles .card-tstyle-btn { flex: 0 0 auto; }
+.card-text-colors { display: flex; gap: 8px; overflow-x: auto; padding: 3px 2px; scrollbar-width: none; }
+.card-text-colors::-webkit-scrollbar { display: none; }
+.card-text-color { flex: 0 0 auto; width: 30px; height: 30px; border-radius: 50%; border: 1px solid rgba(0,0,0,.15); cursor: pointer; padding: 0; }
+.card-text-color.active { box-shadow: 0 0 0 2px var(--bg-white), 0 0 0 4px var(--primary); }
+.card-text-actions { margin-top: 12px; }
+.card-text-actions #card-text-add { width: 100%; }
+.card-text-editing { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 8px 12px; border-radius: var(--radius); background: var(--primary-light); color: var(--primary); font-size: max(0.85rem, 13px); font-weight: 600; }
+.card-text-editing[hidden] { display: none; }
+.card-toggle.unsupported { opacity: .4; text-decoration: line-through; cursor: not-allowed; }
+.card-live-stage { position: relative; }
+.card-live-zoom { position: absolute; right: 6px; bottom: 6px; z-index: 3; width: 34px; height: 34px; border-radius: 50%; border: none; background: rgba(15,23,42,.6); color: #fff; font-size: 18px; line-height: 34px; padding: 0; cursor: pointer; }
+.card-live-img[hidden] ~ .card-live-zoom, #card-live-img[hidden] ~ .card-live-zoom { display: none; }
+.card-zoom-overlay { position: fixed; inset: 0; z-index: 10000; background: rgba(0,0,0,.88); display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 12px; padding: 16px; }
+.card-zoom-overlay .card-live-stage { line-height: 0; }
+.card-zoom-overlay .card-live-stage > img:first-child { max-width: 94vw; max-height: 84vh; max-height: 84dvh; border-radius: 8px; }
+.card-zoom-overlay .card-sticker-layer { position: absolute; inset: 0; pointer-events: none; }
+.card-zoom-close { color: rgba(255,255,255,.8); font-size: 14px; }
+/* 휴대폰: 사진 카드 창은 화면 가득 (위 여백 8%를 미리보기·고르는 칸에 돌려준다) */
+@media (max-width: 768px) {
+  .modal.modal-lg:has(.card-maker) { height: 100vh; height: 100dvh; max-height: 100dvh; border-radius: 0; }
+  .modal:has(.card-maker) .modal-header { padding-top: max(10px, env(safe-area-inset-top)); padding-bottom: 10px; }
+  .modal:has(.card-maker) .modal-footer { padding-top: 8px; padding-bottom: max(8px, env(safe-area-inset-bottom)); }
+}
+.card-zoom-overlay .card-sticker { position: absolute; max-width: none; max-height: none; height: auto; border-radius: 0; box-shadow: none; background: transparent; }
+@media (max-width: 768px) {
+  .card-sticker-edit { padding: 6px 8px; gap: 4px 10px; }
+  .card-sticker-actions { display: flex; gap: 6px; }
+  .card-sticker-actions .btn { min-height: 36px; padding: 4px 10px; font-size: max(0.82rem, 13px); }
+  .card-live-note { font-size: 12px; }
+}
+
+/* ===== 프레임 만들기 ===== */
+.fm-preview { position: sticky; top: -16px; z-index: 5; display: flex; flex-direction: column; align-items: center; gap: 4px; margin: -16px -16px 12px; padding: 12px 16px 8px; background: var(--bg); border-bottom: 1px solid var(--border-light); }
+.fm-preview img { display: block; max-width: 100%; max-height: 32vh; max-height: 32dvh; border-radius: 6px; box-shadow: 0 4px 14px rgba(0,0,0,.15); }
+.fm-preview-note { font-size: 12px; color: var(--text-secondary); background: rgba(255,255,255,.85); padding: 2px 8px; border-radius: 10px; }
+.fm-sub { font-size: 0.93rem; color: var(--text-muted); font-weight: 400; }
+.fm-row { display: flex; gap: 6px; overflow-x: auto; padding-bottom: 2px; scrollbar-width: none; }
+.fm-row::-webkit-scrollbar { display: none; }
+.fm-row + .fm-row, .fm-row + div { margin-top: 8px; }
+.fm-row[hidden], #fm-photo-row[hidden], #fm-bg2-wrap[hidden], #fm-band-wrap[hidden] { display: none; }
+.fm-row .card-tstyle-btn { flex: 0 0 auto; white-space: nowrap; }
+.fm-color-label { margin: 10px 0 4px; font-size: max(0.82rem, 13px); font-weight: 700; color: var(--text-secondary); }
+.fm-swatches { display: flex; gap: 8px; overflow-x: auto; padding: 3px 2px; scrollbar-width: none; align-items: center; }
+.fm-swatches::-webkit-scrollbar { display: none; }
+.fm-swatches input[type="color"] { flex: 0 0 auto; width: 34px; height: 34px; padding: 0; border: 1px solid var(--border); border-radius: 50%; background: none; cursor: pointer; }
+.fm input[type="text"] { width: 100%; min-height: 42px; font-size: max(16px, 0.9rem); }
+@media (min-width: 769px) {
+  .fm { display: grid; grid-template-columns: minmax(0, 320px) minmax(0, 1fr); gap: 20px; align-items: start; }
+  .fm-preview { margin: 0; top: 0; border-radius: var(--radius); border: 1px solid var(--border-light); }
+  .fm-preview img { max-height: 70vh; }
+}

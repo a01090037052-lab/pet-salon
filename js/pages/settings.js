@@ -223,7 +223,10 @@ App.pages.settings = {
           </div>
           <div class="card-body">
             <div id="frame-library-list" style="display:flex;flex-direction:column;gap:8px;margin-bottom:12px"></div>
-            <button type="button" id="btn-add-frame" class="btn btn-secondary" style="width:100%;min-height:44px">${App.icon('plus')} 새 프레임 추가</button>
+            <div style="display:flex;gap:8px">
+              <button type="button" id="btn-make-frame" class="btn btn-primary" style="flex:1;min-height:44px">${App.icon('palette')} 직접 만들기</button>
+              <button type="button" id="btn-add-frame" class="btn btn-secondary" style="flex:1;min-height:44px">${App.icon('plus')} 그림 올리기</button>
+            </div>
             <div class="form-hint" style="margin-top:8px">시즌·이벤트별 프레임을 만들어 사진 카드에서 고를 수 있어요. 사진 자리를 투명하게 비운 PNG면 칸을 자동으로 찾아요. 최대 20개.</div>
           </div>
         </div>
@@ -1420,6 +1423,11 @@ App.pages.settings = {
     // ========== 프레임 라이브러리 ==========
     await this._renderFrameLibrary();
     document.getElementById('btn-add-frame')?.addEventListener('click', () => this._showFrameEditor());
+    document.getElementById('btn-make-frame')?.addEventListener('click', async () => {
+      const n = ((await DB.getSetting('customFrames')) || []).length;
+      if (n >= this.MAX_FRAMES) { App.showToast(`프레임은 최대 ${this.MAX_FRAMES}개까지예요. 안 쓰는 프레임을 지운 뒤 만들어 주세요.`, 'error'); return; }
+      App.frameMaker.open();
+    });
   },
 
   // ========== 저장 안 한 입력 ==========
@@ -1594,6 +1602,8 @@ App.pages.settings = {
     if (!listEl) return;
     if (countEl) countEl.textContent = `${frames.length}/${this.MAX_FRAMES}`;
     if (addBtn) addBtn.disabled = frames.length >= this.MAX_FRAMES;
+    const makeBtn = document.getElementById('btn-make-frame');
+    if (makeBtn) makeBtn.disabled = frames.length >= this.MAX_FRAMES;
     if (frames.length === 0) {
       listEl.innerHTML = `
         <div style="text-align:center;padding:28px 16px;background:var(--bg);border-radius:var(--radius);border:2px dashed var(--border)">
@@ -1657,6 +1667,8 @@ App.pages.settings = {
     const frames = (await DB.getSetting('customFrames')) || [];
     const frame = frameId ? frames.find(f => f.id === frameId) : { id: 'f' + Date.now(), name: '', image: '', accentColor: '#6366F1', textColor: '#1A1A1A', enabled: true };
     if (!frame) return;
+    // 앱에서 만든 프레임은 만들기 창에서 고친다
+    if (frame.maker) { App.frameMaker.open(frame); return; }
     App.showModal({
       title: frameId ? '프레임 편집' : '새 프레임 추가',
       saveText: '저장',
@@ -1718,6 +1730,8 @@ App.pages.settings = {
             reader.onerror = reject;
             reader.readAsDataURL(fileInput.files[0]);
           });
+          // 흰 네모 칸을 사진 칸으로 바꾼 그림이면 그것을 쓴다
+          if (this._frameConverted && this._frameConverted.file === fileInput.files[0]) image = this._frameConverted.image;
           // 원본(수 MB)을 그대로 두면 백업 파일·복원 사본이 매번 커진다 → 긴 변 2400px 로 줄인다 (투명 PNG 는 PNG 유지)
           image = await new Promise(resolve => {
             const img = new Image();
@@ -1781,6 +1795,7 @@ App.pages.settings = {
       const prev = document.getElementById('f-frame-preview');
       if (!file) return;
       const reader = new FileReader();
+      this._frameConverted = null;
       reader.onload = async (e) => {
         const src = e.target.result;
         if (prev) prev.innerHTML = `<img src="${src}" style="max-width:200px;max-height:240px;border-radius:8px;border:1px solid var(--border);background:repeating-conic-gradient(#E5E7EB 0 25%, #fff 0 50%) 0 0 / 12px 12px">`;
@@ -1791,8 +1806,24 @@ App.pages.settings = {
             if (radio('overlay')) radio('overlay').checked = true;
             if (msg) msg.textContent = `사진 칸 ${r.holes.length}개를 찾았어요. 위에서부터 순서대로 사진이 들어가요.`;
           } else {
-            if (radio('bg')) radio('bg').checked = true;
-            if (msg) msg.textContent = '투명한 사진 칸이 없어요 — 배경으로 깔아 쓸게요. 칸에 사진을 넣으려면 그 자리를 투명하게 지운 PNG로 올려 주세요.';
+            // 투명한 칸이 없으면 흰 네모 칸(챗GPT 그림 등)을 찾아 사진 칸으로 바꿔 본다
+            if (msg) msg.textContent = '사진 칸을 찾는 중…';
+            const wb = await App.pages.records._whiteBoxesToHoles(src);
+            if (wb.count) {
+              this._frameConverted = { file, image: wb.image };
+              if (radio('overlay')) radio('overlay').checked = true;
+              if (prev) prev.innerHTML = `<img src="${wb.image}" style="max-width:200px;max-height:240px;border-radius:8px;border:1px solid var(--border);background:repeating-conic-gradient(#E5E7EB 0 25%, #fff 0 50%) 0 0 / 12px 12px">`;
+              if (msg) msg.innerHTML = `흰 네모 칸 ${wb.count}개를 사진 칸으로 바꿨어요 (체크무늬 자리에 사진이 들어가요). <button type="button" class="btn btn-sm btn-ghost" id="f-frame-revert">원래 그림 그대로 쓰기</button>`;
+              document.getElementById('f-frame-revert')?.addEventListener('click', () => {
+                this._frameConverted = null;
+                if (radio('bg')) radio('bg').checked = true;
+                if (prev) prev.innerHTML = `<img src="${src}" style="max-width:200px;max-height:240px;border-radius:8px;border:1px solid var(--border)">`;
+                if (msg) msg.textContent = '원래 그림을 배경으로 깔아 쓸게요.';
+              });
+            } else {
+              if (radio('bg')) radio('bg').checked = true;
+              if (msg) msg.textContent = '사진 칸을 찾지 못했어요 — 배경으로 깔아 쓸게요. 사진 자리를 투명하게 지우거나 흰 네모로 비운 그림을 올려 주세요.';
+            }
           }
         } catch (_) { if (msg) msg.textContent = ''; }
       };

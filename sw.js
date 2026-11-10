@@ -1,4 +1,4 @@
-const CACHE_NAME = 'petsalon-offline-v200';
+const CACHE_NAME = 'petsalon-offline-v201';
 const FONT_CACHE = 'petsalon-fonts-v1';
 const ASSETS = [
   './',
@@ -16,6 +16,7 @@ const ASSETS = [
   './js/pages/appointments.js',
   './js/pages/records.js',
   './js/pages/photocard.js',
+  './js/frame-maker.js',
   './assets/stickers/pt_chic_goodvibes.webp',
   './assets/stickers/pt_chic_nobad.webp',
   './assets/stickers/pt_chic_beyou.webp',

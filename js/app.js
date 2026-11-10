@@ -899,6 +899,7 @@ const App = {
   },
 
   closeModal(fromPopstate) {
+    document.querySelectorAll('.card-zoom-overlay').forEach(el => el.remove()); // 사진 카드 크게 보기가 창 위에 남지 않게
     const overlay = document.getElementById('modal-overlay');
     if (overlay.classList.contains('hidden')) return;
     overlay.classList.add('hidden');
