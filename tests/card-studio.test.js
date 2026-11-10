@@ -171,3 +171,37 @@ describe('얼굴 선 점으로 고치기', () => {
     assert.deepEqual([p[p.length - 2], p[p.length - 1]], [100, 0]);
   });
 });
+
+describe('가장자리 막대 값', () => {
+  const make = () => {
+    const w = 100, h = 100, d = new Uint8ClampedArray(w * h * 4);
+    for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
+      const q = (y * w + x) * 4;
+      if (x >= 20 && x < 80 && y >= 20 && y < 80) d.set([200, 50, 50, 255], q);
+      else if (x >= 17 && x < 83 && y >= 17 && y < 83) d.set([0, 200, 0, 255], q);
+    }
+    return d;
+  };
+  test('단계 숫자 → 막대 값', () => {
+    assert.deepEqual({ ...R._edgeOf(2) }, { e: 2, f: 2, c: 1 });
+    assert.deepEqual({ ...R._edgeOf(0) }, { e: 0, f: 0, c: 0 });
+  });
+  test('막대 값은 범위 안으로', () => assert.deepEqual({ ...R._edgeOf({ e: 20, f: -1, c: 3 }) }, { e: 8, f: 0, c: 1 }));
+  test('모두 0이면 그대로', () => {
+    const d = make(), before = d.slice();
+    R._refineCutout(d, 100, 100, { e: 0, f: 0, c: 0 }, null);
+    assert.deepEqual(Array.from(d), Array.from(before));
+  });
+  test('많이 깎으면 초록 띠가 사라지고, 덜 깎으면 남는다', () => {
+    const a = make(); R._refineCutout(a, 100, 100, { e: 5, f: 0, c: 0 }, null);
+    assert.equal(a[(50 * 100 + 18) * 4 + 3], 0);
+    const b = make(); R._refineCutout(b, 100, 100, { e: 0, f: 0, c: 0 }, null);
+    assert.equal(b[(50 * 100 + 18) * 4 + 3], 255);
+  });
+  test('털 색 0%면 색은 원래대로, 100%면 털 색 쪽으로', () => {
+    const a = make(); R._refineCutout(a, 100, 100, { e: 0, f: 2, c: 0 }, null);
+    const b = make(); R._refineCutout(b, 100, 100, { e: 0, f: 2, c: 1 }, null);
+    const g = (d) => d[(50 * 100 + 17) * 4 + 1];
+    assert.ok(g(a) > g(b), `${g(a)} > ${g(b)}`);
+  });
+});

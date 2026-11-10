@@ -227,7 +227,7 @@ App.pages.settings = {
               <button type="button" id="btn-make-frame" class="btn btn-primary" style="flex:1;min-height:44px">${App.icon('palette')} 직접 만들기</button>
               <button type="button" id="btn-add-frame" class="btn btn-secondary" style="flex:1;min-height:44px">${App.icon('plus')} 그림 올리기</button>
             </div>
-            <div class="form-hint" style="margin-top:8px">시즌·이벤트별 프레임을 만들어 사진 카드에서 고를 수 있어요. 사진 자리를 투명하게 비운 PNG면 칸을 자동으로 찾아요. 최대 20개.</div>
+            <div class="form-hint" style="margin-top:8px">시즌·이벤트별 프레임을 만들어 사진 카드에서 고를 수 있어요. 사진 자리를 투명하게 비운 PNG면 칸을 자동으로 찾아요. 최대 50개 · 이 기기에만 저장돼요(서버 용량을 쓰지 않아요).</div>
           </div>
         </div>
 
@@ -1591,7 +1591,7 @@ App.pages.settings = {
   },
 
   // 내 프레임 최대 개수 — 그림은 이 기기에만 저장된다(동기화 안 함). 많이 두면 사진 카드 창이 늦게 열린다
-  MAX_FRAMES: 20,
+  MAX_FRAMES: 50, // 프레임은 이 기기에만 저장 (서버로 올라가지 않는다). 만든 프레임은 한 장 50~150KB 정도
 
   // 프레임 라이브러리 렌더링
   async _renderFrameLibrary() {
@@ -1698,7 +1698,8 @@ App.pages.settings = {
                 // 예전에 feed4·story4 로 저장된 프레임은 가장 가까운 새 레이아웃(feed·story)으로 이어받는다.
                 const R = App.pages.records;
                 const cur = (R._CARD_LAYOUT_MIGRATE || {})[frame.guideLayout] || frame.guideLayout || 'feed';
-                return Object.entries(R._CARD_LAYOUTS).filter(([, l]) => !l.legacy).map(([k, l]) => `<option value="${k}" ${k === cur ? 'selected' : ''}>${l.name}</option>`).join('');
+                // 틀 없이·사진관·잡지 표지는 칸이 카드 전체라 가이드가 뜻이 없다
+                return Object.entries(R._CARD_LAYOUTS).filter(([k, l]) => !l.legacy && !['plain', 'studio', 'magazine'].includes(k)).map(([k, l]) => `<option value="${k}" ${k === cur ? 'selected' : ''}>${l.name}</option>`).join('');
               })()}
             </select>
             <button type="button" class="btn btn-secondary" id="f-frame-guide">${App.icon('download')} 칸 위치 가이드 저장</button>

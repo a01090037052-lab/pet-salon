@@ -3167,7 +3167,8 @@ App.pages.records = {
       }
       ctx.save();
       if (_logoPos === 'center') ctx.globalAlpha = 0.45;
-      ctx.drawImage(_logoOn(), (W - lw) / 2, y, lw, lh);
+      // 가운데(물자국)·위쪽 안전 자리는 사진 위라 배경색에 맞춰 바꾸지 않는다
+      ctx.drawImage((_logoPos === 'center' || _logoPos === 'top-safe') ? _logoImg : _logoOn(), (W - lw) / 2, y, lw, lh);
       ctx.restore();
       return true;
     };
@@ -3179,6 +3180,7 @@ App.pages.records = {
     // 배경색 한 줄(자동·연보라·분홍…)에서 고른 색 — 모든 틀에 같이 (포인트 색은 배경색을 진하게)
     if (s.bgPick && (s.bgPick === 'auto' || this._STUDIO_COLORS[s.bgPick] || /^#[0-9a-f]{6}$/i.test(s.bgPick))) {
       bgColor = this._studioColor({ studioColor: s.bgPick }, imgBefore || imgAfter);
+      s._autoBg = bgColor; // 인스타 저장 배경도 같은 색으로
       mainColor = this._mixHex(bgColor, '#000000', 0.5);
     }
     // 로고 — 한 가지 색 로고가 배경에 묻히면 흰색·짙은 색으로 (배경 사진 위에서는 그대로)
@@ -3258,7 +3260,9 @@ App.pages.records = {
       if (img && this._imgHasAlpha(img)) {
         // 배경 지운 사진 — 칸을 배경색보다 살짝 진한(어두운 배경이면 밝은) 색으로 채우고 강아지를 잘리지 않게 세운다
         ctx.beginPath(); ctx.rect(x, y, w, h); ctx.clip();
-        const sc = s.slotColor && s.slotColor !== 'auto' ? (s.slotColor === 'white' ? '#FFFFFF' : (this._STUDIO_COLORS[s.slotColor]?.hex || s.slotColor)) : this._mixHex(bgColor, darkBg ? '#FFFFFF' : '#000000', 0.07);
+        // 사진 칸 색: 고른 색 → (자동이면) 프레임에서 정한 '사진 뒤 배경색' → 배경색보다 살짝 진하게
+        const sc = s.slotColor && s.slotColor !== 'auto' ? (s.slotColor === 'white' ? '#FFFFFF' : (this._STUDIO_COLORS[s.slotColor]?.hex || s.slotColor))
+          : (_frameHoles && s.frameHoleBg) ? s.frameHoleBg : this._mixHex(bgColor, darkBg ? '#FFFFFF' : '#000000', 0.07);
         ctx.fillStyle = sc; ctx.fillRect(x, y, w, h);
         this._drawCutout(ctx, img, x + w * 0.06, y + h * 0.06, w * 0.88, h * 0.9);
       } else if (img) {
@@ -3455,7 +3459,9 @@ App.pages.records = {
       ctx = canvas.getContext('2d');
 
       // 배경 — 사용자 커스텀 색이 있으면 그 색, 아니면 옅은 크림
-      const polarBg = ((s.template === 'custom' && s.customBgColor) || s.bgPick) ? bgColor : '#FAFAF7';
+      // 배경색 줄에서 고른 색(테마 포함)을 따른다 — 기본 흰색일 때만 옛 폴라로이드 크림색
+      const polarPlain = s.template === 'classic' && !s.bgPick;
+      const polarBg = polarPlain ? '#FAFAF7' : bgColor;
       ctx.fillStyle = polarBg; ctx.fillRect(0, 0, W, H);
       if (_customBgImg) this._drawImageCover(ctx, _customBgImg, 0, 0, W, H);
 
@@ -3469,8 +3475,8 @@ App.pages.records = {
       _drawPhoto(ctx, mainImg, pad, pad, photoS, photoS, 0);
 
       const polarText = s.headline ? s.headline : (s.customShowPet ? petName : '');
-      const polarTextColor = (s.template === 'custom' && s.customTextColor) ? s.customTextColor : '#1A1A1A';
-      const subColor = s.customTextColor ? textSub : '#64748B';
+      const polarTextColor = polarPlain ? '#1A1A1A' : textColor;
+      const subColor = polarPlain ? '#64748B' : textSub;
       ctx.textAlign = 'center';
       const areaTop = pad + photoS, areaH = H - areaTop;
       if (isSquare) {
@@ -3494,7 +3500,7 @@ App.pages.records = {
           y += l.h;
         });
         if (s.customShowShop) {
-          if (_logoImg && _logoPos !== 'none') { const lh = 40 * _logoSizeMul, lw = _logoImg.width * (lh / _logoImg.height); ctx.drawImage(_logoOn(), (W - lw) / 2, H - 40 - lh, lw, lh); }
+          if (_logoImg && _logoPos !== 'none') { const lh = 40 * _logoSizeMul, lw = _logoImg.width * (lh / _logoImg.height); ctx.drawImage(_customBgImg ? _logoImg : this._logoForBg(_logoImg, polarBg), (W - lw) / 2, H - 40 - lh, lw, lh); }
           else if (!_logoImg) { ctx.fillStyle = mainColor; ctx.font = 'bold 26px ' + fontFamily; ctx.fillText(shopName, W / 2, H - 46); }
         }
       }
@@ -4279,6 +4285,15 @@ App.pages.records = {
   // 아이폰으로 떼어 낸 사진은 털 둘레에 배경색 띠(초록·분홍·회색)가 남고 선이 딱딱하다.
   // ① 가장자리를 조금 깎고 ② 깎은 곳 둘레 색을 바로 안쪽 털 색으로 바꾸고 ③ 살짝 흐려 털처럼 부드럽게 한다.
   _CUTOUT_LEVELS: { 0: '끄기', 1: '약하게', 2: '보통', 3: '강하게' },
+  // 단계 → 막대 값 { e: 깎기(칸), f: 부드럽게(칸), c: 털 색 바로잡기 0~1 }. 손질 화면 막대로 따로 맞출 수 있다
+  _edgeOf(level) {
+    if (level && typeof level === 'object') {
+      const n = (v, d, max) => Math.max(0, Math.min(max, Number.isFinite(+v) ? +v : d));
+      return { e: n(level.e, 2, 8), f: n(level.f, 2, 8), c: n(level.c, 1, 1) };
+    }
+    const k = Math.max(0, Math.min(3, Number(level) || 0));
+    return { e: k, f: k, c: k ? 1 : 0 };
+  },
   // 한 줄(가로 또는 세로)씩 최솟값 — 알파를 r 칸 깎는다 (세로도 줄 단위로 읽어 빠르게)
   _alphaMin(src, w, h, r) {
     if (r <= 0) return src.slice();
@@ -4373,9 +4388,10 @@ App.pages.records = {
     const A = new Uint8Array(N);
     for (let i = 0; i < N; i++) A[i] = (mask && mask[i] < 0) ? 0 : src[i * 4 + 3];
     const out = new Uint8Array(N);
-    if (level > 0 && Math.min(w, h) >= 40) {
+    const E = this._edgeOf(level);
+    if ((E.e || E.f || E.c) && Math.min(w, h) >= 40) {
       const s = Math.max(1, Math.max(w, h) / 1200); // 큰 사진이면 그만큼 더
-      const e = Math.round([0, 1, 2, 3][level] * s), f = Math.round([0, 1, 2, 3][level] * s);
+      const e = Math.round(E.e * s), f = Math.round(E.f * s);
       const M = this._alphaMin(A, w, h, e + Math.ceil(f / 2));
       const B = this._alphaBlur(this._alphaBlur(M, w, h, f), w, h, f);
       for (let i = 0; i < N; i++) out[i] = Math.min(B[i], A[i]);
@@ -4407,8 +4423,8 @@ App.pages.records = {
       for (let i = 0; i < N; i++) {
         const q = i * 4;
         if (out[i] > 0 && solid[i] < 250 && known[i]) {
-          // 원래 색과 털 색을 섞는다 (가장자리일수록 털 색)
-          const t = 1 - out[i] / 255 * 0.35;
+          // 원래 색과 털 색을 섞는다 (가장자리일수록 털 색, '털 색 바로잡기' 막대만큼)
+          const t = E.c * (1 - out[i] / 255 * 0.35);
           data[q] = Math.round(src[q] * (1 - t) + R[i] * t);
           data[q + 1] = Math.round(src[q + 1] * (1 - t) + G[i] * t);
           data[q + 2] = Math.round(src[q + 2] * (1 - t) + Bc[i] * t);
@@ -4477,6 +4493,8 @@ App.pages.records = {
     const known = this._cutoutSrc.get(cur);
     const img = await this._loadImg(known ? known.orig : cur, true).catch(() => null);
     this._cutoutOpening = false;
+    // 기다리는 사이 카드 창이 닫혔거나 사진이 바뀌면 열지 않는다
+    if (this._cardPhotos[slot] !== cur || !document.querySelector('.card-maker')) return;
     if (!img) { App.showToast('사진을 읽지 못했어요.', 'error'); return; }
     const W = img.width, H = img.height;
     const oc = document.createElement('canvas'); oc.width = W; oc.height = H;
@@ -4490,6 +4508,7 @@ App.pages.records = {
       : (isCut ? { orig: cur, level: 0, strokes: [], key: null }
         : (guess = this._guessKeyColor(raw, W, H), { orig: cur, level: 0, strokes: [], key: { color: guess.color, tol: Math.round(Math.min(60, Math.max(14, guess.spread * 1.3 + 8))) } }));
     const keyMode = !!info.key;
+    info.level = this._edgeOf(info.level || 0); // 막대 값으로 (예전 단계 숫자도 그대로 이어받는다)
     if (keyMode && !guess) guess = this._guessKeyColor(raw, W, H);
     const work = document.createElement('canvas'); work.width = W; work.height = H;
     const wx = work.getContext('2d', { willReadFrequently: true });
@@ -4516,6 +4535,12 @@ App.pages.records = {
           ${guess && guess.spread > 40 ? '<div class="cutout-ed-warn">배경이 한 가지 색이 아니라 깔끔하지 않을 수 있어요. 남은 곳은 붓으로 지우세요.</div>' : ''}` : ''}
         <div class="cutout-ed-row"><span class="cutout-ed-lb">가장자리</span>
           ${Object.entries(this._CUTOUT_LEVELS).map(([k, n]) => chip('level', k, n)).join('')}</div>
+        <!-- 단계 단추는 시작점, 막대로 따로 맞춘다 (손을 뗄 때 한 번 계산). 좁은 화면에서는 접어 둔다 -->
+        <details class="cutout-ed-more"${window.matchMedia('(min-width: 900px) and (orientation: landscape)').matches ? ' open' : ''}><summary>세밀하게 (깎기·부드럽게·털 색)</summary>
+        <div class="cutout-ed-row cutout-ed-edge"><span class="cutout-ed-lb">깎기</span><input type="range" min="0" max="8" step="1" data-edge="e" aria-label="가장자리 깎기"><b data-edge-v="e"></b></div>
+        <div class="cutout-ed-row cutout-ed-edge"><span class="cutout-ed-lb">부드럽게</span><input type="range" min="0" max="8" step="1" data-edge="f" aria-label="가장자리 부드럽게"><b data-edge-v="f"></b></div>
+        <div class="cutout-ed-row cutout-ed-edge"><span class="cutout-ed-lb">털 색</span><input type="range" min="0" max="100" step="10" data-edge="c" aria-label="털 색 바로잡기"><b data-edge-v="c"></b></div>
+        </details>
         <div class="cutout-ed-row"><span class="cutout-ed-lb">붓</span>
           ${chip('tool', 'smart', '비슷한 색만 지우기')}${chip('tool', 'erase', '지우기')}${chip('tool', 'restore', '되살리기')}${chip('tool', 'move', '옮기기')}</div>
         <div class="cutout-ed-row"><span class="cutout-ed-lb">얼굴만</span>
@@ -4602,12 +4627,15 @@ App.pages.records = {
           const d = wx.createImageData(W, H); d.data.set(out);
           wx.putImageData(d, 0, 0);
         } catch (e) { console.warn('떼기 계산 실패:', e); }
-        st.busy = false; busyEl.hidden = true; draw();
+        st.busy = false; st.ready = true; busyEl.hidden = true; draw();
         if (st.dirty) { st.dirty = false; recompute(); }
       }, 30);
     };
     const sync = () => {
-      ov.querySelectorAll('[data-level]').forEach(b => b.classList.toggle('active', Number(b.dataset.level) === (info.level || 0)));
+      const E = info.level;
+      ov.querySelectorAll('[data-level]').forEach(b => { const P = this._edgeOf(Number(b.dataset.level)); b.classList.toggle('active', P.e === E.e && P.f === E.f && P.c === E.c); });
+      ov.querySelectorAll('[data-edge]').forEach(inp => { const k = inp.dataset.edge; if (document.activeElement !== inp) inp.value = k === 'c' ? Math.round(E.c * 100) : E[k]; });
+      ov.querySelectorAll('[data-edge-v]').forEach(b => { const k = b.dataset.edgeV; b.textContent = k === 'c' ? Math.round(E.c * 100) + '%' : E[k] + '칸'; });
       ov.querySelectorAll('[data-tool]').forEach(b => b.classList.toggle('active', b.dataset.tool === st.tool));
       ov.querySelectorAll('[data-bg]').forEach(b => b.classList.toggle('active', b.dataset.bg === st.bg));
       const u = ov.querySelector('[data-act="undo"]'); if (u && !st.saving) u.disabled = !info.strokes.length;
@@ -4627,17 +4655,19 @@ App.pages.records = {
       ov.remove(); work.width = work.height = oc.width = oc.height = 0;
     };
     ov._close = close; // 카드 창이 닫힐 때(뒤로 가기 등)도 정리되게
-    const waitIdle = async () => { while (st.busy || st.dirty) { if (st.closed) return false; await new Promise(r => setTimeout(r, 50)); } return !st.closed; };
+    const waitIdle = async () => { while (!st.ready || st.busy || st.dirty) { if (st.closed) return false; await new Promise(r => setTimeout(r, 50)); } return !st.closed; };
     ov.addEventListener('click', async (e) => {
       const b = e.target.closest('button'); if (!b || st.saving) return;
-      if (b.dataset.level != null) { info.level = Number(b.dataset.level); recompute(); }
+      if (b.dataset.level != null) { info.level = this._edgeOf(Number(b.dataset.level)); recompute(); }
       else if (b.dataset.tool) st.tool = b.dataset.tool;
       else if (b.dataset.bg) { st.bg = b.dataset.bg; draw(); }
       else if (b.dataset.act === 'undo') { info.strokes.pop(); recompute(); }
       else if (b.dataset.act === 'cancel') { close(); return; }
       else if (b.dataset.act === 'sticker') {
-        if (!(await waitIdle())) return;
-        await this._saveCutoutSticker(work);
+        if (st.stickerBusy) return;
+        st.stickerBusy = true; b.disabled = true;
+        try { if (await waitIdle()) await this._saveCutoutSticker(work); }
+        finally { st.stickerBusy = false; if (!st.closed) b.disabled = false; }
       }
       else if (b.dataset.act === 'done') {
         st.saving = true;
@@ -4646,7 +4676,7 @@ App.pages.records = {
         const url = work.toDataURL('image/png');
         if (this._cardPhotos[slot] === cur) {
           this._cardPhotos[slot] = url;
-          this._cutoutSrc.set(url, { orig: info.orig, level: info.level || 0, strokes: info.strokes, key: info.key || null });
+          this._cutoutSrc.set(url, { orig: info.orig, level: { ...info.level }, strokes: info.strokes, key: info.key || null });
           this._pruneCutoutSrc();
           this._refreshPhotoPreview(slot);
           this._scheduleCardPreview();
@@ -4657,6 +4687,12 @@ App.pages.records = {
       sync();
     });
     ov.querySelector('[data-brush]').addEventListener('input', (e) => { st.brush = Number(e.target.value); });
+    // 가장자리 막대: 움직이는 동안은 숫자만, 손을 떼면 계산
+    ov.querySelectorAll('[data-edge]').forEach(inp => {
+      const read = () => { const k = inp.dataset.edge, v = Number(inp.value); info.level = { ...info.level, [k]: k === 'c' ? v / 100 : v }; };
+      inp.addEventListener('input', () => { read(); const k = inp.dataset.edge, b = ov.querySelector(`[data-edge-v="${k}"]`); if (b) b.textContent = k === 'c' ? inp.value + '%' : inp.value + '칸'; });
+      inp.addEventListener('change', () => { read(); recompute(); sync(); });
+    });
     ov.querySelector('[data-tol]')?.addEventListener('change', (e) => { info.key.tol = Number(e.target.value); recompute(); });
     // 손가락: 하나 = 붓·선(또는 옮기기), 둘 = 확대·이동
     const pts = new Map();
@@ -4953,8 +4989,8 @@ App.pages.records = {
   // 한 가지 색 로고가 배경과 밝기가 비슷해 묻히면 배경에 맞는 글자색(흰색·짙은 색)으로 바꿔 그린다. 잘 보이면 원래 색 그대로
   _logoForBg(img, bgHex) {
     if (!img) return null;
-    const hit = this._logoTintCache && this._logoTintCache.get(img);
-    if (hit && hit.bg === bgHex) return hit.out;
+    const per = this._logoTintCache && (this._logoTintCache.get(img) || (this._logoTintCache.set(img, new Map()), this._logoTintCache.get(img)));
+    if (per && per.has(bgHex)) return per.get(bgHex);
     let out = img;
     try {
       const r = Math.min(1, 600 / Math.max(img.width, img.height));
@@ -4967,7 +5003,7 @@ App.pages.records = {
         out = c;
       } else c.width = c.height = 0;
     } catch (_) { out = img; }
-    if (this._logoTintCache) this._logoTintCache.set(img, { bg: bgHex, out });
+    if (per) per.set(bgHex, out);
     return out;
   },
   // 배경 지운 사진을 상자 안에 바닥 맞춰 놓고, 발밑 그림자를 그린다 (확대·위치 슬라이더 반영)
@@ -5276,8 +5312,12 @@ App.pages.records = {
   // 미리보기에서 강아지를 끌 수 있나: 사진 한 장 틀 + 떼어 낸 사진 + 내 프레임 아님
   _photoDragOk() {
     const layout = document.querySelector('#card-pick-layout .card-pick-btn.active')?.dataset.key;
+    // 칸이 하나인 내 프레임(벽 뒤 빼꼼·찢어진 종이 등): 사진을 끌어 벽 쪽으로 붙이면 벽 뒤에 숨은 것처럼 보인다
+    if (String(document.querySelector('#card-pick-theme .card-pick-btn.active')?.dataset.key || '').startsWith('frame:')) {
+      const holes = this._appliedFrame?.holes || [];
+      return holes.length === 1 && this._appliedFrame.mode === 'overlay' && !!this._cardPhotos[0];
+    }
     if (!['plain', 'studio', 'magazine', 'single'].includes(layout)) return false;
-    if (String(document.querySelector('#card-pick-theme .card-pick-btn.active')?.dataset.key || '').startsWith('frame:')) return false;
     return !!(this._slotCut && this._slotCut[0] && this._cardPhotos[0]);
   },
   _syncPhotoDrag() {
@@ -5321,7 +5361,12 @@ App.pages.records = {
     const n = this._cardPhotoCount({ layout, settings: {} });
     const anyCut = (this._slotCut || []).slice(0, n).some(Boolean);
     const frame = String(document.querySelector('#card-pick-theme .card-pick-btn.active')?.dataset.key || '').startsWith('frame:');
-    row.hidden = !anyCut || frame || ['plain', 'studio', 'magazine'].includes(layout);
+    // 프레임이면 칸 모양은 프레임 것이라 틀(레이아웃)과 상관없이 보인다. '자동'은 프레임에서 정한 사진 뒤 배경색
+    const n2 = frame ? Math.min(4, (this._appliedFrame?.holes || []).length || 1) : n;
+    const anyCut2 = (this._slotCut || []).slice(0, n2).some((v, i) => v && this._cardPhotos[i]);
+    row.hidden = !anyCut2 || (!frame && ['plain', 'studio', 'magazine'].includes(layout));
+    const autoBtn = row.querySelector('[data-slotc="auto"]');
+    if (autoBtn) { const t = frame && this._appliedFrame?.holeBg ? '프레임에 맞춤' : '자동'; autoBtn.title = t; autoBtn.setAttribute('aria-label', t); }
   },
   // 틀 탭의 '배경색 ○○ 바꾸기' 줄에 지금 색을 보여 준다
   _syncBgLink(f) {
@@ -5337,6 +5382,9 @@ App.pages.records = {
     else if (f.theme === 'custom') { name = st.customBgImage ? '배경 사진' : '직접 고른 색'; hex = st.customBgImage ? null : (st.customBgColor || '#FFFFFF'); }
     else { name = ({ classic: '흰색', film: '크림', pastel: '연분홍', dark: '남색' })[f.theme] || '흰색'; hex = this.CARD_TEMPLATES[f.theme]?.bgColor || '#FFFFFF'; }
     nm.textContent = name;
+    const bn = document.getElementById('card-bg-name'); if (bn) bn.textContent = f.settings?.frameHoles ? '' : '· ' + name;
+    const sb = document.querySelector('#card-slot-color [data-slotc].active'); const sn = document.getElementById('card-slot-name');
+    if (sn) sn.textContent = sb ? '· ' + (sb.title || '') : '';
     dot.style.background = hex || '';
     dot.classList.toggle('auto', !hex);
   },
@@ -5686,7 +5734,11 @@ App.pages.records = {
     c.width = W; c.height = H;
     const x = c.getContext('2d');
     const preset = this.CARD_TEMPLATES[ds.template] || this.CARD_TEMPLATES.classic;
-    x.fillStyle = ds.customBgColor || preset.bgColor || '#FFFFFF';
+    // 배경색 줄에서 고른 색(파스텔·직접·자동)도 따른다 — 자동은 카드 가운데 색으로 짐작하지 않고 첫 사진 기준과 같게
+    let sheetBg = ds.customBgColor || preset.bgColor || '#FFFFFF';
+    if (ds.bgPick && ds.bgPick !== 'auto') sheetBg = this._STUDIO_COLORS[ds.bgPick]?.hex || ds.bgPick;
+    else if (ds.bgPick === 'auto' && ds._autoBg) sheetBg = ds._autoBg;
+    x.fillStyle = sheetBg;
     x.fillRect(0, 0, W, H);
     const frameImg = ds.customBgImage ? await this._loadImg(ds.customBgImage) : null;
     if (frameImg) this._drawImageCover(x, frameImg, 0, 0, W, H);
@@ -5731,7 +5783,7 @@ App.pages.records = {
       photoBefore: block(0), photoAfter: block(1), photo3: block(2), photo4: block(3) };
     const shopName = await DB.getSetting('shopName') || '펫살롱';
     const shopPhone = await DB.getSetting('shopPhone') || '';
-    const ds = await this._designFrom({ ...saved, customBgImage: null, customOverlayImage: null }, layout, saved.template === 'custom' ? 'classic' : (saved.template || 'classic'), '콩이');
+    const ds = await this._designFrom({ ...saved, customBgImage: null, customOverlayImage: null, bgPick: null, slotColor: 'auto' }, layout, saved.template === 'custom' ? 'classic' : (saved.template || 'classic'), '콩이');
     return this._generateCardCanvas(rec, null, { name: '콩이' }, shopName, shopPhone, '', ds);
   },
 
@@ -6245,7 +6297,8 @@ App.pages.records = {
         const r = layer.getBoundingClientRect(); if (!r.width) return;
         const m = this._cardPhotoMeta[0];
         const layout = document.querySelector('#card-pick-layout .card-pick-btn.active')?.dataset.key;
-        const [fx, fy] = ({ plain: [0.87, 0.92], studio: [0.8, 0.65], magazine: [0.93, 0.65] })[layout] || [0.88, 0.7];
+        const fhole = String(document.querySelector('#card-pick-theme .card-pick-btn.active')?.dataset.key || '').startsWith('frame:') ? (this._appliedFrame?.holes || [])[0] : null;
+        const [fx, fy] = fhole ? [fhole.w * (this._slotCut?.[0] ? 0.88 : 1), fhole.h * (this._slotCut?.[0] ? 0.9 : 1)] : (({ plain: [0.87, 0.92], studio: [0.8, 0.65], magazine: [0.93, 0.65] })[layout] || [0.88, 0.7]);
         const vals = [...pts.values()];
         if (vals.length >= 2 && pdrag.p0.length >= 2) {
           const d = Math.hypot(vals[0][0] - vals[1][0], vals[0][1] - vals[1][1]);
@@ -6266,6 +6319,7 @@ App.pages.records = {
       const el = layer.querySelector(`.card-sticker[data-i="${drag.i}"]`);
       if (el) { el.style.left = st.x * 100 + '%'; el.style.top = st.y * 100 + '%'; }
     };
+    layer.onlostpointercapture = (e) => { if (pdrag && pts.has(e.pointerId)) { pts.delete(e.pointerId); if (!pts.size) { pdrag = null; this._syncSlotSliders(0); this._scheduleCardPreview(); } } };
     layer.onpointerup = layer.onpointercancel = (e) => {
       if (drag && e.pointerId === drag.id) drag = null;
       if (pdrag) {
@@ -6410,7 +6464,14 @@ App.pages.records = {
     preview.classList.remove('cutout');
     const cutBtn = document.getElementById(`card-cutout-${slot}`);
     if (cutBtn) cutBtn.hidden = true;
-    if (!photo) { preview.innerHTML = App.icon('camera'); return; }
+    if (!photo) {
+      preview.innerHTML = App.icon('camera');
+      if (this._slotCut) this._slotCut[slot] = false;
+      if (this._slotCutSrc) this._slotCutSrc[slot] = null;
+      const zs0 = document.querySelector(`.card-zoom-slider[data-slot="${slot}"]`); if (zs0) zs0.min = 100;
+      this._syncSlotColorRow?.();
+      return;
+    }
     const meta = this._cardPhotoMeta[slot] || { offsetX: 0, offsetY: 0, zoom: 1.0 };
     // offsetX/Y = -50~+50 → object-position % = 0~100
     const colPct = (50 + (meta.offsetX || 0)) + '%';
@@ -6471,6 +6532,7 @@ App.pages.records = {
       customOverlayImage: theme === 'custom' ? (ds.customOverlayImage || null) : null,
       frameHoles: theme === 'custom' && ds.customOverlayImage && Array.isArray(ds.frameHoles) ? ds.frameHoles : null,
       frameSize: theme === 'custom' && ds.customOverlayImage ? (ds.frameSize || null) : null,
+      frameHoleBg: theme === 'custom' && ds.customOverlayImage && /^#[0-9a-f]{6}$/i.test(ds.frameHoleBg || '') ? ds.frameHoleBg : null,
       photoFilter: this._CARD_FILTERS[ds.photoFilter] ? ds.photoFilter : 'none',
       fontKey: this._CARD_FONTS[ds.fontKey] ? ds.fontKey : 'system',
       polaroidShape: ds.polaroidShape === 'square' ? 'square' : 'classic',
@@ -6541,6 +6603,7 @@ App.pages.records = {
       settings.lastUsedFrameId = appliedFrameId;
       const fr = this._appliedFrame;
       settings.frameHoles = isOverlay && Array.isArray(fr.holes) && fr.holes.length ? fr.holes : null;
+      settings.frameHoleBg = settings.frameHoles && /^#[0-9a-f]{6}$/i.test(fr.holeBg || '') ? fr.holeBg : null;
       settings.frameSize = settings.frameHoles ? { w: fr.fw, h: fr.fh } : null;
     } else {
       settings.lastUsedFrameId = null;
@@ -6771,20 +6834,20 @@ App.pages.records = {
         <!-- 배경색 한 줄 (예전 테마 4개 · 빠른 색 조합 5개 · 사진관 색 7개를 합쳤다) → 내 프레임 → 글꼴 → 더 꾸미기 -->
         <div class="form-group">
           <div id="card-pick-theme" class="card-pick-theme">
-            <label class="form-label">배경색 <span class="card-sub">· 어느 틀이든 같이 바뀌어요</span></label>
+            <label class="form-label">배경색 <b class="card-pick-name" id="card-bg-name"></b> <span class="card-sub">· 어느 틀이든 같이 바뀌어요</span></label>
             <div class="card-bg-row">
               ${[['bg:auto', '자동', 'auto'], ...Object.entries(THEMES).map(([k]) => [k, ({ classic: '흰색', film: '크림', pastel: '연분홍', dark: '남색' })[k] || THEMES[k].name, this.CARD_TEMPLATES[k]?.bgColor || '#FFFFFF']),
                 ...Object.entries(this._STUDIO_COLORS).map(([k, c]) => ['bg:' + k, c.name, c.hex])].map(([key, name, hex]) => `
-                <button type="button" class="card-pick-btn card-bg-chip${key === selectedBgKey ? ' active' : ''}" data-key="${key}"${hex === 'auto' ? ' data-auto="1"' : ` style="--c:${hex}"`}><i></i><span>${name}</span></button>`).join('')}
-              ${recentColors.map(c => `<button type="button" class="card-pick-btn card-bg-chip mine${'bg:' + c === selectedBgKey ? ' active' : ''}" data-key="bg:${c}" style="--c:${c}" title="직접 고른 색"><i></i></button>`).join('')}
+                <button type="button" class="card-pick-btn card-bg-chip${key === selectedBgKey ? ' active' : ''}" data-key="${key}" title="${name}" aria-label="${name}"${hex === 'auto' ? ' data-auto="1"' : ` style="--c:${hex}"`}><i></i><span>${name}</span></button>`).join('')}
+              ${recentColors.map(c => `<button type="button" class="card-pick-btn card-bg-chip mine${'bg:' + c === selectedBgKey ? ' active' : ''}" data-key="bg:${c}" style="--c:${c}" title="직접 고른 색" aria-label="직접 고른 색"><i></i></button>`).join('')}
               <label class="card-bg-chip card-bg-add" title="원하는 색 고르기"><i>＋</i><span>직접</span><input type="color" id="card-bg-custom" value="${/^#[0-9a-f]{6}$/i.test(saved.bgPick || '') ? saved.bgPick : '#A58BD6'}" aria-label="배경색 직접 고르기"></label>
             </div>
             <!-- 사진 칸 색 — 떼어 낸 강아지 뒤 (네컷·2컷·피드·스토리·폴라로이드 칸). 떼어 낸 사진이 있을 때만 -->
             <div id="card-slot-color" hidden>
-              <label class="form-label" style="margin-top:14px">사진 칸 색 <span class="card-sub">· 떼어 낸 강아지 뒤</span></label>
+              <label class="form-label" style="margin-top:14px">사진 칸 색 <b class="card-pick-name" id="card-slot-name"></b> <span class="card-sub">· 떼어 낸 강아지 뒤</span></label>
               <div class="card-bg-row">
                 ${[['auto', '자동', null], ['white', '흰색', '#FFFFFF'], ['gray', '연회색', this._STUDIO_COLORS.gray.hex], ...Object.entries(this._STUDIO_COLORS).filter(([k]) => k !== 'gray').map(([k, c]) => [k, c.name, c.hex])].map(([k, name, h]) => `
-                  <button type="button" class="card-bg-chip${selSlot === k ? ' active' : ''}" data-slotc="${k}"${h ? ` style="--c:${h}"` : ' data-auto="1"'}><i></i><span>${name}</span></button>`).join('')}
+                  <button type="button" class="card-bg-chip${selSlot === k ? ' active' : ''}" data-slotc="${k}" title="${name}" aria-label="${name}"${h ? ` style="--c:${h}"` : ' data-auto="1"'}><i></i><span>${name}</span></button>`).join('')}
                 ${recentColors.map(c => `<button type="button" class="card-bg-chip mine${selSlot === c ? ' active' : ''}" data-slotc="${c}" style="--c:${c}" title="직접 고른 색"><i></i></button>`).join('')}
                 <label class="card-bg-chip card-bg-add" title="원하는 색 고르기"><i>＋</i><span>직접</span><input type="color" id="card-slot-custom" value="${/^#[0-9a-f]{6}$/i.test(selSlot) ? selSlot : '#FFFFFF'}" aria-label="사진 칸 색 직접 고르기"></label>
               </div>
@@ -7015,6 +7078,7 @@ App.pages.records = {
         const clone = stage.cloneNode(true);
         clone.querySelectorAll('[id]').forEach(el => el.removeAttribute('id'));
         clone.querySelector('.card-live-zoom')?.remove();
+        clone.querySelector('.card-live-move')?.remove();
         clone.querySelectorAll('.card-sticker.sel').forEach(el => el.classList.remove('sel'));
         ov.appendChild(clone);
         ov.insertAdjacentHTML('beforeend', '<div class="card-zoom-close">눌러서 닫기</div>');

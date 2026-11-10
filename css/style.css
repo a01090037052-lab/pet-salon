@@ -2719,11 +2719,15 @@ a.stat-card { display: flex; }
 
   /* #9 설정 저장 버튼 하단 고정 */
   #btn-save-tab-shop, #btn-save-tab-operation, #btn-save-tab-notify, #btn-save-tab-marketing {
-    position: sticky;
-    bottom: calc(var(--bottom-nav-h) + env(safe-area-inset-bottom));
+    /* 예전 sticky 는 스크롤하는 칸(.main-content)이 아닌 .page-content 기준이라 맨 끝에서만 붙어
+       마지막 칸(내 프레임 안내 글)을 가렸다 → 바텀 내비 바로 위에 늘 떠 있게 하고, 화면 끝에 그만큼 여백을 둔다 */
+    position: fixed;
+    left: 16px; right: 16px; width: auto; margin: 0;
+    bottom: calc(var(--bottom-nav-h) + env(safe-area-inset-bottom) + 8px);
     z-index: 10;
     box-shadow: 0 -4px 12px rgba(0,0,0,0.1);
   }
+  #page-content[data-page="settings"] { padding-bottom: calc(var(--bottom-nav-h) + 76px + 64px + env(safe-area-inset-bottom)); }
 
   /* #11 고객 상세 헤더 정리 */
   .detail-meta {
@@ -4283,3 +4287,70 @@ input.has-clear { padding-right: 44px; }
 .card-live-move[hidden] { display: none; }
 .card-live-move.on { background: var(--primary); }
 .card-live.photo-moving .card-live-stage { outline: 3px dashed var(--primary); outline-offset: 2px; border-radius: 6px; }
+.cutout-ed-edge input[type=range] { flex: 1; min-width: 100px; }
+.cutout-ed-edge b { width: 40px; text-align: right; font-size: 12px; color: var(--text-secondary); font-weight: 600; }
+
+/* ===== 기기별 사진 카드 화면 (2026-11-10) — 휴대폰은 그대로, 세로 태블릿·컴퓨터/가로 태블릿만 배치를 바꾼다 ===== */
+/* 색 단추: 동그라미만 (이름은 마우스를 올리거나 제목 옆에) — 4줄 → 1~2줄 */
+.card-bg-row { gap: 8px; }
+.card-pick-btn.card-bg-chip, .card-bg-chip { width: 40px; height: 40px; min-width: 0; min-height: 0; padding: 0; border-radius: 50%; justify-content: center; gap: 0; border-width: 2px; }
+.card-bg-chip span { display: none; }
+.card-bg-chip i { width: 30px; height: 30px; }
+.card-bg-chip.active { box-shadow: 0 0 0 2px var(--bg-white), 0 0 0 4px var(--primary); border-color: transparent; }
+.card-bg-add i { font-size: 18px; }
+.card-pick-name { font-weight: 700; color: var(--primary); }
+/* 세로 태블릿: 창을 화면 가득에 가깝게, 미리보기 칸을 넓게 */
+@media (min-width: 769px) and (max-width: 1023px) {
+  .modal.modal-lg:has(.card-maker) { width: 96vw; max-width: 96vw; height: 96vh; height: 96dvh; max-height: 96dvh; }
+  .card-maker { grid-template-columns: minmax(0, 42%) minmax(0, 1fr); }
+  .card-head .card-live img#card-live-img, .card-head .card-live.sticker-editing img#card-live-img { max-height: calc(96dvh - 230px); }
+}
+/* 컴퓨터·가로 태블릿: 넓은 창, 왼쪽 큰 미리보기 고정 */
+@media (min-width: 1024px) {
+  .modal.modal-lg:has(.card-maker) { width: min(1240px, 94vw); max-width: min(1240px, 94vw); height: 92vh; height: 92dvh; max-height: 92dvh; }
+  .card-maker { grid-template-columns: minmax(0, 46%) minmax(0, 1fr); column-gap: 28px; }
+  .card-head .card-live img#card-live-img, .card-head .card-live.sticker-editing img#card-live-img { max-height: calc(92dvh - 210px); }
+}
+/* 가장자리 손질: 넓은 화면은 사진 왼쪽 · 도구 오른쪽 */
+.cutout-ed-more > summary { cursor: pointer; font-size: 13px; font-weight: 600; color: var(--primary); min-height: 32px; display: flex; align-items: center; }
+.cutout-ed-more[open] > summary { margin-bottom: 2px; }
+@media (min-width: 900px) and (orientation: landscape) {
+  .cutout-ed { display: grid; grid-template-columns: minmax(0, 1fr) 360px; grid-template-rows: auto minmax(0, 1fr); }
+  .cutout-ed-top { grid-column: 1 / -1; }
+  .cutout-ed-stage { grid-column: 1; grid-row: 2; }
+  .cutout-ed-bar { grid-column: 2; grid-row: 2; max-height: none; border-top: 0; border-left: 1px solid var(--border); padding: 12px 14px; gap: 8px; }
+  .cutout-ed-lb { width: 64px; }
+}
+/* 손가락으로 쓰는 화면(휴대폰·태블릿): 누르는 칸 넉넉하게 */
+@media (pointer: coarse) {
+  .card-pick-btn.card-bg-chip, .card-bg-chip { width: 44px; height: 44px; }
+  .card-bg-chip i { width: 32px; height: 32px; }
+  .cutout-ed-row .card-tstyle-btn { min-height: 40px; }
+  .cutout-ed input[type=range] { min-height: 36px; }
+  .card-live-move, .card-live-zoom { min-height: 40px; }
+  .card-live-zoom { width: 40px; height: 40px; line-height: 40px; }
+}
+.card-pick-btn.card-bg-chip.active, .card-bg-chip.active { background: var(--bg-white); box-shadow: 0 0 0 2px var(--bg-white), 0 0 0 4px var(--primary); border-color: transparent; }
+@media (min-width: 900px) and (orientation: landscape) {
+  .cutout-ed-bar .cutout-ed-row:not(.cutout-ed-edge) { row-gap: 6px; }
+  .cutout-ed-bar .cutout-ed-row:not(.cutout-ed-edge) > .cutout-ed-lb { width: 100%; margin-top: 4px; }
+  .cutout-ed-bar .cutout-ed-row input[data-brush] { flex: 1 1 100%; }
+}
+.cutout-ed-more > summary { list-style: none; }
+.cutout-ed-more > summary::-webkit-details-marker { display: none; }
+.cutout-ed-more > summary::before { content: '▸'; margin-right: 6px; transition: transform .15s; display: inline-block; }
+.cutout-ed-more[open] > summary::before { transform: rotate(90deg); }
+
+/* 알림(토스트)은 가장자리 손질 화면(10001) 위에 — '스티커 저장했어요'가 가려졌다 */
+.toast-container { z-index: 10010; }
+/* 프레임 만들기: 추천 스타일 묶음 · 저장 안내 */
+.fm-preset-groups { display: flex; flex-direction: column; gap: 6px; }
+.fm-preset-group { display: flex; align-items: flex-start; gap: 8px; }
+.fm-group-name { flex: 0 0 64px; font-size: 12px; font-weight: 700; color: var(--text-muted); padding-top: 9px; }
+.fm-preset-group .fm-row { flex: 1; min-width: 0; }
+.fm-saved-note { margin-top: 6px; font-size: 12px; color: var(--primary); font-weight: 600; text-align: center; }
+.fm-saved-note[hidden], #fm-wall-logo[hidden] { display: none; }
+.fm-logo-size { display: flex; align-items: center; gap: 8px; margin-top: 8px; font-size: 13px; color: var(--text-muted); }
+.fm-logo-size input { flex: 1; }
+.fm-logo-warn { margin-top: 6px; font-size: 12px; color: #B45309; background: #FEF3C7; border-radius: 8px; padding: 4px 8px; }
+.fm-logo-warn[hidden] { display: none; }
