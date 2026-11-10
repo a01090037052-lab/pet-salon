@@ -4201,3 +4201,5 @@ input.has-clear { padding-right: 44px; }
   .fm-preview { margin: 0; top: 0; border-radius: var(--radius); border: 1px solid var(--border-light); }
   .fm-preview img { max-height: 70vh; }
 }
+.card-text-chip.mine { border-style: solid; border-color: var(--primary); color: var(--primary); background: var(--primary-light); display: inline-flex; align-items: center; gap: 6px; }
+.card-text-chip-x { display: inline-flex; align-items: center; justify-content: center; width: 20px; height: 20px; margin-right: -6px; border-radius: 50%; background: rgba(0,0,0,.08); font-size: 14px; line-height: 1; }

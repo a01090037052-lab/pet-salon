@@ -4654,6 +4654,35 @@ App.pages.records = {
     try { v = JSON.parse(localStorage.getItem('cardTextLast') || '{}') || {}; } catch (_) {}
     return { style: this._TEXT_STICKER_STYLES[v.style] ? v.style : 'box', color: v.color || '#FFFFFF', fontKey: this._CARD_FONTS[v.fontKey] ? v.fontKey : null };
   },
+  // 기본 문구 (반려견 이름이 있으면 이름을 넣어서)
+  _textDefaults(pet) {
+    return [pet ? pet + '의 첫 미용' : '', pet ? pet + ' 미용 완료 ✨' : '미용 완료 ✨', '오늘도 예뻐요', '보송보송', 'Fresh Cut ✂️', '감사합니다 ♥', '다음에 또 만나요'].filter(Boolean);
+  },
+  // 직접 쓴 문구를 기억한다 (최근 8개, 반려견 이름은 {반려견명} 으로 바꿔 다음 손님 이름으로 나오게) — 동기화되는 설정
+  async _rememberText(text) {
+    const pet = this._cardPetName || '';
+    const raw = pet.length >= 2 ? text.split(pet).join('{반려견명}') : text;
+    const fill = (t) => t.replace(/\{반려견명\}/g, pet || '우리 아이');
+    if (this._textDefaults(pet).includes(fill(raw))) return; // 기본 문구는 따로 기억하지 않는다
+    try {
+      const list = ((await DB.getSetting('cardTextRecent')) || []).filter(t => t !== raw);
+      list.unshift(raw);
+      await DB.setSetting('cardTextRecent', list.slice(0, 8));
+      this._renderTextQuick();
+    } catch (e) { console.warn('문구 기억 실패:', e); }
+  },
+  // 문구 버튼: 내가 쓴 문구(× 로 지우기) → 기본 문구
+  async _renderTextQuick() {
+    const box = document.getElementById('card-text-quick');
+    if (!box) return;
+    const pet = this._cardPetName || '';
+    const fill = (t) => t.replace(/\{반려견명\}/g, pet || '우리 아이');
+    let mine = [];
+    try { mine = (await DB.getSetting('cardTextRecent')) || []; } catch (_) {}
+    const esc = App.escapeHtml;
+    box.innerHTML = mine.map(raw => `<button type="button" class="card-text-chip mine" data-text="${esc(fill(raw))}">${esc(fill(raw).replace(/\n/g, ' '))}<span class="card-text-chip-x" data-raw="${esc(raw)}" role="button" aria-label="이 문구 지우기">×</span></button>`).join('')
+      + this._textDefaults(pet).map(t => `<button type="button" class="card-text-chip" data-text="${esc(t)}">${esc(t)}</button>`).join('');
+  },
   _saveTextLast(v) { try { localStorage.setItem('cardTextLast', JSON.stringify(v)); } catch (_) {} },
   _textSelected() {
     const st = (this._cardStickers || [])[this._stickerSel];
@@ -4712,7 +4741,16 @@ App.pages.records = {
       if (this._textSelected()) { if (v.trim()) apply({ text: v }); }
       else this._textDraft.text = v;
     };
-    box.querySelector('#card-text-quick')?.addEventListener('click', (e) => {
+    this._renderTextQuick();
+    box.querySelector('#card-text-quick')?.addEventListener('click', async (e) => {
+      const del = e.target.closest('.card-text-chip-x');
+      if (del) {
+        e.stopPropagation();
+        const list = ((await DB.getSetting('cardTextRecent')) || []).filter(t => t !== del.dataset.raw);
+        await DB.setSetting('cardTextRecent', list);
+        this._renderTextQuick();
+        return;
+      }
       const b = e.target.closest('.card-text-chip');
       if (!b) return;
       if (ti) ti.value = b.dataset.text;
@@ -4751,6 +4789,7 @@ App.pages.records = {
         this._cardStickers.push({ text, style: d.style, color: d.color, fontKey, src: r.src, w: r.w, x: 0.5, y: Math.min(0.85, 0.3 + n * 0.12), size, rot: 0 });
         this._stickerSel = this._cardStickers.length - 1;
         this._saveTextLast({ style: d.style, color: d.color, fontKey });
+        this._rememberText(text);
         this._textDraft.text = '';
         this._renderStickerLayer();
       } finally { add.disabled = false; }
@@ -4861,17 +4900,25 @@ App.pages.records = {
     const rgba = (hex, a) => { const h = hex.replace('#', ''); return `rgba(${parseInt(h.slice(0, 2), 16)},${parseInt(h.slice(2, 4), 16)},${parseInt(h.slice(4, 6), 16)},${a})`; };
     const blockX = edge, blockY = edge, blockW = W - edge * 2, blockH = H - edge * 2 - tail;
     const texts = (fill) => { x.fillStyle = fill; lines.forEach((l, i) => x.fillText(l, cx, ly(i))); };
+    // 색을 섞는다 (t=0 그 색, t=1 mix 색) — 네온 테두리·속 밝은 줄에 쓴다
+    const mixHex = (hex, mix, t) => { const a = hex.replace('#', ''), b = mix.replace('#', ''); const ch = (k) => Math.round(parseInt(a.slice(k, k + 2), 16) * (1 - t) + parseInt(b.slice(k, k + 2), 16) * t); return `rgb(${ch(0)},${ch(2)},${ch(4)})`; };
     if (style === 'plain') {
-      x.save(); x.shadowColor = 'rgba(0,0,0,0.28)'; x.shadowBlur = 10; x.shadowOffsetY = 3; texts(color); x.restore();
+      // 어두운 글자는 밝은 그림자, 밝은 글자는 어두운 그림자 — 어떤 사진 위에서도 글자가 묻히지 않게
+      x.save(); x.shadowColor = light ? 'rgba(0,0,0,0.35)' : 'rgba(255,255,255,0.55)'; x.shadowBlur = 10; x.shadowOffsetY = light ? 3 : 0; texts(color); x.restore();
     } else if (style === 'outline') {
       x.lineWidth = 20; x.strokeStyle = light ? '#1F2937' : '#FFFFFF';
       lines.forEach((l, i) => x.strokeText(l, cx, ly(i)));
       texts(color);
     } else if (style === 'neon') {
-      x.save(); x.shadowColor = color; x.shadowBlur = 30;
-      for (let k = 0; k < 3; k++) texts('#FFFFFF');
+      // 네온: 은은한 빛 한 번 + 진한 테두리 + 그 색 글자 + 밝은 속 (예전엔 흰 글자에 빛을 세 번 겹쳐 밝은 바탕에서 글자가 안 보였다)
+      const veryLight = this._isLightColor(color) && (() => { const h = color.replace('#', ''); return (parseInt(h.slice(0, 2), 16) + parseInt(h.slice(2, 4), 16) + parseInt(h.slice(4, 6), 16)) / 3 > 235; })();
+      x.save();
+      x.shadowColor = veryLight ? 'rgba(0,0,0,0.45)' : color; x.shadowBlur = 16;
+      x.lineWidth = 6; x.strokeStyle = veryLight ? 'rgba(0,0,0,0.4)' : mixHex(color, '#000000', 0.35);
+      lines.forEach((l, i) => x.strokeText(l, cx, ly(i)));
       x.restore();
-      x.lineWidth = 3; x.strokeStyle = color; lines.forEach((l, i) => x.strokeText(l, cx, ly(i)));
+      texts(color);
+      x.save(); x.globalAlpha = 0.45; texts(mixHex(color, '#FFFFFF', 0.7)); x.restore();
     } else if (style === 'box') {
       // 줄마다 글자 길이에 맞춘 상자 (인스타 글자 배경)
       x.fillStyle = color;
@@ -5591,9 +5638,7 @@ App.pages.records = {
         <div class="form-group card-text-maker" id="card-text-maker">
           <label class="form-label">글자 넣기 <span style="font-size:0.93rem;color:var(--text-muted);font-weight:400">· 어느 틀이든, 미리보기에서 끌어 옮겨요</span></label>
           <textarea id="card-text-input" rows="2" maxlength="40" placeholder="글자를 쓰세요 (줄바꿈으로 세 줄까지)"></textarea>
-          <div class="card-text-quick" id="card-text-quick">
-            ${[cardPetName ? cardPetName + '의 첫 미용' : '', cardPetName ? cardPetName + ' 미용 완료 ✨' : '미용 완료 ✨', '오늘도 예뻐요', '보송보송', 'Fresh Cut ✂️', '감사합니다 ♥', '다음에 또 만나요'].filter(Boolean).map(t => `<button type="button" class="card-text-chip" data-text="${App.escapeHtml(t)}">${App.escapeHtml(t)}</button>`).join('')}
-          </div>
+          <div class="card-text-quick" id="card-text-quick"></div>
           <div class="card-text-row"><span class="card-text-row-label">모양</span>
             <div class="card-sticker-styles" id="card-text-styles">${Object.entries(this._TEXT_STICKER_STYLES).map(([k, v]) => `<button type="button" class="card-tstyle-btn" data-tstyle="${k}">${v.name}</button>`).join('')}</div>
           </div>
