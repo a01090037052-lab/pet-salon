@@ -9,7 +9,10 @@ App.frameMaker = {
     grid4: { name: '2×2 피드', w: 1080, h: 1350 },
     strip2: { name: '2컷 세로', w: 1080, h: 2160 },
     polaroid: { name: '1칸 폴라로이드', w: 1080, h: 1350 },
-    story4: { name: '2×2 스토리', w: 1080, h: 1920 }
+    story4: { name: '2×2 스토리', w: 1080, h: 1920 },
+    // 사진관 참고 사진 (2026-11-10) — 찢어진 종이 구멍 사이로 얼굴, 한쪽 벽 뒤에서 빼꼼
+    torn: { name: '찢어진 종이', w: 1080, h: 1350 },
+    peek: { name: '벽 뒤 빼꼼', w: 1080, h: 1350 }
   },
   PATTERNS: { dots: '도트', gingham: '깅엄 체크', stripe: '사선 줄무늬', paw: '발자국', heart: '하트', star: '반짝이', confetti: '컨페티', film: '필름' },
   // 추천 스타일 — 한 번 누르면 배경·글자·칸 모양을 한꺼번에. {매장명} 은 매장 이름으로 바뀐다
@@ -23,6 +26,8 @@ App.frameMaker = {
     spring: { name: '벚꽃 도트', bgType: 'pattern', pattern: 'dots', bg1: '#FFF1F2', bg2: '#FDA4AF', radius: 60, border: 'white', title: 'SPRING', caption: '봄날의 산책 🌸', font: 'gamja', textColor: '#BE123C', band: false },
     xmas: { name: '크리스마스', bgType: 'pattern', pattern: 'stripe', bg1: '#B91C1C', bg2: '#FFFFFF', radius: 24, border: 'white', title: 'MERRY CHRISTMAS', caption: '{매장명}', font: 'blackhan', textColor: '#FFFFFF', band: true, bandColor: '#14532D' },
     star: { name: '밤하늘 반짝', bgType: 'pattern', pattern: 'star', bg1: '#1E1B4B', bg2: '#FDE68A', radius: 24, border: 'none', title: 'LITTLE STAR', caption: '{매장명}', font: 'orbit', textColor: '#FDE68A', band: false },
+    torn: { name: '찢어진 종이', tpl: 'torn', bgType: 'solid', bg1: '#F7B3C2', bg2: '#FFFFFF', radius: 0, border: 'none', title: '', caption: '{매장명}', font: 'jua', textColor: '#FFFFFF', band: false },
+    peek: { name: '벽 뒤 빼꼼', tpl: 'peek', bgType: 'solid', bg1: '#9C86D0', bg2: '#FFFFFF', radius: 0, border: 'none', title: '', caption: '{매장명}', font: 'paperlogy', textColor: '#FFFFFF', band: false },
     heart: { name: '러블리 하트', bgType: 'pattern', pattern: 'heart', bg1: '#FFE4E6', bg2: '#FB7185', radius: 60, border: 'white', title: '', caption: 'LOVE MY PUPPY ♥', font: 'dongle', textColor: '#BE123C', band: true, bandColor: '#FFFFFF' }
   },
   SWATCHES: ['#FFFFFF', '#111111', '#FFF8F0', '#F5E6D3', '#FFE4E6', '#F9A8D4', '#FB7185', '#F43F5E', '#FDE68A', '#FB923C', '#D1FAE5', '#34D399', '#BAE6FD', '#38BDF8', '#C4B5FD', '#6366F1', '#1E1B4B', '#2B2420'],
@@ -36,7 +41,11 @@ App.frameMaker = {
     const top = p.title ? 190 : m;
     const bottom = (p.caption || p.logo) ? (p.tpl === 'booth4' ? 280 : 210) : m;
     const out = [];
-    if (p.tpl === 'polaroid') {
+    if (p.tpl === 'torn') {
+      out.push({ x: (W - 600) / 2, y: Math.round(H * 0.3), w: 600, h: 560 });
+    } else if (p.tpl === 'peek') {
+      out.push({ x: 420, y: 0, w: W - 420, h: H });
+    } else if (p.tpl === 'polaroid') {
       const s = W - m * 2;
       out.push({ x: m, y: top, w: s, h: Math.min(s, H - top - bottom) });
     } else if (p.tpl === 'grid4' || p.tpl === 'story4') {
@@ -62,6 +71,25 @@ App.frameMaker = {
   },
   _sparkle(x, cx, cy, s) {
     x.beginPath(); x.moveTo(cx, cy - s); x.quadraticCurveTo(cx, cy, cx + s, cy); x.quadraticCurveTo(cx, cy, cx, cy + s); x.quadraticCurveTo(cx, cy, cx - s, cy); x.quadraticCurveTo(cx, cy, cx, cy - s); x.fill();
+  },
+  // 두 색 섞기 (t=0 → a, 1 → b)
+  _mix(a, b, t) {
+    const h = (c) => { c = String(c).replace('#', ''); return [0, 2, 4].map(i => parseInt(c.slice(i, i + 2), 16) || 0); };
+    const A = h(a), B = h(b);
+    return '#' + A.map((v, i) => Math.round(v + (B[i] - v) * t).toString(16).padStart(2, '0')).join('');
+  },
+  // 찢어진 구멍 둘레 점 — 타원을 따라 들쭉날쭉 (같은 칸이면 늘 같은 모양)
+  _tornPoints(cl) {
+    const rnd = this._rand(11), N = 72, pts = [];
+    const cx = cl.x + cl.w / 2, cy = cl.y + cl.h / 2, rx = cl.w / 2, ry = cl.h / 2;
+    // 크게 출렁이는 둘레(사인 몇 개) + 작은 톱니 — 별 모양처럼 규칙적이지 않게
+    const ph = [rnd() * 6, rnd() * 6, rnd() * 6];
+    for (let i = 0; i < N; i++) {
+      const a = (i / N) * Math.PI * 2;
+      const k = 0.88 + 0.05 * Math.sin(a * 3 + ph[0]) + 0.03 * Math.sin(a * 5 + ph[1]) + 0.02 * Math.sin(a * 9 + ph[2]) + (rnd() - 0.5) * 0.035;
+      pts.push([cx + Math.cos(a) * rx * k, cy + Math.sin(a) * ry * k]);
+    }
+    return pts;
   },
   _rgba(hex, a) { const h = String(hex).replace('#', ''); return `rgba(${parseInt(h.slice(0, 2), 16)},${parseInt(h.slice(2, 4), 16)},${parseInt(h.slice(4, 6), 16)},${a})`; },
 
@@ -146,15 +174,53 @@ App.frameMaker = {
     this._drawBackground(x, W, H, p, bgImg);
     const cells = this.cells({ ...p, title, caption });
     const rad = Number(p.radius) || 0;
+    const special = p.tpl === 'torn' || p.tpl === 'peek';
     // 칸 테두리 (사진 둘레 띠)
-    if (p.border && p.border !== 'none') {
+    if (!special && p.border && p.border !== 'none') {
       x.fillStyle = p.border === 'black' ? '#111111' : '#FFFFFF';
       cells.forEach(cl => { R._roundRect(x, cl.x - 12, cl.y - 12, cl.w + 24, cl.h + 24, rad ? rad + 10 : 2); x.fill(); });
     }
     // 사진 칸 뚫기
     x.save(); x.globalCompositeOperation = 'destination-out'; x.fillStyle = '#000';
-    cells.forEach(cl => { if (rad) { R._roundRect(x, cl.x, cl.y, cl.w, cl.h, rad); x.fill(); } else x.fillRect(cl.x, cl.y, cl.w, cl.h); });
+    if (p.tpl === 'torn') {
+      const pts = this._tornPoints(cells[0]);
+      x.beginPath(); pts.forEach(([px, py], i) => i ? x.lineTo(px, py) : x.moveTo(px, py)); x.closePath(); x.fill();
+    } else cells.forEach(cl => { if (rad && !special) { R._roundRect(x, cl.x, cl.y, cl.w, cl.h, rad); x.fill(); } else x.fillRect(cl.x, cl.y, cl.w, cl.h); });
     x.restore();
+    if (p.tpl === 'torn') {
+      // 찢긴 종이 가장자리(흰 섬유) + 안쪽으로 말린 종잇조각
+      const cl = cells[0], pts = this._tornPoints(cl);
+      const cx = cl.x + cl.w / 2, cy = cl.y + cl.h / 2;
+      x.save();
+      x.strokeStyle = this._mix(p.bg1, '#FFFFFF', 0.55); x.lineWidth = 7; x.lineJoin = 'round';
+      x.beginPath(); pts.forEach(([px, py], i) => i ? x.lineTo(px, py) : x.moveTo(px, py)); x.closePath(); x.stroke();
+      const flap = this._mix(p.bg1, '#FFFFFF', 0.22);
+      [5, 22, 41, 58].forEach((i, n) => {
+        const a = pts[i], b = pts[(i + 7) % pts.length];
+        const mx = (a[0] + b[0]) / 2, my = (a[1] + b[1]) / 2;
+        const k = [0.16, 0.11, 0.14, 0.09][n];
+        x.shadowColor = 'rgba(0,0,0,0.22)'; x.shadowBlur = 14; x.shadowOffsetY = 5;
+        x.fillStyle = flap;
+        x.beginPath(); x.moveTo(a[0], a[1]); x.lineTo(mx + (cx - mx) * k, my + (cy - my) * k); x.lineTo(b[0], b[1]); x.closePath(); x.fill();
+      });
+      x.restore();
+    } else if (p.tpl === 'peek') {
+      // 벽 모서리 그림자 (사진 쪽으로 살짝) + 벽 끝 밝은 선
+      const cl = cells[0];
+      const g = x.createLinearGradient(cl.x, 0, cl.x + 70, 0);
+      g.addColorStop(0, 'rgba(0,0,0,0.28)'); g.addColorStop(1, 'rgba(0,0,0,0)');
+      x.fillStyle = g; x.fillRect(cl.x, 0, 70, H);
+      x.fillStyle = 'rgba(255,255,255,0.25)'; x.fillRect(cl.x - 4, 0, 4, H);
+    }
+    if (p.tpl === 'peek') {
+      // 글자·로고는 왼쪽 벽 위아래에
+      const wc = cells[0].x / 2, ww = cells[0].x - 70;
+      if (title) this._drawText(x, title, wc, 130, ww, 64, p, fontStack);
+      if (logoImg) { const lh = 70, lw = Math.min(ww, logoImg.width * (lh / logoImg.height)); x.drawImage(logoImg, wc - lw / 2, H - (caption ? 250 : 170), lw, lw * logoImg.height / logoImg.width); }
+      if (caption) this._drawText(x, caption, wc, H - 110, ww, 52, p, fontStack);
+      const holes = cells.map(cl => ({ x: cl.x / W, y: cl.y / H, w: cl.w / W, h: cl.h / H }));
+      return { canvas: c, holes, fw: W, fh: H };
+    }
     // 위·아래 글자
     const last = cells[cells.length - 1];
     const bottomTop = last.y + last.h + 12, bottomH = H - bottomTop;
@@ -218,7 +284,7 @@ App.frameMaker = {
               <div class="fm-color-label">바탕 색</div>${sw('fm-bg1', p.bg1)}
               <div id="fm-bg2-wrap" ${p.bgType === 'gradient' || p.bgType === 'pattern' ? '' : 'hidden'}><div class="fm-color-label">${p.bgType === 'gradient' ? '두 번째 색' : '무늬 색'}</div>${sw('fm-bg2', p.bg2)}</div>
             </div>
-            <div class="form-group"><label class="form-label">사진 칸</label>
+            <div class="form-group" id="fm-cellstyle" ${p.tpl === 'torn' || p.tpl === 'peek' ? 'hidden' : ''}><label class="form-label">사진 칸</label>
               <div class="fm-row" id="fm-radius">${chips({ 0: '각지게', 24: '둥글게', 60: '많이 둥글게' }, 'radius', String(p.radius))}</div>
               <div class="fm-row" id="fm-border">${chips({ none: '테두리 없음', white: '흰 테두리', black: '검정 테두리' }, 'border', p.border)}</div>
             </div>
@@ -292,6 +358,7 @@ App.frameMaker = {
       if ($('fm-photo-row')) $('fm-photo-row').hidden = p.bgType !== 'photo';
       if ($('fm-bg2-wrap')) { $('fm-bg2-wrap').hidden = !(p.bgType === 'gradient' || p.bgType === 'pattern'); const l = $('fm-bg2-wrap').querySelector('.fm-color-label'); if (l) l.textContent = p.bgType === 'gradient' ? '두 번째 색' : '무늬 색'; }
       if ($('fm-band-wrap')) $('fm-band-wrap').hidden = !p.band;
+      if ($('fm-cellstyle')) $('fm-cellstyle').hidden = p.tpl === 'torn' || p.tpl === 'peek'; // 찢어진 종이·빼꼼은 칸 모서리·테두리를 안 쓴다
       if ($('fm-band')) $('fm-band').checked = !!p.band;
       if ($('fm-title') && document.activeElement !== $('fm-title')) $('fm-title').value = p.title || '';
       if ($('fm-caption') && document.activeElement !== $('fm-caption')) $('fm-caption').value = p.caption || '';
@@ -304,7 +371,8 @@ App.frameMaker = {
     const on = (id, attr, fn) => $(id)?.addEventListener('click', (e) => { const b = e.target.closest(`[data-${attr}]`); if (!b) return; fn(b.dataset[attr]); syncAll(); draw(); });
     on('fm-presets', 'preset', (k) => {
       const pr = this.PRESETS[k]; if (!pr) return;
-      const keep = { tpl: p.tpl, logo: p.logo, bgPhoto: p.bgPhoto };
+      // 찢어진 종이·빼꼼 스타일에서 일반 스타일로 오면 칸 배치도 네컷으로 돌린다
+      const keep = { tpl: pr.tpl || (p.tpl === 'torn' || p.tpl === 'peek' ? 'booth4' : p.tpl), logo: p.logo, bgPhoto: p.bgPhoto };
       Object.keys(p).forEach(key => delete p[key]);
       Object.assign(p, { bandColor: '#FFFFFF', pattern: 'dots' }, pr, keep, { preset: k });
       const nm = $('fm-name'); if (nm && (!nm.value || Object.values(this.PRESETS).some(x => x.name === nm.value))) nm.value = pr.name;

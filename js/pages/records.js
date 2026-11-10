@@ -3167,7 +3167,7 @@ App.pages.records = {
       }
       ctx.save();
       if (_logoPos === 'center') ctx.globalAlpha = 0.45;
-      ctx.drawImage(_logoImg, (W - lw) / 2, y, lw, lh);
+      ctx.drawImage(_logoOn(), (W - lw) / 2, y, lw, lh);
       ctx.restore();
       return true;
     };
@@ -3176,6 +3176,13 @@ App.pages.records = {
     if (s.customBgColor) bgColor = s.customBgColor;
     if (s.customAccentColor) mainColor = s.customAccentColor;
     const _customBgImg = s.customBgImage ? await this._loadImg(s.customBgImage) : null;
+    // 배경색 한 줄(자동·연보라·분홍…)에서 고른 색 — 모든 틀에 같이 (포인트 색은 배경색을 진하게)
+    if (s.bgPick && (s.bgPick === 'auto' || this._STUDIO_COLORS[s.bgPick])) {
+      bgColor = this._studioColor({ studioColor: s.bgPick }, imgBefore || imgAfter);
+      mainColor = this._mixHex(bgColor, '#000000', 0.5);
+    }
+    // 로고 — 한 가지 색 로고가 배경에 묻히면 흰색·짙은 색으로 (배경 사진 위에서는 그대로)
+    const _logoOn = () => _customBgImg ? _logoImg : this._logoForBg(_logoImg, bgColor);
 
     // Determine if dark background for text color decisions
     const _isDark = (hex) => {
@@ -3186,7 +3193,8 @@ App.pages.records = {
       const b = parseInt(c.substr(4, 2), 16);
       return (r * 0.299 + g * 0.587 + b * 0.114) < 140;
     };
-    const darkBg = s.customTextColor ? _isDark(s.customTextColor) : _isDark(bgColor);
+    // 배경색 줄에서 고른 색은 사진관·잡지 표지와 같은 기준으로 (연보라·하늘은 흰 글자)
+    const darkBg = s.customTextColor ? _isDark(s.customTextColor) : (s.bgPick ? this._studioInk(bgColor) === '#FFFFFF' : _isDark(bgColor));
     const textColor = s.customTextColor || (darkBg ? '#FFFFFF' : '#1a1a1a');
     // rgba 변환 (구형 Android 8자리 hex 미지원 대응)
     const _hexToRgba = (hex, alpha) => {
@@ -3245,7 +3253,12 @@ App.pages.records = {
     const _drawPhoto = (ctx, img, x, y, w, h, radius) => {
       ctx.save();
       if (radius) { this._roundRect(ctx, x, y, w, h, radius); ctx.clip(); }
-      if (img) {
+      if (img && this._imgHasAlpha(img)) {
+        // 배경 지운 사진 — 칸을 배경색보다 살짝 진한(어두운 배경이면 밝은) 색으로 채우고 강아지를 잘리지 않게 세운다
+        ctx.beginPath(); ctx.rect(x, y, w, h); ctx.clip();
+        ctx.fillStyle = this._mixHex(bgColor, darkBg ? '#FFFFFF' : '#000000', 0.07); ctx.fillRect(x, y, w, h);
+        this._drawCutout(ctx, img, x + w * 0.06, y + h * 0.06, w * 0.88, h * 0.9);
+      } else if (img) {
         this._drawImageCover(ctx, img, x, y, w, h);
       } else {
         _placeholder(ctx, x, y, w, h);
@@ -3439,7 +3452,7 @@ App.pages.records = {
       ctx = canvas.getContext('2d');
 
       // 배경 — 사용자 커스텀 색이 있으면 그 색, 아니면 옅은 크림
-      const polarBg = (s.template === 'custom' && s.customBgColor) ? s.customBgColor : '#FAFAF7';
+      const polarBg = ((s.template === 'custom' && s.customBgColor) || s.bgPick) ? bgColor : '#FAFAF7';
       ctx.fillStyle = polarBg; ctx.fillRect(0, 0, W, H);
       if (_customBgImg) this._drawImageCover(ctx, _customBgImg, 0, 0, W, H);
 
@@ -3478,10 +3491,130 @@ App.pages.records = {
           y += l.h;
         });
         if (s.customShowShop) {
-          if (_logoImg && _logoPos !== 'none') { const lh = 40 * _logoSizeMul, lw = _logoImg.width * (lh / _logoImg.height); ctx.drawImage(_logoImg, (W - lw) / 2, H - 40 - lh, lw, lh); }
+          if (_logoImg && _logoPos !== 'none') { const lh = 40 * _logoSizeMul, lw = _logoImg.width * (lh / _logoImg.height); ctx.drawImage(_logoOn(), (W - lw) / 2, H - 40 - lh, lw, lh); }
           else if (!_logoImg) { ctx.fillStyle = mainColor; ctx.font = 'bold 26px ' + fontFamily; ctx.fillText(shopName, W / 2, H - 46); }
         }
       }
+    }
+
+    // ===== 틀 없이 — 사진 한 장을 그대로 (글자·스티커는 위에 직접) =====
+    else if (layout === 'plain') {
+      const mainImg = imgAfter || imgBefore;
+      const fixed = { '45': 4 / 5, '11': 1, '916': 9 / 16 }[s.plainRatio];
+      const r = Math.min(2, Math.max(0.45, fixed || (mainImg ? mainImg.width / mainImg.height : 4 / 5)));
+      const W = 1080, H = Math.round(W / r);
+      canvas.width = W; canvas.height = H;
+      ctx = canvas.getContext('2d');
+      if (mainImg && this._imgHasAlpha(mainImg)) {
+        ctx.fillStyle = bgColor; ctx.fillRect(0, 0, W, H);
+        if (_customBgImg) this._drawImageCover(ctx, _customBgImg, 0, 0, W, H);
+        this._drawCutout(ctx, mainImg, 70, 70, W - 140, H - 110);
+      } else {
+        _drawPhoto(ctx, mainImg, 0, 0, W, H);
+      }
+    }
+
+    // ===== 사진관 — 한 가지 색 배경 · 위에 '매장명 / and / 반려견명' · 가운데 강아지 =====
+    // 배경 지운 사진이면 색 배경 위에 강아지만 (발밑 그림자), 아니면 흰 테두리 사진을 가운데에
+    else if (layout === 'studio') {
+      const W = 1080, H = 1350;
+      canvas.width = W; canvas.height = H;
+      ctx = canvas.getContext('2d');
+      const mainImg = imgAfter || imgBefore;
+      const bg = bgColor;
+      const ink = s.customTextColor || this._studioInk(bg);
+      ctx.fillStyle = bg; ctx.fillRect(0, 0, W, H);
+      if (_customBgImg) this._drawImageCover(ctx, _customBgImg, 0, 0, W, H);
+      ctx.textAlign = 'center'; ctx.textBaseline = 'alphabetic'; ctx.fillStyle = ink;
+      let y = 96;
+      const showShop = s.customShowShop;
+      const showPet = s.customShowPet && petName;
+      if (showShop) {
+        const lg = (_logoImg && _logoPos !== 'none') ? this._logoForBg(_logoImg, bg) : null;
+        if (lg) {
+          let lh = 96 * _logoSizeMul, lw = lg.width * (lh / lg.height);
+          if (lw > 640) { lh *= 640 / lw; lw = 640; }
+          ctx.drawImage(lg, (W - lw) / 2, y - 30, lw, lh);
+          y += lh - 10;
+        } else if (shopName) {
+          ctx.font = 'bold 66px ' + fontFamily;
+          ctx.fillText(this._truncText(ctx, shopName, W - 200), W / 2, y + 40);
+          y += 64;
+        }
+      }
+      if (s.customShowDate) {
+        ctx.save(); ctx.globalAlpha = 0.8; ctx.font = '24px ' + fontFamily;
+        ctx.fillText(dateStr, W / 2, y + 22); ctx.restore();
+        y += 38;
+      }
+      if (showShop && showPet) { ctx.font = 'bold 28px ' + fontFamily; ctx.fillText('and', W / 2, y + 40); y += 44; }
+      if (showPet) { ctx.font = 'bold 52px ' + fontFamily; ctx.fillText(this._truncText(ctx, petName, W - 200), W / 2, y + 56); }
+      const top = 400, bottom = H - 70;
+      if (mainImg && this._imgHasAlpha(mainImg)) {
+        // 확대해도 위 글자를 덮지 않게 글자 아래만
+        ctx.save(); ctx.beginPath(); ctx.rect(0, top - 40, W, H - top + 40); ctx.clip();
+        this._drawCutout(ctx, mainImg, 110, top, W - 220, bottom - top);
+        ctx.restore();
+      } else if (mainImg) {
+        // 흰 테두리 사진 (참고 사진의 '손에 든 사진' 느낌) — 사진 비율을 살리되 너무 길쭉하지 않게
+        const ar = Math.min(1.33, Math.max(0.75, mainImg.width / mainImg.height));
+        let iw = 760, ih = iw / ar;
+        if (ih > bottom - top - 60) { ih = bottom - top - 60; iw = ih * ar; }
+        const b = 18, ox = (W - iw) / 2, oy = top + (bottom - top - ih) / 2;
+        ctx.save(); ctx.shadowColor = 'rgba(0,0,0,0.2)'; ctx.shadowBlur = 40; ctx.shadowOffsetY = 18;
+        ctx.fillStyle = '#FFFFFF'; ctx.fillRect(ox - b, oy - b, iw + b * 2, ih + b * 2); ctx.restore();
+        _drawPhoto(ctx, mainImg, ox, oy, iw, ih, 0);
+      } else {
+        _placeholder(ctx, 160, top, W - 320, bottom - top);
+      }
+    }
+
+    // ===== 잡지 표지 — 위에 매장명 크게 · 한 줄 소개 · 가는 줄 · 제목(스타일 이름) =====
+    // 일반 사진은 카드 가득, 배경 지운 사진은 색 배경 위 아래쪽에 크게
+    else if (layout === 'magazine') {
+      const W = 1080, H = 1350;
+      canvas.width = W; canvas.height = H;
+      ctx = canvas.getContext('2d');
+      const mainImg = imgAfter || imgBefore;
+      const cut = mainImg && this._imgHasAlpha(mainImg);
+      let ink;
+      if (!mainImg || cut) {
+        ctx.fillStyle = bgColor; ctx.fillRect(0, 0, W, H);
+        if (_customBgImg) this._drawImageCover(ctx, _customBgImg, 0, 0, W, H);
+        ink = s.customTextColor || this._studioInk(bgColor);
+        if (mainImg) { ctx.save(); ctx.beginPath(); ctx.rect(0, 360, W, H - 360); ctx.clip(); this._drawCutout(ctx, mainImg, 40, 460, W - 80, H - 470); ctx.restore(); }
+      } else {
+        _drawPhoto(ctx, mainImg, 0, 0, W, H);
+        ink = this._regionLuma(ctx, 0, 0, W, 420) < 150 ? '#FFFFFF' : '#2B2B2B';
+        // 글자가 잘 보이게 위쪽만 살짝 어둡게(또는 밝게)
+        const g = ctx.createLinearGradient(0, 0, 0, 560);
+        g.addColorStop(0, ink === '#FFFFFF' ? 'rgba(0,0,0,0.38)' : 'rgba(255,255,255,0.5)');
+        g.addColorStop(1, 'rgba(0,0,0,0)');
+        ctx.fillStyle = g; ctx.fillRect(0, 0, W, 560);
+      }
+      ctx.textBaseline = 'alphabetic'; ctx.fillStyle = ink; ctx.strokeStyle = ink;
+      if (ink === '#FFFFFF' && !cut) { ctx.shadowColor = 'rgba(0,0,0,0.25)'; ctx.shadowBlur = 10; }
+      if (s.customShowShop) {
+        const lg = (_logoImg && _logoPos !== 'none') ? this._logoForBg(_logoImg, cut || !mainImg ? bgColor : (ink === '#FFFFFF' ? '#333333' : '#EEEEEE')) : null;
+        if (lg) {
+          let lh = 110 * _logoSizeMul, lw = lg.width * (lh / lg.height);
+          if (lw > 760) { lh *= 760 / lw; lw = 760; }
+          ctx.drawImage(lg, (W - lw) / 2, 150 - lh * 0.75, lw, lh);
+        } else if (shopName) {
+          this._spacedText(ctx, shopName, W / 2, 150, 8, 'bold {s}px ' + fontFamily, 84, W - 160);
+        }
+      }
+      const sub = s.subline || (s.customShowDate ? dateStr : '');
+      if (sub) this._spacedText(ctx, sub, W / 2, 205, 7, '{s}px ' + fontFamily, 24, W - 200);
+      ctx.save(); ctx.globalAlpha = 0.55; ctx.lineWidth = 2;
+      ctx.beginPath(); ctx.moveTo(W / 2 - 320, 244); ctx.lineTo(W / 2 + 320, 244); ctx.stroke(); ctx.restore();
+      const title = s.headline || (s.showService && serviceNames ? String(serviceNames) : '') || (s.customShowPet ? petName : '');
+      if (title) this._spacedText(ctx, title, W / 2, 322, 12, '{s}px ' + fontFamily, 58, W - 180);
+      if (s.customShowPet && petName && title !== petName) {
+        ctx.font = 'bold 34px ' + fontFamily; ctx.textAlign = 'center';
+        ctx.fillText(this._truncText(ctx, petName, W - 200), W / 2, H - 56);
+      }
+      ctx.shadowColor = 'transparent'; ctx.shadowBlur = 0;
     }
 
     // ===== Layout E: polaroid (폴라로이드) =====
@@ -3679,7 +3812,7 @@ App.pages.records = {
       if (s.customShowPet) { ctx.fillStyle = textColor; ctx.font = 'bold 20px ' + fontFamily; ctx.fillText(petName, W / 2, _ty); _ty += 20; }
       if (s.customShowDate) { ctx.fillStyle = textSub; ctx.font = '13px ' + fontFamily; ctx.fillText(dateStr, W / 2, _ty); _ty += 18; }
       if (s.customShowShop) {
-        if (_logoImg && _logoPos !== 'none') { const lh = 28 * _logoSizeMul, lw = _logoImg.width * (lh / _logoImg.height); ctx.drawImage(_logoImg, (W - lw) / 2, _ty - 12, lw, lh); }
+        if (_logoImg && _logoPos !== 'none') { const lh = 28 * _logoSizeMul, lw = _logoImg.width * (lh / _logoImg.height); ctx.drawImage(_logoOn(), (W - lw) / 2, _ty - 12, lw, lh); }
         else if (!_logoImg) { ctx.fillStyle = mainColor; ctx.font = 'bold 13px ' + fontFamily; const shopLine = (s.showShopPhone && shopPhone) ? shopName + ' · ' + shopPhone : shopName; ctx.fillText(shopLine, W / 2, _ty); }
       }
     }
@@ -3865,6 +3998,8 @@ App.pages.records = {
   // ========== Photo Card System (사진 카드) ==========
   _cardPhotos: [],
   _CARD_LAYOUTS: {
+    // 틀 없이 — 사진 한 장 그대로, 스티커·글자만 위에 (2026-11-10 사장님 요청 '틀 없이도 꾸미게')
+    plain: { name: '틀 없이', icon: 'image', photos: 1 },
     photobooth: { name: '네컷 세로', icon: 'list', photos: 4 },
     feed: { name: '피드 4:5', icon: 'image', photos: 4 },
     story: { name: '스토리', icon: 'camera', photos: 4 },
@@ -3873,8 +4008,22 @@ App.pages.records = {
     feed4: { name: '피드 4컷', icon: 'image', photos: 4, legacy: true },
     story4: { name: '스토리 4컷', icon: 'camera', photos: 4, legacy: true },
     strip2: { name: '2컷', icon: 'copy', photos: 2 },
-    single: { name: '폴라로이드', icon: 'circle', photos: 1 }
+    single: { name: '폴라로이드', icon: 'circle', photos: 1 },
+    // 사진관 참고 사진(한 가지 색 배경 · 위에 작은 글자) — 2026-11-10
+    studio: { name: '사진관', icon: 'camera', photos: 1 },
+    magazine: { name: '잡지 표지', icon: 'image', photos: 1 }
   },
+  // 사진관·잡지 표지·틀 없이(배경 지운 사진) 배경색 — 사진관 배경지처럼 연한 한 가지 색. hue: 자동 고르기용 색상각
+  _STUDIO_COLORS: {
+    lavender: { name: '연보라', hex: '#A58BD6', hue: 262 },
+    pink: { name: '분홍', hex: '#F4B2C6', hue: 342 },
+    sky: { name: '하늘', hex: '#74C6D8', hue: 191 },
+    lemon: { name: '레몬', hex: '#F5D565', hue: 47 },
+    mint: { name: '민트', hex: '#A3D9C0', hue: 152 },
+    beige: { name: '베이지', hex: '#D9CCC0', hue: 28 },
+    gray: { name: '연회색', hex: '#ECEAE6', hue: null }
+  },
+  _PLAIN_RATIOS: { orig: '사진 그대로', '45': '4:5 피드', '11': '1:1 정사각', '916': '9:16 스토리' },
   // 고르는 칸에서 뺀 레이아웃 → 가장 가까운 레이아웃 (저장된 카드 설정 이어받기)
   _CARD_LAYOUT_MIGRATE: { feed4: 'feed', story4: 'story', strip4: 'photobooth' },
   // 사진 카드 글꼴 — 무료(OFL) 한글 글꼴. 처음 쓸 때 Google Fonts 에서 받고, 서비스워커가 보관해 다음부터는 오프라인에서도 쓴다.
@@ -3998,6 +4147,177 @@ App.pages.records = {
     warm: { name: '따뜻하게', sat: 1.06, mul: [1.07, 1.01, 0.9], add: [4, 0, -2] },
     cool: { name: '시원하게', sat: 0.95, mul: [0.93, 1, 1.07], add: [0, 2, 8] }
   },
+  // ===== 사진관·잡지 표지·틀 없이 도우미 (2026-11-10) =====
+  // 사진에 투명한 곳이 있나 (아이폰에서 강아지만 떼어 낸 사진) — 작게 줄여 3% 넘게 투명하면 '배경 지운 사진'
+  _alphaCache: (typeof WeakMap !== 'undefined') ? new WeakMap() : null,
+  _imgHasAlpha(img) {
+    if (!img || !img.width) return false;
+    const hit = this._alphaCache && this._alphaCache.get(img);
+    if (hit !== undefined) return hit;
+    let res = false;
+    try {
+      const c = document.createElement('canvas'); c.width = 48; c.height = 48;
+      const x = c.getContext('2d', { willReadFrequently: true });
+      x.drawImage(img, 0, 0, 48, 48);
+      res = this._alphaShare(x.getImageData(0, 0, 48, 48).data) > 0.03;
+      c.width = c.height = 0;
+    } catch (_) { res = false; }
+    if (this._alphaCache) this._alphaCache.set(img, res);
+    return res;
+  },
+  // 화소 배열에서 투명한(알파 200 미만) 화소의 비율 — 순수 함수
+  _alphaShare(data) {
+    let n = 0;
+    for (let i = 3; i < data.length; i += 4) if (data[i] < 200) n++;
+    return data.length ? n / (data.length / 4) : 0;
+  },
+  // 사진 색에 어울리는 배경색 고르기 — 순수 함수. cutout(배경 지운 사진)이면 강아지 털색의 반대쪽 색, 아니면 사진 속 가장 많은 색과 가까운 색
+  _pickStudioColor(data, cutout) {
+    let sx = 0, sy = 0, n = 0, opaque = 0;
+    for (let i = 0; i < data.length; i += 4) {
+      if (data[i + 3] < 200) continue;
+      opaque++;
+      const r = data[i], g = data[i + 1], b = data[i + 2];
+      const max = Math.max(r, g, b), min = Math.min(r, g, b);
+      if (max < 60 || min > 225) continue;
+      if ((max - min) / max < 0.18) continue;
+      let h;
+      const d = max - min;
+      if (max === r) h = ((g - b) / d) % 6; else if (max === g) h = (b - r) / d + 2; else h = (r - g) / d + 4;
+      h *= 60;
+      sx += Math.cos(h * Math.PI / 180); sy += Math.sin(h * Math.PI / 180); n++;
+    }
+    if (!opaque || n < opaque * 0.08) return 'lavender'; // 흰 강아지·흑백 사진 → 연보라
+    let hue = Math.atan2(sy, sx) * 180 / Math.PI;
+    if (cutout) hue += 180;
+    hue = ((hue % 360) + 360) % 360;
+    let best = 'lavender', bestD = 999;
+    Object.entries(this._STUDIO_COLORS).forEach(([k, c]) => {
+      if (c.hue == null) return;
+      const dd = Math.min(Math.abs(c.hue - hue), 360 - Math.abs(c.hue - hue));
+      if (dd < bestD) { bestD = dd; best = k; }
+    });
+    return best;
+  },
+  _studioColor(s, img) {
+    const pick = s && s.studioColor;
+    if (pick && this._STUDIO_COLORS[pick]) return this._STUDIO_COLORS[pick].hex;
+    if (pick && /^#[0-9a-f]{6}$/i.test(pick)) return pick;
+    let key = 'lavender';
+    if (img) {
+      try {
+        const c = document.createElement('canvas'); c.width = 40; c.height = 40;
+        const x = c.getContext('2d', { willReadFrequently: true });
+        x.drawImage(img, 0, 0, 40, 40);
+        key = this._pickStudioColor(x.getImageData(0, 0, 40, 40).data, this._imgHasAlpha(img));
+        c.width = c.height = 0;
+      } catch (_) {}
+    }
+    return this._STUDIO_COLORS[key].hex;
+  },
+  // 배경색 위 글자색 — 진하면 흰색, 연하면 짙은 회색
+  _studioInk(hex) {
+    const c = String(hex || '#FFFFFF').replace('#', '');
+    const l = parseInt(c.substr(0, 2), 16) * 0.299 + parseInt(c.substr(2, 2), 16) * 0.587 + parseInt(c.substr(4, 2), 16) * 0.114;
+    return l < 180 ? '#FFFFFF' : '#2B2B2B';
+  },
+  // 색 섞기 (t=0 → a, 1 → b), '#rrggbb' 로 돌려준다
+  _mixHex(a, b, t) {
+    const h = (c) => { c = String(c || '#FFFFFF').replace('#', ''); return [0, 2, 4].map(i => parseInt(c.slice(i, i + 2), 16) || 0); };
+    const A = h(a), B = h(b);
+    return '#' + A.map((v, i) => Math.round(v + (B[i] - v) * t).toString(16).padStart(2, '0')).join('');
+  },
+  // 로고가 한 가지 색(투명 배경)이면 그 색 [r,g,b], 아니면 null — 순수 함수 (여러 색 로고·사각 로고는 손대지 않는다)
+  _monoLogoColor(data) {
+    let op = 0, tr = 0, sr = 0, sg = 0, sb = 0;
+    for (let i = 0; i < data.length; i += 4) {
+      if (data[i + 3] < 128) { tr++; continue; }
+      op++; sr += data[i]; sg += data[i + 1]; sb += data[i + 2];
+    }
+    if (!op || tr < (op + tr) * 0.05) return null;
+    const mr = sr / op, mg = sg / op, mb = sb / op;
+    let close = 0;
+    for (let i = 0; i < data.length; i += 4) {
+      if (data[i + 3] < 128) continue;
+      const d = Math.abs(data[i] - mr) + Math.abs(data[i + 1] - mg) + Math.abs(data[i + 2] - mb);
+      if (d < 90) close++;
+    }
+    return close / op >= 0.85 ? [mr, mg, mb] : null;
+  },
+  // 순수 함수: 한 가지 색 로고(rgb)가 배경(hex)과 밝기 차이가 작으면 true
+  _logoNeedsTint(rgb, bgHex) {
+    if (!rgb) return false;
+    const c = String(bgHex || '#FFFFFF').replace('#', '');
+    const bl = parseInt(c.substr(0, 2), 16) * 0.299 + parseInt(c.substr(2, 2), 16) * 0.587 + parseInt(c.substr(4, 2), 16) * 0.114;
+    const ll = rgb[0] * 0.299 + rgb[1] * 0.587 + rgb[2] * 0.114;
+    return Math.abs(bl - ll) < 90;
+  },
+  _logoTintCache: (typeof WeakMap !== 'undefined') ? new WeakMap() : null,
+  // 한 가지 색 로고가 배경과 밝기가 비슷해 묻히면 배경에 맞는 글자색(흰색·짙은 색)으로 바꿔 그린다. 잘 보이면 원래 색 그대로
+  _logoForBg(img, bgHex) {
+    if (!img) return null;
+    const hit = this._logoTintCache && this._logoTintCache.get(img);
+    if (hit && hit.bg === bgHex) return hit.out;
+    let out = img;
+    try {
+      const r = Math.min(1, 600 / Math.max(img.width, img.height));
+      const c = document.createElement('canvas');
+      c.width = Math.max(1, Math.round(img.width * r)); c.height = Math.max(1, Math.round(img.height * r));
+      const x = c.getContext('2d', { willReadFrequently: true });
+      x.drawImage(img, 0, 0, c.width, c.height);
+      if (this._logoNeedsTint(this._monoLogoColor(x.getImageData(0, 0, c.width, c.height).data), bgHex)) {
+        x.globalCompositeOperation = 'source-in'; x.fillStyle = this._studioInk(bgHex); x.fillRect(0, 0, c.width, c.height);
+        out = c;
+      } else c.width = c.height = 0;
+    } catch (_) { out = img; }
+    if (this._logoTintCache) this._logoTintCache.set(img, { bg: bgHex, out });
+    return out;
+  },
+  // 배경 지운 사진을 상자 안에 바닥 맞춰 놓고, 발밑 그림자를 그린다 (확대·위치 슬라이더 반영)
+  _drawCutout(ctx, img, bx, by, bw, bh, noFloor) {
+    const m = img._meta || {};
+    const z = Math.max(1, Math.min(3, m.zoom || 1));
+    const sc = Math.min(bw / img.width, bh / img.height) * z;
+    const w = img.width * sc, h = img.height * sc;
+    const x = bx + (bw - w) / 2 - (m.offsetX || 0) / 100 * bw;
+    const y = by + bh - h - (m.offsetY || 0) / 100 * bh;
+    if (!noFloor) {
+      ctx.save();
+      ctx.translate(x + w / 2, y + h - 4); ctx.scale(1, 0.13);
+      const g = ctx.createRadialGradient(0, 0, 0, 0, 0, w * 0.42);
+      g.addColorStop(0, 'rgba(0,0,0,0.28)'); g.addColorStop(1, 'rgba(0,0,0,0)');
+      ctx.fillStyle = g; ctx.beginPath(); ctx.arc(0, 0, w * 0.42, 0, Math.PI * 2); ctx.fill();
+      ctx.restore();
+    }
+    ctx.save();
+    ctx.shadowColor = 'rgba(0,0,0,0.18)'; ctx.shadowBlur = Math.max(8, w * 0.045); ctx.shadowOffsetY = Math.max(3, w * 0.016);
+    ctx.drawImage(img, x, y, w, h);
+    ctx.restore();
+  },
+  // 글자 사이를 띄워 가운데 맞춰 그린다 (잡지 표지 제목). 폭을 넘으면 글자를 줄인다
+  _spacedText(ctx, text, cx, y, spacing, font, size, maxW) {
+    const chars = Array.from(String(text || ''));
+    if (!chars.length) return size;
+    let fs = size, total = 0, ws = [];
+    const measure = () => { ctx.font = font.replace('{s}', fs); ws = chars.map(ch => ctx.measureText(ch).width); total = ws.reduce((a, b) => a + b, 0) + spacing * (chars.length - 1) * fs / size; };
+    measure();
+    while (total > maxW && fs > 18) { fs -= 2; measure(); }
+    const sp = spacing * fs / size;
+    let x = cx - total / 2;
+    const al = ctx.textAlign; ctx.textAlign = 'left';
+    chars.forEach((ch, i) => { ctx.fillText(ch, x, y); x += ws[i] + sp; });
+    ctx.textAlign = al;
+    return fs;
+  },
+  // 캔버스 한 부분의 평균 밝기 (0~255) — 사진 위 글자색 고르기
+  _regionLuma(ctx, x, y, w, h) {
+    try {
+      const d = ctx.getImageData(x, y, w, h).data;
+      let s = 0, n = 0;
+      for (let i = 0; i < d.length; i += 4 * 16) { s += d[i] * 0.299 + d[i + 1] * 0.587 + d[i + 2] * 0.114; n++; }
+      return n ? s / n : 255;
+    } catch (_) { return 255; }
+  },
   // 화소 배열(RGBA)에 필터 값을 그대로 적용한다 — 테스트에서 바로 부를 수 있게 순수 함수
   _applyFilterPixels(data, p) {
     if (!p) return data;
@@ -4047,6 +4367,7 @@ App.pages.records = {
     const d = x.getImageData(0, 0, c.width, c.height);
     this._applyFilterPixels(d.data, p);
     x.putImageData(d, 0, 0);
+    const keepAlpha = !cover && this._alphaShare(d.data) > 0; // 배경 지운 사진 — 뽀샤시가 투명한 곳으로 번지지 않게
     if (p.glow) {
       // 작게 줄였다 늘리면 흐린 사본이 된다 — 밝게 겹쳐 뽀샤시하게
       const s = document.createElement('canvas');
@@ -4057,6 +4378,11 @@ App.pages.records = {
       x.drawImage(s, 0, 0, c.width, c.height);
       x.restore();
       s.width = s.height = 0;
+      if (keepAlpha) {
+        const d2 = x.getImageData(0, 0, c.width, c.height);
+        for (let i = 3; i < d2.data.length; i += 4) d2.data[i] = d.data[i];
+        x.putImageData(d2, 0, 0);
+      }
     }
   },
 
@@ -4225,7 +4551,10 @@ App.pages.records = {
     strip2: ['pet', 'date', 'shop', 'service', 'nextvisit'],
     single: ['pet', 'date', 'shop'],
     feed: ['pet', 'date', 'shop', 'service', 'nextvisit'],
-    story: ['pet', 'date', 'shop', 'service', 'nextvisit']
+    story: ['pet', 'date', 'shop', 'service', 'nextvisit'],
+    plain: [],
+    studio: ['pet', 'date', 'shop'],
+    magazine: ['pet', 'date', 'shop', 'service']
   },
   _updateTextSupport(f) {
     const frameMode = !!(f.settings && Array.isArray(f.settings.frameHoles) && f.settings.frameHoles.length);
@@ -4244,7 +4573,24 @@ App.pages.records = {
     const hint = document.getElementById('card-text-support');
     if (hint) hint.textContent = frameMode
       ? '내 프레임은 정보를 넣지 않아요 — 위 \'글자 넣기\'로 원하는 자리에 넣으세요.'
+      : f.layout === 'plain' ? '틀 없이는 사진만 나와요 — 위 \'글자 넣기\'와 스티커로 꾸미세요.'
       : (off.length ? `이 틀에는 ${off.join('·')} 자리가 없어요 — 필요하면 위 '글자 넣기'로 넣으세요.` : '다음 방문일을 넣으면 손님이 다시 예약하기 쉬워요.');
+  },
+  // 틀 탭의 '배경색 ○○ 바꾸기' 줄에 지금 색을 보여 준다
+  _syncBgLink(f) {
+    const dot = document.getElementById('card-bg-link-dot'), nm = document.getElementById('card-bg-link-name');
+    if (!dot || !nm) return;
+    const st = f.settings || {};
+    const link = document.getElementById('card-bg-link');
+    if (link) link.hidden = !!(Array.isArray(st.frameHoles) && st.frameHoles.length);
+    let name, hex;
+    if (st.bgPick === 'auto') { name = '자동'; hex = null; }
+    else if (this._STUDIO_COLORS[st.bgPick]) { name = this._STUDIO_COLORS[st.bgPick].name; hex = this._STUDIO_COLORS[st.bgPick].hex; }
+    else if (f.theme === 'custom') { name = st.customBgImage ? '배경 사진' : '직접 고른 색'; hex = st.customBgImage ? null : (st.customBgColor || '#FFFFFF'); }
+    else { name = ({ classic: '흰색', film: '크림', pastel: '연분홍', dark: '남색' })[f.theme] || '흰색'; hex = this.CARD_TEMPLATES[f.theme]?.bgColor || '#FFFFFF'; }
+    nm.textContent = name;
+    dot.style.background = hex || '';
+    dot.classList.toggle('auto', !hex);
   },
   _cardPhotoCount(f) {
     const holes = f && f.settings && f.settings.frameHoles;
@@ -4329,11 +4675,31 @@ App.pages.records = {
     });
   },
 
+  // 줄이기 — 투명한 곳이 있으면 PNG(투명 유지), 없으면 JPEG
+  _resizeCardPhoto(dataUrl, maxSize, quality) {
+    return new Promise(resolve => {
+      const img = new Image();
+      img.onload = () => {
+        try {
+          const r = Math.min(1, maxSize / Math.max(img.width, img.height));
+          const c = document.createElement('canvas');
+          c.width = Math.max(1, Math.round(img.width * r)); c.height = Math.max(1, Math.round(img.height * r));
+          c.getContext('2d').drawImage(img, 0, 0, c.width, c.height);
+          const out = this._imgHasAlpha(c) ? c.toDataURL('image/png') : c.toDataURL('image/jpeg', quality);
+          c.width = c.height = 0;
+          resolve(out);
+        } catch (e) { resolve(null); }
+      };
+      img.onerror = () => resolve(null);
+      img.src = dataUrl;
+    });
+  },
   // 사진 파일 하나 → 줄인 dataURL (못 읽으면 null)
   _readCardPhotoFile(file) {
     return new Promise(resolve => {
       const reader = new FileReader();
-      reader.onload = (ev) => App.resizeImage(ev.target.result, (compressed) => resolve(compressed || null), 1200, 0.85); // 카드 출력(1080px) 대응
+      // 카드 출력(1080px) 대응. 배경을 지운(투명) 사진은 투명한 채로 둔다 — 사진관·잡지 표지에서 색 배경 위에 올린다
+      reader.onload = (ev) => this._resizeCardPhoto(ev.target.result, 1200, 0.85).then(d => resolve(d || null));
       reader.onerror = () => resolve(null);
       reader.readAsDataURL(file);
     });
@@ -4617,6 +4983,7 @@ App.pages.records = {
   // 레이아웃 버튼의 작은 모양 그림 (아이콘만으로는 결과 모양을 알 수 없었다)
   _layoutThumb(key) {
     const cells = { photobooth: 4, strip2: 2, feed4: 4, story4: 4 }[key] || 1;
+    if (key === 'magazine') return '<span class="lay-thumb lay-magazine" aria-hidden="true"><b></b><i></i></span>';
     return `<span class="lay-thumb lay-${key}" aria-hidden="true">${'<i></i>'.repeat(cells)}</span>`;
   },
 
@@ -5152,6 +5519,7 @@ App.pages.records = {
     const f = await this._readCardForm(this._cardPetName || '');
     const count = this._cardPhotoCount(f);
     this._updateTextSupport(f);
+    this._syncBgLink(f);
     const nAll = (this._cardPhotos || []).filter(Boolean).length;
     this._markLayoutRecs(nAll);
     const photos = (this._cardPhotos || []).slice(0, count);
@@ -5213,8 +5581,12 @@ App.pages.records = {
 
   // 고른 장수에 맞는 레이아웃에 '추천' 표시 (사진을 먼저 고르면 틀을 제안하는 Instagram Layout 방식)
   _markLayoutRecs(n) {
-    const rec = n <= 1 ? ['single', 'feed'] : (n === 2 ? ['strip2', 'feed'] : (n >= 4 ? ['photobooth', 'feed', 'story'] : ['photobooth', 'feed']));
+    const rec = n <= 1 ? ['single', 'studio'] : (n === 2 ? ['strip2', 'feed'] : (n >= 4 ? ['photobooth', 'feed', 'story'] : ['photobooth', 'feed']));
     document.querySelectorAll('#card-pick-layout .card-pick-btn').forEach(b => b.classList.toggle('rec', n > 0 && rec.includes(b.dataset.key)));
+    // 고른 장수에 맞는 줄을 위로 (사진 2장 이상이면 '여러 장' 줄이 먼저)
+    const box = document.getElementById('card-pick-layout');
+    const many = box && box.querySelector('[data-group="many"]');
+    if (many) { const want = n >= 2; if (want !== (box.firstElementChild === many)) want ? box.prepend(many) : box.append(many); }
   },
 
   _resetPhotoSliders(slot) {
@@ -5241,12 +5613,22 @@ App.pages.records = {
     if (rm) rm.hidden = !photo;
     const adj = document.getElementById(`card-adjust-${slot}`);
     if (adj && !photo) adj.hidden = true;
+    preview.classList.remove('cutout');
     if (!photo) { preview.innerHTML = App.icon('camera'); return; }
     const meta = this._cardPhotoMeta[slot] || { offsetX: 0, offsetY: 0, zoom: 1.0 };
     // offsetX/Y = -50~+50 → object-position % = 0~100
     const colPct = (50 + (meta.offsetX || 0)) + '%';
     const rowPct = (50 + (meta.offsetY || 0)) + '%';
     preview.innerHTML = `<img src="${photo}" style="width:100%;height:100%;object-fit:cover;object-position:${colPct} ${rowPct};transform:scale(${meta.zoom});transform-origin:${colPct} ${rowPct};transition:transform 0.12s,object-position 0.12s">`;
+    preview.classList.remove('cutout');
+    // 배경 지운(투명) 사진이면 칸에 표시 — 앱이 알아봤는지 바로 알 수 있게
+    if (/^data:image\/(png|webp)/.test(photo)) {
+      this._loadImg(photo).then(im => {
+        if (this._cardPhotos[slot] !== photo || !im || !this._imgHasAlpha(im)) return;
+        preview.classList.add('cutout');
+        if (!preview.querySelector('.card-slot-badge')) preview.insertAdjacentHTML('beforeend', '<span class="card-slot-badge">배경 지움</span>');
+      }).catch(() => {});
+    }
   },
 
   // 저장된 카드 설정 → 그리기용 설정 (만들기·미리보기 공용)
@@ -5281,6 +5663,8 @@ App.pages.records = {
       photoFilter: this._CARD_FILTERS[ds.photoFilter] ? ds.photoFilter : 'none',
       fontKey: this._CARD_FONTS[ds.fontKey] ? ds.fontKey : 'system',
       polaroidShape: ds.polaroidShape === 'square' ? 'square' : 'classic',
+      bgPick: (ds.bgPick === 'auto' || this._STUDIO_COLORS[ds.bgPick]) && theme !== 'custom' ? ds.bgPick : null,
+      plainRatio: this._PLAIN_RATIOS[ds.plainRatio] ? ds.plainRatio : 'orig',
       // 그리기 코드는 customShow* 이름을 쓰지만 이제 모든 테마에 적용된다 (예전 커스텀 전용 값은 이어받는다)
       customShowPet: (ds.showPet ?? ds.customShowPet) !== false,
       customShowDate: (ds.showDate ?? ds.customShowDate) !== false,
@@ -5293,6 +5677,9 @@ App.pages.records = {
   async _readCardForm(cardPetName) {
     const layout = document.querySelector('#card-pick-layout .card-pick-btn.active')?.dataset.key || 'strip2';
     let theme = document.querySelector('#card-pick-theme .card-pick-btn.active')?.dataset.key || 'classic';
+    // 배경색 한 줄의 파스텔·자동 (bg:키) → 기본 테마 위에 배경색만 바꾼다
+    let bgPick = null;
+    if (theme.startsWith('bg:')) { bgPick = theme.slice(3); theme = 'classic'; }
     // 사용자 프레임 선택 시 (frame:ID) → custom 테마로 자동 적용
     let appliedFrameId = null;
     if (theme.startsWith('frame:')) {
@@ -5310,6 +5697,7 @@ App.pages.records = {
     const settings = await DB.getSetting('cardDesignSettings') || {};
     settings.layout = layout;
     settings.template = theme;
+    settings.bgPick = bgPick;
     // 로고 위치 / 크기 (모든 테마 공통)
     settings.logoPosition = document.getElementById('card-logo-position')?.value || 'top';
     settings.logoSize = document.getElementById('card-logo-size')?.value || 'medium';
@@ -5327,6 +5715,7 @@ App.pages.records = {
     settings.showNextVisit = document.getElementById('card-show-nextvisit')?.checked || false;
     // 폴라로이드 사진 크기 (모던/미니멀)
     settings.polaroidShape = document.querySelector('#polaroid-options .card-tstyle-btn.active')?.dataset.shape || settings.polaroidShape || 'classic';
+    settings.plainRatio = document.querySelector('#plain-options [data-ratio].active')?.dataset.ratio || settings.plainRatio || 'orig';
     // 사용자 프레임 선택 시 settings에 프레임 데이터 반영
     if (appliedFrameId && this._appliedFrame) {
       // 프레임 방식: 'overlay' 는 사진 위에 덮고, 그 밖(예전 프레임 포함)은 사진 뒤 배경
@@ -5452,6 +5841,9 @@ App.pages.records = {
     }
     const userFrames = this._cardFramesCache.filter(f => f.enabled !== false && f.image);
     const selectedFrameId = saved.lastUsedFrameId || null;
+    // 배경색 줄에서 켜 둘 칸: 프레임이면 없음, 더 꾸미기면 custom, 파스텔·자동이면 bg:키, 아니면 테마
+    const selectedBgKey = selectedFrameId ? null : (selectedTheme === 'custom' ? 'custom'
+      : ((saved.bgPick === 'auto' || this._STUDIO_COLORS[saved.bgPick]) ? 'bg:' + saved.bgPick : selectedTheme));
 
     App.showModal({
       title: '사진 카드 만들기',
@@ -5498,6 +5890,14 @@ App.pages.records = {
             ${poolCount ? `<button type="button" class="btn btn-sm btn-secondary" id="card-use-record-photos">${App.icon('image')} ${App.escapeHtml(ctx.poolLabel || '기록 사진')} 넣기 (${poolCount}장)</button>` : ''}
           </div>
           <div id="card-photo-slots" class="card-slots-row"></div>
+          <details class="card-help">
+            <summary>강아지만 떼어 색 배경에 올리려면?</summary>
+            <ol>
+              <li>아이폰 사진 앱에서 강아지를 손가락으로 길게 눌러요.</li>
+              <li>강아지만 떠오르면 [공유] → [이미지 저장]을 눌러요.</li>
+              <li>저장된 사진을 여기 칸에 넣으면 '배경 지움' 표시가 붙고, 어느 틀에서든 강아지만 배경색 위에 올라가요 (발밑 그림자는 자동).</li>
+            </ol>
+          </details>
           <div id="card-photo-adjust" class="card-photo-adjust"></div>
         </div>
         <div class="form-group">
@@ -5508,16 +5908,19 @@ App.pages.records = {
         </div>
         </div>
         <div class="card-tabpanel" data-panel="layout" hidden>
-        <div class="form-group">
-          <label class="form-label">레이아웃 <span style="font-size:0.93rem;color:var(--text-muted);font-weight:400">· 고른 장수에 맞는 것에 추천 표시</span></label>
-          <div id="card-pick-layout" style="display:flex;gap:8px;flex-wrap:wrap">
-            ${Object.entries(LAYOUTS).filter(([, l]) => !l.legacy).map(([key, l]) => `
-              <button type="button" class="card-pick-btn${key === selectedLayout ? ' active' : ''}" data-key="${key}" data-photos="${l.photos}">
-                ${this._layoutThumb(key)}
-                <span style="font-size:0.93rem">${l.name}</span>
-              </button>
-            `).join('')}
-          </div>
+        <!-- 틀을 장수로 묶는다 — 고른 사진 장수에 맞는 줄이 위로 (틀이 8개라 한눈에 찾기 어려웠다) -->
+        <div id="card-pick-layout" class="card-pick-layout">
+          ${[['one', '사진 한 장'], ['many', '사진 여러 장']].map(([g, label]) => `
+          <div class="card-lay-group" data-group="${g}">
+            <div class="card-lay-label">${label}</div>
+            <div class="card-lay-row">
+              ${Object.entries(LAYOUTS).filter(([, l]) => !l.legacy && ((l.photos === 1) === (g === 'one'))).map(([key, l]) => `
+                <button type="button" class="card-pick-btn${key === selectedLayout ? ' active' : ''}" data-key="${key}" data-photos="${l.photos}">
+                  ${this._layoutThumb(key)}
+                  <span>${l.name}</span>
+                </button>`).join('')}
+            </div>
+          </div>`).join('')}
         </div>
         <!-- 폴라로이드 모양 (폴라로이드 틀일 때만) — 예전 '사진 크기 모던/미니멀'은 20px 차이에 실제로 적용도 안 됐다 -->
         <div id="polaroid-options" class="form-group" style="display:${selectedLayout === 'single' ? 'block' : 'none'}">
@@ -5528,42 +5931,48 @@ App.pages.records = {
           </div>
           <div class="form-hint">아래 여백에 이름이나 '글자' 탭의 큰 제목이 크게 들어가요. 4:5는 인스타 피드에 그대로 올라가요.</div>
         </div>
+        <!-- 틀 없이 — 카드 비율 -->
+        <div id="plain-options" class="form-group" style="display:${selectedLayout === 'plain' ? 'block' : 'none'}">
+          <label class="form-label">카드 비율</label>
+          <div class="card-sticker-styles">
+            ${Object.entries(this._PLAIN_RATIOS).map(([k, n]) => `<button type="button" class="card-tstyle-btn${(this._PLAIN_RATIOS[saved.plainRatio] ? saved.plainRatio : 'orig') === k ? ' active' : ''}" data-ratio="${k}">${n}</button>`).join('')}
+          </div>
+          <div class="form-hint">사진 위에 아무 틀도 없어요. '글자'·'스티커' 탭에서 꾸미세요.</div>
+        </div>
+        <!-- 배경색은 꾸미기 탭 한 곳에서 — 여기서는 지금 색을 보여 주고 바로 건너가게 -->
+        <button type="button" class="card-bg-link" id="card-bg-link"><i id="card-bg-link-dot"></i><span>배경색 <b id="card-bg-link-name"></b></span><em>바꾸기 ›</em></button>
         </div>
         <div class="card-tabpanel" data-panel="deco" hidden>
+        <!-- 배경색 한 줄 (예전 테마 4개 · 빠른 색 조합 5개 · 사진관 색 7개를 합쳤다) → 내 프레임 → 글꼴 → 더 꾸미기 -->
         <div class="form-group">
-          <label class="form-label">테마 ${userFrames.length > 0 ? `<span style="font-size:0.93rem;color:var(--text-muted);font-weight:400">· 내 프레임 ${userFrames.length}개</span>` : ''}</label>
-          <div id="card-pick-theme" style="display:flex;gap:8px;flex-wrap:wrap">
-            ${Object.entries(THEMES).map(([key, t]) => `
-              <button type="button" class="card-pick-btn${key === selectedTheme && !selectedFrameId ? ' active' : ''}" data-key="${key}" style="border-color:${t.color}">
-                <span style="font-size:1.1rem;color:${t.color}">${App.icon('circle-filled')}</span>
-                <span style="font-size:0.93rem;color:${t.color}">${t.name}</span>
-              </button>
-            `).join('')}
-            ${userFrames.length ? `<div class="card-frame-row" aria-label="내 프레임">${userFrames.map(f => `
+          <div id="card-pick-theme" class="card-pick-theme">
+            <label class="form-label">배경색 <span class="card-sub">· 어느 틀이든 같이 바뀌어요</span></label>
+            <div class="card-bg-row">
+              ${[['bg:auto', '자동', 'auto'], ...Object.entries(THEMES).map(([k]) => [k, ({ classic: '흰색', film: '크림', pastel: '연분홍', dark: '남색' })[k] || THEMES[k].name, this.CARD_TEMPLATES[k]?.bgColor || '#FFFFFF']),
+                ...Object.entries(this._STUDIO_COLORS).map(([k, c]) => ['bg:' + k, c.name, c.hex])].map(([key, name, hex]) => `
+                <button type="button" class="card-pick-btn card-bg-chip${key === selectedBgKey ? ' active' : ''}" data-key="${key}"${hex === 'auto' ? ' data-auto="1"' : ` style="--c:${hex}"`}><i></i><span>${name}</span></button>`).join('')}
+            </div>
+            ${userFrames.length ? `<label class="form-label" style="margin-top:14px">내 프레임 <span class="card-sub">· 고르면 프레임 모양 그대로 나와요</span></label>
+            <div class="card-frame-row" aria-label="내 프레임">${userFrames.map(f => `
               <button type="button" class="card-pick-btn card-frame-btn${selectedFrameId === f.id ? ' active' : ''}" data-key="frame:${App.escapeHtml(f.id)}" data-frame-id="${App.escapeHtml(f.id)}" title="${App.escapeHtml(f.name)}">
                 <span class="card-frame-thumb"><img src="${f.image}" alt="" loading="lazy"></span>
                 <span class="card-frame-name">${App.escapeHtml(f.name)}</span>
                 ${f.mode === 'overlay' && Array.isArray(f.holes) && f.holes.length ? `<small class="card-frame-holes">사진 ${f.holes.length}칸</small>` : ''}
               </button>
             `).join('')}</div>` : ''}
-            <!-- '커스텀' 테마 값은 아래 '직접 꾸미기'를 펼치면 켜진다 (칸은 숨겨 두고 선택 상태만 담는다) -->
-            <button type="button" class="card-pick-btn${selectedTheme === 'custom' && !selectedFrameId ? ' active' : ''}" data-key="custom" style="display:none" aria-hidden="true" tabindex="-1"></button>
+            <!-- '커스텀' 테마 값은 아래 '더 꾸미기'를 펼치면 켜진다 (칸은 숨겨 두고 선택 상태만 담는다) -->
+            <button type="button" class="card-pick-btn${selectedBgKey === 'custom' ? ' active' : ''}" data-key="custom" style="display:none" aria-hidden="true" tabindex="-1"></button>
+          </div>
+          <div class="form-hint" style="margin-top:6px">${userFrames.length ? '' : '내 프레임이 아직 없어요. '}설정 → 매장 관리 → 내 프레임 라이브러리에서 \'직접 만들기\'로 만들 수 있어요.</div>
+        </div>
+        <div class="form-group">
+          <label class="form-label">글꼴</label>
+          <div id="card-pick-font" class="card-font-row">
+            ${Object.entries(this._CARD_FONTS).map(([k, f]) => `<button type="button" class="card-font-btn${(saved.fontKey || 'system') === k ? ' active' : ''}" data-key="${k}" style="font-family:${App.escapeHtml(this._cardFontStack(k))}">${f.name}</button>`).join('')}
           </div>
         </div>
-        <div class="form-hint" style="margin:-6px 0 12px">내 프레임은 설정 → 매장 관리 → 내 프레임 라이브러리에서 '직접 만들기'로 만들 수 있어요.</div>
-        <!-- 직접 꾸미기 — 빠른 색 조합 · 색 직접 고르기 · 배경 사진을 한곳에 접어 둔다. 펼치면 '직접 꾸민 색'이 적용되고, 접으면 고르던 테마로 돌아간다 -->
         <details id="card-custom-panel" class="card-more"${selectedTheme === 'custom' && !selectedFrameId ? ' open' : ''}>
-          <summary>${App.icon('palette')} 직접 꾸미기 <span>색 · 배경 사진</span></summary>
-          <div style="margin-bottom:10px">
-            <label class="form-label" style="font-size:0.93rem;margin-bottom:6px">빠른 색상 조합</label>
-            <div style="display:flex;gap:6px;flex-wrap:wrap">
-              <button type="button" class="btn btn-sm card-preset-btn" data-bg="#FFFFFF" data-text="#1A1A1A" data-accent="#1A1A1A" style="border:1.5px solid var(--border);min-height:36px"><span style="color:#1A1A1A">${App.icon('circle')}</span> 화이트</button>
-              <button type="button" class="btn btn-sm card-preset-btn" data-bg="#F5F0E8" data-text="#5C4A32" data-accent="#8B7355" style="border:1.5px solid #8B7355;min-height:36px"><span style="color:#8B7355">${App.icon('circle-filled')}</span> 베이지</button>
-              <button type="button" class="btn btn-sm card-preset-btn" data-bg="#FFF0F5" data-text="#9D174D" data-accent="#DB2777" style="border:1.5px solid #DB2777;min-height:36px"><span style="color:#DB2777">${App.icon('circle-filled')}</span> 로즈</button>
-              <button type="button" class="btn btn-sm card-preset-btn" data-bg="#0F172A" data-text="#E2E8F0" data-accent="#C9A96E" style="border:1.5px solid #C9A96E;min-height:36px"><span style="color:#0F172A">${App.icon('circle-filled')}</span> 네이비</button>
-              <button type="button" class="btn btn-sm card-preset-btn" data-bg="#F0FDF4" data-text="#14532D" data-accent="#16A34A" style="border:1.5px solid #16A34A;min-height:36px"><span style="color:#16A34A">${App.icon('circle-filled')}</span> 민트</button>
-            </div>
-          </div>
+          <summary>${App.icon('palette')} 더 꾸미기 <span>색 직접 고르기 · 배경 사진</span></summary>
           <div id="card-custom-colors" style="margin-bottom:10px${saved.customBgImage ? ';display:none' : ''}">
             <label class="form-label" style="font-size:0.93rem;margin-bottom:6px">직접 선택</label>
             <div class="form-row" style="gap:8px">
@@ -5591,12 +6000,6 @@ App.pages.records = {
             </div>
           </div>
         </details>
-        <div class="form-group">
-          <label class="form-label">글꼴</label>
-          <div id="card-pick-font" class="card-font-row">
-            ${Object.entries(this._CARD_FONTS).map(([k, f]) => `<button type="button" class="card-font-btn${(saved.fontKey || 'system') === k ? ' active' : ''}" data-key="${k}" style="font-family:${App.escapeHtml(this._cardFontStack(k))}">${f.name}</button>`).join('')}
-          </div>
-        </div>
         </div>
         <div class="card-tabpanel" data-panel="sticker" hidden>
         <div class="form-group">
@@ -5723,6 +6126,24 @@ App.pages.records = {
           // 폴라로이드(single)일 때만 사진 크기 옵션 표시
           const polarOpts = document.getElementById('polaroid-options');
           if (polarOpts) polarOpts.style.display = btn.dataset.key === 'single' ? 'block' : 'none';
+          const k = btn.dataset.key;
+          const plainOpts = document.getElementById('plain-options');
+          if (plainOpts) plainOpts.style.display = k === 'plain' ? 'block' : 'none';
+
+        });
+      });
+      // 틀 탭 → 꾸미기 탭 배경색으로 바로
+      document.getElementById('card-bg-link')?.addEventListener('click', () => {
+        document.querySelector('.card-tab[data-tab="deco"]')?.click();
+        setTimeout(() => document.getElementById('card-pick-theme')?.scrollIntoView({ block: 'nearest', behavior: 'smooth' }), 60);
+      });
+      // 틀 없이 비율
+      [['#plain-options', 'ratio']].forEach(([box, attr]) => {
+        document.querySelectorAll(`${box} [data-${attr}]`).forEach(b => {
+          b.addEventListener('click', () => {
+            document.querySelectorAll(`${box} [data-${attr}]`).forEach(x => x.classList.toggle('active', x === b));
+            this._scheduleCardPreview();
+          });
         });
       });
       // 폴라로이드 모양
@@ -5850,18 +6271,6 @@ App.pages.records = {
         if (customPanel.open) activateTheme(customBtn);
         else if (customBtn?.classList.contains('active')) activateTheme(prevThemeBtn);
         this._scheduleCardPreview();
-      });
-
-      // 프리셋 색상 조합
-      document.querySelectorAll('.card-preset-btn').forEach(btn => {
-        btn.addEventListener('click', () => {
-          const bg = document.getElementById('card-custom-bg');
-          const text = document.getElementById('card-custom-text');
-          const accent = document.getElementById('card-custom-accent');
-          if (bg) bg.value = btn.dataset.bg;
-          if (text) text.value = btn.dataset.text;
-          if (accent) accent.value = btn.dataset.accent;
-        });
       });
 
       // 커스텀 배경 이미지 업로드

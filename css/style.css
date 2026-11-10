@@ -3499,7 +3499,9 @@ a.stat-card { display: flex; }
 .card-more > summary span { font-weight: 500; font-size: max(0.78rem, 13px); color: var(--text-muted); }
 .card-more[open] { padding-bottom: 4px; }
 /* 레이아웃 5개를 한 줄에 (휴대폰에서 두 줄로 나뉘었다) */
-#card-pick-layout { display: grid !important; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 6px !important; }
+#card-pick-layout { display: flex; flex-direction: column; gap: 10px; }
+.card-lay-label { font-size: max(0.78rem, 13px); font-weight: 700; color: var(--text-muted); margin-bottom: 6px; }
+.card-lay-row { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 6px; }
 #card-pick-layout .card-pick-btn { min-width: 0; padding: 8px 2px; gap: 6px; }
 #card-pick-layout .card-pick-btn span:last-child { font-size: max(0.7rem, 13px) !important; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%; }
 .card-adjust-btn { width: 100%; margin-top: 6px; min-height: 34px; border: 1px solid var(--border); border-radius: 8px; background: var(--bg-white); color: var(--text-secondary); font-size: max(0.78rem, 13px); font-family: inherit; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 4px; }
@@ -4203,3 +4205,36 @@ input.has-clear { padding-right: 44px; }
 }
 .card-text-chip.mine { border-style: solid; border-color: var(--primary); color: var(--primary); background: var(--primary-light); display: inline-flex; align-items: center; gap: 6px; }
 .card-text-chip-x { display: inline-flex; align-items: center; justify-content: center; width: 20px; height: 20px; margin-right: -6px; border-radius: 50%; background: rgba(0,0,0,.08); font-size: 14px; line-height: 1; }
+
+/* 틀 없이 · 사진관 · 잡지 표지 (2026-11-10) — 틀 버튼 그림은 실제 모양과 비슷하게 */
+.lay-plain { width: 26px; height: 32px; padding: 0; border-width: 0; }
+.lay-plain i { border-radius: 3px; }
+.lay-studio { width: 26px; height: 32px; padding: 12px 6px 5px; background: #D9CCF0; border-color: #D9CCF0; }
+.lay-studio i { background: #FFFFFF !important; opacity: 1 !important; box-shadow: inset 0 0 0 2px #fff, 0 1px 2px rgba(0,0,0,.25); }
+.lay-magazine { width: 26px; height: 32px; padding: 0; position: relative; overflow: hidden; }
+.lay-magazine i { border-radius: 0; }
+.lay-magazine b { position: absolute; left: 5px; right: 5px; top: 4px; height: 3px; border-radius: 2px; background: #fff; box-shadow: 0 5px 0 -1px #fff; z-index: 1; }
+.card-sub { font-size: 0.93rem; color: var(--text-muted); font-weight: 400; }
+/* 배경색 한 줄 — 동그란 색 + 이름 */
+.card-bg-row { display: flex; flex-wrap: wrap; gap: 6px; }
+.card-pick-btn.card-bg-chip { flex-direction: row; min-width: 0; min-height: 38px; padding: 4px 11px 4px 6px; gap: 6px; border-width: 1.5px; border-radius: 20px; font-size: max(0.85rem, 13px); }
+.card-bg-chip i { width: 24px; height: 24px; border-radius: 50%; background: var(--c); border: 1px solid rgba(0,0,0,.14); flex: 0 0 auto; }
+.card-bg-chip[data-auto] i { background: conic-gradient(#F4B2C6, #F5D565, #A3D9C0, #74C6D8, #A58BD6, #F4B2C6); }
+.card-bg-chip.active { font-weight: 700; }
+.card-pick-theme .card-frame-row { margin-top: 0; }
+/* 틀 탭 → 꾸미기 탭 배경색으로 */
+.card-bg-link { display: flex; align-items: center; gap: 10px; width: 100%; min-height: 46px; margin-top: 4px; padding: 6px 12px; border: 1px solid var(--border); border-radius: 12px; background: var(--bg-white); color: var(--text); font: inherit; font-size: max(0.88rem, 13px); cursor: pointer; text-align: left; }
+.card-bg-link[hidden] { display: none; }
+.card-bg-link i { width: 22px; height: 22px; border-radius: 50%; border: 1px solid rgba(0,0,0,.14); flex: 0 0 auto; }
+.card-bg-link i.auto { background: conic-gradient(#F4B2C6, #F5D565, #A3D9C0, #74C6D8, #A58BD6, #F4B2C6); }
+.card-bg-link span { flex: 1; }
+.card-bg-link em { font-style: normal; color: var(--primary); font-weight: 600; }
+/* 배경 지운 사진 칸 표시 · 도움말 */
+.card-slot-tile { position: relative; }
+.card-slot-tile.cutout { background: repeating-conic-gradient(#E5E7EB 0 25%, #fff 0 50%) 0 0 / 12px 12px; }
+.card-slot-tile.cutout img { object-fit: contain !important; }
+.card-slot-badge { position: absolute; left: 3px; right: 3px; bottom: 3px; padding: 1px 0; border-radius: 6px; background: rgba(17,24,39,.72); color: #fff; font-size: 11px; font-weight: 600; text-align: center; line-height: 1.5; pointer-events: none; }
+.card-help { margin-top: 8px; font-size: max(0.85rem, 13px); color: var(--text-secondary); }
+.card-help > summary { cursor: pointer; color: var(--primary); font-weight: 600; min-height: 32px; display: flex; align-items: center; }
+.card-help ol { margin: 4px 0 0; padding-left: 20px; line-height: 1.6; }
+.fm .form-group[hidden] { display: none; }
