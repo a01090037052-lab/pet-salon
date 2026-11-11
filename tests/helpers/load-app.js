@@ -26,6 +26,8 @@ function createFakeDB(seed = {}) {
     async getAll(store) { return clone(stores[store] || []); },
     async getAllLight(store) { return clone(stores[store] || []); },
     async get(store, id) { return clone((stores[store] || []).find(x => x.id === id)); },
+    // 날짜 색인 읽기 흉내 (from~to, 글자 비교)
+    async getByDateRange(store, idx, from, to) { return clone((stores[store] || []).filter(x => (!from || String(x[idx] || '') >= from) && (!to || String(x[idx] || '') <= to))); },
     async getByIndex(store, idx, val) { return clone((stores[store] || []).filter(x => x[idx] === val)); },
     async update(store, obj) {
       const arr = stores[store] || (stores[store] = []);

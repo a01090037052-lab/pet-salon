@@ -824,7 +824,9 @@ const App = {
       // 모달 위에 확인창이 떠 있을 때 뒤로가기 → 맨 위(확인창)만 닫는다. 모달과 그 history 항목은 그대로
       // (예전엔 둘 다 닫히고 모달 항목이 남아 다음 뒤로가기가 먹통이었다)
       const confirmOpen = !document.getElementById('confirm-overlay').classList.contains('hidden');
-      if (confirmOpen || Date.now() - (this._confirmPopAt || 0) < 100) {
+      // 사진 카드의 손질 화면·크게 보기가 떠 있으면 그것만 닫는다 (그 화면이 자기 history 항목으로 처리)
+      const overlayOpen = !!this._overlayPop || Date.now() - (this._overlayPopAt || 0) < 100;
+      if (confirmOpen || overlayOpen || Date.now() - (this._confirmPopAt || 0) < 100) {
         window.addEventListener('popstate', this._modalPopHandler, { once: true });
         return;
       }
@@ -898,8 +900,30 @@ const App = {
     this.closeModal();
   },
 
+  // 창(모달) 위에 뜨는 화면(사진 카드 손질 화면·크게 보기)의 뒤로가기 — 안드로이드 뒤로가기는 그 화면만 닫는다
+  pushOverlayHistory(closeFn) {
+    this.popOverlayHistory(true);
+    history.pushState({ overlayOpen: true }, '');
+    this._overlayPop = () => { this._overlayPop = null; this._overlayPopAt = Date.now(); closeFn(); };
+    window.addEventListener('popstate', this._overlayPop, { once: true });
+  },
+  // 화면 안 버튼으로 닫을 때: 쌓아 둔 항목을 걷는다 (noBack: 항목은 그대로 두고 듣기만 그만)
+  popOverlayHistory(noBack) {
+    if (!this._overlayPop) return;
+    window.removeEventListener('popstate', this._overlayPop);
+    this._overlayPop = null;
+    if (!noBack && history.state && history.state.overlayOpen) {
+      if (this._modalPopHandler) this._suppressModalPop = true; // 이 back 이 창(모달)까지 닫지 않게
+      this._overlayPopAt = Date.now();
+      history.back();
+    }
+  },
+
   closeModal(fromPopstate) {
-    document.querySelectorAll('.card-zoom-overlay, .cutout-ed').forEach(el => (el._close ? el._close() : el.remove())); // 가장자리 손질 화면은 정리(메모리)까지 // 사진 카드 크게 보기가 창 위에 남지 않게
+    // 위에 뜬 손질 화면·크게 보기도 같이 닫는다 — 그 history 항목은 아래에서 창 항목과 함께 걷는다
+    const hadOverlay = !!this._overlayPop;
+    this.popOverlayHistory(true);
+    document.querySelectorAll('.card-zoom-overlay, .cutout-ed').forEach(el => (el._close ? el._close(true) : el.remove())); // 가장자리 손질 화면은 정리(메모리)까지
     const overlay = document.getElementById('modal-overlay');
     if (overlay.classList.contains('hidden')) return;
     overlay.classList.add('hidden');
@@ -937,7 +961,8 @@ const App = {
       const since = Date.now() - (this._lastConfirmCloseAt || 0);
       const doBack = () => {
         if (!document.getElementById('modal-overlay').classList.contains('hidden')) return; // 그새 다른 모달이 열렸으면 건드리지 않는다
-        if (history.state && history.state.modalOpen) history.back();
+        if (hadOverlay && history.state && history.state.overlayOpen) history.go(-2); // 위 화면 항목 + 창 항목
+        else if (history.state && history.state.modalOpen) history.back();
       };
       if (since < 200) setTimeout(doBack, 200 - since); else doBack();
     }
@@ -1167,6 +1192,40 @@ const App = {
   debounce(fn, ms = 300) {
     let timer;
     return (...args) => { clearTimeout(timer); timer = setTimeout(() => fn(...args), ms); };
+  },
+
+  // ========== 첫 방문 손님 ==========
+  // 아직 미용 기록이 하나도 없는 손님 = 첫 방문. 예약 목록에 '첫 방문' 표시를 붙이고,
+  // 누르면 바로 '고객 정보 수정' 창이 열려 동의서 받을 때 주소 등을 그 자리에서 적는다.
+  async firstVisitSet(appts) {
+    const ids = [...new Set((appts || [])
+      .filter(a => a && a.customerId != null && (a.date || '') >= this.getToday() && !['completed', 'cancelled', 'noshow'].includes(a.status))
+      .map(a => Number(a.customerId)))];
+    const out = new Set();
+    if (DB.mode === 'server') return out; // 서버 모드는 개수만 세는 방법이 없어(기록 전체를 받음) 표시하지 않는다
+    const count = async (id) => {
+      // 기록 본문(사진)을 읽지 않고 개수만 센다
+      const idx = DB._idbStore('records', 'readonly').index('customerId');
+      const one = (key) => new Promise((res, rej) => { const r = idx.count(key); r.onsuccess = () => res(r.result); r.onerror = () => rej(r.error); });
+      return (await one(id)) + (await one(String(id)));
+    };
+    await Promise.all(ids.map(async id => {
+      try { if (await count(id) === 0) out.add(id); } catch (e) { console.warn('첫 방문 확인 실패:', e); /* 못 세면 표시하지 않는다 */ }
+    }));
+    return out;
+  },
+
+  // 새 손님 칸에 주소를 적고 '이 고객 사용'을 골랐을 때, 그 손님 주소가 비어 있으면 적은 주소를 넣는다
+  async _keepTypedAddress(c) {
+    const a = document.getElementById('cf-address')?.value.trim();
+    if (!a || !c || c.address) return;
+    try { const cur = await DB.get('customers', c.id); if (cur && !cur.address) { cur.address = a; await DB.update('customers', cur); c.address = a; } }
+    catch (e) { console.warn('주소 저장 실패:', e); }
+  },
+
+  firstVisitBadge(customerId, set) {
+    if (!set || !set.has(Number(customerId))) return '';
+    return `<button type="button" class="badge badge-warning first-visit-badge" style="border:0;cursor:pointer;margin-left:4px;min-height:24px" title="동의서·주소 받기 — 누르면 고객 정보 수정" onclick="event.stopPropagation();App.pages.customers.showForm(${Number(customerId)})">첫 방문 ✎</button>`;
   },
 
   // ========== 예약 ↔ 미용 기록 ==========
@@ -2294,6 +2353,130 @@ const App = {
     return { price: basePrice, why: 'menu' };
   },
 
+  // 길이 옵션 (미용 코스만): 클리퍼 길이마다 몸무게 구간 가격에 '고정 추가금'을 더한다 — 예: 3mm 0원 · 7F 1만원.
+  // 길이마다 서비스를 따로 만들면 칩 목록이 길어져서, 코스 안에 [{ name, price }] 로 둔다.
+  // 이름 없는 줄·같은 이름 두 번·음수/글자 값은 버린다. 빈 값은 0원
+  lengthOptionsOf(svc) {
+    if (!svc || (svc.category || 'grooming') !== 'grooming' || !Array.isArray(svc.lengthOptions)) return [];
+    const out = [];
+    for (const o of svc.lengthOptions) {
+      const name = this.normalizeServiceName(o && o.name);
+      const raw = o && o.price;
+      const price = raw === undefined || raw === null || raw === '' ? 0 : Number(raw);
+      if (!name || !Number.isFinite(price) || price < 0 || out.some(x => x.name === name)) continue;
+      out.push({ name, price: Math.round(price) });
+    }
+    return out;
+  },
+
+  // 예약에 저장된 길이 — 그 코스가 아직 예약에 들어 있을 때만 쓴다 (코스를 빼면 길이도 없는 것으로)
+  apptLengthOf(appt) {
+    const len = appt && appt.length;
+    if (!len || !this.normalizeServiceName(len.name)) return null;
+    const ids = ((appt && appt.serviceIds) || []).map(Number);
+    if (!ids.includes(Number(len.serviceId))) return null;
+    return { serviceId: Number(len.serviceId), name: this.normalizeServiceName(len.name), price: Math.max(0, Number(len.price) || 0) };
+  },
+
+  // 이름 → 서비스 (사용 중 메뉴 먼저). 합친 코스 '전체미용 + 위생미용'은 통째 이름이 없으면 나눠서 찾는다
+  _servicesByNames(names, services) {
+    const find = (nm) => services.find(s => s.isActive !== false && this.normalizeServiceName(s.name) === nm)
+      || services.find(s => this.normalizeServiceName(s.name) === nm);
+    const out = [];
+    for (const raw of names) {
+      const nm = this.normalizeServiceName(raw);
+      if (!nm) continue;
+      const whole = find(nm);
+      const parts = whole ? [whole] : nm.split(' + ').map(x => find(this.normalizeServiceName(x)));
+      parts.forEach(s => { if (s && !out.includes(s)) out.push(s); });
+    }
+    return out;
+  },
+
+  // 최근 많이 쓴 서비스 세기 (예약·기록 → { 서비스 id: 횟수 }). 순수 함수 (테스트 있음)
+  // 예약은 serviceIds, 기록은 주 서비스 + 추가 항목(스타일 포함)을 이름으로 맞춘다.
+  // 취소·노쇼 예약은 안 센다. 완료 예약도 안 센다 — 같은 방문을 기록에서 이미 센다
+  serviceUseCounts(appts, records, services, sinceDate) {
+    const counts = {};
+    const add = (id) => { if (id != null) counts[id] = (counts[id] || 0) + 1; };
+    const ids = new Set((services || []).map(s => s.id));
+    for (const a of (appts || [])) {
+      if (!a || (sinceDate && String(a.date || '') < sinceDate)) continue;
+      if (['cancelled', 'noshow', 'no_show', 'completed'].includes(a.status)) continue;
+      [...new Set((a.serviceIds || []).map(Number))].forEach(id => { if (ids.has(id)) add(id); });
+    }
+    for (const r of (records || [])) {
+      if (!r || (sinceDate && String(r.date || '') < sinceDate)) continue;
+      const names = [r.service || (Array.isArray(r.serviceNames) ? r.serviceNames[0] : ''), ...(Array.isArray(r.addons) ? r.addons : [])];
+      this._servicesByNames(names, services || []).forEach(s => add(s.id));
+    }
+    return counts;
+  },
+
+  // 많이 쓴 순 → 같으면 기존 순서(sortOrder) → 이름. 원래 배열은 그대로 두고 새 배열을 돌려준다
+  sortServicesByUse(list, counts) {
+    const c = counts || {};
+    return [...(list || [])].sort((a, b) => (c[b.id] || 0) - (c[a.id] || 0)
+      || (a.sortOrder || 999) - (b.sortOrder || 999)
+      || String(a.name || '').localeCompare(String(b.name || ''), 'ko'));
+  },
+
+  // 최근 90일 사용 횟수 — 폼을 열 때 fresh 로 한 번 읽고, 그 폼 안(반려견 바꿔 다시 그리기 등)에서는 같은 값을 쓴다.
+  // 날짜 색인으로 90일 치만 읽는다 (사진은 따로 저장돼 있어 기록을 읽어도 사진은 안 읽는다)
+  getServiceUseCounts(fresh) {
+    if (!fresh && this._useCountsP) return this._useCountsP;
+    this._useCountsP = (async () => {
+      const d = new Date(); d.setDate(d.getDate() - 90);
+      const since = this.formatLocalDate(d);
+      const [appts, recs, services] = await Promise.all([
+        DB.getByDateRange('appointments', 'date', since, '9999-12-31'),
+        DB.getByDateRange('records', 'date', since, '9999-12-31'),
+        DB.getAll('services')
+      ]);
+      return this.serviceUseCounts(appts, recs, services, since);
+    })().catch(() => ({})); // 못 읽으면 기존 순서 그대로
+    return this._useCountsP;
+  },
+
+  // '지난번처럼' — 이 아이의 가장 최근 예약(서비스 있는 것)·기록 중 더 늦은 것에서 고를 서비스 id·길이를 만든다. 순수 함수 (테스트 있음)
+  // 같은 날이면 기록(실제로 한 것)을 쓴다. 지금 쓰는 메뉴(사용 중)만 고른다. 고를 게 없으면 null
+  lastServicePick(appts, records, services, { excludeId = null, today = null } = {}) {
+    const active = (services || []).filter(s => s.isActive !== false);
+    const byId = {}; active.forEach(s => { byId[s.id] = s; });
+    const okAppt = (appts || []).filter(a => a && (a.serviceIds || []).length && a.id !== excludeId && String(a.id) !== String(excludeId)
+      && !['cancelled', 'noshow', 'no_show'].includes(a.status) && (!today || String(a.date || '') <= today));
+    const lastOf = (arr) => arr.reduce((m, x) => (!m || String(x.date || '') > String(m.date || '') ? x : m), null);
+    const la = lastOf(okAppt);
+    const lr = lastOf((records || []).filter(r => r && (r.service || (r.serviceNames || []).length) && (!today || String(r.date || '') <= today)));
+    if (!la && !lr) return null;
+    let svcs = [], length = null;
+    if (lr && (!la || String(lr.date || '') >= String(la.date || ''))) {
+      const names = [lr.service || (lr.serviceNames || [])[0], ...(lr.addons || [])];
+      svcs = this._servicesByNames(names, active);
+      // 메뉴에 없는 추가 항목 이름이 고른 코스의 길이 이름이면 길이로 (예: 7F)
+      for (const raw of (lr.addons || [])) {
+        const nm = this.normalizeServiceName(raw);
+        if (length || svcs.some(s => this.normalizeServiceName(s.name) === nm)) continue;
+        for (const c of svcs) {
+          const o = this.lengthOptionsOf(c).find(x => x.name === nm);
+          if (o) { length = { serviceId: c.id, name: o.name, price: o.price }; break; }
+        }
+      }
+    } else {
+      svcs = [...new Set((la.serviceIds || []).map(Number))].map(id => byId[id]).filter(Boolean);
+      const len = this.apptLengthOf(la);
+      if (len && byId[len.serviceId]) {
+        const o = this.lengthOptionsOf(byId[len.serviceId]).find(x => x.name === len.name);
+        length = { ...len, price: o ? o.price : len.price }; // 지금 메뉴 값이 있으면 그 값
+      }
+    }
+    if (!svcs.length) return null;
+    const isCourse = (s) => (s.category || 'grooming') === 'grooming';
+    const ordered = [...svcs.filter(isCourse), ...svcs.filter(s => !isCourse(s))];
+    const label = ordered.map(s => this.normalizeServiceName(s.name) + (length && length.serviceId === s.id ? ' ' + length.name : '')).join(' · ');
+    return { serviceIds: ordered.map(s => s.id), length, label };
+  },
+
   getRecordServiceDisplay(r, serviceMap) {
     // 새 구조: service + style + addons
     if (r.service) {
@@ -2435,6 +2618,10 @@ const App = {
         <label class="form-label">보호자 이름 <span class="form-optional">(선택)</span></label>
         <input type="text" id="cf-name" value="${this.escapeHtml(p.name || '')}" placeholder="보호자 이름" maxlength="50">
       </div>
+      <div class="form-group">
+        <label class="form-label">주소 <span class="form-optional">(선택 · 첫 방문 때 받아도 돼요)</span></label>
+        <input type="text" id="cf-address" value="${this.escapeHtml(p.address || '')}" placeholder="동 이름만 적어도 돼요 (예: 상인동)" maxlength="100">
+      </div>
       <button type="button" class="cf-more-toggle" id="cf-more-toggle">+ 특이사항 &middot; 메모</button>
       <div id="cf-more" style="display:none">
         <div class="form-group">
@@ -2514,6 +2701,7 @@ const App = {
           if (!picked || !o.onPick) return;
           btn.disabled = true;
           const petId = await this._petFromFormFor(picked.id);
+          await this._keepTypedAddress(picked);
           o.onPick(picked, petId);
         });
       });
@@ -2579,7 +2767,7 @@ const App = {
         (isNewPet ? `이 보호자에게 <strong>${this.escapeHtml(petName)}</strong>을(를) 추가할까요?` : '이 고객을 사용하시겠습니까?'),
         { okLabel: isNewPet ? '반려견 추가' : '이 고객 사용', danger: false }
       );
-      if (use && o.onPick) { o.onPick(dup, await this._petFromFormFor(dup.id)); return null; }
+      if (use && o.onPick) { const pid = await this._petFromFormFor(dup.id); await this._keepTypedAddress(dup); o.onPick(dup, pid); return null; }
       this.highlightField('cf-phone');
       return null;
     }
@@ -2593,7 +2781,8 @@ const App = {
     }
 
     const memo = g('cf-memo')?.value.trim() || '';
-    const customerId = await DB.add('customers', { name, phone, memo, tags: [] });
+    const address = g('cf-address')?.value.trim() || '';
+    const customerId = await DB.add('customers', { name, phone, address, memo, tags: [] });
 
     let petId = null;
     if (petName) {
@@ -3068,10 +3257,11 @@ const App = {
     const active = services.filter(s => s.isActive !== false);
     if (active.length === 0) return '<p style="color:var(--text-muted)">등록된 서비스가 없습니다. 서비스 메뉴에서 먼저 등록해주세요.</p>';
     const table = await this.getPriceBands();
+    const useCounts = await this.getServiceUseCounts();
     const catLabels = { grooming: '미용 코스', style: '스타일 추가', addon: '추가 옵션', care: '단독 케어' };
     const catOrder = ['grooming', 'style', 'addon', 'care'];
 
-    // 카테고리별 그룹 + sortOrder 정렬
+    // 카테고리별 그룹 + 최근 90일 많이 쓴 순 (같으면 sortOrder) — 자주 고르는 칩이 앞에
     const grouped = {};
     active.forEach(s => {
       const cat = s.category || 'grooming';
@@ -3079,7 +3269,7 @@ const App = {
       grouped[cat].push(s);
     });
     catOrder.forEach(cat => {
-      if (grouped[cat]) grouped[cat].sort((a, b) => (a.sortOrder || 999) - (b.sortOrder || 999));
+      if (grouped[cat]) grouped[cat] = this.sortServicesByUse(grouped[cat], useCounts);
     });
 
     let html = `
@@ -3091,19 +3281,42 @@ const App = {
     for (const cat of catOrder) {
       if (!grouped[cat] || grouped[cat].length === 0) continue;
       html += `<div style="font-size:0.93rem;font-weight:700;color:var(--primary);margin:8px 0 4px;padding-bottom:2px;border-bottom:1px solid var(--primary-lighter)">${catLabels[cat] || cat}</div>`;
+      // 스타일·추가 옵션·단독 케어는 많이 쓴 8개(+이미 고른 것)만 작은 칩으로 보이고 나머지는 '+ 더보기' 뒤에 — 목록이 길어 폰에서 한참 내려야 했다.
+      // 숨긴 칩도 화면 안에 그대로 있다(전체 선택·예상 금액이 같이 본다). 미용 코스는 늘 다 보인다
+      const collapse = cat !== 'grooming';
+      let hiddenN = 0;
       html += '<div class="service-select-grid">';
-      html += grouped[cat].map(s => {
+      html += grouped[cat].map((s, i) => {
         const checked = selectedIds.includes(s.id);
-        return this.serviceChipHtml(s, sizeOrWeight, table, checked);
+        const chip = this.serviceChipHtml(s, sizeOrWeight, table, checked, '', collapse);
+        if (!collapse || i < 8 || checked) return chip;
+        hiddenN++;
+        return chip.replace('<label class="service-chip', '<label style="display:none" data-more-hidden="1" class="service-chip');
       }).join('');
+      if (hiddenN) html += `<button type="button" class="btn btn-sm btn-ghost svc-more-btn" style="min-height:44px">+ 더보기 ${hiddenN}</button>`;
       html += '</div>';
+      // 길이 칩 자리 — 고른 코스에 길이 옵션이 있으면 예약 폼이 여기에 채운다
+      if (cat === 'grooming') html += '<div class="svc-length-slot"></div>';
     }
     return html;
   },
 
   // 예약 서비스 칩 1개. 몸무게를 알면 구간(·초과 요금)을 작은 글씨로 보이게 적는다
-  serviceChipHtml(s, sizeOrWeight, table, checked, nameSuffix = '') {
+  // compact: 작은 칩 (스타일·옵션·케어) — 이름 옆에 값만 한 줄로, 구간 글자는 뺀다 (폰 한 줄에 3~4개)
+  serviceChipHtml(s, sizeOrWeight, table, checked, nameSuffix = '', compact = false) {
     const r = this.calcServicePrice(s, sizeOrWeight, table);
+    if (compact) {
+      // 값은 '원' 없이 숫자만 (칩 폭을 줄여 한 줄에 더 들어가게 — 예상 금액 줄에는 원으로 나온다)
+      const short = r.free ? '무료' : r.price > 0 ? Number(r.price).toLocaleString('ko-KR') : (r.needsWeight ? this.formatServicePrice(s, table, sizeOrWeight) : '');
+      return `
+          <label class="service-chip service-chip-compact${checked ? ' checked' : ''}">
+            <input type="checkbox" name="serviceIds" value="${s.id}"
+              ${checked ? 'checked' : ''}
+              data-price="${r.price || 0}" data-needs-weight="${r.needsWeight ? 1 : 0}" data-category="${this.escapeHtml(s.category || 'grooming')}">
+            <span class="service-chip-name">${this.escapeHtml(s.name)}${nameSuffix}</span>
+            <span class="service-chip-price">${short}</span>
+          </label>`;
+    }
     const priceTxt = r.free ? '무료' : (r.price > 0 || r.needsWeight ? this.formatServicePrice(s, table, sizeOrWeight) : '');
     const fb = r.fallback === 'prev' ? ' (앞 구간 가격)' : r.fallback === 'next' ? ' (뒤 구간 가격)' : r.fallback === 'min' ? ' (가장 낮은 구간 가격)' : '';
     const sub = [r.bandLabel ? r.bandLabel + fb : '', r.over ? '초과 ' + r.over.kg + 'kg 포함' : ''].filter(Boolean).join(' · ');
@@ -3129,7 +3342,11 @@ const App = {
   apptServiceNames(appt, serviceMap) {
     const ids = (appt && appt.serviceIds) || [];
     const saved = (appt && Array.isArray(appt.serviceNames)) ? appt.serviceNames : [];
-    return ids.map((id, i) => serviceMap[id] || serviceMap[Number(id)] || saved[i] || '삭제된 서비스').join(', ');
+    const len = this.apptLengthOf(appt); // 길이는 그 코스 이름 뒤에 (예: '전체미용 7F')
+    return ids.map((id, i) => {
+      const nm = serviceMap[id] || serviceMap[Number(id)] || saved[i] || '삭제된 서비스';
+      return len && Number(id) === len.serviceId ? nm + ' ' + len.name : nm;
+    }).join(', ');
   },
 
   // Get groomer dropdown options

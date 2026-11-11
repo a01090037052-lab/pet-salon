@@ -581,6 +581,7 @@ App.pages.services = {
     const headKg = App.formatKg(shopFrom || Number(custom.from) || 10);
     const shopNote = '(' + (table.overKg && !bandsOff ? App.describeOverKgRule({ from: shopFrom, perKg: table.overKg.perKg }) : '지금은 없음') + ')';
     const STANDARD_INCLUDED = ['발톱 정리', '귀청소', '항문샘', '발바닥', '위생 미용', '향수'];
+    const lengthRows = App.lengthOptionsOf({ ...service, category: 'grooming' });
     const included = service.includedItems || [];
 
     App.showModal({
@@ -647,6 +648,14 @@ App.pages.services = {
             </div>
           </div>
           <div class="form-hint" style="margin-top:4px">비워 두면 &lsquo;가격 미입력&rsquo; — 기록할 때 직접 넣어요.</div>
+        </div>
+
+        <!-- 미용 코스만: 길이 옵션 — 클리퍼 길이마다 고정 추가금 (몸무게 구간 가격에 더한다). 길이마다 서비스를 따로 만들지 않게 -->
+        <div class="form-group" id="f-length-group" style="display:${(service.category || 'grooming') === 'grooming' ? 'block' : 'none'}">
+          <label class="form-label">길이 옵션 <span style="color:var(--text-muted);font-size:0.93rem;font-weight:400">(없으면 비워 두세요)</span></label>
+          <div id="f-length-rows">${lengthRows.map(o => this._lengthRowHtml(o.name, o.price)).join('')}</div>
+          <button type="button" class="btn btn-sm btn-secondary" id="f-length-add" style="min-height:44px">+ 길이 추가</button>
+          <div class="form-hint" style="margin-top:4px">예: 3mm 0원 · 4F 5,000원 · 7F 10,000원 — 몸무게 구간 가격에 더해져요</div>
         </div>
 
         <!-- 스타일 추가만: 코스별 다른 값 (1.08) — 같은 테디컷이라도 스포팅에서는 +1만5천처럼 코스마다 값이 다를 때. 비우면 위 가격 -->
@@ -813,10 +822,21 @@ App.pages.services = {
         $('f-category').value = btn.dataset.value;
         const sw = $('f-styleIncluded-wrap'); if (sw) sw.style.display = btn.dataset.value === 'grooming' ? 'flex' : 'none';
         const bc = $('f-bycourse-group'); if (bc) bc.style.display = btn.dataset.value === 'style' ? 'block' : 'none';
+        const lg = $('f-length-group'); if (lg) lg.style.display = btn.dataset.value === 'grooming' ? 'block' : 'none';
         // 새 서비스: 분류에 맞는 가격 방식으로 (미용 코스 = 몸무게별, 나머지 = 한 가격). 직접 고른 뒤엔 안 바꾼다
         if (!id && !priceModeTouched && !$('f-price-free')?.checked) setPriceMode(btn.dataset.value === 'grooming' && !bandsOff ? 'weight' : 'flat');
         setOverDefault();
       });
+    });
+
+    // 길이 옵션 줄 추가·빼기
+    $('f-length-add')?.addEventListener('click', () => {
+      $('f-length-rows')?.insertAdjacentHTML('beforeend', this._lengthRowHtml('', ''));
+      $('f-length-rows')?.lastElementChild?.querySelector('.f-length-name')?.focus();
+    });
+    $('f-length-rows')?.addEventListener('click', (e) => {
+      const del = e.target.closest('.f-length-del');
+      if (del) { del.closest('.f-length-row')?.remove(); App._modalDirty = true; }
     });
 
     // 포함 항목 chips 핸들러 + 자유 입력
@@ -988,6 +1008,15 @@ App.pages.services = {
     return { pricing };
   },
 
+  // 길이 옵션 한 줄: [이름][추가금(원)][×]
+  _lengthRowHtml(name, price) {
+    return `<div class="f-length-row" style="display:flex;align-items:center;gap:6px;margin-bottom:6px">
+      <input type="text" class="f-length-name" value="${App.escapeHtml(name)}" placeholder="이름 (예: 7F)" maxlength="20" style="flex:1;min-width:0">
+      <input type="number" class="f-length-price" value="${price === '' ? '' : Number(price) || 0}" placeholder="추가금 (원)" min="0" step="1000" inputmode="numeric" style="width:130px;flex:none">
+      <button type="button" class="btn btn-sm btn-ghost f-length-del" aria-label="이 길이 빼기" style="min-height:44px;min-width:44px;flex:none">×</button>
+    </div>`;
+  },
+
   // opts.cont: 저장하고 이어서 등록 / opts.isCopy: 복사본 수정
   async saveService(id, opts = {}) {
     const $ = (x) => document.getElementById(x);
@@ -1033,6 +1062,14 @@ App.pages.services = {
       document.querySelectorAll('.f-bycourse').forEach(inp => { const v = inp.value.trim(); if (v !== '' && Number(v) >= 0) bc[inp.dataset.course] = Number(v); });
       data.byCourse = bc;
     } else data.byCourse = undefined;
+    // 미용 코스의 길이 옵션 — 이름 없는 줄은 버린다. 추가금만 적고 이름을 안 적었으면 알려 준다
+    if (category === 'grooming') {
+      const rows = Array.from(document.querySelectorAll('#f-length-rows .f-length-row'));
+      const noName = rows.find(r => !r.querySelector('.f-length-name').value.trim() && r.querySelector('.f-length-price').value.trim() !== '');
+      if (noName) { noName.querySelector('.f-length-name').focus(); App.showToast('길이 이름을 적어 주세요 (예: 7F).', 'error'); return; }
+      const list = App.lengthOptionsOf({ category, lengthOptions: rows.map(r => ({ name: r.querySelector('.f-length-name').value, price: r.querySelector('.f-length-price').value.trim() })) });
+      data.lengthOptions = list.length ? list : undefined;
+    } else data.lengthOptions = undefined;
     App.applyLegacyPrices(data, table); // 구버전 기기용 priceSmall/Medium/Large + 서명
     const priceSig = (p) => JSON.stringify({
       m: p.mode, f: Number(p.flat) || 0, z: !!p.free,
@@ -1070,6 +1107,7 @@ App.pages.services = {
         if ($('f-fill-base')) $('f-fill-base').value = '';
         if ($('f-price-free')?.checked) { $('f-price-free').checked = false; $('f-price-free').dispatchEvent(new Event('change')); }
         document.querySelectorAll('.f-bycourse').forEach(i => { i.value = ''; });
+        if ($('f-length-rows')) $('f-length-rows').innerHTML = '';
         if ($('f-styleIncluded')) $('f-styleIncluded').checked = false;
         if ($('f-fromPrice')) $('f-fromPrice').checked = false;
         document.querySelectorAll('#f-included-chips .payment-chip.active').forEach(b => b.classList.remove('active'));

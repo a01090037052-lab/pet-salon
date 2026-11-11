@@ -681,7 +681,7 @@ App.pages.customers = {
         <div class="form-row">
           <div class="form-group">
             <label class="form-label">주소</label>
-            <input type="text" id="f-address" value="${App.escapeHtml(customer.address || '')}" placeholder="주소">
+            <input type="text" id="f-address" value="${App.escapeHtml(customer.address || '')}" placeholder="동 이름만 적어도 돼요 (예: 상인동)" maxlength="100">
           </div>
           <div class="form-group">
             <label class="form-label">생일</label>

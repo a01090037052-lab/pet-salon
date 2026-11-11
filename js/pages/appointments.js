@@ -25,6 +25,14 @@ App.pages.appointments = {
     // #appointments/open — 홈에서 '마감 안 한 지난 예약'을 눌러 들어온 경우: 최근 14일을 읽어 그 건들만 보여준다
     const openMode = !!(params && params[0] === 'open');
     this._openMode = openMode;
+    // #appointments/go/<예약 id>/<날짜> — 홈 카드에서 들어온 경우
+    const go = params && params[0] === 'go' && /^\d{4}-\d{2}-\d{2}$/.test(params[2] || '') ? { id: Number(params[1]), date: params[2] } : null;
+    this._goAppt = go;
+    if (go) {
+      this._selectedCalDate = go.date;
+      const gd = new Date(go.date + 'T00:00:00');
+      this._calYear = gd.getFullYear(); this._calMonth = gd.getMonth(); this._keepCalMonth = true;
+    }
     const listFrom = openMode ? shiftDate(today, -this.OPEN_PAST_DAYS)
       : (listRange && listRange.from && listRange.from <= today) ? listRange.from : today;
     const listTo = openMode ? defaultTo
@@ -71,6 +79,7 @@ App.pages.appointments = {
     const recByAppt = App.apptRecordMap(recentRecords);
     const resultOf = (a) => App.apptResultHtml(a, recByAppt[String(a.id)], (a.date || '') >= listFrom);
     const customerMap = {}; customers.forEach(c => customerMap[c.id] = c);
+    const firstVisit = await App.firstVisitSet(sorted);
     const petMap = {}; pets.forEach(p => petMap[p.id] = p);
     const serviceMap = {}; services.forEach(s => serviceMap[s.id] = s.name);
     this._customerMap = customerMap;
@@ -214,7 +223,7 @@ App.pages.appointments = {
                         ${isPast && a.status !== 'completed' && a.status !== 'cancelled' ? '<span class="badge badge-danger" style="margin-left:4px">지남</span>' : ''}
                       </td>
                       <td>${a.time || '-'}${a.duration && a.duration !== 60 ? `<div style="font-size:0.93rem;color:var(--text-muted)">${a.duration}분</div>` : ''}</td>
-                      <td><a href="#pets/${a.petId}" style="color:var(--primary);font-weight:700" onclick="event.stopPropagation()">${App.escapeHtml(pet?.name || '-')}</a> <span style="color:var(--text-muted);font-size:0.93rem">${App.escapeHtml(App.getCustomerLabel(customer))}</span>${customer?.phone ? ` <a href="sms:${App.escapeHtml(App.phoneDigits(customer.phone))}" onclick="event.stopPropagation()" title="문자 보내기" aria-label="문자 보내기" style="color:var(--text-muted);font-size:0.93rem">${App.icon('message')}</a>` : ''}${balLine(a, 'margin-top:2px')}</td>
+                      <td><a href="#pets/${a.petId}" style="color:var(--primary);font-weight:700" onclick="event.stopPropagation()">${App.escapeHtml(pet?.name || '-')}</a> <span style="color:var(--text-muted);font-size:0.93rem">${App.escapeHtml(App.getCustomerLabel(customer))}</span>${App.firstVisitBadge(a.customerId, firstVisit)}${customer?.phone ? ` <a href="sms:${App.escapeHtml(App.phoneDigits(customer.phone))}" onclick="event.stopPropagation()" title="문자 보내기" aria-label="문자 보내기" style="color:var(--text-muted);font-size:0.93rem">${App.icon('message')}</a>` : ''}${balLine(a, 'margin-top:2px')}</td>
                       <td class="hide-mobile" title="${App.escapeHtml(serviceNames)}"><div class="appt-cell-clip" style="font-size:0.93rem;max-width:200px">${App.escapeHtml(serviceNames)}</div></td>
                       ${multiGroomer ? `<td class="hide-mobile">${App.escapeHtml(a.groomer || '-')}</td>` : ''}
                       <td class="hide-mobile appt-memo-cell" title="${App.escapeHtml(a.memo || '')}"><div class="appt-cell-clip" style="max-width:160px">${App.escapeHtml(a.memo || '-')}</div></td>
@@ -262,7 +271,7 @@ App.pages.appointments = {
                 <div class="mobile-card-header">
                   <div style="display:flex;align-items:baseline;flex-wrap:wrap;gap:4px 8px;min-width:0;flex:1">
                     <strong style="font-size:1.1rem">${App.escapeHtml(a.time || '--:--')}</strong>
-                    <strong style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:60%">${App.escapeHtml(pet?.name || '-')}</strong>
+                    <strong style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:60%">${App.escapeHtml(pet?.name || '-')}</strong>${App.firstVisitBadge(a.customerId, firstVisit)}
                     <span class="appt-card-date" style="font-size:0.93rem;color:var(--text-muted)">${App.formatDate(a.date)}${isToday ? ' <span class="badge badge-info">오늘</span>' : ''}</span>
                     ${a.duration && a.duration !== 60 ? `<span style="font-size:0.93rem;color:var(--text-muted)">${a.duration}분</span>` : ''}
                     ${isPast && a.status !== 'completed' && a.status !== 'cancelled' ? '<span class="badge badge-danger">지남</span>' : ''}
@@ -532,6 +541,20 @@ App.pages.appointments = {
     }
   },
 
+  // 홈에서 누른 예약까지 내려가 잠깐 반짝인다. 주소는 #appointments 로 돌려 둬서 다시 그릴 때 또 끌려가지 않게 한다
+  _focusAppt(id) {
+    this._goAppt = null;
+    sessionStorage.removeItem('appt-scroll');
+    try { history.replaceState(history.state, '', '#appointments'); App._routeHash = 'appointments'; } catch (_) {}
+    requestAnimationFrame(() => {
+      const el = document.querySelector(`#appt-tbody tr[data-id="${id}"], #appt-card-list .mobile-card[data-id="${id}"]`);
+      if (!el || !el.offsetParent) return;
+      el.scrollIntoView({ block: 'center', behavior: 'smooth' });
+      el.classList.add('appt-flash');
+      setTimeout(() => el.classList.remove('appt-flash'), 2600);
+    });
+  },
+
   _hideDateSummary() {
     const panel = document.getElementById('cal-date-summary');
     if (panel) panel.style.display = 'none';
@@ -574,6 +597,10 @@ App.pages.appointments = {
           this._selectedCalDate = null;
           this.applyFilters();
         } else {
+        if (this._goAppt) { // 찾는 예약이 검색어·상태 필터에 가려지지 않게
+          const searchEl = document.getElementById('appt-search'); if (searchEl) searchEl.value = '';
+          const statusEl = document.getElementById('filter-status'); if (statusEl) statusEl.value = '';
+        }
         // 이전 선택 날짜 복원 또는 오늘 자동 선택
         const restoreDate = this._selectedCalDate || App.getToday();
         const dateInput = document.getElementById('filter-date');
@@ -582,6 +609,7 @@ App.pages.appointments = {
         const restoreCell = document.querySelector(`.calendar-cell[data-date="${restoreDate}"]`);
         if (restoreCell) restoreCell.classList.add('selected');
         await this._updateDateSummary(restoreDate);
+        if (this._goAppt) this._focusAppt(this._goAppt.id);
         }
     }
 
@@ -1211,6 +1239,7 @@ App.pages.appointments = {
     // 칩 가격 기준: 예전 예약에 남은 몸무게(weightAtBooking) → 반려견 몸무게 → 사이즈. 예약 폼에 몸무게 칸은 없다 (기록 폼에서 잰다)
     const initialWeight = Number(appt.weightAtBooking) > 0 ? Number(appt.weightAtBooking) : (initialPet && Number(initialPet.weight) > 0 ? Number(initialPet.weight) : null);
     const initialBasis = initialWeight || App.getPetPriceBasis(initialPet);
+    await App.getServiceUseCounts(true); // 많이 쓴 순서 — 폼을 열 때 한 번 새로 센다 (반려견 바꿔 다시 그릴 땐 같은 값)
     const serviceCheckboxes = await App.getServiceCheckboxes(appt.serviceIds || [], initialBasis);
 
     // ========== Form HTML ==========
@@ -1254,8 +1283,9 @@ App.pages.appointments = {
           <div class="form-group">
             <label class="form-label">시간</label>
             <input type="time" id="f-time" step="1800" value="${appt.time || ''}">
-            <div id="f-time-chips" style="display:flex;gap:6px;overflow-x:auto;-webkit-overflow-scrolling:touch;margin-top:6px;padding-bottom:2px">
-              ${Array.from({ length: LAST_SLOT_H - FIRST_SLOT_H + 1 }, (_, i) => String(FIRST_SLOT_H + i).padStart(2, '0') + ':00').map(t => `<button type="button" class="btn btn-sm ${appt.time === t ? 'btn-primary' : 'btn-secondary'} appt-time-chip" data-time="${t}" style="flex:0 0 auto;min-height:44px">${t}</button>`).join('')}
+            <!-- 시간 버튼은 여러 줄로 감싼다 (예전엔 한 줄로 옆으로 밀어야 해서 폰에서 창이 옆으로 움직이는 것처럼 느껴졌다) -->
+            <div id="f-time-chips" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(64px,1fr));gap:6px;margin-top:6px">
+              ${Array.from({ length: LAST_SLOT_H - FIRST_SLOT_H + 1 }, (_, i) => String(FIRST_SLOT_H + i).padStart(2, '0') + ':00').map(t => `<button type="button" class="btn btn-sm ${appt.time === t ? 'btn-primary' : 'btn-secondary'} appt-time-chip" data-time="${t}" style="min-height:44px;padding-left:0;padding-right:0">${t}</button>`).join('')}
             </div>
           </div>
         </div>
@@ -1263,6 +1293,8 @@ App.pages.appointments = {
         <!-- 선택사항 -->
         <div style="margin:12px 0 8px;padding-top:10px;border-top:1px dashed var(--border);font-size:0.93rem;color:var(--text-muted)">선택사항</div>
         <div class="form-group">
+          <!-- 지난번처럼: 이 아이의 마지막 예약·기록과 같은 서비스를 한 번에 고른다. 기록이 없으면 안 보인다 -->
+          <button type="button" id="btn-appt-last" class="btn btn-sm btn-ghost" style="display:none;width:100%;min-height:40px;justify-content:flex-start;margin-bottom:6px;overflow:hidden;white-space:nowrap;text-overflow:ellipsis;color:var(--primary);font-weight:600"></button>
           <div id="f-services">
             ${serviceCheckboxes}
           </div>
@@ -1340,17 +1372,38 @@ App.pages.appointments = {
     let apptPet = initialPet; // 아래 반려견 변경에서 바뀐다 (updateEstimate 가 먼저 쓰므로 여기서 선언)
     let svcCache = null;
     let estimateSeq = 0;
+    // 길이 (예: 7F) — 고른 코스에 길이 옵션이 있으면 코스 칩 바로 아래에 길이 칩 한 줄. 하나만 고르고, 다시 누르면 뺀다.
+    // 값은 { serviceId, name, price } — 그 코스를 빼면 길이도 빠진다 (저장은 saveAppointment 가 this._formLength 로)
+    let apptLength = App.apptLengthOf(appt);
+    this._formLength = apptLength;
+    const renderLength = (courses, pickedIds) => {
+      if (apptLength && !pickedIds.includes(apptLength.serviceId)) apptLength = null;
+      this._formLength = apptLength;
+      const slot = document.querySelector('#f-services .svc-length-slot');
+      if (!slot) return;
+      const course = courses.find(sv => App.lengthOptionsOf(sv).length);
+      if (!course) { slot.innerHTML = ''; return; }
+      const opts = App.lengthOptionsOf(course);
+      // 저장된 길이가 메뉴에서 지워졌어도 이 예약에선 보이게 (값은 예약 때 그대로)
+      if (apptLength && apptLength.serviceId === course.id && !opts.some(o => o.name === apptLength.name)) opts.push({ name: apptLength.name, price: apptLength.price });
+      slot.innerHTML = `<div style="font-size:0.93rem;font-weight:700;color:var(--text-secondary);margin:8px 0 4px">길이 <span style="font-weight:400;color:var(--text-muted)">(${App.escapeHtml(course.name)})</span></div>`
+        + '<div style="display:flex;gap:6px;flex-wrap:wrap">' + opts.map(o => {
+          const on = !!(apptLength && apptLength.serviceId === course.id && apptLength.name === o.name);
+          return `<button type="button" class="payment-chip svc-length-chip${on ? ' active' : ''}" data-sid="${Number(course.id)}" data-name="${App.escapeHtml(o.name)}" data-price="${Number(o.price) || 0}" aria-pressed="${on}">${App.escapeHtml(o.name)}${o.price > 0 ? ` <span style="font-weight:400;opacity:0.8">+${App.formatCurrency(o.price)}</span>` : ''}</button>`;
+        }).join('') + '</div>';
+    };
     const updateEstimate = async () => {
       const el = document.getElementById('f-appt-estimate');
       if (!el) return;
       const seq = ++estimateSeq;
       const picked = Array.from(document.querySelectorAll('input[name="serviceIds"]:checked'));
-      if (picked.length === 0) { el.style.display = 'none'; return; }
+      if (picked.length === 0) { el.style.display = 'none'; renderLength([], []); return; }
       if (!svcCache) svcCache = await DB.getAll('services');
       if (seq !== estimateSeq || !el.isConnected) return;
       const byId = {}; svcCache.forEach(sv => { byId[sv.id] = sv; });
       const pickedSvcs = picked.map(cb => byId[Number(cb.value)]).filter(Boolean);
       const courses = pickedSvcs.filter(sv => (sv.category || 'grooming') === 'grooming');
+      renderLength(courses, picked.map(cb => Number(cb.value)));
       let sum = 0, unknown = false;
       for (const cb of picked) {
         const sv = byId[Number(cb.value)];
@@ -1367,6 +1420,7 @@ App.pages.appointments = {
           pe.innerHTML = why === 'menu' ? pe.dataset.menuHtml : `${why === 'included' ? '포함' : App.formatCurrency(price)}<small class="service-chip-band">${why === 'included' ? '코스에 들어 있음' : why === 'pet' ? '이 아이 가격' : '이 코스 값'}</small>`;
         }
       }
+      if (apptLength) sum += Number(apptLength.price) || 0; // 길이 추가금은 몸무게 구간 가격에 더한다
       // 고르지 않은 칩은 메뉴 글자로 되돌린다
       document.querySelectorAll('input[name="serviceIds"]:not(:checked)').forEach(cb => { const pe = cb.closest('.service-chip')?.querySelector('.service-chip-price'); if (pe && pe.dataset.menuHtml) pe.innerHTML = pe.dataset.menuHtml; });
       el.style.display = 'block';
@@ -1389,6 +1443,8 @@ App.pages.appointments = {
         e.preventDefault();
         const checkboxes = document.querySelectorAll('input[name="serviceIds"]');
         const allChecked = Array.from(checkboxes).every(cb => cb.checked);
+        // 숨겨 둔(더보기) 칩도 같이 켜지므로 보이게 펼친다 — 안 보이는 칩 값이 금액에 몰래 들어가지 않게
+        if (!allChecked) document.querySelectorAll('#f-services .svc-more-btn').forEach(b => b.click());
         checkboxes.forEach(cb => {
           cb.checked = !allChecked;
           const chip = cb.closest('.service-chip');
@@ -1404,6 +1460,24 @@ App.pages.appointments = {
     (appt.serviceIds || []).forEach((sid, i) => { const nm = (appt.serviceNames || [])[i]; if (nm) this._formSvcNames[Number(sid)] = nm; });
     await this._appendMissingServiceChips(document.getElementById('f-services'), (appt.serviceIds || []).map(Number), initialBasis);
     bindServiceChips();
+    // '+ 더보기' 와 길이 칩 — 칩 목록을 다시 그려도 그대로 동작하게 바깥 상자에 한 번만 건다
+    document.getElementById('f-services')?.addEventListener('click', (e) => {
+      const more = e.target.closest('.svc-more-btn');
+      if (more) {
+        e.preventDefault();
+        more.closest('.service-select-grid')?.querySelectorAll('[data-more-hidden]').forEach(c => { c.style.display = ''; c.removeAttribute('data-more-hidden'); });
+        more.remove();
+        return;
+      }
+      const lc = e.target.closest('.svc-length-chip');
+      if (!lc) return;
+      e.preventDefault();
+      const same = apptLength && apptLength.serviceId === Number(lc.dataset.sid) && apptLength.name === lc.dataset.name;
+      apptLength = same ? null : { serviceId: Number(lc.dataset.sid), name: lc.dataset.name, price: Number(lc.dataset.price) || 0 };
+      this._formLength = apptLength;
+      App._modalDirty = true;
+      updateEstimate();
+    });
 
     // 반려견이 바뀌면 그 아이의 구간 가격으로 칩을 다시 그린다 (선택한 서비스는 유지)
     let chipRenderSeq = 0;
@@ -1422,8 +1496,49 @@ App.pages.appointments = {
       if (seq !== chipRenderSeq) return;
       bindServiceChips();
     };
+    // '지난번처럼' 한 줄 — 반려견이 정해지면 그 아이의 마지막 예약·기록에서 고를 서비스를 만든다 (App.lastServicePick, 테스트 있음)
+    let lastPick = null;
+    let lastSeq = 0;
+    const lastBtn = document.getElementById('btn-appt-last');
+    const refreshLastPick = async () => {
+      const my = ++lastSeq;
+      const pid = Number(document.getElementById('f-petId')?.value);
+      lastPick = null;
+      if (pid) {
+        const [pa, pr, svcs] = await Promise.all([DB.getByIndex('appointments', 'petId', pid), DB.getByIndex('records', 'petId', pid), DB.getAll('services')]);
+        if (my !== lastSeq) return;
+        lastPick = App.lastServicePick(pa, pr, svcs, { excludeId: id || null, today: App.getToday() });
+      }
+      if (!lastBtn || !lastBtn.isConnected) return;
+      lastBtn.style.display = lastPick ? 'flex' : 'none';
+      lastBtn.textContent = lastPick ? '↺ 지난번처럼: ' + lastPick.label : '';
+    };
+    lastBtn?.addEventListener('click', (e) => {
+      e.preventDefault();
+      if (!lastPick) return;
+      const want = new Set(lastPick.serviceIds.map(Number));
+      document.querySelectorAll('#f-services input[name="serviceIds"]').forEach(cb => {
+        cb.checked = want.has(Number(cb.value));
+        const chip = cb.closest('.service-chip');
+        if (chip) {
+          chip.classList.toggle('checked', cb.checked);
+          // 더보기 뒤에 숨은 칩을 골랐으면 보이게
+          if (cb.checked && chip.hasAttribute('data-more-hidden')) { chip.style.display = ''; chip.removeAttribute('data-more-hidden'); }
+        }
+      });
+      document.querySelectorAll('#f-services .svc-more-btn').forEach(b => {
+        const n = b.closest('.service-select-grid')?.querySelectorAll('[data-more-hidden]').length || 0;
+        if (n) b.textContent = '+ 더보기 ' + n; else b.remove();
+      });
+      apptLength = lastPick.length ? { ...lastPick.length } : null;
+      this._formLength = apptLength;
+      App._modalDirty = true;
+      updateEstimate();
+    });
+    refreshLastPick().catch(err => console.warn('지난번처럼 실패:', err));
     document.getElementById('f-petId')?.addEventListener('change', async (e) => {
       const petId = Number(e.target.value);
+      refreshLastPick().catch(() => {});
       apptPet = petId ? await DB.get('pets', petId) : null;
       await rerenderChips();
       updateEstimate(); // 몸무게 구간이 같아도 이 아이 가격은 다를 수 있다
@@ -1665,7 +1780,10 @@ App.pages.appointments = {
       // 서비스 이름도 함께 저장 — 나중에 서비스가 지워져도 예약에 이름이 남도록 (serviceIds 와 같은 순서)
       const svcNameMap = {}; (await DB.getAll('services')).forEach(s => { svcNameMap[s.id] = s.name; });
       const serviceNames = serviceIds.map(sid => svcNameMap[sid] || (this._formSvcNames && this._formSvcNames[sid]) || '');
-      const data = { customerId, petId, date, time, duration, groomer, status, serviceIds, serviceNames, memo };
+      // 길이(예: 7F)는 그 코스가 체크돼 있을 때만 남긴다. 없으면 null — 수정 때 예전 길이가 남지 않게
+      const fl = this._formLength;
+      const length = fl && serviceIds.includes(Number(fl.serviceId)) ? { serviceId: Number(fl.serviceId), name: fl.name, price: Number(fl.price) || 0 } : null;
+      const data = { customerId, petId, date, time, duration, groomer, status, serviceIds, serviceNames, length, memo };
       // 몸무게 칸은 없앴다. 예전 예약의 weightAtBooking 은 그대로 둔다 (Object.assign 이 덮지 않음) — 반려견을 바꿨을 때만 지운다
 
       if (id) {

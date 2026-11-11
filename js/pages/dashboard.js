@@ -179,6 +179,7 @@ App.pages.dashboard = {
         .filter(a => a.status !== 'cancelled')
         .sort((a, b) => (a.time || '').localeCompare(b.time || ''));
       const monthRecords = recentRecords.filter(r => r.date && r.date.startsWith(thisMonth));
+      this._firstVisit = await App.firstVisitSet(todayAppointments);
 
       // 오늘 요약 한 줄 — 오늘 예약 · 주의 반려견(특이사항이 있거나 직전 기록이 '주의'/'까다로움') (GroomBoard 아침 브리핑 방식).
       // 미결제는 아래 '미결제 현황' 카드가 이미 보여주므로 여기서는 뺐다
@@ -572,7 +573,7 @@ App.pages.dashboard = {
                     const sent = !!a.reminderSentAt;
                     const breedSize = [pet?.breed, pet?.weight ? App.formatKg(pet.weight) + 'kg' : null].filter(Boolean).join(' · ');
                     return `
-                      <div class="reminder-item" data-id="${a.id}" style="${sent ? 'opacity:0.55' : ''}">
+                      <div class="reminder-item" data-id="${a.id}" style="cursor:pointer;${sent ? 'opacity:0.55' : ''}" onclick="App.navigate('appointments/go/${Number(a.id)}/${/^\d{4}-\d{2}-\d{2}$/.test(a.date || '') ? a.date : ''}')">
                         <a href="#pets/${a.petId}" class="reminder-pet-photo" onclick="event.stopPropagation()">
                           ${photoSrc ? `<img src="${App.escapeHtml(photoSrc)}" alt="${App.escapeHtml(pet?.name || '')}">` : `<div class="reminder-pet-placeholder">${App.escapeHtml((pet?.name || '?').charAt(0))}</div>`}
                         </a>
@@ -860,15 +861,16 @@ App.pages.dashboard = {
       const serviceNames = App.apptServiceNames(appt, serviceMap);
       const dateLabel = appt.date === App.getToday() ? '' : `<span style="color:var(--text-muted);font-size:0.93rem">${App.formatDate(appt.date)}</span> `;
       return `
-        <div class="appointment-item" style="cursor:pointer" onclick="App.navigate('appointments')">
+        <div class="appointment-item" style="cursor:pointer" onclick="App.navigate('appointments/go/${Number(appt.id)}/${/^\d{4}-\d{2}-\d{2}$/.test(appt.date || '') ? appt.date : ''}')">
           <div class="appointment-time">${appt.time || '--:--'}</div>
           <div class="appointment-info">
-            <div class="name">${dateLabel}<a href="#pets/${appt.petId}" onclick="event.stopPropagation()" style="color:inherit;font-weight:700;padding:14px 0">${App.escapeHtml(pet?.name || '?')}</a> <a href="#customers/${appt.customerId}" onclick="event.stopPropagation()" class="appt-guardian" style="padding:14px 0">${App.escapeHtml(App.getCustomerLabel(customer))}</a></div>
+            <div class="name">${dateLabel}<a href="#pets/${appt.petId}" onclick="event.stopPropagation()" style="color:inherit;font-weight:700;padding:14px 0">${App.escapeHtml(pet?.name || '?')}</a> <a href="#customers/${appt.customerId}" onclick="event.stopPropagation()" class="appt-guardian" style="padding:14px 0">${App.escapeHtml(App.getCustomerLabel(customer))}</a>${App.firstVisitBadge(appt.customerId, this._firstVisit)}</div>
             <div class="detail">${App.escapeHtml(serviceNames || '서비스 미지정')}${appt.groomer ? ' &middot; ' + App.escapeHtml(appt.groomer) : ''}</div>
             ${(() => { const w = [pet?.temperament, pet?.healthNotes, pet?.allergies].filter(Boolean); if (!w.length) return ''; const s = w.join(', '); return '<div style="font-size:0.93rem;color:var(--danger);margin-top:2px">' + App.icon('alert') + ' ' + App.escapeHtml(s.length > 50 ? s.slice(0, 50) + '...' : s) + '</div>'; })()}
           </div>
           <div style="flex-shrink:0;display:flex;align-items:center;gap:4px">
             ${customer?.phone ? `<a href="tel:${App.escapeHtml(App.phoneDigits(customer.phone))}" class="btn btn-sm btn-secondary" onclick="event.stopPropagation()" style="min-width:44px" aria-label="전화">${App.icon('phone')}</a>` : ''}
+            ${customer?.phone && !['completed', 'cancelled', 'noshow'].includes(appt.status) ? `<button type="button" class="btn btn-sm btn-info" onclick="event.stopPropagation();App.pages.appointments.sendReminder(${Number(appt.id)})" style="min-width:44px" title="재확인 문자" aria-label="재확인 문자">${App.icon('send')}</button>` : ''}
             <span class="badge badge-${this.getStatusBadge(appt.status)}">${this.getStatusLabel(appt.status)}</span>
           </div>
           ${/* '미용 완료'는 그 예약 카드 안에 둔다 (컴퓨터: 오른쪽 끝 / 폰: 카드 아래 한 줄 — CSS .dash-complete-btn). 노쇼·취소·완료는 버튼 없음 */

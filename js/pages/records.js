@@ -833,6 +833,13 @@ App.pages.records = {
           prefillAddonPrices[nm] = p;
           addonPrice += p;
         }
+        // 예약 때 고른 길이(예: 7F)는 추가 항목 태그로 — 값은 예약에 저장된 추가금. 기록에는 '전체미용 + 7F' 로 남는다
+        const len = App.apptLengthOf(fromAppointment);
+        if (len && !addons.includes(len.name)) {
+          addons.push(len.name);
+          prefillAddonPrices[len.name] = len.price;
+          addonPrice += len.price;
+        }
       }
       record = {
         // getPetOptions는 p.id === selectedId(엄격 비교)라 문자열 id가 오면 선택이 풀린다
@@ -911,7 +918,7 @@ App.pages.records = {
         <!-- 이전 미용과 같음 (단골 손님 자동 채움) -->
         <div id="f-copy-last-area" style="display:none;margin-bottom:12px"${id ? ' data-edit="1"' : ''}>
           <button type="button" id="btn-copy-last-record" style="width:100%;padding:10px 14px;background:var(--primary-light);color:var(--primary);border:1.5px dashed var(--primary);border-radius:var(--radius);font-weight:700;cursor:pointer;font-size:0.93rem;display:flex;align-items:center;justify-content:center;gap:8px;min-height:44px">
-            ${App.icon('copy')} 이전 미용과 같음 <span id="copy-last-hint" style="font-weight:500;font-size:0.93rem;opacity:0.8"></span>
+            ${App.icon('copy')} <span id="copy-last-label">${record.appointmentId ? '지난번 스타일 메모 가져오기' : '이전 미용과 같음'}</span> <span id="copy-last-hint" style="font-weight:500;font-size:0.93rem;opacity:0.8"></span>
           </button>
         </div>
         <div class="form-group">
@@ -952,6 +959,11 @@ App.pages.records = {
         <div class="form-group" id="f-style-pick" style="display:none">
           <label class="form-label">스타일 <span style="color:var(--text-muted);font-size:0.93rem;font-weight:400">(여러 개 가능)</span></label>
           <div id="f-style-chips" style="display:flex;gap:6px;flex-wrap:wrap"></div>
+        </div>
+        <!-- 길이: 고른 코스에 길이 옵션(예: 3mm·7F)이 있을 때만. 누르면 추가 항목에 그 길이 추가금이 붙는다 (하나만) -->
+        <div class="form-group" id="f-length-pick" style="display:none">
+          <label class="form-label">길이</label>
+          <div id="f-length-chips" style="display:flex;gap:6px;flex-wrap:wrap"></div>
         </div>
         <!-- 서비스로 제공 (금액에서 빼기): 평소엔 작은 링크 하나. 누르면 기본가·추가 항목 토글이 보인다 -->
         <div id="f-comp-area" style="margin:-8px 0 12px">
@@ -1201,7 +1213,7 @@ App.pages.records = {
 
     // 이전 미용과 같음 버튼 클릭
     document.getElementById('btn-copy-last-record')?.addEventListener('click', () => {
-      this._applyLastRecord();
+      this._applyLastRecord().then(() => this._refreshLengthChips && this._refreshLengthChips()).catch(() => {});
     });
 
     // Show pet info if already selected
@@ -1499,25 +1511,35 @@ App.pages.records = {
           hint.textContent = r.why === 'included' ? '포함' : r.why === 'pet' ? `${App.formatCurrency(r.price)} (이 아이)` : r.why === 'course' ? `${App.formatCurrency(r.price)} (이 코스)` : (b.dataset.hint || '');
         }
         if (on) picked.push(b.dataset.name);
+        if (on && b.hasAttribute('data-more-hidden')) { b.style.display = ''; b.removeAttribute('data-more-hidden'); } // 고른 스타일은 늘 보이게
       });
+      const moreBtn = styleChips.querySelector('.style-more-btn');
+      if (moreBtn) { const n = styleChips.querySelectorAll('[data-more-hidden]').length; if (n) moreBtn.textContent = '+ 더보기 ' + n; else moreBtn.remove(); }
       if (styleMemo && styleMemoAuto !== null && styleMemo.value === styleMemoAuto) { styleMemo.value = picked.join(' + '); styleMemoAuto = styleMemo.value; }
     };
     (async () => {
-      const styles = (await DB.getAll('services')).filter(s => s.isActive !== false && s.category === 'style' && App.normalizeServiceName(s.name))
-        .sort((a, b) => (a.sortOrder || 999) - (b.sortOrder || 999) || (a.name || '').localeCompare(b.name || '', 'ko'));
+      // 최근 90일 많이 쓴 순 (같으면 sortOrder). 많이 쓴 8개만 작은 칩으로, 나머지는 '+ 더보기' 뒤에 (고른 칩은 syncStyleChips 가 꺼낸다)
+      const useCounts = await App.getServiceUseCounts(true);
+      const styles = App.sortServicesByUse((await DB.getAll('services')).filter(s => s.isActive !== false && s.category === 'style' && App.normalizeServiceName(s.name)), useCounts);
       if (!styles.length || !styleChips || !styleChips.isConnected) return;
       styleSvcs = styles;
       const table = await App.getPriceBands();
-      styleChips.innerHTML = styles.map(s => {
+      styleChips.innerHTML = styles.map((s, i) => {
         const nm = App.normalizeServiceName(s.name);
         const hint = priceHintOf(s, table);
-        return `<button type="button" class="payment-chip style-pick-chip" data-name="${App.escapeHtml(nm)}" data-hint="${App.escapeHtml(hint)}" aria-pressed="false">${App.escapeHtml(nm)} <span class="style-pick-price" style="font-weight:400;opacity:0.8">${App.escapeHtml(hint)}</span></button>`;
-      }).join('');
+        return `<button type="button" class="payment-chip chip-compact style-pick-chip" data-name="${App.escapeHtml(nm)}" data-hint="${App.escapeHtml(hint)}" aria-pressed="false"${i >= 8 ? ' data-more-hidden="1" style="display:none"' : ''}>${App.escapeHtml(nm)} <span class="style-pick-price" style="font-weight:400;opacity:0.8">${App.escapeHtml(hint)}</span></button>`;
+      }).join('') + (styles.length > 8 ? `<button type="button" class="btn btn-sm btn-ghost style-more-btn" style="min-height:40px">+ 더보기 ${styles.length - 8}</button>` : '');
       stylePick.style.display = '';
       hasStyleChips = true;
       syncStyleChips();
     })().catch(err => console.warn('스타일 칩 실패:', err));
     styleChips?.addEventListener('click', async (e) => {
+      const more = e.target.closest('.style-more-btn');
+      if (more) {
+        styleChips.querySelectorAll('[data-more-hidden]').forEach(c => { c.style.display = ''; c.removeAttribute('data-more-hidden'); });
+        more.remove();
+        return;
+      }
       const b = e.target.closest('.style-pick-chip');
       if (!b) return;
       this._modalDirty = true;
@@ -1528,6 +1550,49 @@ App.pages.records = {
       syncStyleChips();
     });
     if (addonTagsEl) new MutationObserver(() => syncStyleChips()).observe(addonTagsEl, { childList: true });
+
+    // 길이 칩: 고른 코스의 길이 옵션(App.lengthOptionsOf). 누르면 그 길이 이름의 추가 항목 태그를 추가금과 함께 붙인다.
+    // 길이는 하나만 — 다른 길이를 누르면 있던 길이 태그를 빼고 바꾼다. 같은 걸 다시 누르면 뺀다.
+    // 칩 상태는 태그를 따라간다 ('이전 미용과 같음'으로 길이 태그가 돌아와도 칩이 켜진다)
+    const lengthPick = document.getElementById('f-length-pick');
+    const lengthChips = document.getElementById('f-length-chips');
+    let lengthOpts = [];
+    let lengthSeq = 0;
+    const lengthTags = () => Array.from(addonTagsEl?.querySelectorAll('.addon-tag') || []).filter(t => lengthOpts.some(o => o.name === this._addonTagName(t)));
+    const syncLengthChips = () => {
+      lengthChips?.querySelectorAll('.length-pick-chip').forEach(b => {
+        const on = !!styleTagOf(b.dataset.name);
+        b.classList.toggle('active', on);
+        b.setAttribute('aria-pressed', on ? 'true' : 'false');
+      });
+    };
+    const renderLengthChips = async () => {
+      const my = ++lengthSeq;
+      const courses = await courseSvcsOf(courseInput?.value);
+      if (my !== lengthSeq || !lengthChips || !lengthChips.isConnected) return;
+      const course = courses.find(sv => App.lengthOptionsOf(sv).length);
+      lengthOpts = course ? App.lengthOptionsOf(course) : [];
+      lengthPick.style.display = lengthOpts.length ? '' : 'none';
+      lengthChips.innerHTML = lengthOpts.map(o => `<button type="button" class="payment-chip length-pick-chip" data-name="${App.escapeHtml(o.name)}" data-price="${Number(o.price) || 0}" aria-pressed="false">${App.escapeHtml(o.name)}${o.price > 0 ? ` <span style="font-weight:400;opacity:0.8">+${App.formatCurrency(o.price)}</span>` : ''}</button>`).join('');
+      syncLengthChips();
+    };
+    this._refreshLengthChips = renderLengthChips; // '이전 미용과 같음'이 서비스 칸을 바꾼 뒤 부른다
+    lengthChips?.addEventListener('click', (e) => {
+      const b = e.target.closest('.length-pick-chip');
+      if (!b || !addonTagsEl) return;
+      this._modalDirty = true;
+      const was = !!styleTagOf(b.dataset.name);
+      lengthTags().forEach(t => t.click()); // 태그를 누른 것과 같다 — 값도 빠진다
+      if (!was) {
+        const p = Number(b.dataset.price) || 0;
+        addonTagsEl.insertAdjacentHTML('beforeend', this._addonTagHtml(b.dataset.name, p, {}));
+        adjustAddonPrice(p);
+      }
+      syncLengthChips();
+    });
+    if (addonTagsEl) new MutationObserver(() => syncLengthChips()).observe(addonTagsEl, { childList: true });
+    courseInput?.addEventListener('change', () => renderLengthChips().catch(() => {}));
+    renderLengthChips().catch(err => console.warn('길이 칩 실패:', err));
     courseInput?.addEventListener('change', () => setTimeout(syncStyleChips, 300));
     document.getElementById('f-petId')?.addEventListener('change', () => setTimeout(syncStyleChips, 500)); // 이 아이 가격 표시도 반려견 따라
 
@@ -2902,7 +2967,9 @@ App.pages.records = {
     const last = await this._findLastRecordForPet(petId, excludeId);
     this._lastRecordForPet = last;
     // 기록 수정 중에는 '이전 미용과 같음'을 보이지 않는다 (지금 기록을 덮어쓰게 된다)
-    if (last && copyArea.dataset.edit !== '1') {
+    // 예약에서 온 기록은 서비스·가격이 이미 예약대로 들어 있어, 지난번 스타일 메모가 있을 때만 '스타일 메모 가져오기'로 보인다
+    const fromAppt = !!document.getElementById('f-appointmentId')?.value;
+    if (last && copyArea.dataset.edit !== '1' && (!fromAppt || (last.style || '').trim())) {
       copyArea.style.display = 'block';
       const hint = document.getElementById('copy-last-hint');
       if (hint) hint.textContent = `(${App.formatDate(last.date)})`;
@@ -2917,6 +2984,12 @@ App.pages.records = {
     const last = this._lastRecordForPet;
     if (!last) return;
     const setVal = (id, val) => { const el = document.getElementById(id); if (el && val != null) el.value = val; };
+    // 예약에서 온 기록: 서비스·가격·추가 항목은 예약대로 두고 스타일 메모만 가져온다 (2026-11-11 사장님 확인)
+    if (document.getElementById('f-appointmentId')?.value) {
+      setVal('f-style', last.style || '');
+      App.showToast('지난번 스타일 메모를 가져왔습니다. 서비스·가격은 예약대로 둡니다.');
+      return;
+    }
     setVal('f-service', last.service || '');
     const lastMainComp = Array.isArray(last.complimentary) ? last.complimentary.find(c => c && c.main) : null;
     setVal('f-servicePrice', lastMainComp ? (Number(lastMainComp.price) || 0) : (this._mainPriceOf ? this._mainPriceOf(last) : (Number(last.servicePrice) || 0)));
@@ -2948,6 +3021,12 @@ App.pages.records = {
         let basis = wv > 0 ? wv : null;
         if (!basis) { const pid = Number(document.getElementById('f-petId')?.value); const pp = pid ? await DB.get('pets', pid) : null; basis = App.getPetPriceBasis(pp); }
         const services = await DB.getAll('services');
+        // 지난 코스의 길이 옵션 값 (예: 7F → 10,000) — 길이 태그도 메뉴 항목처럼 자기 값을 갖게
+        const lenPrice = {};
+        for (const c of this._splitCourseName(last.service || '')) {
+          const cm = await App.getMenuPrice(c, basis, services).catch(() => null);
+          App.lengthOptionsOf(cm && cm.service).forEach(o => { lenPrice[o.name] = o.price; });
+        }
         const items = [];
         for (const a of last.addons) {
           const nm = App.normalizeServiceName(a);
@@ -2958,6 +3037,7 @@ App.pages.records = {
           else {
             const m = await App.getMenuPrice(nm, basis, services).catch(() => null);
             if (m && App.isExtraCategory(m.service.category)) { menu = true; price = Number(m.price) || 0; }
+            else if (Object.prototype.hasOwnProperty.call(lenPrice, nm)) price = lenPrice[nm];
           }
           items.push({ a, nm, isFree, menu, price });
         }
@@ -4648,13 +4728,16 @@ App.pages.records = {
       }
       cv.style.cursor = st.tool === 'move' ? 'grab' : 'crosshair';
     };
-    const close = () => {
+    // viaHistory: 뒤로가기·카드 창 닫기에서 온 것 (history 항목은 그쪽에서 정리)
+    const close = (viaHistory) => {
       if (st.closed) return;
       st.closed = true;
+      if (!viaHistory) App.popOverlayHistory();
       window.removeEventListener('resize', resize);
       ov.remove(); work.width = work.height = oc.width = oc.height = 0;
     };
-    ov._close = close; // 카드 창이 닫힐 때(뒤로 가기 등)도 정리되게
+    ov._close = close; // 카드 창이 닫힐 때도 정리되게
+    App.pushOverlayHistory(() => close(true)); // 안드로이드 뒤로가기 → 이 화면만 닫힘 (카드 창은 그대로)
     const waitIdle = async () => { while (!st.ready || st.busy || st.dirty) { if (st.closed) return false; await new Promise(r => setTimeout(r, 50)); } return !st.closed; };
     ov.addEventListener('click', async (e) => {
       const b = e.target.closest('button'); if (!b || st.saving) return;
@@ -6723,6 +6806,13 @@ App.pages.records = {
     const selectedBgKey = selectedFrameId ? null : (selectedTheme === 'custom' ? 'custom'
       : ((saved.bgPick === 'auto' || this._STUDIO_COLORS[saved.bgPick] || /^#[0-9a-f]{6}$/i.test(saved.bgPick || '')) ? 'bg:' + saved.bgPick : selectedTheme));
     // 직접 고른 색 (최근 6개) — 배경색·사진 칸 색 줄 끝에 남는다
+    // 2026-11: 색 고르는 창을 움직일 때마다 색이 쌓이던 문제 → 한 번만, 지금 쓰는 색(배경·사진 칸)만 남기고 정리
+    if (!(await DB.getSetting('cardColorRecentTidy1'))) {
+      try {
+        await DB.setSetting('cardColorRecent', [saved.bgPick, saved.slotColor].filter(c => /^#[0-9a-f]{6}$/i.test(c || '')));
+        await DB.setSetting('cardColorRecentTidy1', true);
+      } catch (_) {}
+    }
     const recentColors = ((await DB.getSetting('cardColorRecent')) || []).filter(c => /^#[0-9a-f]{6}$/i.test(c));
     if (/^#[0-9a-f]{6}$/i.test(saved.bgPick || '') && !recentColors.includes(saved.bgPick)) recentColors.unshift(saved.bgPick);
     if (/^#[0-9a-f]{6}$/i.test(saved.slotColor || '') && !recentColors.includes(saved.slotColor)) recentColors.unshift(saved.slotColor);
@@ -7082,8 +7172,10 @@ App.pages.records = {
         clone.querySelectorAll('.card-sticker.sel').forEach(el => el.classList.remove('sel'));
         ov.appendChild(clone);
         ov.insertAdjacentHTML('beforeend', '<div class="card-zoom-close">눌러서 닫기</div>');
-        ov.onclick = () => ov.remove();
+        ov._close = (viaHistory) => { if (!ov.isConnected) return; ov.remove(); if (!viaHistory) App.popOverlayHistory(); };
+        ov.onclick = () => ov._close();
         document.body.appendChild(ov);
+        App.pushOverlayHistory(() => ov._close(true)); // 뒤로가기 → 크게 보기만 닫힘
       };
       // 사진첩에서 여러 장 한 번에 (빈 칸부터 채움)
       const multiBtn = document.getElementById('card-photo-multi-btn');
@@ -7174,9 +7266,30 @@ App.pages.records = {
         if (customPanel) customPanel.open = false;
       });
       // 직접 고른 색 — 최근 목록에 남기고 그 색을 고른다
-      const rememberColor = async (c) => {
-        try { const list = ((await DB.getSetting('cardColorRecent')) || []).filter(x => x !== c); list.unshift(c); await DB.setSetting('cardColorRecent', list.slice(0, 6)); } catch (_) {}
+      // 색 고르는 창을 한 번 열어 고르는 동안(폰·아이패드는 움직일 때마다 change 가 온다)은 칸 하나·기록 하나만 바꾼다
+      const live = { bg: null, slot: null, color: null };
+      // isLive: 이번에 새로 만든(또는 이번 창에서 계속 바꾸는) 칸이면 앞 색 기록을 이 색으로 바꾸고, 원래 있던 색 칸이면 앞으로만 옮긴다
+      const rememberColor = async (c, isLive) => {
+        const prev = isLive ? live.color : null;
+        if (isLive) live.color = c;
+        this._colorQ = (this._colorQ || Promise.resolve()).then(async () => {
+          try { const list = ((await DB.getSetting('cardColorRecent')) || []).filter(x => x !== c && x !== prev); list.unshift(c); await DB.setSetting('cardColorRecent', list.slice(0, 6)); } catch (_) {}
+        });
+        return this._colorQ;
       };
+      const pickLive = (row, attr, c, which) => {
+        const key = attr === 'data-key' ? 'bg:' + c : c;
+        const found = row.querySelector(`[${attr}="${key}"]`);
+        if (found) return { b: found, isLive: found === live[which] }; // 원래 있던 색 칸은 그대로 둔다
+        const l = live[which];
+        if (l && l.isConnected) { l.setAttribute(attr, key); l.style.setProperty('--c', c); return { b: l, isLive: true }; }
+        live[which] = addMine(row, attr, c);
+        return { b: live[which], isLive: true };
+      };
+      // 창을 새로 열면 새 칸 (앞에서 고른 색은 그대로 남는다)
+      ['card-bg-custom', 'card-slot-custom'].forEach(id => document.getElementById(id)?.addEventListener('click', () => {
+        live[id === 'card-bg-custom' ? 'bg' : 'slot'] = null; live.color = null;
+      }));
       const addMine = (row, attr, c) => {
         let b = row.querySelector(`[${attr}="${attr === 'data-key' ? 'bg:' + c : c}"]`);
         if (!b) {
@@ -7189,8 +7302,9 @@ App.pages.records = {
       };
       document.getElementById('card-bg-custom')?.addEventListener('change', (e) => {
         const c = e.target.value.toLowerCase();
-        addMine(e.target.closest('.card-bg-row'), 'data-key', c).click();
-        rememberColor(c);
+        const p = pickLive(e.target.closest('.card-bg-row'), 'data-key', c, 'bg');
+        p.b.click();
+        rememberColor(c, p.isLive);
       });
       const slotRow = document.querySelector('#card-slot-color .card-bg-row');
       slotRow?.addEventListener('click', (e) => {
@@ -7200,8 +7314,9 @@ App.pages.records = {
       });
       document.getElementById('card-slot-custom')?.addEventListener('change', (e) => {
         const c = e.target.value.toLowerCase();
-        addMine(slotRow, 'data-slotc', c).click();
-        rememberColor(c);
+        const p = pickLive(slotRow, 'data-slotc', c, 'slot');
+        p.b.click();
+        rememberColor(c, p.isLive);
       });
       customPanel?.addEventListener('toggle', () => {
         if (customPanel.open) activateTheme(customBtn);

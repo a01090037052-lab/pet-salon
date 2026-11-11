@@ -4354,3 +4354,14 @@ input.has-clear { padding-right: 44px; }
 .fm-logo-size input { flex: 1; }
 .fm-logo-warn { margin-top: 6px; font-size: 12px; color: #B45309; background: #FEF3C7; border-radius: 8px; padding: 4px 8px; }
 .fm-logo-warn[hidden] { display: none; }
+
+/* 홈에서 누른 예약을 예약 화면에서 잠깐 반짝여 찾기 쉽게 */
+@keyframes appt-flash { 0%, 60% { box-shadow: 0 0 0 3px var(--primary); } 100% { box-shadow: 0 0 0 0 transparent; } }
+.appt-flash { animation: appt-flash 2.6s ease-out; }
+tr.appt-flash td { background: var(--info-bg-soft); }
+/* 예약·기록 폼의 작은 서비스 칩 (스타일·옵션·케어) — 이름 옆에 값 한 줄. 폰 한 줄에 3~4개. 누르는 높이는 40px 이상 */
+.service-chip.service-chip-compact, .payment-chip.chip-compact { min-height: 40px; padding: 4px 9px; gap: 4px; white-space: nowrap; }
+.service-select-grid:has(.service-chip-compact) { gap: 6px; }
+.service-chip-compact .service-chip-price, .chip-compact .style-pick-price { font-size: max(12px, 0.72rem); }
+.service-chip-compact .service-chip-band { display: none; }
+.chip-compact .style-pick-price { margin-left: 4px; }
