@@ -4008,15 +4008,6 @@ input.has-clear { padding-right: 44px; }
   #appt-table td:first-child .badge-info { display: none; }
   #appt-table .appt-status-sel-table { min-width: 0; padding-left: 8px; padding-right: 22px; background-position: right 6px center; }
 }
-/* 예약: 넓은 화면은 달력(왼쪽) · 고른 날 예약/타임테이블(오른쪽) 나란히. 좁으면 감싸는 div 가 그냥 블록이라 예전과 같다 */
-@media (min-width: 1200px) {
-  .appt-top { display: grid; grid-template-columns: minmax(0, 11fr) minmax(0, 9fr); gap: 20px; align-items: start; margin-bottom: 16px; }
-  .appt-top-cal > .calendar-container { margin-bottom: 0; }
-  /* 오른쪽 단은 고정(sticky)·안쪽 스크롤 없이 그냥 흐른다 — 타임테이블이 길면 안쪽 스크롤바가 생겼다 */
-  .appt-top-side { min-width: 0; }
-  .appt-top-side > :last-child, .appt-top-side #cal-date-summary { margin-bottom: 0 !important; }
-  .appt-top-side #timetable-container { margin-top: 16px; margin-bottom: 0 !important; }
-}
 /* 고객: 넓은 화면은 목록(왼쪽) · 고른 고객 상세(오른쪽). 1280px 미만은 칸이 없고 줄을 누르면 상세 화면으로 */
 .cust-pane { display: none; }
 @media (min-width: 1280px) {

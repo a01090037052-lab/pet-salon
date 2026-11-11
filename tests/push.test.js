@@ -96,3 +96,14 @@ describe('미결제 결제 창 요약 (payUnpaidSummary)', () => {
     assert.ok(!/ · ·|^ · | · $|-$/.test(sm.who), sm.who);
   });
 });
+
+describe('예약 알림: 길이 (예: 전체미용 7F)', () => {
+  test('고른 길이는 그 코스 이름 뒤에', () => {
+    const [j] = P.buildJobs([appt({ serviceIds: [10, 11], length: { serviceId: 10, name: '7F', price: 10000 } })], pets, services, 30, NOW);
+    assert.equal(j.body, '14:00 초코 · 전체미용 7F, 발톱');
+  });
+  test('코스를 뺀 예약에 남은 길이는 안 쓴다, 지운 코스는 저장된 이름 뒤에', () => {
+    assert.equal(P.buildJobs([appt({ serviceIds: [11], length: { serviceId: 10, name: '7F', price: 10000 } })], pets, services, 30, NOW)[0].body, '14:00 초코 · 발톱');
+    assert.equal(P.buildJobs([appt({ serviceIds: [99], serviceNames: ['전체미용'], length: { serviceId: 99, name: '4F', price: 5000 } })], pets, services, 30, NOW)[0].body, '14:00 초코 · 전체미용 4F');
+  });
+});

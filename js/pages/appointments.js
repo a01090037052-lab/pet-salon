@@ -10,6 +10,39 @@ App.pages.appointments = {
     return !a.status || ['pending', 'confirmed', 'in_progress'].includes(a.status);
   },
 
+  // 상태 이름·배지 색 (목록 카드·상태 변경·'⋯' 메뉴가 같이 쓴다)
+  STATUS_LABELS: { pending: '대기', confirmed: '확정', in_progress: '미용중', completed: '완료', cancelled: '취소', noshow: '노쇼' },
+  STATUS_BADGES: { pending: 'badge-warning', confirmed: 'badge-info', in_progress: 'badge-info', completed: 'badge-success', cancelled: 'badge-secondary', noshow: 'badge-danger' },
+
+  // 고른 날짜가 든 주의 월~일 7일 (YYYY-MM-DD) — 휴대폰 주간 띠
+  weekDays(date) {
+    const d = App.parseLocalDate(date);
+    d.setDate(d.getDate() - (d.getDay() + 6) % 7); // 그 주 월요일로
+    return Array.from({ length: 7 }, (_, i) => {
+      const x = new Date(d.getFullYear(), d.getMonth(), d.getDate() + i);
+      return App.formatLocalDate(x);
+    });
+  },
+
+  // 'YYYY-MM-DD' → '11월 13일 (금)'
+  dayLabel(date) {
+    const d = App.parseLocalDate(date);
+    if (!d) return '';
+    return `${d.getMonth() + 1}월 ${d.getDate()}일 (${'일월화수목금토'[d.getDay()]})`;
+  },
+
+  // 정렬된 예약을 이어진 같은 날짜끼리 묶는다 (순서는 그대로) — 여러 날 목록의 날짜 머리줄
+  groupByDate(list) {
+    const out = [];
+    (list || []).forEach(a => {
+      const date = a.date || '';
+      const last = out[out.length - 1];
+      if (last && last.date === date) last.items.push(a);
+      else out.push({ date, items: [a] });
+    });
+    return out;
+  },
+
   async render(container, params) {
     // 휴무일 설정은 매 진입 시 재로드 (stale 방지)
     this._closedDays = null;
@@ -33,10 +66,15 @@ App.pages.appointments = {
       const gd = new Date(go.date + 'T00:00:00');
       this._calYear = gd.getFullYear(); this._calMonth = gd.getMonth(); this._keepCalMonth = true;
     }
-    const listFrom = openMode ? shiftDate(today, -this.OPEN_PAST_DAYS)
+    let listFrom = openMode ? shiftDate(today, -this.OPEN_PAST_DAYS)
       : (listRange && listRange.from && listRange.from <= today) ? listRange.from : today;
-    const listTo = openMode ? defaultTo
+    let listTo = openMode ? defaultTo
       : (listRange && listRange.to && listRange.to >= defaultTo) ? listRange.to : defaultTo;
+    // 홈에서 누른 예약이 목록 범위 밖(예: 45일 뒤)이면 그 날짜까지 넓혀 읽는다 — 날짜를 고를 때(_setListRange)와 같은 규칙
+    if (go && (go.date < listFrom || go.date > listTo)) {
+      if (go.date < listFrom) listFrom = go.date; else listTo = go.date;
+      sessionStorage.setItem('appt-range', JSON.stringify({ from: listFrom, to: listTo }));
+    }
     this._loadedFrom = listFrom;
     this._loadedTo = listTo;
     const [appointments, laterAppts, apptTotal] = await Promise.all([
@@ -88,7 +126,36 @@ App.pages.appointments = {
     // 미용사 1명 이하면 미용사별 타임테이블·담당 열을 숨긴다
     const multiGroomer = await App.isMultiGroomer();
 
+    // 목록 줄 공통 값 (표·카드가 같이 쓴다)
+    const rowInfo = (a) => {
+      const customer = customerMap[a.customerId];
+      const pet = petMap[a.petId];
+      return {
+        customer, pet,
+        serviceNames: App.apptServiceNames(a, serviceMap),
+        isToday: a.date === today,
+        // 지난 날짜인데 아직 끝내지 않은 예약 → '지남'
+        overdue: (a.date || '') < today && a.status !== 'completed' && a.status !== 'cancelled',
+        search: App.escapeHtml(((customer?.name || '') + ' ' + (customer?.phone || '') + ' ' + (pet?.name || '') + ' ' + (a.memo || '') + ' ' + (a.groomer || '')).toLowerCase())
+      };
+    };
+    const st = (a) => a.status || 'pending';
+    const statusOptions = (a) => Object.keys(this.STATUS_LABELS).map(k => `<option value="${k}" ${st(a) === k ? 'selected' : ''}>${this.STATUS_LABELS[k]}</option>`).join('');
+    // 날짜가 바뀌는 곳마다 머리줄 — 여러 날을 볼 때만 보인다 (applyFilters 가 켜고 끈다)
+    const groups = this.groupByDate(sorted);
+    const groupTitle = (date) => `${this.dayLabel(date)}${date === today ? ' · 오늘' : ''}`;
+    const tableCols = multiGroomer ? 6 : 5;
+    const emptyHtml = `
+      <div class="empty-state">
+        <div class="empty-state-icon">${App.icon('calendar', 'ico-xl')}</div>
+        <div class="empty-state-text">${apptTotal === 0 ? '등록된 예약이 없습니다' : '이 기간에 예약이 없습니다'}</div>
+        ${apptTotal === 0 ? '<button class="btn btn-primary" onclick="App.pages.appointments.showForm()">+ 첫 예약 등록하기</button>' : ''}
+      </div>`;
+    // 주간 띠 ↔ 달력 펼침 (휴대폰). 고른 보기는 이 탭 동안 기억한다
+    const calMonthOpen = sessionStorage.getItem('appt-cal-view') === 'month';
+
     container.innerHTML = `
+      <div class="appt-v2${calMonthOpen ? ' appt-cal-month' : ''}" id="appt-v2">
       <div class="page-header">
         <div>
           <h1 class="page-title">예약 관리</h1>
@@ -100,39 +167,41 @@ App.pages.appointments = {
         </div>
       </div>
 
-      <!-- 넓은 화면: 왼쪽 달력 · 오른쪽 고른 날 예약/타임테이블 (좁은 화면은 위아래 그대로 — css 'v187 desktop') -->
-      <div class="appt-top">
-      <div class="appt-top-cal">
-      <!-- 월별 캘린더 뷰 -->
-      <div id="calendar-container" class="calendar-container">
-        <div class="calendar-header">
-          <button class="btn btn-sm btn-secondary" id="cal-prev" aria-label="이전 달">${App.icon('chevron-left')}</button>
-          <span class="calendar-title" id="cal-title"></span>
-          <button class="btn btn-sm btn-secondary" id="cal-next" aria-label="다음 달">${App.icon('chevron-right')}</button>
-          <button class="cal-today-btn" id="cal-today-btn">오늘</button>
+      <!-- 넓은 화면: 왼쪽 달력 · 오른쪽 목록 하나. 좁은 화면: 주간 띠(달력은 펼칠 때만) 아래 목록 -->
+      <div class="appt-layout">
+      <div class="appt-col-cal">
+        <div class="appt-week" id="appt-week">
+          <div class="appt-week-bar">
+            <button type="button" class="appt-week-nav" id="appt-week-prev" aria-label="이전 주">${App.icon('chevron-left')}</button>
+            <span class="appt-week-title" id="appt-week-title"></span>
+            <button type="button" class="appt-week-nav" id="appt-week-next" aria-label="다음 주">${App.icon('chevron-right')}</button>
+            <button type="button" class="btn btn-sm btn-secondary appt-cal-toggle" id="appt-cal-toggle" aria-expanded="${calMonthOpen}">${App.icon('calendar')} <span id="appt-cal-toggle-text">${calMonthOpen ? '주간으로 접기' : '달력'}</span></button>
+          </div>
+          <div class="appt-week-days" id="appt-week-days"></div>
         </div>
-        <div class="calendar-grid" id="cal-grid">
-          <div class="calendar-day-label">월</div>
-          <div class="calendar-day-label">화</div>
-          <div class="calendar-day-label">수</div>
-          <div class="calendar-day-label">목</div>
-          <div class="calendar-day-label">금</div>
-          <div class="calendar-day-label cal-sat">토</div>
-          <div class="calendar-day-label cal-sun">일</div>
+        <!-- 월별 캘린더 뷰 -->
+        <div id="calendar-container" class="calendar-container">
+          <div class="calendar-header">
+            <button class="btn btn-sm btn-secondary" id="cal-prev" aria-label="이전 달">${App.icon('chevron-left')}</button>
+            <span class="calendar-title" id="cal-title"></span>
+            <button class="btn btn-sm btn-secondary" id="cal-next" aria-label="다음 달">${App.icon('chevron-right')}</button>
+            <button class="cal-today-btn" id="cal-today-btn">오늘</button>
+          </div>
+          <div class="calendar-grid" id="cal-grid">
+            <div class="calendar-day-label">월</div>
+            <div class="calendar-day-label">화</div>
+            <div class="calendar-day-label">수</div>
+            <div class="calendar-day-label">목</div>
+            <div class="calendar-day-label">금</div>
+            <div class="calendar-day-label cal-sat">토</div>
+            <div class="calendar-day-label cal-sun">일</div>
+          </div>
         </div>
       </div>
-      </div>
-      <div class="appt-top-side">
-
-      <!-- 날짜 선택 요약 패널 (셀 클릭 시 표시) -->
-      <div id="cal-date-summary" style="display:none;margin-bottom:16px;padding:14px 16px;background:var(--bg-white);border-radius:var(--radius);box-shadow:var(--shadow-xs);border:1px solid var(--border-light)">
-        <div id="cal-date-summary-header" style="font-weight:700;font-size:0.95rem;margin-bottom:10px"></div>
-        <div id="cal-date-summary-list" style="display:flex;flex-direction:column;gap:6px;margin-bottom:12px"></div>
-        <button class="btn btn-primary" id="cal-date-add-appt" style="width:100%;min-height:44px">+ 이 날짜에 예약 추가</button>
-      </div>
+      <div class="appt-col-list">
 
       <!-- 타임테이블 뷰 (미용사 2명 이상일 때만) -->
-      ${multiGroomer ? `<div id="timetable-container" style="display:none;margin-bottom:20px">
+      ${multiGroomer ? `<div id="timetable-container" style="display:none;margin-bottom:16px">
         <div class="card">
           <div class="card-header">
             <div style="display:flex;align-items:center;gap:10px">
@@ -147,8 +216,6 @@ App.pages.appointments = {
           </div>
         </div>
       </div>` : ''}
-      </div>
-      </div>
 
       ${openMode ? `<div class="safety-note warn" id="appt-open-note">
         ${App.icon('alert')}
@@ -167,76 +234,49 @@ App.pages.appointments = {
           <span class="search-icon">${App.icon('search')}</span>
           <input type="text" id="appt-search" placeholder="이름·반려견·전화 뒷자리·초성">
         </div>
-        <select id="filter-status">
+        <select id="filter-status" aria-label="상태로 거르기">
           <option value="">전체 상태 (${statusCounts.all})</option>
-          <option value="pending">대기 (${statusCounts.pending})</option>
-          <option value="confirmed">확정 (${statusCounts.confirmed})</option>
-          <option value="in_progress">미용중 (${statusCounts.in_progress})</option>
-          <option value="completed">완료 (${statusCounts.completed})</option>
-          <option value="cancelled">취소 (${statusCounts.cancelled})</option>
-          <option value="noshow">노쇼 (${statusCounts.noshow})</option>
+          ${Object.keys(this.STATUS_LABELS).map(k => `<option value="${k}">${this.STATUS_LABELS[k]} (${statusCounts[k]})</option>`).join('')}
         </select>
         <input type="date" id="filter-date" value="" style="display:none">
-        <button class="btn btn-secondary btn-sm" id="btn-clear-filter">필터 초기화</button>
+        <!-- 검색·상태를 걸었을 때만 보인다 (applyFilters) -->
+        <button class="btn btn-secondary btn-sm" id="btn-clear-filter" style="display:none">필터 초기화</button>
       </div>
 
-      <!-- 지금 목록이 어느 날짜를 보여주는지 (달력·빠른 필터와 맞춰 applyFilters 가 채운다) -->
-      <div id="appt-list-label" class="appt-list-label" aria-live="polite"></div>
+      <!-- 지금 목록이 어느 날짜를 보여주는지 (달력·빠른 필터와 맞춰 applyFilters 가 채운다) + 그 날짜에 예약 추가 -->
+      <div class="appt-list-head">
+        <div id="appt-list-label" class="appt-list-label" aria-live="polite"></div>
+        <button type="button" class="btn btn-sm btn-secondary" id="cal-date-add-appt" style="display:none" aria-label="이 날짜에 예약 추가">+ 예약 추가</button>
+      </div>
       <div class="card">
         <div class="card-body no-padding">
           ${isMobile ? '' : `<div class="table-container">
             <table class="data-table" id="appt-table">
               <thead>
                 <tr>
-                  <th>날짜</th>
                   <th>시간</th>
                   <th>반려견 / 보호자</th>
-                  <th class="hide-mobile">서비스</th>
-                  ${multiGroomer ? '<th class="hide-mobile">담당</th>' : ''}
-                  <th class="hide-mobile appt-memo-cell">메모</th>
+                  <th class="appt-col-svc">서비스</th>
+                  ${multiGroomer ? '<th>담당</th>' : ''}
                   <th>상태</th>
                   <th>관리</th>
                 </tr>
               </thead>
               <tbody id="appt-tbody">
-                ${sorted.length === 0 ? `
-                  <tr><td colspan="${multiGroomer ? 8 : 7}">
-                    <div class="empty-state">
-                      <div class="empty-state-icon">${App.icon('calendar', 'ico-xl')}</div>
-                      <div class="empty-state-text">${apptTotal === 0 ? '등록된 예약이 없습니다' : '이 기간에 예약이 없습니다'}</div>
-                      ${apptTotal === 0 ? '<button class="btn btn-primary" onclick="App.pages.appointments.showForm()">+ 첫 예약 등록하기</button>' : ''}
-                    </div>
-                  </td></tr>
-                ` : sorted.map(a => {
-                  const customer = customerMap[a.customerId];
-                  const pet = petMap[a.petId];
-                  const serviceNames = App.apptServiceNames(a, serviceMap);
-                  const isToday = a.date === today;
-                  const isPast = a.date < today;
+                ${sorted.length === 0 ? `<tr><td colspan="${tableCols}">${emptyHtml}</td></tr>` : groups.map(g => `
+                  <tr class="appt-group-row" data-group="${App.escapeHtml(g.date)}"><td colspan="${tableCols}">${groupTitle(g.date)}</td></tr>
+                  ${g.items.map(a => {
+                  const { customer, pet, serviceNames, isToday, overdue, search } = rowInfo(a);
                   return `
-                    <tr data-id="${a.id}" data-status="${a.status || 'pending'}" data-date="${a.date}"
-                        data-search="${App.escapeHtml(((customer?.name || '') + ' ' + (customer?.phone || '') + ' ' + (pet?.name || '') + ' ' + (a.memo || '') + ' ' + (a.groomer || '')).toLowerCase())}"
+                    <tr data-id="${a.id}" data-status="${st(a)}" data-date="${App.escapeHtml(a.date || '')}" data-search="${search}"
                         style="${isToday ? 'background:var(--info-bg-soft)' : ''}">
-                      <td>
-                        <strong>${App.formatDate(a.date)}</strong>
-                        ${isToday ? '<span class="badge badge-info" style="margin-left:4px">오늘</span>' : ''}
-                        ${isPast && a.status !== 'completed' && a.status !== 'cancelled' ? '<span class="badge badge-danger" style="margin-left:4px">지남</span>' : ''}
-                      </td>
-                      <td>${a.time || '-'}${a.duration && a.duration !== 60 ? `<div style="font-size:0.93rem;color:var(--text-muted)">${a.duration}분</div>` : ''}</td>
-                      <td><a href="#pets/${a.petId}" style="color:var(--primary);font-weight:700" onclick="event.stopPropagation()">${App.escapeHtml(pet?.name || '-')}</a> <span style="color:var(--text-muted);font-size:0.93rem">${App.escapeHtml(App.getCustomerLabel(customer))}</span>${App.firstVisitBadge(a.customerId, firstVisit)}${customer?.phone ? ` <a href="sms:${App.escapeHtml(App.phoneDigits(customer.phone))}" onclick="event.stopPropagation()" title="문자 보내기" aria-label="문자 보내기" style="color:var(--text-muted);font-size:0.93rem">${App.icon('message')}</a>` : ''}${balLine(a, 'margin-top:2px')}</td>
-                      <td class="hide-mobile" title="${App.escapeHtml(serviceNames)}"><div class="appt-cell-clip" style="font-size:0.93rem;max-width:200px">${App.escapeHtml(serviceNames)}</div></td>
-                      ${multiGroomer ? `<td class="hide-mobile">${App.escapeHtml(a.groomer || '-')}</td>` : ''}
-                      <td class="hide-mobile appt-memo-cell" title="${App.escapeHtml(a.memo || '')}"><div class="appt-cell-clip" style="max-width:160px">${App.escapeHtml(a.memo || '-')}</div></td>
+                      <td class="appt-td-time"><strong>${App.escapeHtml(a.time || '-')}</strong>${a.duration && a.duration !== 60 ? `<div class="appt-sub">${a.duration}분</div>` : ''}</td>
+                      <td><a href="#pets/${a.petId}" style="color:var(--primary);font-weight:700" onclick="event.stopPropagation()">${App.escapeHtml(pet?.name || '-')}</a> <span class="appt-sub">${App.escapeHtml(App.getCustomerLabel(customer))}</span>${overdue ? ' <span class="badge badge-danger appt-overdue-badge">지남</span>' : ''}${App.firstVisitBadge(a.customerId, firstVisit, a)}${customer?.phone ? ` <a href="sms:${App.escapeHtml(App.phoneDigits(customer.phone))}" onclick="event.stopPropagation()" title="문자 보내기" aria-label="문자 보내기" style="color:var(--text-muted)">${App.icon('message')}</a>` : ''}<div class="appt-sub appt-cell-clip appt-svc-inline">${App.escapeHtml(serviceNames)}</div>${balLine(a, 'margin-top:2px')}</td>
+                      <td class="appt-col-svc" title="${App.escapeHtml(serviceNames + (a.memo ? ' / ' + a.memo : ''))}"><div class="appt-cell-clip">${App.escapeHtml(serviceNames || '-')}</div>${a.memo ? `<div class="appt-cell-clip appt-sub">${App.icon('note')} ${App.escapeHtml(a.memo)}</div>` : ''}</td>
+                      ${multiGroomer ? `<td>${App.escapeHtml(a.groomer || '-')}</td>` : ''}
                       <td>
                         ${a.status === 'completed' ? `<span class="badge badge-success">완료</span><div class="appt-result-compact">${resultOf(a)}</div>` : `
-                        <select class="status-select appt-status-sel appt-status-sel-table" data-id="${a.id}" data-st="${a.status || 'pending'}" aria-label="예약 상태">
-                          <option value="pending" ${a.status === 'pending' ? 'selected' : ''}>대기</option>
-                          <option value="confirmed" ${a.status === 'confirmed' ? 'selected' : ''}>확정</option>
-                          <option value="in_progress" ${a.status === 'in_progress' ? 'selected' : ''}>미용중</option>
-                          <option value="completed" ${a.status === 'completed' ? 'selected' : ''}>완료</option>
-                          <option value="cancelled" ${a.status === 'cancelled' ? 'selected' : ''}>취소</option>
-                          <option value="noshow" ${a.status === 'noshow' ? 'selected' : ''}>노쇼</option>
-                        </select>`}
+                        <select class="status-select appt-status-sel appt-status-sel-table" data-id="${a.id}" data-st="${st(a)}" aria-label="예약 상태">${statusOptions(a)}</select>`}
                       </td>
                       <td class="table-actions">
                         <button class="btn-icon btn-reminder-appt" data-id="${a.id}" title="재확인 문자" aria-label="재확인 문자" style="color:var(--info)${['noshow', 'cancelled'].includes(a.status) ? ';display:none' : ''}">${App.icon('send')}<span class="btn-icon-label">문자</span></button>
@@ -244,73 +284,44 @@ App.pages.appointments = {
                         ${a.status !== 'completed' ? `<button class="btn-icon btn-complete-appt" data-id="${a.id}" title="미용 완료 · 기록 작성" aria-label="미용 완료 · 기록 작성" style="color:var(--success)${['noshow', 'cancelled'].includes(a.status) ? ';display:none' : ''}">${App.icon('check')}<span class="btn-icon-label">완료</span></button>` : ''}
                       </td>
                     </tr>`;
-                }).join('')}
+                }).join('')}`).join('')}
               </tbody>
             </table>
           </div>`}
 
-          <!-- Mobile Card List (모바일 뷰포트에서만 렌더, DOM 절약) -->
+          <!-- 휴대폰 카드 (한 줄 요약 + 큰 버튼 하나, 나머지는 '⋯' 메뉴) — 모바일 뷰포트에서만 렌더 -->
           ${!isMobile ? '' : `<div class="mobile-card-list" id="appt-card-list" style="display:block">
-            ${sorted.length === 0 ? `
-              <div class="empty-state">
-                <div class="empty-state-icon">${App.icon('calendar', 'ico-xl')}</div>
-                <div class="empty-state-text">${apptTotal === 0 ? '등록된 예약이 없습니다' : '이 기간에 예약이 없습니다'}</div>
-                ${apptTotal === 0 ? '<button class="btn btn-primary" onclick="App.pages.appointments.showForm()">+ 첫 예약 등록하기</button>' : ''}
-              </div>
-            ` : sorted.map(a => {
-              const customer = customerMap[a.customerId];
-              const pet = petMap[a.petId];
-              const isToday = a.date === today;
-              const isPast = a.date < today;
-              const serviceNames = App.apptServiceNames(a, serviceMap);
-              const phoneDigits = App.phoneDigits(customer?.phone);
+            ${sorted.length === 0 ? emptyHtml : groups.map(g => `
+              <div class="appt-group-head" data-group="${App.escapeHtml(g.date)}">${groupTitle(g.date)}</div>
+              ${g.items.map(a => {
+              const { customer, pet, serviceNames, isToday, overdue, search } = rowInfo(a);
+              const done = a.status === 'completed';
+              const line2 = [App.getCustomerLabel(customer), serviceNames, multiGroomer ? (a.groomer || '') : '',
+                a.duration && a.duration !== 60 ? `${a.duration}분` : '',
+                a.status === 'cancelled' && a.cancelReason ? `취소: ${a.cancelReason}` : '', a.memo || ''].filter(Boolean);
               return `
-              <div class="mobile-card" data-id="${a.id}" data-status="${a.status || 'pending'}" data-date="${a.date}"
-                   data-search="${App.escapeHtml(((customer?.name || '') + ' ' + (customer?.phone || '') + ' ' + (pet?.name || '') + ' ' + (a.memo || '') + ' ' + (a.groomer || '')).toLowerCase())}"
-                   style="${isToday ? 'border-left:4px solid var(--primary);' : ''}${isPast && a.status !== 'completed' && a.status !== 'cancelled' ? 'border-left:4px solid var(--danger);' : ''}${a.status === 'noshow' ? 'border-left:4px solid var(--danger);' : ''}">
-                <div class="mobile-card-header">
-                  <div style="display:flex;align-items:baseline;flex-wrap:wrap;gap:4px 8px;min-width:0;flex:1">
-                    <strong style="font-size:1.1rem">${App.escapeHtml(a.time || '--:--')}</strong>
-                    <strong style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:60%">${App.escapeHtml(pet?.name || '-')}</strong>${App.firstVisitBadge(a.customerId, firstVisit)}
-                    <span class="appt-card-date" style="font-size:0.93rem;color:var(--text-muted)">${App.formatDate(a.date)}${isToday ? ' <span class="badge badge-info">오늘</span>' : ''}</span>
-                    ${a.duration && a.duration !== 60 ? `<span style="font-size:0.93rem;color:var(--text-muted)">${a.duration}분</span>` : ''}
-                    ${isPast && a.status !== 'completed' && a.status !== 'cancelled' ? '<span class="badge badge-danger">지남</span>' : ''}
+              <div class="mobile-card appt-card${overdue || a.status === 'noshow' ? ' appt-card-alert' : ''}" data-id="${a.id}" data-status="${st(a)}" data-date="${App.escapeHtml(a.date || '')}" data-search="${search}"
+                   data-tel="${App.escapeHtml(App.phoneDigits(customer?.phone) || '')}" data-label="${App.escapeHtml((a.time || '') + ' ' + (pet?.name || ''))}">
+                <div class="appt-card-main">
+                  <div class="appt-card-l1">
+                    <strong class="appt-card-time">${App.escapeHtml(a.time || '--:--')}</strong>
+                    <strong class="appt-card-pet">${App.escapeHtml(pet?.name || '-')}</strong>
+                    ${isToday ? '<span class="badge badge-info appt-today-badge">오늘</span>' : ''}${overdue ? '<span class="badge badge-danger appt-overdue-badge">지남</span>' : ''}${App.firstVisitBadge(a.customerId, firstVisit, a)}
                   </div>
+                  <div class="appt-card-l2">${line2.map(t => App.escapeHtml(t)).join(' · ')}</div>
+                  ${balLine(a)}
                 </div>
-                <div class="mobile-card-body">
-                  <div style="font-size:0.93rem;color:var(--text-secondary);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${[App.getCustomerLabel(customer), serviceNames, multiGroomer ? (a.groomer || '') : ''].filter(Boolean).map(t => App.escapeHtml(t)).join(' &middot; ')}</div>
-                  ${balLine(a, 'margin-top:4px')}
-                  ${a.status === 'cancelled' && a.cancelReason ? `<div style="font-size:0.93rem;color:var(--text-muted);margin-top:4px">취소 사유: ${App.escapeHtml(a.cancelReason)}</div>` : ''}
-                  ${a.memo ? `<div style="font-size:0.93rem;color:var(--text-secondary);margin-top:4px">${App.icon('note')} ${App.escapeHtml(a.memo.length > 40 ? a.memo.slice(0, 40) + '...' : a.memo)}</div>` : ''}
+                <div class="appt-card-side">
+                  <span class="badge appt-status-badge ${this.STATUS_BADGES[st(a)] || 'badge-secondary'}">${this.STATUS_LABELS[st(a)] || ''}</span>
+                  <!-- 노쇼·취소 건은 미용 완료 버튼을 숨긴다 (상태를 되돌리면 다시 보인다) -->
+                  ${done ? '' : `<button class="btn btn-sm btn-success btn-complete-appt" data-id="${a.id}"${['noshow', 'cancelled'].includes(a.status) ? ' style="display:none"' : ''}>${App.icon('scissors')} 미용 완료</button>`}
                 </div>
-                ${a.status === 'completed' ? `
-                <!-- 끝난 예약: 결과 줄(금액·결제 + 기록 보기)과 '수정'만. 상태 선택 상자는 두지 않는다 -->
-                <div class="mobile-card-actions" style="flex-direction:column;gap:8px">
-                  ${resultOf(a)}
-                  <button class="btn btn-sm btn-secondary btn-edit-appt" data-id="${a.id}" style="min-height:44px;width:100%">${App.icon('edit')} 수정</button>
-                </div>` : `
-                <div class="mobile-card-actions" style="flex-direction:column;gap:8px">
-                  <div style="display:flex;gap:6px;align-items:center">
-                    <!-- 상태는 이 선택 상자 하나로 보여주고 바꾼다 (예전엔 위 배지와 두 번 표시) -->
-                    <select class="status-select appt-status-sel" data-id="${a.id}" data-st="${a.status || 'pending'}" aria-label="예약 상태" style="flex:1;min-height:44px">
-                      <option value="pending" ${a.status === 'pending' ? 'selected' : ''}>대기</option>
-                      <option value="confirmed" ${a.status === 'confirmed' ? 'selected' : ''}>확정</option>
-                      <option value="in_progress" ${a.status === 'in_progress' ? 'selected' : ''}>미용중</option>
-                      <option value="completed" ${a.status === 'completed' ? 'selected' : ''}>완료</option>
-                      <option value="cancelled" ${a.status === 'cancelled' ? 'selected' : ''}>취소</option>
-                      <option value="noshow" ${a.status === 'noshow' ? 'selected' : ''}>노쇼</option>
-                    </select>
-                    <!-- 노쇼·취소 건은 미용 완료 버튼을 숨긴다 (상태를 되돌리면 다시 보인다) -->
-                    <button class="btn btn-sm btn-success btn-complete-appt" data-id="${a.id}" style="white-space:nowrap;min-height:44px${['noshow', 'cancelled'].includes(a.status) ? ';display:none' : ''}">${App.icon('scissors')} 미용 완료</button>
-                  </div>
-                  <div style="display:flex;gap:6px">
-                    ${phoneDigits ? `<a class="btn btn-sm btn-secondary" href="tel:${phoneDigits}" style="flex:0 0 auto;min-width:44px;min-height:44px;display:inline-flex;align-items:center;justify-content:center" title="전화 걸기" aria-label="전화 걸기">${App.icon('phone')}</a>` : ''}
-                    <button class="btn btn-sm btn-info btn-reminder-appt flex-1" data-id="${a.id}" style="min-height:44px${['noshow', 'cancelled'].includes(a.status) ? ';display:none' : ''}">${App.icon('send')} 재확인 문자</button>
-                    <button class="btn btn-sm btn-secondary btn-edit-appt flex-1" data-id="${a.id}" style="min-height:44px">${App.icon('edit')} 수정</button>
-                  </div>
-                </div>`}
+                <button type="button" class="appt-more-btn" data-id="${a.id}" aria-label="${App.escapeHtml((pet?.name || '') + ' 예약 메뉴: 문자·전화·수정·상태')}" aria-haspopup="dialog">${App.icon('more')}</button>
+                ${done ? `<div class="appt-result-compact">${resultOf(a)}</div>` : `
+                <!-- 상태 바꾸기는 '⋯' 메뉴가 이 상자 값을 바꿔 기존 상태 변경 처리(확인 창·취소 사유 등)를 그대로 탄다 -->
+                <select class="status-select appt-status-sel" data-id="${a.id}" data-st="${st(a)}" aria-label="예약 상태" hidden>${statusOptions(a)}</select>`}
               </div>`;
-            }).join('')}
+            }).join('')}`).join('')}
           </div>`}
 
         </div>
@@ -321,6 +332,19 @@ App.pages.appointments = {
         ${hasOlder && !openMode ? `<button class="btn btn-secondary btn-sm" id="btn-appt-older" style="min-height:44px">${App.icon('chevron-left')} 이전 30일 보기</button>` : ''}
         ${laterCount > 0 && !openMode ? `<button class="btn btn-secondary btn-sm" id="btn-appt-later" style="min-height:44px">이후 30일 더 보기 (이후 ${laterCount}건) ${App.icon('chevron-right')}</button>` : ''}
         ${!openMode && (listFrom < today || listTo > defaultTo) ? `<button class="btn btn-ghost btn-sm" id="btn-appt-range-reset" style="min-height:44px">기본 범위로 (오늘~30일)</button>` : ''}
+      </div>
+      </div>
+      </div>
+
+      <!-- '⋯' 메뉴 (휴대폰 카드). 열 때 그 예약에 맞게 채운다 -->
+      <div class="appt-sheet" id="appt-sheet" hidden>
+        <div class="appt-sheet-backdrop" data-close></div>
+        <div class="appt-sheet-panel" role="dialog" aria-modal="true" aria-labelledby="appt-sheet-title">
+          <div class="appt-sheet-title" id="appt-sheet-title"></div>
+          <div class="appt-sheet-body" id="appt-sheet-body"></div>
+          <button type="button" class="btn btn-secondary appt-sheet-close" data-close>닫기</button>
+        </div>
+      </div>
       </div>
     `;
   },
@@ -454,91 +478,124 @@ App.pages.appointments = {
         bar.addEventListener('click', open);
         bar.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); open(e); } });
       });
-      // 셀 클릭 이벤트
+      // 셀 클릭 → 날짜 선택 (주간 띠와 같은 길)
       grid.querySelectorAll('.calendar-cell[data-date]').forEach(cell => {
-        cell.addEventListener('click', () => {
-          const date = cell.dataset.date;
-          const dateInput = document.getElementById('filter-date');
-          if (dateInput) {
-            dateInput.value = date;
-            this.applyFilters();
-          }
-          // 목록 범위 밖 날짜면 그 날짜까지 목록을 넓혀 다시 그린다 (선택 날짜·달력 월은 유지됨)
-          if ((this._loadedFrom && date < this._loadedFrom) || (this._loadedTo && date > this._loadedTo)) {
-            this._selectedCalDate = date;
-            this._setListRange(date < this._loadedFrom ? date : this._loadedFrom, date > this._loadedTo ? date : this._loadedTo);
-            return;
-          }
-          // 선택 표시
-          grid.querySelectorAll('.calendar-cell').forEach(c => c.classList.remove('selected'));
-          cell.classList.add('selected');
-          // 요약 패널 업데이트
-          this._updateDateSummary(date);
-        });
+        cell.addEventListener('click', () => this._selectDate(cell.dataset.date));
       });
     }
   },
 
+  // 날짜 하나 고르기 — 달력 칸·주간 띠 모두 이 길로 (목록을 그 날로 거르고, 범위 밖이면 넓혀 다시 그린다)
+  async _selectDate(date) {
+    const dateInput = document.getElementById('filter-date');
+    if (dateInput) {
+      dateInput.value = date;
+      this.applyFilters();
+    }
+    // 주간 띠에서 다른 달 날짜를 고르면 달력도 그 달로 맞춘다 (펼쳤을 때 맞는 달이 보이게)
+    const d = App.parseLocalDate(date);
+    const otherMonth = d.getFullYear() !== this._calYear || d.getMonth() !== this._calMonth;
+    if (otherMonth) { this._calYear = d.getFullYear(); this._calMonth = d.getMonth(); }
+    // 목록 범위 밖 날짜면 그 날짜까지 목록을 넓혀 다시 그린다 (선택 날짜·달력 월은 유지됨)
+    if ((this._loadedFrom && date < this._loadedFrom) || (this._loadedTo && date > this._loadedTo)) {
+      this._selectedCalDate = date;
+      this._setListRange(date < this._loadedFrom ? date : this._loadedFrom, date > this._loadedTo ? date : this._loadedTo);
+      return;
+    }
+    if (otherMonth) await this.renderCalendar();
+    document.querySelectorAll('#cal-grid .calendar-cell').forEach(c => c.classList.toggle('selected', c.dataset.date === date));
+    await this._updateDateSummary(date);
+  },
+
+  // 고른 날짜가 바뀌었을 때 따라 맞출 것들. (예전 '날짜 요약 칸'은 아래 목록과 같은 내용이라 없앴다)
   async _updateDateSummary(date) {
-    const panel = document.getElementById('cal-date-summary');
-    if (!panel) return;
-    const header = document.getElementById('cal-date-summary-header');
-    const list = document.getElementById('cal-date-summary-list');
-    if (!date) { panel.style.display = 'none'; return; }
-
-    const d = new Date(date + 'T00:00:00');
-    const dayNames = ['일', '월', '화', '수', '목', '금', '토'];
-    const dayLabel = `${d.getMonth() + 1}월 ${d.getDate()}일 (${dayNames[d.getDay()]})`;
-    const isClosed = (this._closedDays || []).map(Number).includes(d.getDay());
-
-    // 현재 캘린더 월과 다른 달이면 DB에서 직접 조회 (월말→내일 등)
-    const calMonth = `${this._calYear}-${String(this._calMonth + 1).padStart(2, '0')}`;
-    let dayAppts;
-    if (date.startsWith(calMonth)) {
-      dayAppts = (this._appointments || []).filter(a => a.date === date && a.status !== 'cancelled');
-    } else {
-      dayAppts = (await DB.getByIndex('appointments', 'date', date)).filter(a => a.status !== 'cancelled');
-    }
-    dayAppts.sort((a, b) => (a.time || '').localeCompare(b.time || ''));
-
-    header.innerHTML = `${App.icon('calendar')} ${dayLabel} · ${dayAppts.length}건${isClosed ? ' <span style="color:var(--danger);font-size:0.93rem">휴무</span>' : ''}`;
-
-    if (dayAppts.length === 0) {
-      list.innerHTML = '<div style="color:var(--text-muted);font-size:0.93rem;padding:8px 0">예약 없음</div>';
-    } else {
-      const petMap = this._petMap || {};
-      const serviceMap = this._serviceMap || {};
-      // 5건까지 먼저 보이고, 나머지는 '+N건 더 보기'를 누르면 그 자리에서 펼친다 (모든 예약을 열 수 있게)
-      list.innerHTML = dayAppts.map((a, idx) => {
-        const pet = petMap[a.petId];
-        const svcName = App.apptServiceNames(a, serviceMap);
-        // 줄을 누르면(또는 Enter) 그 예약이 열린다 — 젖은 손가락도 맞도록 44px 높이
-        return `<div class="cal-summary-row" role="button" tabindex="0" data-appt-id="${a.id}"${idx >= 5 ? ' data-extra' : ''} aria-label="${App.escapeHtml((a.time || '') + ' ' + (pet?.name || ''))} 예약 열기" style="display:flex;align-items:center;gap:8px;min-height:44px;padding:6px 0;border-bottom:1px solid var(--border-light);font-size:0.93rem;cursor:pointer${idx >= 5 ? ';display:none' : ''}">
-          <strong style="color:var(--primary);min-width:42px">${a.time || '--:--'}</strong>
-          <span style="font-weight:600">${App.escapeHtml(pet?.name || '?')}</span>
-          ${svcName ? `<span style="color:var(--text-muted);font-size:0.93rem;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${App.escapeHtml(svcName)}</span>` : ''}
-          <span style="margin-left:auto;color:var(--text-muted);flex-shrink:0" aria-hidden="true">${App.icon('chevron-right')}</span>
-        </div>`;
-      }).join('') + (dayAppts.length > 5 ? `<button type="button" class="btn btn-ghost btn-sm cal-summary-more" style="min-height:44px;width:100%">+${dayAppts.length - 5}건 더 보기</button>` : '');
-    }
-
-    // 목록은 매번 다시 그려지므로 위임 처리 (onclick 대입이라 중복 바인딩 없음)
-    const openRow = (e) => {
-      const more = e.target.closest('.cal-summary-more');
-      if (more) { list.querySelectorAll('.cal-summary-row[data-extra]').forEach(r => { r.style.display = 'flex'; }); more.remove(); return; }
-      const row = e.target.closest('.cal-summary-row[data-appt-id]');
-      if (row) this.showForm(Number(row.dataset.apptId));
-    };
-    list.onclick = openRow;
-    list.onkeydown = (e) => { if ((e.key === 'Enter' || e.key === ' ') && e.target.closest('.cal-summary-row')) { e.preventDefault(); openRow(e); } };
-
+    if (!date) return;
     this._selectedCalDate = date;
-    panel.style.display = 'block';
+    this._renderWeek();
     // 타임테이블이 열려 있으면 같은 날짜로 맞춘다 (달력에서 11/9를 눌렀는데 '오늘'에 남아 있던 문제)
     if (this._ttDate !== date && document.getElementById('timetable-container')?.style.display === 'block') {
       this._ttDate = date;
       this.renderTimetable();
     }
+  },
+
+  // 휴대폰 주간 띠: 목록이 보여주는 날짜(없으면 마지막으로 본 주)의 월~일, 날마다 예약 수
+  async _renderWeek() {
+    const box = document.getElementById('appt-week-days');
+    if (!box) return;
+    const tok = (this._weekTok = (this._weekTok || 0) + 1); // 늦게 끝난 이전 그리기가 덮어쓰지 않게
+    const sel = document.getElementById('filter-date')?.value || '';
+    if (sel) this._weekBase = sel;
+    const days = this.weekDays(this._weekBase || App.getToday());
+    this._weekBase = this._weekBase || days[0];
+    const appts = await DB.getByDateRange('appointments', 'date', days[0], days[6]);
+    if (tok !== this._weekTok) return;
+    const counts = {};
+    appts.forEach(a => { if (a.status !== 'cancelled') counts[a.date] = (counts[a.date] || 0) + 1; });
+    const today = App.getToday();
+    const closed = (this._closedDays || []).map(Number);
+    const first = App.parseLocalDate(days[0]), last = App.parseLocalDate(days[6]);
+    const title = document.getElementById('appt-week-title');
+    if (title) title.textContent = `${first.getMonth() + 1}월 ${first.getDate()}일 ~ ${first.getMonth() === last.getMonth() ? '' : (last.getMonth() + 1) + '월 '}${last.getDate()}일`;
+    box.innerHTML = days.map(date => {
+      const d = App.parseLocalDate(date);
+      const n = counts[date] || 0;
+      const cls = [date === sel ? 'selected' : '', date === today ? 'today' : '', closed.includes(d.getDay()) ? 'closed' : '', d.getDay() === 6 ? 'sat' : d.getDay() === 0 ? 'sun' : ''].filter(Boolean).join(' ');
+      return `<button type="button" class="appt-week-day ${cls}" data-date="${date}" aria-pressed="${date === sel}" aria-label="${this.dayLabel(date)}${date === today ? ' 오늘' : ''} 예약 ${n}건">
+        <span class="appt-wd">${'일월화수목금토'[d.getDay()]}</span>
+        <span class="appt-dn">${d.getDate()}</span>
+        <span class="appt-cnt">${n ? n + '건' : ''}</span>
+      </button>`;
+    }).join('');
+  },
+
+  // '⋯' 메뉴: 그 카드의 예약에 맞게 채워 연다. 버튼은 기존 처리(문자·수정·상태 변경)를 그대로 부른다
+  _openSheet(card) {
+    const sheet = document.getElementById('appt-sheet');
+    const body = document.getElementById('appt-sheet-body');
+    if (!sheet || !body || !card) return;
+    const id = card.dataset.id;
+    const status = card.dataset.status || 'pending';
+    const tel = card.dataset.tel || '';
+    const done = status === 'completed';
+    document.getElementById('appt-sheet-title').textContent = card.dataset.label || '예약';
+    body.innerHTML = `
+      ${!done && !['noshow', 'cancelled'].includes(status) ? `<button type="button" class="appt-sheet-item" data-act="remind">${App.icon('send')} 재확인 문자</button>` : ''}
+      ${tel ? `<a class="appt-sheet-item" href="tel:${App.escapeHtml(tel)}" data-act="tel">${App.icon('phone')} 전화 걸기</a>` : ''}
+      <button type="button" class="appt-sheet-item" data-act="edit">${App.icon('edit')} 수정</button>
+      ${done ? '' : `<div class="appt-sheet-sub">상태 바꾸기</div>
+      <div class="appt-sheet-status">${['pending', 'confirmed', 'in_progress', 'cancelled', 'noshow'].map(k =>
+        `<button type="button" class="appt-sheet-st${k === status ? ' on' : ''}" data-st="${k}" aria-pressed="${k === status}">${this.STATUS_LABELS[k]}</button>`).join('')}</div>`}`;
+    // 뒤로가기(안드로이드)는 이 메뉴만 닫는다. viaHistory: 뒤로가기로 이미 닫히는 중이라 기록을 또 걷지 않는다
+    const hide = (viaHistory) => {
+      if (sheet.hidden) return;
+      sheet.hidden = true;
+      App._unlockBody?.();
+      if (!viaHistory) App.popOverlayHistory();
+      card.querySelector('.appt-more-btn')?.focus();
+    };
+    body.onclick = (e) => {
+      const item = e.target.closest('[data-act], [data-st]');
+      if (!item) return;
+      hide();
+      if (item.dataset.act === 'tel') return; // 전화는 링크 그대로
+      // 메뉴를 닫으며 낸 history.back() 이 끝난 뒤에 창을 연다 — 늦게 온 popstate 가 새 창(수정·확인)을 닫지 않게
+      setTimeout(() => {
+        if (item.dataset.act === 'remind') this.sendReminder(Number(id));
+        else if (item.dataset.act === 'edit') this.showForm(Number(id));
+        else if (item.dataset.st && item.dataset.st !== status) {
+          // 카드 안 숨은 상태 상자 값을 바꿔 원래 change 처리(노쇼 확인·취소 사유)를 그대로 탄다
+          const sel = card.querySelector('.appt-status-sel');
+          if (sel) { sel.value = item.dataset.st; sel.dispatchEvent(new Event('change')); }
+        }
+      }, 180);
+    };
+    sheet.onclick = (e) => { if (e.target.closest('[data-close]')) hide(); };
+    sheet.onkeydown = (e) => { if (e.key === 'Escape') hide(); };
+    sheet.hidden = false;
+    App._lockBody?.();
+    App.pushOverlayHistory(() => hide(true));
+    body.querySelector('button, a')?.focus();
   },
 
   // 홈에서 누른 예약까지 내려가 잠깐 반짝인다. 주소는 #appointments 로 돌려 둬서 다시 그릴 때 또 끌려가지 않게 한다
@@ -556,13 +613,13 @@ App.pages.appointments = {
   },
 
   _hideDateSummary() {
-    const panel = document.getElementById('cal-date-summary');
-    if (panel) panel.style.display = 'none';
     this._selectedCalDate = null;
+    this._renderWeek(); // 목록 날짜가 풀렸으면 주간 띠 선택 표시도 뺀다
   },
 
   async init() {
     document.getElementById('btn-add-appointment')?.addEventListener('click', () => this.showForm());
+    this._weekBase = null; // 주간 띠는 들어올 때마다 목록 날짜(없으면 이번 주)부터
 
     // 저장된 검색어·상태 필터 복원 — 첫 applyFilters가 sessionStorage를 덮어쓰기 전에 읽어야 함
     try {
@@ -596,6 +653,7 @@ App.pages.appointments = {
           document.querySelectorAll('.quick-filter-btn').forEach(b => b.classList.remove('active'));
           this._selectedCalDate = null;
           this.applyFilters();
+          this._renderWeek();
         } else {
         if (this._goAppt) { // 찾는 예약이 검색어·상태 필터에 가려지지 않게
           const searchEl = document.getElementById('appt-search'); if (searchEl) searchEl.value = '';
@@ -737,11 +795,41 @@ App.pages.appointments = {
       }, { passive: true });
     }
 
-    // 요약 패널 "예약 추가" 버튼
+    // 목록 머리 '+ 이 날짜에 예약 추가' — 목록이 보여주는 날짜로 연다
     document.getElementById('cal-date-add-appt')?.addEventListener('click', () => {
-      if (this._selectedCalDate) {
-        this.showForm(null, null, { date: this._selectedCalDate });
-      }
+      const date = document.getElementById('filter-date')?.value || this._selectedCalDate;
+      if (date) this.showForm(null, null, { date });
+    });
+
+    // 주간 띠: 날짜 누르기 = 달력 칸 누르기와 같은 길. ◀ ▶ 는 한 주씩 (고른 날이 있으면 같은 요일로 옮겨 고른다)
+    document.getElementById('appt-week-days')?.addEventListener('click', (e) => {
+      const day = e.target.closest('.appt-week-day');
+      if (day) this._selectDate(day.dataset.date);
+    });
+    const moveWeek = (n) => {
+      const cur = document.getElementById('filter-date')?.value;
+      const d = App.parseLocalDate(cur || this._weekBase || App.getToday());
+      d.setDate(d.getDate() + n * 7);
+      const next = App.formatLocalDate(d);
+      if (cur) this._selectDate(next);
+      else { this._weekBase = next; this._renderWeek(); }
+    };
+    document.getElementById('appt-week-prev')?.addEventListener('click', () => moveWeek(-1));
+    document.getElementById('appt-week-next')?.addEventListener('click', () => moveWeek(1));
+    // '달력' 펼치기/접기 — 휴대폰에서 달력이 화면 반을 차지해서 기본은 주간 띠
+    document.getElementById('appt-cal-toggle')?.addEventListener('click', (e) => {
+      const root = document.getElementById('appt-v2');
+      const open = !root.classList.contains('appt-cal-month');
+      root.classList.toggle('appt-cal-month', open);
+      sessionStorage.setItem('appt-cal-view', open ? 'month' : 'week');
+      e.currentTarget.setAttribute('aria-expanded', String(open));
+      document.getElementById('appt-cal-toggle-text').textContent = open ? '주간으로 접기' : '달력';
+    });
+
+    // 카드 '⋯' → 메뉴
+    document.getElementById('appt-card-list')?.addEventListener('click', (e) => {
+      const more = e.target.closest('.appt-more-btn');
+      if (more) this._openSheet(more.closest('.mobile-card'));
     });
 
     // 캘린더 데이터는 renderCalendar 내부에서 이미 로드함 (중복 쿼리 제거)
@@ -894,6 +982,10 @@ App.pages.appointments = {
         // Update row data-status for filtering
         const row = e.target.closest('tr');
         if (row) row.dataset.status = newStatus;
+        // 끝냈거나 취소하면 '지남'이 아니다 → 배지·빨간 줄을 상태에 맞춘다 (표·카드)
+        const overdueNow = (appt.date || '') < App.getToday() && !['completed', 'cancelled'].includes(newStatus);
+        document.querySelectorAll(`#appt-tbody tr[data-id="${id}"] .appt-overdue-badge, #appt-card-list .mobile-card[data-id="${id}"] .appt-overdue-badge`).forEach(b => { b.style.display = overdueNow ? '' : 'none'; });
+        document.querySelector(`#appt-card-list .mobile-card[data-id="${id}"]`)?.classList.toggle('appt-card-alert', overdueNow || newStatus === 'noshow');
         // 노쇼·취소로 바꾸면 미용 완료 버튼을 숨기고, 다른 상태로 되돌리면 다시 보인다 (표·카드 모두)
         const hideComplete = newStatus === 'noshow' || newStatus === 'cancelled';
         document.querySelectorAll(`.btn-complete-appt[data-id="${id}"], .btn-reminder-appt[data-id="${id}"]`).forEach(b => { b.style.display = hideComplete ? 'none' : ''; });
@@ -902,8 +994,8 @@ App.pages.appointments = {
         e.target.dataset.st = newStatus;
         if (card) {
           card.dataset.status = newStatus;
-          const statusLabels = { pending: '대기', confirmed: '확정', in_progress: '미용중', completed: '완료', cancelled: '취소', noshow: '노쇼' };
-          const statusClasses = { pending: 'badge-warning', confirmed: 'badge-info', in_progress: 'badge-info', completed: 'badge-success', cancelled: 'badge-secondary', noshow: 'badge-danger' };
+          const statusLabels = this.STATUS_LABELS;
+          const statusClasses = this.STATUS_BADGES;
           const badge = card.querySelector('.appt-status-badge');
           if (badge) {
             badge.textContent = statusLabels[newStatus] || newStatus;
@@ -925,7 +1017,7 @@ App.pages.appointments = {
         if (selDate) {
           document.querySelector(`.calendar-cell[data-date="${selDate}"]`)?.classList.add('selected');
           await this._updateDateSummary(selDate);
-        }
+        } else this._renderWeek(); // 주간 띠 예약 수도 맞춘다 (취소하면 빠진다)
         if (document.getElementById('timetable-container')?.style.display === 'block') this.renderTimetable();
       });
     });
@@ -1123,6 +1215,7 @@ App.pages.appointments = {
       quickFilter: document.querySelector('.quick-filter-btn.active')?.dataset.filter || 'all'
     }));
     const weekEnd = (() => { const d = new Date(); d.setDate(d.getDate() + 6); return App.formatLocalDate(d); })();
+    const shownDates = new Set(); // 보이는 줄이 있는 날짜 → 그 날짜 머리줄만 보인다
 
     document.querySelectorAll('#appt-tbody tr').forEach(row => {
       if (!row.dataset.id) return;
@@ -1136,15 +1229,14 @@ App.pages.appointments = {
       } else if (date) {
         matchDate = row.dataset.date === date;
       }
-      row.style.display = (matchSearch && matchStatus && matchDate) ? '' : 'none';
+      const show = matchSearch && matchStatus && matchDate;
+      row.style.display = show ? '' : 'none';
+      if (show) shownDates.add(row.dataset.date);
     });
 
-    // Also filter mobile cards — "오늘"만 보는 중이면 카드의 날짜 표기는 중복이므로 숨김
-    const hideCardDate = special !== 'week' && date === today;
+    // 휴대폰 카드도 같은 기준
     document.querySelectorAll('#appt-card-list .mobile-card').forEach(card => {
       if (!card.dataset.id) return;
-      const dateEl = card.querySelector('.appt-card-date');
-      if (dateEl) dateEl.style.display = hideCardDate ? 'none' : '';
       const matchSearch = App.searchMatch(card.dataset.search || '', search);
       const matchStatus = !status || card.dataset.status === status;
       let matchDate = true;
@@ -1155,8 +1247,22 @@ App.pages.appointments = {
       } else if (date) {
         matchDate = card.dataset.date === date;
       }
-      card.style.display = (matchSearch && matchStatus && matchDate) ? '' : 'none';
+      const show = matchSearch && matchStatus && matchDate;
+      card.style.display = show ? '' : 'none';
+      if (show) shownDates.add(card.dataset.date);
     });
+
+    // 하루만 볼 땐 날짜 머리줄·'오늘' 배지를 뺀다 (목록 위 안내에 날짜가 있다). 여러 날이면 날짜마다 머리줄
+    const oneDay = !special && !!date;
+    document.querySelectorAll('#appt-tbody .appt-group-row, #appt-card-list .appt-group-head').forEach(h => {
+      h.style.display = !oneDay && shownDates.has(h.dataset.group) ? '' : 'none';
+    });
+    document.getElementById('appt-v2')?.classList.toggle('appt-one-day', oneDay);
+    // '필터 초기화'는 검색·상태를 걸었을 때만, '+ 이 날짜에 예약 추가'는 하루를 볼 때만
+    const clearBtn = document.getElementById('btn-clear-filter');
+    if (clearBtn) clearBtn.style.display = search || status || this._openMode ? '' : 'none';
+    const addBtn = document.getElementById('cal-date-add-appt');
+    if (addBtn) addBtn.style.display = oneDay ? '' : 'none';
 
     // 지난 예약 보기: 상태를 바꿔 마감한 건은 빠지므로 위 'N건'도 다시 센다
     const openCountEl = document.getElementById('appt-open-count');

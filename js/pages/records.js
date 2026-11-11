@@ -1558,6 +1558,7 @@ App.pages.records = {
     const lengthChips = document.getElementById('f-length-chips');
     let lengthOpts = [];
     let lengthSeq = 0;
+    let lengthFor = { value: '', course: '' }; // 지금 길이 칩이 보여 주는 서비스 칸 글자·코스 이름
     const lengthTags = () => Array.from(addonTagsEl?.querySelectorAll('.addon-tag') || []).filter(t => lengthOpts.some(o => o.name === this._addonTagName(t)));
     const syncLengthChips = () => {
       lengthChips?.querySelectorAll('.length-pick-chip').forEach(b => {
@@ -1572,6 +1573,7 @@ App.pages.records = {
       if (my !== lengthSeq || !lengthChips || !lengthChips.isConnected) return;
       const course = courses.find(sv => App.lengthOptionsOf(sv).length);
       lengthOpts = course ? App.lengthOptionsOf(course) : [];
+      lengthFor = { value: App.normalizeServiceName(courseInput?.value), course: course ? App.normalizeServiceName(course.name) : '' };
       lengthPick.style.display = lengthOpts.length ? '' : 'none';
       lengthChips.innerHTML = lengthOpts.map(o => `<button type="button" class="payment-chip length-pick-chip" data-name="${App.escapeHtml(o.name)}" data-price="${Number(o.price) || 0}" aria-pressed="false">${App.escapeHtml(o.name)}${o.price > 0 ? ` <span style="font-weight:400;opacity:0.8">+${App.formatCurrency(o.price)}</span>` : ''}</button>`).join('');
       syncLengthChips();
@@ -1591,7 +1593,21 @@ App.pages.records = {
       syncLengthChips();
     });
     if (addonTagsEl) new MutationObserver(() => syncLengthChips()).observe(addonTagsEl, { childList: true });
-    courseInput?.addEventListener('change', () => renderLengthChips().catch(() => {}));
+    // 코스를 다른 코스로 바꾸면 앞 코스의 길이 태그(길이 칩이 붙인 것)를 뺀다 — 7F 추가금이 다른 코스에 남지 않게.
+    // 폼을 연 뒤 서비스 칸이 실제로 바뀔 때만 (기록 수정으로 처음 열 때·'이전 미용과 같음'은 change 를 내지 않는다).
+    // 같은 글자로 다시 change 가 와도(예약에서 온 기록의 가격 다시 맞추기) 안 뺀다
+    courseInput?.addEventListener('change', () => {
+      const now = App.normalizeServiceName(courseInput.value);
+      if (lengthOpts.length && lengthFor.value && now !== lengthFor.value) {
+        const tags = lengthTags();
+        const names = tags.map(t => this._addonTagName(t));
+        tags.forEach(t => t.click()); // 태그를 누른 것과 같다 — 추가 금액·합계도 같이 줄어든다
+        if (names.length) App.showToast(`${lengthFor.course} 길이(${names.join(', ')})를 뺐어요`);
+        lengthOpts = []; // 다시 그려지기 전에 또 change 가 와도 두 번 빼지 않게
+        lengthFor = { value: now, course: '' };
+      }
+      renderLengthChips().catch(() => {});
+    });
     renderLengthChips().catch(err => console.warn('길이 칩 실패:', err));
     courseInput?.addEventListener('change', () => setTimeout(syncStyleChips, 300));
     document.getElementById('f-petId')?.addEventListener('change', () => setTimeout(syncStyleChips, 500)); // 이 아이 가격 표시도 반려견 따라

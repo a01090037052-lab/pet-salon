@@ -169,6 +169,33 @@ App.pages.pets = {
     `;
   },
 
+  // 다가오는 예약 1건 — 오늘 이후, 취소·노쇼·완료가 아닌 것 중 가장 빠른 것 (없으면 null)
+  pickNextAppt(appts, today) {
+    return (appts || [])
+      .filter(a => a && (a.date || '') >= today && !['cancelled', 'noshow', 'no_show', 'completed'].includes(a.status))
+      .sort((a, b) => ((a.date || '') + (a.time || '')).localeCompare((b.date || '') + (b.time || '')))[0] || null;
+  },
+
+  // 방문 요약 — 8칸 상자 대신 한 줄로 보여줄 숫자들 (records 는 최신순)
+  visitSummary(records) {
+    const recs = records || [];
+    const count = recs.length;
+    const total = recs.reduce((s, r) => s + App.getRecordAmount(r), 0);
+    // 날짜 없는 기록은 주기·최근 방문 계산에서 뺀다 (횟수·금액에는 넣는다)
+    const dates = recs.filter(r => r.date).map(r => App.parseLocalDate(r.date)).filter(d => d && !isNaN(d)).sort((a, b) => a - b);
+    const n = dates.length;
+    const avgCycle = n >= 2 ? Math.round((dates[n - 1] - dates[0]) / 86400000 / (n - 1)) : null;
+    const lastDate = n ? App.formatLocalDate(dates[n - 1]) : null;
+    return { count, total, avgSpend: count ? Math.round(total / count) : 0, avgCycle, lastDate, lastDays: lastDate ? (-App.daysUntil(lastDate) || 0) : null };
+  },
+
+  // '방문 6회 · 평균 32일마다 · 평균 55,000원 · 총 330,000원'
+  summaryLine(s) {
+    if (!s || !s.count) return '';
+    return [`방문 ${s.count}회`, s.avgCycle ? `평균 ${s.avgCycle}일마다` : '', `평균 ${App.formatCurrency(s.avgSpend)}`, `총 ${App.formatCurrency(s.total)}`]
+      .filter(Boolean).join(' · ');
+  },
+
   async renderDetail(container, petId) {
     const pet = await DB.get('pets', petId);
     if (!pet) {
@@ -176,16 +203,29 @@ App.pages.pets = {
         <div class="empty-state"><div class="empty-state-text">반려견을 찾을 수 없습니다.<br><small style="color:var(--text-muted)">삭제되었거나 아직 다른 기기에서 받아오지 않았을 수 있습니다.</small></div></div>`;
       return;
     }
+    const esc = (v) => App.escapeHtml(v == null ? '' : String(v));
     const customer = await DB.get('customers', pet.customerId);
     const records = (await DB.getByIndex('records', 'petId', petId)).sort((a, b) => (b.date || '').localeCompare(a.date || ''));
-    // 미용 때 잰 몸무게 최근 3번 (오래된 → 최근) — 프로필 몸무게 옆 한 줄, 날짜는 눌러서(title)
+    const appts = await DB.getByIndex('appointments', 'petId', petId).catch(() => []);
+    const allServices = await DB.getAll('services');
+    const serviceMap = {}; allServices.forEach(s => serviceMap[s.id] = s.name);
+    // 미용 때 잰 몸무게 최근 3번 (오래된 → 최근)
     const weighIns = records.filter(r => Number(r.weightAtVisit) > 0).slice(0, 3).reverse();
+    const age = pet.birthYear ? (new Date().getFullYear() - pet.birthYear) + '살' : (pet.birthDate ? this.calculateAge(pet.birthDate) : '');
+    const gender = this.getGenderLabel(pet.gender);
+    const genderText = gender === '-' ? (pet.neutered ? '중성화' : '') : gender + (pet.neutered ? '(중성화)' : '');
+    // 짧은 날짜 '10/15', 요일 붙이면 '11/20(목)'
+    const md = (ds, dow) => {
+      const d = App.parseLocalDate(ds);
+      if (!d || isNaN(d)) return '';
+      return `${d.getMonth() + 1}/${d.getDate()}` + (dow ? `(${'일월화수목금토'[d.getDay()]})` : '');
+    };
+    const condLabels = { good: '좋음', normal: '보통', caution: '주의' };
+    const coopLabels = { easy: '잘함', normal: '보통', difficult: '까다로움' };
+    const sum = this.visitSummary(records);
 
-    const age = pet.birthYear ? (new Date().getFullYear() - pet.birthYear) + '살' : (pet.birthDate ? this.calculateAge(pet.birthDate) : '-');
-
-    // 최근 미용 사진 — 다음 미용 때 "지난번엔 이렇게" 확인용. 날짜·전후 라벨은 사진 위에 얹어 보여준다 (사진에 굽지 않는다)
+    // 최근 미용 사진 — 다음 미용 때 "지난번엔 이렇게" 확인용
     const keep = await App.getRecordPhotoKeep();
-    // 기록 1건 = 타일 1개. 전·후가 둘 다 있으면 타일 아래 '전 | 후'로 번갈아 본다 (MoeGo 비교 보기 방식, 넘기기 제스처와 안 겹치게 버튼)
     const photoTiles = [];
     for (const r of records.filter(x => App._recordHasPhoto(x)).slice(0, keep || 6)) {
       const before = await App.getRecordPhoto(r, 'photoBefore');
@@ -195,16 +235,17 @@ App.pages.pets = {
       const cap = (tag) => `${App.formatDate(r.date)} 미용 ${tag}${svc ? ' · ' + svc : ''}`;
       photoTiles.push({ before, after, date: r.date, recordId: r.id, capBefore: cap('전'), capAfter: cap('후') });
     }
+    this._photoTiles = photoTiles;
     const photoStrip = photoTiles.length ? `
-      <div class="rec-photo-strip">
+      <div class="rec-photo-strip pd-photos">
         <div class="rec-photo-strip-title">최근 미용 사진 <small>${keep ? `최근 ${keep}회 보관` : ''}</small></div>
         <div class="rec-photo-strip-row">
           ${photoTiles.map(t => {
             const showAfter = !!t.after;
             return `
           <figure class="rec-photo-item" data-rid="${t.recordId}">
-            <img src="${showAfter ? t.after : t.before}" class="photo-viewable" data-group="pet-recent" data-caption="${App.escapeHtml(showAfter ? t.capAfter : t.capBefore)}" alt="${App.escapeHtml(showAfter ? t.capAfter : t.capBefore)}">
-            <figcaption>${App.escapeHtml((t.date || '').slice(5).replace('-', '.'))}
+            <img src="${showAfter ? t.after : t.before}" class="photo-viewable" data-group="pet-recent" data-caption="${esc(showAfter ? t.capAfter : t.capBefore)}" alt="${esc(showAfter ? t.capAfter : t.capBefore)}">
+            <figcaption>${esc((t.date || '').slice(5).replace('-', '.'))}
               ${t.before && t.after
                 ? `<span class="rec-ba" role="group" aria-label="전후 보기"><button type="button" data-f="before">전</button><button type="button" class="on" data-f="after">후</button></span>`
                 : `<b>${showAfter ? '후' : '전'}</b>`}
@@ -212,217 +253,145 @@ App.pages.pets = {
           </figure>`; }).join('')}
         </div>
       </div>` : '';
-    this._photoTiles = photoTiles;
 
-    container.innerHTML = `
-      <div class="back-link" onclick="history.length>1?history.back():App.navigate('pets')">${App.icon('arrow-left')} 뒤로가기</div>
-      <div class="detail-header">
-        <div class="pet-detail-photo">
-          ${(pet.photoThumb || pet.photo)
-            ? `<img src="${pet.photoThumb || pet.photo}" class="photo-viewable" data-caption="${App.escapeHtml(pet.name)}"
-                style="width:200px;height:200px;object-fit:cover;border-radius:var(--radius-lg);cursor:pointer" alt="${App.escapeHtml(pet.name)}">`
-            : `<div style="width:200px;height:200px;border-radius:var(--radius-lg);background:var(--warning-light);display:flex;align-items:center;justify-content:center;font-size:4rem;color:var(--primary)">${App.icon('paw', 'ico-xl')}</div>`
-          }
-        </div>
-        <div class="detail-info">
-          <h2>${App.escapeHtml(pet.name)}</h2>
-          <div class="detail-meta">
-            <span>${App.escapeHtml(pet.breed || '견종 미입력')}</span>
-            <span>${pet.weight ? App.formatKg(pet.weight) + 'kg' : ''}</span>
-            ${weighIns.length >= 2 ? `<span class="pet-weight-trend" tabindex="0" title="${App.escapeHtml(weighIns.map(r => App.formatDate(r.date) + ' ' + Number(r.weightAtVisit) + 'kg').join(' / '))}" style="color:var(--text-muted);cursor:help" onclick="App.showToast(this.title, 'info', { duration: 5000 })">최근 몸무게 ${weighIns.map(r => Number(r.weightAtVisit)).join(' → ')}kg</span>` : ''}
-            <span>보호자: <a href="#customers/${pet.customerId}" style="color:var(--primary)">${App.escapeHtml(App.getCustomerLabel(customer))}</a></span>
-            ${customer?.phone ? `<a href="tel:${App.escapeHtml(App.phoneDigits(customer.phone))}" style="color:var(--primary)" aria-label="전화" title="전화">${App.icon('phone')}</a> <a href="sms:${App.escapeHtml(App.phoneDigits(customer.phone))}" style="color:var(--primary)" aria-label="문자" title="문자">${App.icon('message')}</a>` : ''}
+    // 1. 머리 — 작은 사진(눌러서 크게 보기, 사진 없으면 눌러서 수정 창) + 이름·한 줄 정보 + 보호자
+    const photo = pet.photoThumb || pet.photo;
+    const phone = customer?.phone ? esc(App.phoneDigits(customer.phone)) : '';
+    const head = `
+      <div class="pd-head">
+        <div class="pd-head-top">
+          ${photo
+            ? `<img src="${photo}" class="pd-photo photo-viewable" data-caption="${esc(pet.name)}" alt="${esc(pet.name)}">`
+            : `<button type="button" class="pd-photo pd-photo-empty btn-edit-pet" data-id="${pet.id}" aria-label="사진 넣기 (정보 수정)">${App.icon('paw')}</button>`}
+          <div class="pd-head-info">
+            <h2 class="pd-name">${esc(pet.name)}</h2>
+            <div class="pd-meta">${[pet.breed || '견종 미입력', pet.weight ? App.formatKg(pet.weight) + 'kg' : '', age, genderText].filter(Boolean).map(esc).join(' · ')}</div>
+            <div class="pd-owner">
+              <a href="#customers/${pet.customerId}" class="pd-owner-link">보호자 ${esc(App.getCustomerLabel(customer))}</a>
+              ${phone ? `<a href="tel:${phone}" class="pd-icon-btn" aria-label="전화" title="전화">${App.icon('phone')}</a><a href="sms:${phone}" class="pd-icon-btn" aria-label="문자" title="문자">${App.icon('message')}</a>` : ''}
+            </div>
           </div>
         </div>
-        <div style="margin-left:auto;display:flex;gap:8px;flex-wrap:wrap">
+        <div class="pd-actions">
           <button class="btn btn-primary" id="btn-pet-record" data-pet-id="${pet.id}" data-customer-id="${pet.customerId}">+ 미용 기록</button>
           <button class="btn btn-primary" id="btn-pet-appt" data-pet-id="${pet.id}" data-customer-id="${pet.customerId}">예약</button>
           <button class="btn btn-secondary btn-edit-pet" data-id="${pet.id}">수정</button>
         </div>
-      </div>
-
-      ${(() => {
-        const hasAllergy = App.hasPetNote(pet.allergies);
-        const hasHealth = App.hasPetNote(pet.healthNotes);
-        if (!hasAllergy && !hasHealth) return '';
-        return `
-      <div style="background:var(--danger-bg-soft);border:1.5px solid var(--danger);border-radius:var(--radius);padding:12px 14px;margin-bottom:16px;display:flex;gap:10px;align-items:flex-start">
-        <span style="font-size:1.1rem;color:var(--danger);font-weight:800;flex-shrink:0;line-height:1.3">${App.icon('alert')}</span>
-        <div style="flex:1;min-width:0">
-          <div style="font-weight:800;color:var(--danger);font-size:0.93rem;margin-bottom:4px">미용 전 확인</div>
-          ${hasAllergy ? `<div style="font-size:0.93rem;color:var(--danger-text-strong)"><strong>알러지:</strong> ${App.escapeHtml(pet.allergies)}</div>` : ''}
-          ${hasHealth ? `<div style="font-size:0.93rem;color:var(--danger-text-strong);margin-top:2px"><strong>건강:</strong> ${App.escapeHtml(pet.healthNotes)}</div>` : ''}
-        </div>
       </div>`;
-      })()}
 
-      ${photoStrip}
-
-      ${records.length > 0 ? (() => {
-        const totalSpend = records.reduce((sum, r) => sum + App.getRecordAmount(r), 0);
-        const avgSpend = Math.round(totalSpend / records.length);
-        const lastVisitDate = records[0].date;
-        let avgCycleNum = null, avgCycle = '-';
-        if (records.length >= 2) {
-          const dates = records.map(r => new Date(r.date)).sort((a, b) => a - b);
-          let totalDays = 0;
-          for (let i = 1; i < dates.length; i++) totalDays += Math.round((dates[i] - dates[i - 1]) / (1000*60*60*24));
-          avgCycleNum = Math.round(totalDays / (dates.length - 1));
-          avgCycle = avgCycleNum + '일';
-        }
-        const lastCondition = records.find(r => r.condition);
-        const lastCoop = records.find(r => r.cooperativeness);
-        const condLabels = { good: '좋음', normal: '보통', caution: '주의' };
-        const coopLabels = { easy: '잘함', normal: '보통', difficult: '까다로움' };
-        const dotColor = (v) => v === 'good' || v === 'easy' ? 'var(--success)' : v === 'caution' || v === 'difficult' ? 'var(--danger)' : v === 'normal' ? 'var(--warning)' : 'var(--border)';
-
-        // 다음 미용일 (groomingCycle 우선, 없으면 평균 주기)
-        const cycleSource = pet.groomingCycle || avgCycleNum;
-        const cycleSourceLabel = pet.groomingCycle ? '권장' : (avgCycleNum ? '평균' : null);
-        let nextDays = null, nextStr = null, isOverdue = false;
-        if (cycleSource && lastVisitDate) {
-          // 'YYYY-MM-DD' 를 new Date() 로 파싱하면 UTC 자정이 되어 한국에선 하루가 밀린다 → 로컬 파싱
-          const next = App.parseLocalDate(lastVisitDate);
-          next.setDate(next.getDate() + cycleSource);
-          nextStr = App.formatLocalDate(next);
-          nextDays = App.daysUntil(nextStr);
-          isOverdue = nextDays < 0;
-        }
-        const lastDays = lastVisitDate ? Math.floor((new Date() - new Date(lastVisitDate + 'T00:00:00')) / 86400000) : null;
-
-        // 협조도 추이 (최근 5회)
-        const last5Coop = records.slice(0, 5).map(r => r.cooperativeness).filter(Boolean);
-        const coopTrendDots = last5Coop.length > 0 ? last5Coop.map(c =>
-          `<span style="display:inline-block;width:7px;height:7px;border-radius:50%;background:${dotColor(c)};margin-right:2px" title="${coopLabels[c]}"></span>`
-        ).join('') : '';
-
-        return `
-      <!-- 응대 카드 (단골 응대 핵심 정보) — 폰은 2칸, 넓은 화면은 4칸 한 줄 (CSS .pet-glance) -->
-      <div class="pet-glance" style="display:grid;grid-template-columns:repeat(2,1fr);gap:8px;margin-bottom:16px">
-        <div style="padding:14px 12px;background:var(--bg-white);border:1px solid var(--border);border-radius:var(--radius);min-width:0">
-          <div style="font-size:0.93rem;color:var(--text-muted);margin-bottom:4px">다음 미용 권장</div>
-          <div style="font-size:1rem;font-weight:800;color:${isOverdue ? 'var(--danger)' : 'var(--primary)'};white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${nextDays != null ? (isOverdue ? Math.abs(nextDays) + '일 초과' : nextDays === 0 ? '오늘' : 'D-' + nextDays) : '데이터 부족'}</div>
-          <div style="font-size:0.93rem;color:var(--text-secondary);margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${nextStr ? App.formatDate(nextStr) + (cycleSourceLabel === '평균' ? ' · 평균 ' + avgCycleNum + '일' : '') : (records.length < 2 ? '기록 부족' : '주기 미설정')}</div>
+    // 2. 미용 전 확인 — 알러지·건강·성격을 한 상자에 (하나도 없으면 상자 자체를 숨김)
+    const warns = [['알러지', pet.allergies], ['건강', pet.healthNotes], ['성격', pet.temperament]].filter(([, v]) => App.hasPetNote(v));
+    const warn = warns.length ? `
+      <div class="pd-warn">
+        <span class="pd-warn-ico">${App.icon('alert')}</span>
+        <div>
+          <div class="pd-warn-title">미용 전 확인</div>
+          ${warns.map(([k, v]) => `<div class="pd-warn-line"><strong>${k}:</strong> ${esc(v)}</div>`).join('')}
         </div>
-        <div style="padding:14px 12px;background:var(--bg-white);border:1px solid var(--border);border-radius:var(--radius);min-width:0">
-          <div style="font-size:0.93rem;color:var(--text-muted);margin-bottom:4px">최근 방문</div>
-          <div style="font-size:1rem;font-weight:800;color:var(--info);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${lastDays != null ? (lastDays === 0 ? '오늘' : lastDays + '일 전') : '없음'}</div>
-          <div style="font-size:0.93rem;color:var(--text-secondary);margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${lastVisitDate ? App.formatDate(lastVisitDate) : '-'}</div>
-        </div>
-        <div style="padding:14px 12px;background:var(--bg-white);border:1px solid var(--border);border-radius:var(--radius);min-width:0">
-          <div style="font-size:0.93rem;color:var(--text-muted);margin-bottom:4px">최근 컨디션</div>
-          <div style="font-size:1rem;font-weight:800;color:${lastCondition ? dotColor(lastCondition.condition) : 'var(--text-muted)'};white-space:nowrap">${lastCondition ? condLabels[lastCondition.condition] : '기록 없음'}</div>
-          <div style="font-size:0.93rem;color:var(--text-secondary);margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${lastCondition ? App.formatDate(lastCondition.date) : '-'}</div>
-        </div>
-        <div style="padding:14px 12px;background:var(--bg-white);border:1px solid var(--border);border-radius:var(--radius);min-width:0">
-          <div style="font-size:0.93rem;color:var(--text-muted);margin-bottom:4px">미용 협조도</div>
-          <div style="font-size:1rem;font-weight:800;color:${lastCoop ? dotColor(lastCoop.cooperativeness) : 'var(--text-muted)'};white-space:nowrap">${lastCoop ? coopLabels[lastCoop.cooperativeness] : '기록 없음'}</div>
-          <div style="margin-top:3px;line-height:1">${coopTrendDots || `<span style="font-size:0.93rem;color:var(--text-secondary)">-</span>`}</div>
-        </div>
-      </div>
+      </div>` : '';
 
-      <div class="detail-section">
-        <h3 class="detail-section-title">방문 통계</h3>
-        <div class="info-grid" style="grid-template-columns:repeat(auto-fit,minmax(120px,1fr))">
-          <div class="info-item"><label>총 방문</label><span style="font-weight:700;font-size:1.1rem">${records.length}회</span></div>
-          <div class="info-item"><label>총 지출</label><span style="font-weight:700;font-size:1.1rem">${App.formatCurrency(totalSpend)}</span></div>
-          <div class="info-item"><label>평균 단가</label><span style="font-weight:700;font-size:1.1rem">${App.formatCurrency(avgSpend)}</span></div>
-          <div class="info-item"><label>평균 방문 주기</label><span style="font-weight:700;font-size:1.1rem">${avgCycle}</span></div>
+    // 3. 다음 예약 — 잡힌 예약이 있으면 그것, 없으면 권장일 (권장 주기 우선, 없으면 평균 주기)
+    const nextAppt = this.pickNextAppt(appts, App.getToday());
+    let next = '';
+    if (nextAppt) {
+      const svc = App.apptServiceNames(nextAppt, serviceMap);
+      next = `<a class="pd-card pd-next" href="#appointments/go/${nextAppt.id}/${esc(nextAppt.date)}">
+        ${App.icon('calendar')}<span><b>다음 예약</b> ${md(nextAppt.date, true)} ${esc(nextAppt.time || '')}${svc ? ' · ' + esc(svc) : ''}</span>
+        <span class="pd-chev">${App.icon('chevron-right')}</span></a>`;
+    } else {
+      const cycle = pet.groomingCycle || sum.avgCycle;
+      if (cycle && sum.lastDate) {
+        const d = App.parseLocalDate(sum.lastDate);
+        d.setDate(d.getDate() + Number(cycle));
+        const days = App.daysUntil(App.formatLocalDate(d));
+        const label = days < 0 ? `${-days}일 지남` : days === 0 ? '오늘' : 'D-' + days;
+        next = `<div class="pd-card pd-next pd-next-hint${days < 0 ? ' is-over' : ''}">
+          ${App.icon('clock')}<span><b>다음 미용 권장</b> ${label} · ${md(App.formatLocalDate(d))} <small>(${pet.groomingCycle ? '권장' : '평균'} ${cycle}일)</small></span></div>`;
+      }
+    }
+
+    // 4. 미용 메모 — 미용 시작 전에 보는 것들을 위로 (선호 스타일, 지난번 스타일·메모, 최근 컨디션·협조)
+    const last = records[0];
+    const lastNote = last ? [last.style, last.memo].map(v => (v || '').trim()).filter(Boolean) : [];
+    const lastCond = records.find(r => r.condition);
+    const lastCoop = records.find(r => r.cooperativeness);
+    // 협조도 추이 (최근 5회, 기록된 것만) — 작은 색 점
+    const dotColor = (v) => v === 'easy' ? 'var(--success)' : v === 'difficult' ? 'var(--danger)' : 'var(--warning)';
+    const coopDots = records.slice(0, 5).map(r => r.cooperativeness).filter(c => coopLabels[c])
+      .map(c => `<span class="pd-dot" style="background:${dotColor(c)}" title="협조 ${coopLabels[c]}"></span>`).join('');
+    const memoLines = [
+      pet.preferredStyle && String(pet.preferredStyle).trim() ? `<div><b>선호 스타일</b> ${esc(pet.preferredStyle)}</div>` : '',
+      lastNote.length ? `<div><b>지난번(${md(last.date)})</b> ${lastNote.map(esc).join(' · ')}</div>` : '',
+      (lastCond || lastCoop) ? `<div class="pd-muted">${[lastCond ? '컨디션 ' + condLabels[lastCond.condition] : '', lastCoop ? '협조 ' + coopLabels[lastCoop.cooperativeness] : ''].filter(Boolean).join(' · ')}${coopDots ? `<span class="pd-dots" aria-label="최근 협조도">${coopDots}</span>` : ''}</div>` : ''
+    ].filter(Boolean);
+    const memo = memoLines.length ? `<div class="pd-card pd-memo"><div class="pd-card-title">미용 메모</div>${memoLines.join('')}</div>` : '';
+
+    // 5. 요약 한 줄
+    const summary = sum.count ? `
+      <div class="pd-summary">${esc(this.summaryLine(sum))}${sum.lastDays != null ? `<span class="pd-muted"> · 최근 방문 ${sum.lastDays === 0 ? '오늘' : sum.lastDays + '일 전'}</span>` : ''}</div>` : '';
+
+    // 6. 미용 기록 — 한 줄 요약 + (있을 때만) 메모 줄. 줄을 누르면 기록 수정, 옆 리포트 버튼은 리포트
+    // 처음 5건, 그다음은 20건씩 (기록이 수백 건인 아이도 화면이 한꺼번에 길어지지 않게)
+    const REC_FIRST = 5, REC_STEP = 20;
+    const rowHtml = (r) => {
+      const svc = App.getRecordServiceDisplay(r, serviceMap);
+      const pay = r.paymentMethod === 'none' ? '' : App.pages.records.getPaymentLabel(r.paymentMethod, r);
+      const top = [md(r.date), svc === '-' ? '' : esc(svc), r.groomer ? esc(r.groomer) : '', pay === '-' ? '' : pay].filter(Boolean).join(' · ');
+      const sub = [r.memo ? esc(r.memo) : '', r.condition ? '컨디션 ' + condLabels[r.condition] : '', r.cooperativeness ? '협조 ' + coopLabels[r.cooperativeness] : ''].filter(Boolean).join(' · ');
+      // 누르는 부분(.pd-rec-open)과 리포트 버튼은 나란히 — 버튼 안에 버튼을 넣지 않는다
+      return `<div class="pd-rec-row${r.paymentMethod === 'unpaid' ? ' is-unpaid' : ''}">
+        <div class="pd-rec-open" data-id="${r.id}" role="button" tabindex="0">
+          <div class="pd-rec-main"><div class="pd-rec-top">${top}</div>${sub ? `<div class="pd-rec-sub">${sub}</div>` : ''}</div>
+          <strong class="pd-rec-price">${App.formatCurrency(App.getRecordAmount(r))}</strong>
         </div>
+        <button type="button" class="pd-rec-report" data-id="${r.id}" aria-label="미용 리포트" title="미용 리포트">${App.icon('image')}</button>
       </div>`;
-      })() : ''}
-
-      <div class="detail-section">
+    };
+    this._petRecs = { records, shown: Math.min(REC_FIRST, records.length), step: REC_STEP, itemHtml: rowHtml, listId: 'pet-rec-list' };
+    const recs = `
+      <div class="detail-section pd-records">
         <h3 class="detail-section-title">미용 기록 (${records.length}건)</h3>
-        ${await (async () => {
-          if (records.length === 0) return '<p style="color:var(--text-muted)">미용 기록이 없습니다.</p>';
-          const allServices = await DB.getAll('services');
-          const serviceMap = {}; allServices.forEach(s => serviceMap[s.id] = s.name);
-          const condLabels = { good: '좋음', normal: '보통', caution: '주의' };
-          const coopLabels = { easy: '잘함', normal: '보통', difficult: '까다로움' };
-          const dotColor = (v) => v === 'good' || v === 'easy' ? 'var(--success)' : v === 'caution' || v === 'difficult' ? 'var(--danger)' : v === 'normal' ? 'var(--warning)' : 'var(--border)';
-          const _isMobile = window.matchMedia('(max-width: 768px)').matches;
-          // 기록이 많은 반려견(수백 건)은 페이지가 수만 px 로 길어져 최근 20건만 먼저, 나머지는 '더 보기'로 이어 붙인다
-          const PET_REC_STEP = 20;
-          const moreBtn = records.length > PET_REC_STEP
-            ? `<button type="button" class="btn btn-secondary btn-sm" id="btn-pet-rec-more" style="margin-top:10px;width:100%;min-height:44px">이전 기록 더 보기 (${records.length - PET_REC_STEP}건 남음)</button>`
-            : '';
-          if (_isMobile) {
-            const itemHtml = (r) => {
-              const serviceNames = App.getRecordServiceDisplay(r, serviceMap);
-              const condDot = r.condition ? `<span style="display:inline-flex;align-items:center;gap:4px"><span style="display:inline-block;width:7px;height:7px;border-radius:50%;background:${dotColor(r.condition)}"></span>컨디션 ${condLabels[r.condition]}</span>` : '';
-              const coopDot = r.cooperativeness ? `<span style="display:inline-flex;align-items:center;gap:4px"><span style="display:inline-block;width:7px;height:7px;border-radius:50%;background:${dotColor(r.cooperativeness)}"></span>협조 ${coopLabels[r.cooperativeness]}</span>` : '';
-              return `<div style="padding:12px 0;border-bottom:1px solid var(--border-light)${r.paymentMethod === 'unpaid' ? ';border-left:4px solid var(--danger);padding-left:12px' : ''}">
-                <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px">
-                  <strong style="font-size:0.93rem">${App.formatDate(r.date)}</strong>
-                  <strong style="color:var(--primary)">${App.formatCurrency(App.getRecordAmount(r))}</strong>
-                </div>
-                <div style="font-size:0.93rem;color:var(--text-secondary)">${App.escapeHtml(serviceNames)} · ${App.escapeHtml(r.groomer || '-')} · ${App.pages.records.getPaymentLabel(r.paymentMethod)}</div>
-                ${(condDot || coopDot) ? `<div style="display:flex;gap:12px;flex-wrap:wrap;margin-top:5px;font-size:0.93rem;color:var(--text-muted)">${condDot}${coopDot}</div>` : ''}
-                ${r.memo ? `<div style="font-size:0.93rem;color:var(--text-muted);margin-top:4px">${App.escapeHtml(r.memo.length > 60 ? r.memo.slice(0, 60) + '...' : r.memo)}</div>` : ''}
-              </div>`;
-            };
-            this._petRecs = { records, shown: PET_REC_STEP, step: PET_REC_STEP, itemHtml, listId: 'pet-rec-list' };
-            return `<div id="pet-rec-list">${records.slice(0, PET_REC_STEP).map(itemHtml).join('')}</div>${moreBtn}`;
-          }
-          const rowHtml = (r) => {
-            const serviceNames = App.getRecordServiceDisplay(r, serviceMap);
-            return `<tr${r.paymentMethod === 'unpaid' ? ' style="background:var(--warning-light)"' : ''}>
-                    <td>${App.formatDate(r.date)}</td>
-                    <td>${App.escapeHtml(serviceNames)}</td>
-                    <td><strong>${App.formatCurrency(App.getRecordAmount(r))}</strong></td>
-                    <td>${App.escapeHtml(r.groomer || '-')}</td>
-                    <td>${App.pages.records.getPaymentLabel(r.paymentMethod)}</td>
-                    <td>${App.escapeHtml(r.memo || '-')}</td>
-                  </tr>`;
-          };
-          this._petRecs = { records, shown: PET_REC_STEP, step: PET_REC_STEP, itemHtml: rowHtml, listId: 'pet-rec-tbody' };
-          return `
-          <div class="table-container">
-            <table class="data-table">
-              <thead><tr><th>날짜</th><th>서비스</th><th>금액</th><th>담당</th><th>결제</th><th>메모</th></tr></thead>
-              <tbody id="pet-rec-tbody">
-                ${records.slice(0, PET_REC_STEP).map(rowHtml).join('')}
-              </tbody>
-            </table>
-          </div>${moreBtn}`;
-        })()}
-      </div>
-      ${(() => {
-        // 반려견 정보 — 비어 있는 항목은 숨기고, 짧은 값은 두 칸씩 (예전엔 '기록 없음'·'-' 줄이 열 개 가까이 이어졌다)
-        const short = [
-          ['견종', pet.breed], ['몸무게', pet.weight ? App.formatKg(pet.weight) + 'kg' : ''], ['나이', age !== '-' ? age : ''],
-          ['성별', [this.getGenderLabel(pet.gender) === '-' ? '' : this.getGenderLabel(pet.gender), pet.neutered ? '중성화' : ''].filter(Boolean).join(' · ')],
-          ['사이즈', this.getSizeLabel(pet.size, pet.weight)], ['권장 주기', pet.groomingCycle ? pet.groomingCycle + '일' : '']
-        ].filter(([, v]) => v && v !== '-');
-        const long = [
-          ['선호 스타일', pet.preferredStyle], ['성격/행동', pet.temperament], ['건강 특이사항', pet.healthNotes],
-          ['알러지', pet.allergies], ['메모', pet.memo]
-        ].filter(([, v]) => v && String(v).trim());
-        return `
-      <div class="detail-section">
-        <h3 class="detail-section-title">반려견 정보</h3>
-        <div class="pet-info-grid">
-          ${short.map(([k, v]) => `<div class="info-item"><label>${k}</label><span>${App.escapeHtml(String(v))}</span></div>`).join('')}
-          ${long.map(([k, v]) => `<div class="info-item wide"><label>${k}</label><span>${App.escapeHtml(String(v))}</span></div>`).join('')}
-        </div>
-        ${long.length === 0 ? `<button type="button" class="btn btn-sm btn-ghost btn-edit-pet" data-id="${pet.id}" style="margin-top:6px">${App.icon('edit')} 성격·선호 스타일·특이사항 입력</button>` : ''}
+        ${records.length ? `<div id="pet-rec-list">${records.slice(0, REC_FIRST).map(rowHtml).join('')}</div>
+        ${records.length > REC_FIRST ? `<button type="button" class="btn btn-secondary pd-more" id="btn-pet-rec-more">이전 기록 더 보기 (${records.length - REC_FIRST}건 남음)</button>` : ''}`
+        : '<p class="pd-muted">미용 기록이 없습니다.</p>'}
       </div>`;
-      })()}
 
-      <!-- 이 아이 가격 (1.08): 서비스마다 이 아이에게 받는 값. 기록할 때 메뉴 값보다 먼저 들어간다 -->
-      <div class="detail-section" id="pet-prices">
+    // 7. 반려견 정보 — 위 상자들에 이미 나온 알러지·건강·성격·선호 스타일은 빼고, 빈 칸은 숨긴다
+    const infoShort = [
+      ['견종', pet.breed], ['몸무게', pet.weight ? App.formatKg(pet.weight) + 'kg' : ''],
+      ['최근 몸무게', weighIns.length >= 2 ? weighIns.map(r => Number(r.weightAtVisit)).join(' → ') + 'kg (' + weighIns.map(r => md(r.date)).join('·') + ')' : ''],
+      ['나이', age], ['성별', genderText],
+      ['사이즈', this.getSizeLabel(pet.size, pet.weight)], ['권장 주기', pet.groomingCycle ? pet.groomingCycle + '일' : '']
+    ].filter(([, v]) => v && v !== '-');
+    const noNotes = ![pet.preferredStyle, pet.temperament, pet.healthNotes, pet.allergies, pet.memo].some(v => v && String(v).trim());
+    const info = `
+      <div class="detail-section pd-info">
+        <h3 class="detail-section-title">반려견 정보</h3>
+        <div class="pd-kv">
+          ${infoShort.map(([k, v]) => `<div><span>${k}</span><b>${esc(v)}</b></div>`).join('')}
+          ${pet.memo && String(pet.memo).trim() ? `<div class="wide"><span>메모</span><b>${esc(pet.memo)}</b></div>` : ''}
+        </div>
+        ${noNotes ? `<button type="button" class="btn btn-sm btn-ghost btn-edit-pet" data-id="${pet.id}" style="margin-top:6px;min-height:44px">${App.icon('edit')} 성격·선호 스타일·특이사항 입력</button>` : ''}
+      </div>`;
+
+    // 이 아이 가격 (1.08): 서비스마다 이 아이에게 받는 값. 기록할 때 메뉴 값보다 먼저 들어간다
+    const cp = pet.customPrices && typeof pet.customPrices === 'object' ? Object.entries(pet.customPrices).filter(([k, v]) => k && v !== '' && v !== null && v !== undefined) : [];
+    const prices = `
+      <div class="detail-section pd-prices" id="pet-prices">
         <h3 class="detail-section-title" style="display:flex;align-items:center;justify-content:space-between;gap:8px">이 아이 가격
-          <button type="button" class="btn btn-sm btn-secondary" id="btn-pet-price-add" data-id="${pet.id}" style="min-height:40px">+ 추가</button></h3>
-        ${(() => {
-          const cp = pet.customPrices && typeof pet.customPrices === 'object' ? Object.entries(pet.customPrices).filter(([k, v]) => k && v !== '' && v !== null && v !== undefined) : [];
-          if (!cp.length) return '<p style="color:var(--text-muted);font-size:0.93rem;margin:4px 0 0">아직 없어요. 미용 기록에서 기본가를 고치고 <strong>이 아이 가격으로 기억</strong>을 켜거나, 여기서 추가하세요. 견종·털 상태 때문에 늘 다르게 받는 값을 적어 두면 다음부터 자동으로 들어가요.</p>';
-          return '<div class="pet-info-grid">' + cp.sort((a, b) => a[0].localeCompare(b[0], 'ko')).map(([k, v]) => `<button type="button" class="info-item pet-price-row" data-id="${pet.id}" data-service="${App.escapeHtml(k)}" style="text-align:left;cursor:pointer;min-height:44px"><label>${App.escapeHtml(k)}</label><span>${App.formatCurrency(Number(v))}</span></button>`).join('') + '</div><div class="form-hint" style="margin-top:4px">누르면 고치거나 지울 수 있어요.</div>';
-        })()}
+          <button type="button" class="btn btn-sm btn-secondary" id="btn-pet-price-add" data-id="${pet.id}" style="min-height:44px">+ 추가</button></h3>
+        ${!cp.length
+          ? '<p class="pd-muted" style="margin:4px 0 0">아직 없어요. 미용 기록에서 기본가를 고치고 <strong>이 아이 가격으로 기억</strong>을 켜거나, 여기서 추가하세요. 견종·털 상태 때문에 늘 다르게 받는 값을 적어 두면 다음부터 자동으로 들어가요.</p>'
+          : '<div class="pet-info-grid">' + cp.sort((a, b) => a[0].localeCompare(b[0], 'ko')).map(([k, v]) => `<button type="button" class="info-item pet-price-row" data-id="${pet.id}" data-service="${esc(k)}" style="text-align:left;cursor:pointer;min-height:44px"><label>${esc(k)}</label><span>${App.formatCurrency(Number(v))}</span></button>`).join('') + '</div><div class="form-hint" style="margin-top:4px">누르면 고치거나 지울 수 있어요.</div>'}
       </div>
+      <div class="pd-delete"><button class="btn btn-ghost btn-delete-pet" data-id="${pet.id}">반려견 삭제</button></div>`;
 
-      <div style="display:flex;justify-content:flex-end;margin:24px 0 8px">
-        <button class="btn btn-ghost btn-delete-pet" data-id="${pet.id}" style="min-height:44px;color:var(--danger)">반려견 삭제</button>
+    // 폰은 한 줄(위→아래), 컴퓨터(1024px+)는 왼쪽 = 이 아이 정보, 오른쪽 = 요약·사진·기록 (pet-detail.css)
+    container.innerHTML = `
+      <div class="back-link" onclick="history.length>1?history.back():App.navigate('pets')">${App.icon('arrow-left')} 뒤로가기</div>
+      <div class="pet-detail-v2">
+        <div class="pd-col pd-left">${head}${warn}${next}${memo}${info}${prices}</div>
+        <div class="pd-col pd-right">${summary}${photoStrip}${recs}</div>
       </div>
     `;
   },
@@ -490,7 +459,7 @@ App.pages.pets = {
         fig.querySelectorAll('.rec-ba button').forEach(b => b.classList.toggle('on', b === btn));
       });
     });
-    // 반려견 상세 → 미용 기록 더 보기 (이미 그린 항목은 두고 다음 20건만 이어 붙임)
+    // 반려견 상세 → 미용 기록 더 보기 (이미 그린 줄은 두고 다음 20건만 그 자리에 이어 붙임)
     document.getElementById('btn-pet-rec-more')?.addEventListener('click', (e) => {
       const st = this._petRecs;
       const listEl = st && document.getElementById(st.listId);
@@ -501,6 +470,18 @@ App.pages.pets = {
       const left = st.records.length - st.shown;
       if (left > 0) e.currentTarget.textContent = `이전 기록 더 보기 (${left}건 남음)`;
       else e.currentTarget.remove();
+    });
+    // 미용 기록 줄 → 기록 수정, 리포트 버튼 → 리포트 (줄은 나중에 붙기도 해서 목록 하나에서 위임)
+    const recList = document.getElementById('pet-rec-list');
+    recList?.addEventListener('click', (e) => {
+      const rep = e.target.closest('.pd-rec-report');
+      if (rep) { App.pages.records.showReport(Number(rep.dataset.id)); return; }
+      const row = e.target.closest('.pd-rec-open');
+      if (row) App.pages.records.showForm(Number(row.dataset.id));
+    });
+    recList?.addEventListener('keydown', (e) => {
+      const row = e.target.closest('.pd-rec-open');
+      if (row && e.target === row && (e.key === 'Enter' || e.key === ' ')) { e.preventDefault(); row.click(); }
     });
     // 반려견 상세 → 빠른 예약
     document.getElementById('btn-pet-appt')?.addEventListener('click', (e) => {

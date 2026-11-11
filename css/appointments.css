@@ -1,0 +1,116 @@
+/* ========== 예약 관리 화면 (v2) ==========
+   휴대폰: 주간 띠 + 한 줄 요약 카드 + '⋯' 메뉴. 컴퓨터: 왼쪽 달력 · 오른쪽 목록 하나.
+   색은 style.css 의 변수만 쓴다 (다크 모드 자동). */
+
+.appt-v2 .appt-sub { font-size: max(0.85rem, 13px); color: var(--text-muted); }
+
+/* 목록 머리: 지금 보는 날짜 + '이 날짜에 예약 추가' */
+.appt-v2 .appt-list-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; flex-wrap: wrap; margin-bottom: 8px; }
+/* 좁은 폭에서 '목록:' 글자가 한 자씩 끊겼다 → 그냥 글줄로 흐르게 */
+.appt-v2 .appt-list-head .appt-list-label { display: block; margin: 0; flex: 1 1 200px; min-width: 0; }
+.appt-v2 #cal-date-add-appt { min-height: 44px; white-space: nowrap; }
+
+/* 검색·상태는 한 줄에 (칩이 넘치면 칩만 윗줄). style.css 의 휴대폰 '세로로 쌓기'를 이 화면만 가로 줄바꿈으로 */
+.appt-v2 .filter-bar { flex-direction: row; flex-wrap: wrap; gap: 8px; padding: 10px 12px; margin-bottom: 12px; }
+.appt-v2 .filter-bar .search-box { flex: 1 1 140px; width: auto !important; min-width: 0 !important; }
+.appt-v2 .filter-bar #filter-status { flex: 0 0 auto; width: auto !important; min-width: 0 !important; min-height: 44px; padding-right: 34px; }
+
+/* 날짜 머리줄 (여러 날 볼 때만 — applyFilters 가 켜고 끈다) */
+.appt-v2 .appt-group-head { padding: 10px 4px 6px; font-size: max(0.88rem, 13px); font-weight: 700; color: var(--text-secondary); }
+.appt-v2 .appt-group-head:first-child { padding-top: 2px; }
+.appt-v2 .appt-group-row td { background: var(--bg); color: var(--text-secondary); font-weight: 700; font-size: max(0.88rem, 13px); padding-top: 8px; padding-bottom: 8px; }
+.appt-v2.appt-one-day .appt-today-badge { display: none; }
+
+/* ---------- 휴대폰 카드: 줄1 시간·이름·배지 / 줄2 보호자·서비스 / 오른쪽 큰 버튼 하나 + '⋯' ---------- */
+.appt-v2 .appt-card { display: grid; grid-template-columns: minmax(0, 1fr) auto 44px; align-items: center; gap: 6px 6px; padding: 8px 4px 8px 12px; margin-bottom: 8px; border-radius: var(--radius-md); }
+.appt-v2 .appt-card.appt-card-alert { border-left: 3px solid var(--danger); }
+.appt-v2 .appt-card-main { min-width: 0; }
+/* 좁은 휴대폰에서 '첫 방문'·'지남' 배지가 잘리지 않게 넘치면 다음 줄로 */
+.appt-v2 .appt-card-l1 { display: flex; flex-wrap: wrap; align-items: center; gap: 2px 6px; min-width: 0; white-space: nowrap; }
+.appt-v2 .appt-card-l1 .badge, .appt-v2 .appt-card-l1 .first-visit-badge { flex-shrink: 0; margin-left: 0 !important; }
+.appt-v2 .appt-card-time { flex-shrink: 0; font-size: 1.05rem; font-variant-numeric: tabular-nums; }
+/* 이름이 배지보다 먼저 — 배지가 많으면 이름이 한 글자로 잘렸다. 넘치면 줄 끝 배지가 잘린다 */
+.appt-v2 .appt-card-pet { flex-shrink: 1; min-width: 0; max-width: 100%; overflow: hidden; text-overflow: ellipsis; font-size: 1.02rem; }
+.appt-v2 .appt-card-l2 { margin-top: 2px; font-size: max(0.85rem, 13px); color: var(--text-secondary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.appt-v2 .appt-card .appt-prepaid-bal { margin-top: 2px; font-size: max(0.8rem, 12px) !important; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.appt-v2 .appt-card-side { display: flex; flex-direction: column; align-items: flex-end; gap: 4px; }
+.appt-v2 .appt-card-side .btn-complete-appt { min-height: 44px; padding: 0 12px; white-space: nowrap; }
+.appt-v2 .appt-more-btn { width: 44px; height: 44px; display: inline-flex; align-items: center; justify-content: center; border: 0; border-radius: var(--radius); background: transparent; color: var(--text-secondary); cursor: pointer; -webkit-tap-highlight-color: transparent; }
+.appt-v2 .appt-more-btn:active, .appt-v2 .appt-more-btn:focus-visible { background: var(--bg); }
+.appt-v2 .appt-card .appt-result-compact { grid-column: 1 / -1; margin-top: 0; }
+.appt-v2 .appt-card .appt-status-sel[hidden] { display: none; }
+
+/* ---------- '⋯' 메뉴 (아래에서 올라오는 판) ---------- */
+.appt-sheet { position: fixed; inset: 0; z-index: 900; display: flex; align-items: flex-end; justify-content: center; }
+.appt-sheet[hidden] { display: none; }
+.appt-sheet-backdrop { position: absolute; inset: 0; background: rgba(0, 0, 0, 0.45); }
+.appt-sheet-panel { position: relative; width: 100%; max-width: 480px; display: flex; flex-direction: column; gap: 2px; padding: 14px 14px calc(14px + env(safe-area-inset-bottom)); background: var(--bg-white); color: var(--text-primary); border-radius: var(--radius-xl) var(--radius-xl) 0 0; box-shadow: var(--shadow-xl); }
+.appt-sheet-title { padding: 2px 6px 8px; font-size: 1.05rem; font-weight: 800; }
+.appt-sheet-item { display: flex; align-items: center; gap: 10px; width: 100%; min-height: 48px; padding: 0 10px; border: 0; border-radius: var(--radius); background: transparent; color: var(--text-primary); font: inherit; font-weight: 600; text-align: left; text-decoration: none; cursor: pointer; }
+.appt-sheet-item:active, .appt-sheet-item:focus-visible { background: var(--bg); }
+.appt-sheet-sub { padding: 10px 6px 6px; font-size: max(0.8rem, 13px); font-weight: 700; color: var(--text-muted); }
+.appt-sheet-status { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 6px; }
+.appt-sheet-st { min-height: 44px; padding: 0 2px; border: 1.5px solid var(--border); border-radius: var(--radius); background: var(--bg-white); color: var(--text-secondary); font: inherit; font-weight: 700; cursor: pointer; }
+.appt-sheet-st.on { border-color: var(--primary); background: var(--primary-light); color: var(--primary); }
+.appt-sheet-close { width: 100%; min-height: 48px; margin-top: 10px; }
+
+/* ---------- 휴대폰 주간 띠 (달력은 '달력'을 눌렀을 때만) ---------- */
+.appt-v2 .appt-week { margin-bottom: 12px; padding: 6px 2px 8px; background: var(--bg-white); border: 1px solid var(--border-light); border-radius: var(--radius-lg); box-shadow: var(--shadow-xs); }
+.appt-v2 .appt-week-bar { display: flex; align-items: center; gap: 2px; }
+.appt-v2 .appt-week-nav { width: 44px; height: 44px; display: inline-flex; align-items: center; justify-content: center; border: 0; border-radius: var(--radius); background: transparent; color: var(--text-secondary); cursor: pointer; }
+.appt-v2 .appt-week-title { flex: 1; min-width: 0; text-align: center; font-weight: 800; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.appt-v2 .appt-cal-toggle { min-height: 44px; margin-left: 4px; white-space: nowrap; }
+.appt-v2 .appt-week-days { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 2px; margin-top: 4px; }
+.appt-v2 .appt-week-day { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 1px; min-height: 60px; padding: 4px 0; border: 1.5px solid transparent; border-radius: var(--radius); background: transparent; color: var(--text-primary); font: inherit; cursor: pointer; -webkit-tap-highlight-color: transparent; }
+.appt-v2 .appt-wd { font-size: max(0.75rem, 12px); font-weight: 700; color: var(--text-muted); }
+.appt-v2 .appt-week-day.sat .appt-wd { color: var(--primary); }
+.appt-v2 .appt-week-day.sun .appt-wd { color: var(--danger); }
+.appt-v2 .appt-dn { font-size: 1.05rem; font-weight: 800; line-height: 1.2; }
+.appt-v2 .appt-cnt { min-height: 16px; font-size: max(0.72rem, 12px); font-weight: 700; color: var(--primary); }
+.appt-v2 .appt-week-day.today { border-color: var(--primary); }
+.appt-v2 .appt-week-day.closed { background: var(--bg); }
+.appt-v2 .appt-week-day.closed .appt-dn { opacity: 0.55; }
+.appt-v2 .appt-week-day.selected { background: var(--primary); border-color: var(--primary); }
+.appt-v2 .appt-week-day.selected .appt-wd, .appt-v2 .appt-week-day.selected .appt-dn, .appt-v2 .appt-week-day.selected .appt-cnt { color: #fff; opacity: 1; }
+
+/* 달력 7칸 같은 폭 고정 — 긴 이름 막대가 칸을 밀어 달력이 들쭉날쭉·넘쳤다 */
+.appt-v2 #cal-grid { grid-template-columns: repeat(7, minmax(0, 1fr)); }
+.appt-v2 #cal-grid .calendar-cell { min-width: 0; }
+
+@media (max-width: 1023px) {
+  .appt-v2:not(.appt-cal-month) #calendar-container { display: none; }
+  /* 달력을 펼치면 주간 띠는 접기 버튼만 남긴다 */
+  .appt-v2.appt-cal-month .appt-week { padding: 0; background: none; border: 0; box-shadow: none; margin-bottom: 8px; }
+  .appt-v2.appt-cal-month .appt-week-bar { justify-content: flex-end; }
+  .appt-v2.appt-cal-month .appt-week-nav, .appt-v2.appt-cal-month .appt-week-title, .appt-v2.appt-cal-month .appt-week-days { display: none; }
+  .appt-v2 .quick-filters { flex: 1 0 100%; }
+  .appt-v2 .quick-filter-btn { flex: 1; padding-left: 6px; padding-right: 6px; }
+  .appt-v2 .filter-bar #btn-clear-filter { min-height: 44px; width: auto !important; }
+  .appt-v2 .quick-filters { width: auto !important; }
+  /* 카드를 감싸던 흰 판은 빼고 카드만 (폭을 더 쓴다) */
+  .appt-v2 .appt-col-list > .card { background: none; border: 0; box-shadow: none; }
+  .appt-v2 .mobile-card-list { padding: 0; }
+}
+
+/* ---------- 컴퓨터: 왼쪽 달력 · 오른쪽 목록 하나 ---------- */
+@media (min-width: 1024px) {
+  .appt-v2 .appt-week { display: none; }
+  .appt-v2 .appt-layout { display: grid; grid-template-columns: minmax(300px, 4fr) minmax(0, 7fr); gap: 20px; align-items: start; }
+  .appt-v2 .appt-col-cal { position: sticky; top: 16px; }
+  .appt-v2 .appt-col-cal .calendar-container { margin-bottom: 0; padding: 14px; }
+  .appt-v2 .appt-col-list { min-width: 0; }
+  /* 오른쪽 칸 폭 안에 들도록 이름·상태 칸은 줄바꿈 허용 (시간·버튼만 한 줄) */
+  .appt-v2 #appt-table td { white-space: normal; }
+  .appt-v2 #appt-table .appt-cell-clip { max-width: 11em; }
+  .appt-v2 #appt-table .appt-result { flex-wrap: wrap; }
+  .appt-v2 #appt-table .appt-result > span { white-space: normal; }
+  .appt-v2 #appt-table .table-actions { white-space: nowrap; }
+}
+/* 1024~1279px: 목록 칸이 좁아 서비스 열은 빼고 이름 아래 작은 글자로 */
+.appt-v2 .appt-svc-inline { display: none; }
+@media (min-width: 1024px) and (max-width: 1279px) {
+  .appt-v2 #appt-table .appt-col-svc { display: none; }
+  .appt-v2 #appt-table .appt-svc-inline { display: block; }
+  .appt-v2 .appt-layout { grid-template-columns: minmax(280px, 4fr) minmax(0, 7fr); }
+  .appt-v2 #appt-table .appt-td-time { white-space: nowrap; font-variant-numeric: tabular-nums; }
+}

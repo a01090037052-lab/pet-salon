@@ -1223,8 +1223,10 @@ const App = {
     catch (e) { console.warn('주소 저장 실패:', e); }
   },
 
-  firstVisitBadge(customerId, set) {
+  // appt 를 주면 그 예약이 끝났거나(완료)·취소·노쇼·지난 날짜면 표시하지 않는다 (같은 손님의 다음 예약 때문에 끝난 줄에도 붙던 문제)
+  firstVisitBadge(customerId, set, appt) {
     if (!set || !set.has(Number(customerId))) return '';
+    if (appt && (['completed', 'cancelled', 'noshow'].includes(appt.status) || (appt.date || '') < this.getToday())) return '';
     return `<button type="button" class="badge badge-warning first-visit-badge" style="border:0;cursor:pointer;margin-left:4px;min-height:24px" title="동의서·주소 받기 — 누르면 고객 정보 수정" onclick="event.stopPropagation();App.pages.customers.showForm(${Number(customerId)})">첫 방문 ✎</button>`;
   },
 
@@ -3465,8 +3467,11 @@ const App = {
         const pet = petsById && (petsById[a.petId] || petsById[Number(a.petId)]);
         const ids = Array.isArray(a.serviceIds) ? a.serviceIds : [];
         const saved = Array.isArray(a.serviceNames) ? a.serviceNames : [];
-        const svc = (ids.length ? ids.map((id, i) => (serviceMap && (serviceMap[id] || serviceMap[Number(id)])) || saved[i]) : saved)
-          .filter(Boolean).join(', ');
+        const len = App.apptLengthOf(a); // 길이는 그 코스 이름 뒤에 (예: '전체미용 7F')
+        const svc = (ids.length ? ids.map((id, i) => {
+          const nm = (serviceMap && (serviceMap[id] || serviceMap[Number(id)])) || saved[i];
+          return nm && len && Number(id) === len.serviceId ? nm + ' ' + len.name : nm;
+        }) : saved).filter(Boolean).join(', ');
         jobs.push({
           at,
           tag: `appt-${a.id}-${a.date}-${a.time}-${min}`,

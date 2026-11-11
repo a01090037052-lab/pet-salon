@@ -864,7 +864,7 @@ App.pages.dashboard = {
         <div class="appointment-item" style="cursor:pointer" onclick="App.navigate('appointments/go/${Number(appt.id)}/${/^\d{4}-\d{2}-\d{2}$/.test(appt.date || '') ? appt.date : ''}')">
           <div class="appointment-time">${appt.time || '--:--'}</div>
           <div class="appointment-info">
-            <div class="name">${dateLabel}<a href="#pets/${appt.petId}" onclick="event.stopPropagation()" style="color:inherit;font-weight:700;padding:14px 0">${App.escapeHtml(pet?.name || '?')}</a> <a href="#customers/${appt.customerId}" onclick="event.stopPropagation()" class="appt-guardian" style="padding:14px 0">${App.escapeHtml(App.getCustomerLabel(customer))}</a>${App.firstVisitBadge(appt.customerId, this._firstVisit)}</div>
+            <div class="name">${dateLabel}<a href="#pets/${appt.petId}" onclick="event.stopPropagation()" style="color:inherit;font-weight:700;padding:14px 0">${App.escapeHtml(pet?.name || '?')}</a> <a href="#customers/${appt.customerId}" onclick="event.stopPropagation()" class="appt-guardian" style="padding:14px 0">${App.escapeHtml(App.getCustomerLabel(customer))}</a>${App.firstVisitBadge(appt.customerId, this._firstVisit, appt)}</div>
             <div class="detail">${App.escapeHtml(serviceNames || '서비스 미지정')}${appt.groomer ? ' &middot; ' + App.escapeHtml(appt.groomer) : ''}</div>
             ${(() => { const w = [pet?.temperament, pet?.healthNotes, pet?.allergies].filter(Boolean); if (!w.length) return ''; const s = w.join(', '); return '<div style="font-size:0.93rem;color:var(--danger);margin-top:2px">' + App.icon('alert') + ' ' + App.escapeHtml(s.length > 50 ? s.slice(0, 50) + '...' : s) + '</div>'; })()}
           </div>
