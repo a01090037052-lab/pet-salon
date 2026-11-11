@@ -1,4 +1,4 @@
-const CACHE_NAME = 'petsalon-offline-v209';
+const CACHE_NAME = 'petsalon-offline-v210';
 const FONT_CACHE = 'petsalon-fonts-v1';
 const ASSETS = [
   './',
@@ -19,6 +19,24 @@ const ASSETS = [
   './js/pages/records.js',
   './js/pages/photocard.js',
   './js/frame-maker.js',
+  './js/cutout.js',
+  './js/bg-library.js',
+  './assets/backgrounds/thumbs/bakery.webp',
+  './assets/backgrounds/thumbs/bubbles.webp',
+  './assets/backgrounds/thumbs/dryflower.webp',
+  './assets/backgrounds/thumbs/envelope.webp',
+  './assets/backgrounds/thumbs/flowerarch.webp',
+  './assets/backgrounds/thumbs/giftbox.webp',
+  './assets/backgrounds/thumbs/icecream.webp',
+  './assets/backgrounds/thumbs/ribbonbox.webp',
+  './assets/backgrounds/thumbs/taiyaki.webp',
+  './assets/backgrounds/thumbs/torn.webp',
+  './assets/backgrounds/thumbs/wreath.webp',
+  './assets/stickers/pt_prop_gift1.webp',
+  './assets/stickers/pt_prop_gift2.webp',
+  './assets/stickers/pt_prop_gift3.webp',
+  './assets/stickers/pt_prop_gift4.webp',
+  './assets/stickers/pt_prop_gift5.webp',
   './assets/stickers/pt_chic_goodvibes.webp',
   './assets/stickers/pt_chic_nobad.webp',
   './assets/stickers/pt_chic_beyou.webp',

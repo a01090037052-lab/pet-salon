@@ -1126,25 +1126,16 @@ App.pages.settings = {
 
     // 로고 업로드/제거
     document.getElementById('s-logo-upload')?.addEventListener('click', () => document.getElementById('s-logo-file')?.click());
-    document.getElementById('s-logo-file')?.addEventListener('change', (e) => {
+    document.getElementById('s-logo-file')?.addEventListener('change', async (e) => {
       const file = e.target.files[0];
       e.target.value = ''; // 같은 파일을 다시 골라도 change 가 뜨게
-      if (!file) return;
-      if (file.type && !file.type.startsWith('image/')) { App.showToast('사진(이미지) 파일만 올릴 수 있어요.', 'error'); return; }
-      // 너무 큰 원본은 폰 메모리 부족으로 멈출 수 있어 막는다 (작게 줄여서 저장하므로 보통 사진은 충분)
-      if (file.size > 20 * 1024 * 1024) { App.showToast('파일이 너무 커요 (20MB 이하만).', 'error'); return; }
-      const reader = new FileReader();
-      reader.onload = (ev) => {
-        // 200px 로 줄여 저장 (용량 작게)
-        App.resizeImage(ev.target.result, async (compressed) => {
-          await DB.setSetting('shopLogo', compressed);
-          const preview = document.getElementById('s-logo-preview');
-          if (preview) preview.innerHTML = `<img src="${compressed}" style="width:100%;height:100%;object-fit:contain">`;
-          document.getElementById('s-logo-remove').style.display = '';
-          App.showToast('로고가 저장되었습니다.');
-        }, 200, 0.9);
-      };
-      reader.readAsDataURL(file);
+      const compressed = await this._readLogoFile(file);
+      if (!compressed) return;
+      await DB.setSetting('shopLogo', compressed);
+      const preview = document.getElementById('s-logo-preview');
+      if (preview) preview.innerHTML = `<img src="${compressed}" style="width:100%;height:100%;object-fit:contain">`;
+      document.getElementById('s-logo-remove').style.display = '';
+      App.showToast('로고가 저장되었습니다.');
     });
     document.getElementById('s-logo-remove')?.addEventListener('click', async () => {
       await DB.setSetting('shopLogo', null);
@@ -1454,6 +1445,32 @@ App.pages.settings = {
     };
   },
 
+  // 매장 로고 파일 → 200px 로 줄인 dataURL (설정·내 프레임 만들기 공용). 못 쓰는 파일이면 알리고 null
+  // PNG·WebP·GIF 는 PNG 로 남겨 투명한 배경을 지킨다 (JPEG 로 바꾸면 투명한 곳이 검게 됐다)
+  async _readLogoFile(file) {
+    if (!file) return null;
+    if (file.type && !file.type.startsWith('image/')) { App.showToast('사진(이미지) 파일만 올릴 수 있어요.', 'error'); return null; }
+    // 너무 큰 원본은 폰 메모리 부족으로 멈출 수 있어 막는다 (작게 줄여서 저장하므로 보통 사진은 충분)
+    if (file.size > 20 * 1024 * 1024) { App.showToast('파일이 너무 커요 (20MB 이하만).', 'error'); return null; }
+    const out = await new Promise((resolve) => {
+      const url = URL.createObjectURL(file);
+      const img = new Image();
+      img.onload = () => {
+        const r = Math.min(1, 200 / Math.max(img.width, img.height));
+        const c = document.createElement('canvas');
+        c.width = Math.max(1, Math.round(img.width * r)); c.height = Math.max(1, Math.round(img.height * r));
+        c.getContext('2d').drawImage(img, 0, 0, c.width, c.height);
+        const keepAlpha = /png|webp|gif/i.test(file.type || '');
+        const d = keepAlpha ? c.toDataURL('image/png') : c.toDataURL('image/jpeg', 0.9);
+        c.width = c.height = 0; URL.revokeObjectURL(url); resolve(d);
+      };
+      img.onerror = () => { URL.revokeObjectURL(url); resolve(null); };
+      img.src = url;
+    });
+    if (!out) App.showToast('그림을 읽지 못했어요. 다른 파일로 해 주세요.', 'error');
+    return out;
+  },
+
   _markSaved(tab) {
     if (!this._saved) this._saved = {};
     const state = this._formState(tab);
@@ -1617,7 +1634,7 @@ App.pages.settings = {
     listEl.innerHTML = frames.map(f => `
       <div class="frame-lib-row" data-id="${App.escapeHtml(f.id)}" style="display:flex;align-items:center;gap:12px;padding:12px;border:1px solid var(--border-light);border-left:4px solid ${f.enabled === false ? 'var(--border)' : (f.accentColor || 'var(--primary)')};border-radius:var(--radius);background:var(--bg-white);box-shadow:var(--shadow-xs);cursor:pointer;position:relative;overflow:hidden${f.enabled === false ? ';opacity:0.6' : ''}">
         <div style="width:100px;height:100px;border-radius:10px;background:${f.image ? '#fff' : (f.accentColor || 'var(--border)')};flex-shrink:0;overflow:hidden;display:flex;align-items:center;justify-content:center;border:1px solid var(--border-light);box-shadow:inset 0 0 0 1px rgba(0,0,0,0.04)">
-          ${f.image ? `<img src="${f.image}" style="max-width:100%;max-height:100%;width:auto;height:auto;object-fit:contain" alt="${App.escapeHtml(f.name)}">` : '<span style="font-size:2rem;opacity:0.5">' + App.icon('image') + '</span>'}
+          ${f.image ? `<img src="${f.thumb || f.image}" style="max-width:100%;max-height:100%;width:auto;height:auto;object-fit:contain" alt="${App.escapeHtml(f.name)}">` : '<span style="font-size:2rem;opacity:0.5">' + App.icon('image') + '</span>'}
         </div>
         <div style="flex:1;min-width:0">
           <div style="font-weight:800;font-size:1rem;color:var(--text-primary);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-bottom:4px">${App.escapeHtml(f.name)}${f.mode === 'overlay' ? ' <small style="font-weight:600;color:var(--text-muted)">· 덮기</small>' : ''}</div>
@@ -1774,7 +1791,9 @@ App.pages.settings = {
           fw,
           fh,
           guideLayout: document.getElementById('f-frame-guide-layout')?.value || frame.guideLayout || 'feed',
-          createdAt: frame.createdAt || new Date().toISOString()
+          createdAt: frame.createdAt || new Date().toISOString(),
+          // 그림을 안 바꿨으면 만들기 값·글자 값·작은 그림을 지킨다 (내 프레임 만들기로 만든 프레임은 글자가 그림 밖에 있다)
+          ...(image === frame.image ? { maker: frame.maker, text: frame.text, thumb: frame.thumb, holeBg: frame.holeBg } : {})
         };
         const all = (await DB.getSetting('customFrames')) || [];
         const idx = all.findIndex(f => f.id === updated.id);

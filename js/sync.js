@@ -29,7 +29,7 @@ const Sync = {
   RECORD_PHOTO_FIELDS: ['photoBefore', 'photoAfter'],
   PHOTO_STORES: ['petPhotos', 'recordPhotos'],
   // 동기화하지 않는 설정 키 (기기별 설정). DB._isInternalSetting(_autoBackup*, _sync*, sync) 도 제외된다.
-  LOCAL_SETTINGS: new Set(['sync', 'security', 'lastBackupDate', 'petVisitStatsVersion', 'lastIntegrityCheck', 'customFrames', 'customStickers', 'inlinePhotosMigratedAt', 'priceBandsMigrated', 'pushDevice', 'pushLastHash', 'pushVapid']),
+  LOCAL_SETTINGS: new Set(['sync', 'security', 'lastBackupDate', 'petVisitStatsVersion', 'lastIntegrityCheck', 'customFrames', 'customStickers', 'customBackgrounds', 'bgHiddenBuiltins', 'inlinePhotosMigratedAt', 'priceBandsMigrated', 'pushDevice', 'pushLastHash', 'pushVapid']),
 
   _s: null,            // 'sync' 설정 {enabled, deviceId, deviceNo, shopId, lastPullAt:{}, email}
   _auth: null,

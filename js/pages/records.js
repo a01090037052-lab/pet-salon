@@ -3151,6 +3151,7 @@ App.pages.records = {
     sx = Math.max(0, Math.min(iw - sw, sx));
     sy = Math.max(0, Math.min(ih - sh, sy));
     ctx.drawImage(img, sx, sy, sw, sh, x, y, w, h);
+    return { sx, sy, sw, sh };
   },
 
   // --- Helper: truncate text to fit width ---
@@ -3327,6 +3328,10 @@ App.pages.records = {
       img3 = this._filteredImg(img3, s.photoFilter);
       img4 = this._filteredImg(img4, s.photoFilter);
     }
+    // 입체 꾸미기: 칸 사진이 어느 칸 것인지 표시 → 그린 자리를 기억해 두고 프레임 위에 떼어 낸 강아지를 한 번 더 그린다
+    const _fronts = (record._fronts || []).some(Boolean) ? record._fronts : null;
+    const _frontPlaces = [];
+    [imgBefore, imgAfter, img3, img4].forEach((im, i) => { if (im) im._slot = i; });
 
     // Build photo slots based on available images
     const photos3 = [imgBefore || imgAfter, imgAfter || imgBefore, img3 || imgBefore || imgAfter];
@@ -3360,9 +3365,13 @@ App.pages.records = {
         const sc = s.slotColor && s.slotColor !== 'auto' ? (s.slotColor === 'white' ? '#FFFFFF' : (this._STUDIO_COLORS[s.slotColor]?.hex || s.slotColor))
           : (_frameHoles && s.frameHoleBg) ? s.frameHoleBg : this._mixHex(bgColor, darkBg ? '#FFFFFF' : '#000000', 0.07);
         ctx.fillStyle = sc; ctx.fillRect(x, y, w, h);
-        this._drawCutout(ctx, img, x + w * 0.06, y + h * 0.06, w * 0.88, h * 0.9);
+        // 발밑 그림자가 칸 아래에서 잘리지 않게 발끝은 칸 바닥보다 조금 위(8%)에
+        const r = this._drawCutout(ctx, img, x + w * 0.06, y + h * 0.04, w * 0.88, h * 0.88, false, sc);
+        if (_fronts && _fronts[img._slot] && !_frontPlaces.some(p => p.slot === img._slot)) _frontPlaces.push({ slot: img._slot, img, ox: r.x, oy: r.y, k: r.w / img.width });
       } else if (img) {
-        this._drawImageCover(ctx, img, x, y, w, h);
+        const r = this._drawImageCover(ctx, img, x, y, w, h);
+        // 같은 사진이 여러 칸에 돌아 들어가면 앞으로는 처음 칸 하나만 (다른 칸 사진을 덮지 않게)
+        if (_fronts && _fronts[img._slot] && !_frontPlaces.some(p => p.slot === img._slot)) { const k = w / r.sw; _frontPlaces.push({ slot: img._slot, img, ox: x - r.sx * k, oy: y - r.sy * k, k }); }
       } else {
         _placeholder(ctx, x, y, w, h);
       }
@@ -3406,7 +3415,7 @@ App.pages.records = {
 
     // ===== 내 프레임 (사진 칸을 찾은 덮는 PNG) — 카드 크기·칸 자리는 프레임 그림을 그대로 따른다 =====
     // 글자(이름·날짜)는 프레임 디자인에 맡기고 그리지 않는다. 사진이 칸보다 적으면 돌려 가며 채운다
-    const _frameHoles = (Array.isArray(s.frameHoles) && s.frameHoles.length && s.customOverlayImage) ? s.frameHoles : null;
+    const _frameHoles = (Array.isArray(s.frameHoles) && s.frameHoles.length && s.customOverlayImage && layout !== 'scene') ? s.frameHoles : null;
     if (_frameHoles) {
       const fw = (s.frameSize && s.frameSize.w) || 1080, fh = (s.frameSize && s.frameSize.h) || 1350;
       const W = 1080, H = Math.max(1, Math.round(W * fh / fw));
@@ -3615,10 +3624,24 @@ App.pages.records = {
       if (cutMain) {
         ctx.fillStyle = bgColor; ctx.fillRect(0, 0, W, H);
         if (_customBgImg) this._drawImageCover(ctx, _customBgImg, 0, 0, W, H);
-        this._drawCutout(ctx, mainImg, 70, 70, W - 140, H - 110);
+        this._drawCutout(ctx, mainImg, 70, 70, W - 140, H - 110, false, bgColor);
       } else {
         _drawPhoto(ctx, mainImg, 0, 0, W, H);
       }
+    }
+
+    // ===== 배경 그림 — 사진(또는 단색+떼어 낸 강아지) → 배경 그림 → 앞 강아지(아래 drawFronts) → 스티커 =====
+    else if (layout === 'scene' && App.bgLib) {
+      const W = 1080, H = 1350;
+      canvas.width = W; canvas.height = H;
+      ctx = canvas.getContext('2d');
+      ctx.fillStyle = bgColor; ctx.fillRect(0, 0, W, H);
+      const mainImg = imgAfter || imgBefore;
+      await App.bgLib.drawCard(ctx, W, H, s.scene || App.bgLib.cardScene(), {
+        img: mainImg, front: (_fronts && mainImg) ? _fronts[mainImg._slot] : null,
+        drawPhoto: (x, y, w, h) => _drawPhoto(ctx, mainImg, x, y, w, h),
+        pushFront: (p) => { if (_fronts && !_frontPlaces.some(q => q.slot === p.slot)) _frontPlaces.push(p); }
+      });
     }
 
     // ===== 사진관 — 한 가지 색 배경 · 위에 '매장명 / and / 반려견명' · 가운데 강아지 =====
@@ -3660,7 +3683,7 @@ App.pages.records = {
       if (mainImg && this._imgHasAlpha(mainImg)) {
         // 확대해도 위 글자를 덮지 않게 글자 아래만
         ctx.save(); ctx.beginPath(); ctx.rect(0, top - 40, W, H - top + 40); ctx.clip();
-        this._drawCutout(ctx, mainImg, 110, top, W - 220, bottom - top);
+        this._drawCutout(ctx, mainImg, 110, top, W - 220, bottom - top, false, bg);
         ctx.restore();
       } else if (mainImg) {
         // 흰 테두리 사진 (참고 사진의 '손에 든 사진' 느낌) — 사진 비율을 살리되 너무 길쭉하지 않게
@@ -3689,7 +3712,7 @@ App.pages.records = {
         ctx.fillStyle = bgColor; ctx.fillRect(0, 0, W, H);
         if (_customBgImg) this._drawImageCover(ctx, _customBgImg, 0, 0, W, H);
         ink = s.customTextColor || this._studioInk(bgColor);
-        if (mainImg) { ctx.save(); ctx.beginPath(); ctx.rect(0, 360, W, H - 360); ctx.clip(); this._drawCutout(ctx, mainImg, 40, 460, W - 80, H - 470); ctx.restore(); }
+        if (mainImg) { ctx.save(); ctx.beginPath(); ctx.rect(0, 360, W, H - 360); ctx.clip(); this._drawCutout(ctx, mainImg, 40, 460, W - 80, H - 470, false, bgColor); ctx.restore(); }
       } else {
         _drawPhoto(ctx, mainImg, 0, 0, W, H);
         ink = this._regionLuma(ctx, 0, 0, W, 420) < 150 ? '#FFFFFF' : '#2B2B2B';
@@ -4065,6 +4088,7 @@ App.pages.records = {
     }
 
     // 인스타그램 최적화: 1080px 미만이면 자동 업스케일 (흐림 방지)
+    const _baseW = canvas.width;
     let out = canvas;
     if (canvas.width < 1080) {
       const scale = 1080 / canvas.width;
@@ -4079,9 +4103,19 @@ App.pages.records = {
     }
 
     // 덮는 프레임(사진 칸을 투명하게 뚫은 PNG) — 다 그린 뒤 맨 위에 최종 카드 크기로 덮는다 (업스케일 뒤라 프레임이 흐려지지 않는다)
-    if (s.customOverlayImage) {
+    if (s.customOverlayImage && layout !== 'scene') {
       const _ov = await this._loadImg(s.customOverlayImage);
       if (_ov) this._drawImageCover(out.getContext('2d'), _ov, 0, 0, out.width, out.height);
+    }
+
+    // 입체 꾸미기 — 떼어 낸 강아지를 프레임 위(스티커 아래)에, 칸 사진과 같은 자리·같은 크기로 (최종 크기에서 그려 선명하게)
+    if (_frontPlaces.length && App.cutout) {
+      const S = out.width / _baseW;
+      const places = _frontPlaces.map(p => ({ slot: p.slot, img: p.img, ox: p.ox * S, oy: p.oy * S, k: p.k * S, iw: p.img.width, ih: p.img.height,
+        line: p.line, shade: p.shade ? { y: p.shade.y * S, h: p.shade.h * S } : null }));
+      try { await App.cutout.drawFronts(out.getContext('2d'), places, _fronts, out.width, out.height); }
+      catch (e) { console.warn('강아지 앞으로 그리기 실패:', e); }
+      out._frontPlaces = places.map(({ img, ...p }) => p);
     }
 
     // 스티커 — 프레임보다도 위에
@@ -4107,6 +4141,8 @@ App.pages.records = {
   _CARD_LAYOUTS: {
     // 틀 없이 — 사진 한 장 그대로, 스티커·글자만 위에 (2026-11-10 사장님 요청 '틀 없이도 꾸미게')
     plain: { name: '틀 없이', icon: 'image', photos: 1 },
+    // 배경 그림 — 사진 한 장 + 포토존 그림(찢어진 종이·선물 상자·가게 진열대…), js/bg-library.js (2026-11-11)
+    scene: { name: '배경 그림', icon: 'image', photos: 1 },
     photobooth: { name: '네컷 세로', icon: 'list', photos: 4 },
     feed: { name: '피드 4:5', icon: 'image', photos: 4 },
     story: { name: '스토리', icon: 'camera', photos: 4 },
@@ -4166,6 +4202,8 @@ App.pages.records = {
   // AI 일러스트 스티커 (사장님 레퍼런스: 레트로 라벨 · 브랜드 버건디 · 모던 미니멀) — 먼저 보여 준다
   _AI_STICKER_SETS: {'retro': ['ai_rt_01_seriously_fluffy', 'ai_rt_02_lucky_puppy', 'ai_rt_03_fresh_bone', 'ai_rt_04_just_groomed', 'ai_rt_05_totally_fluffy', 'ai_rt_06_blep', 'ai_rt_07_top_dog', 'ai_rt_08_bath_time'], 'brand': ['ai_br_01_keep_it_fluffy', 'ai_br_02_groom_smile', 'ai_br_03_groomed_love', 'ai_br_04_promise', 'ai_br_05_trust_care', 'ai_br_06_feel_difference', 'ai_br_07_best_look', 'ai_br_08_honest_prices'], 'modern': ['ai_md_01_grooming_mode', 'ai_md_02_think_fresh', 'ai_md_03_blue_paw', 'ai_md_04_pixel_puppy', 'ai_md_05_cute_mode', 'ai_md_06_orbit_star', 'ai_md_07_fur_care', 'ai_md_08_groomed_shield']},
   // 세련된 스타일 (차분한 색·글자 중심 배지·라벨·오라 그라데이션) — 기본으로 먼저 보여 준다
+  // 소품 — 작은 선물 상자 (배경 '리본 선물 상자' 옆에). 배경 그림에서 상자 색·리본 색을 바꿨으면 같은 색으로 붙는다
+  _PROP_STICKERS: ['pt_prop_gift1', 'pt_prop_gift2', 'pt_prop_gift3', 'pt_prop_gift4', 'pt_prop_gift5'],
   _CHIC_STICKERS: ['pt_chic_goodvibes', 'pt_chic_nobad', 'pt_chic_beyou', 'pt_chic_sofluffy', 'pt_chic_freshcut', 'pt_chic_club', 'pt_chic_gooddog', 'pt_chic_ticket', 'pt_chic_fresh_star', 'pt_chic_tag', 'pt_chic_stamp', 'pt_chic_pretty', 'pt_chic_today_dog', 'pt_chic_bubble_done', 'pt_chic_bubble_bosong', 'pt_chic_groomed', 'pt_chic_withlove', 'pt_chic_green_paw', 'pt_chic_dogline', 'pt_chic_aura_lovely', 'pt_chic_aura_fluffy', 'pt_chic_aura_heart'],
   _stickerSrc(id) { return /^(pt|ai)_/.test(String(id)) ? `assets/stickers/${id}.webp` : `assets/stickers/emoji_u${id}.webp`; },
   _stickerSrcOf(st) {
@@ -4190,6 +4228,7 @@ App.pages.records = {
   _textStickerDefaults(style, color) {
     if (style === 'pink') return { style: 'label', color: color || '#FF6B9A' };
     if (style === 'dark') return { style: 'label', color: color || '#1F2937' };
+    if (style === 'frame') return { style, color: color || '#FFFFFF' }; // 내 프레임 글자 (프레임 만들 때 고른 모양 그대로)
     const st = this._TEXT_STICKER_STYLES[style] ? style : 'bubble';
     return { style: st, color: color || ((st === 'outline' || st === 'plain') ? '#1F2937' : '#FFFFFF') };
   },
@@ -5105,26 +5144,74 @@ App.pages.records = {
     if (per) per.set(bgHex, out);
     return out;
   },
-  // 배경 지운 사진을 상자 안에 바닥 맞춰 놓고, 발밑 그림자를 그린다 (확대·위치 슬라이더 반영)
-  _drawCutout(ctx, img, bx, by, bw, bh, noFloor) {
+  // 순수 함수: 알파(w×h)에서 실제 발끝 줄과 발 폭 — { foot: 발끝 아래 끝(0~1), l, r: 아래 band 안 발 좌우(0~1) }, 없으면 null
+  // 떼어 낸 사진은 발 아래에 투명한 여백이 흔해 그림 끝을 바닥으로 쓰면 강아지가 떠 보인다
+  _footLine(alpha, w, h, th = 40, band = 0.12) {
+    let foot = -1;
+    for (let y = h - 1; y >= 0 && foot < 0; y--) { const o = y * w; for (let x = 0; x < w; x++) if (alpha[o + x] > th) { foot = y; break; } }
+    if (foot < 0) return null;
+    const top = Math.max(0, foot - Math.round(h * band));
+    let l = w, r = -1;
+    for (let y = top; y <= foot; y++) { const o = y * w; for (let x = 0; x < w; x++) if (alpha[o + x] > th) { if (x < l) l = x; if (x > r) r = x; } }
+    return { foot: (foot + 1) / h, l: l / w, r: (r + 1) / w };
+  },
+  _footCache: (typeof WeakMap !== 'undefined') ? new WeakMap() : null,
+  _footInfo(img) {
+    const hit = this._footCache && this._footCache.get(img);
+    if (hit !== undefined) return hit;
+    let res = null;
+    try {
+      const k = Math.min(1, 320 / Math.max(img.width, img.height));
+      const c = document.createElement('canvas'); c.width = Math.max(1, Math.round(img.width * k)); c.height = Math.max(1, Math.round(img.height * k));
+      const x = c.getContext('2d', { willReadFrequently: true });
+      x.drawImage(img, 0, 0, c.width, c.height);
+      const d = x.getImageData(0, 0, c.width, c.height).data, a = new Uint8Array(c.width * c.height);
+      for (let i = 0; i < a.length; i++) a[i] = d[i * 4 + 3];
+      res = this._footLine(a, c.width, c.height);
+      c.width = c.height = 0;
+    } catch (_) { res = null; }
+    if (this._footCache) this._footCache.set(img, res);
+    return res;
+  },
+  // 흐린 그림자만 그리기 (도형은 캔버스 밖으로 보내고 그림자만 제자리에 — ctx.filter 없는 옛 iOS 도 된다)
+  _blurOnly(ctx, color, blur, draw) {
+    const far = 100000;
+    ctx.save();
+    ctx.shadowColor = color; ctx.shadowBlur = blur; ctx.shadowOffsetX = far; ctx.shadowOffsetY = 0;
+    ctx.translate(-far, 0);
+    draw();
+    ctx.restore();
+  },
+  // 배경 지운 사진을 상자 안에 놓는다 — 실제 발끝을 상자 바닥에 맞추고(아래 투명 여백 무시), 발밑에 닿는 그림자 (확대·위치 슬라이더 반영)
+  // bg: 사진 뒤 배경색 — 그림자는 회색이 아니라 그 색을 어둡게 한 색 (2026-11-11 사장님: 떠 보인다·스티커 같다)
+  _drawCutout(ctx, img, bx, by, bw, bh, noFloor, bg) {
     const m = img._meta || {};
     const z = Math.max(0.3, Math.min(3, m.zoom || 1));
     const sc = Math.min(bw / img.width, bh / img.height) * z;
     const w = img.width * sc, h = img.height * sc;
+    const fi = this._footInfo(img);
     const x = bx + (bw - w) / 2 - (m.offsetX || 0) / 100 * bw;
-    const y = by + bh - h - (m.offsetY || 0) / 100 * bh;
-    if (!noFloor && !img._face) {
-      ctx.save();
-      ctx.translate(x + w / 2, y + h - 4); ctx.scale(1, 0.13);
-      const g = ctx.createRadialGradient(0, 0, 0, 0, 0, w * 0.42);
-      g.addColorStop(0, 'rgba(0,0,0,0.28)'); g.addColorStop(1, 'rgba(0,0,0,0)');
-      ctx.fillStyle = g; ctx.beginPath(); ctx.arc(0, 0, w * 0.42, 0, Math.PI * 2); ctx.fill();
-      ctx.restore();
+    const y = by + bh - (fi ? fi.foot : 1) * h - (m.offsetY || 0) / 100 * bh;
+    if (!noFloor && !img._face && fi) {
+      const hex = /^#[0-9a-f]{6}$/i.test(bg || '') ? bg : '#B8B0A6';
+      const ink = this._mixHex(hex, '#000000', 0.55);
+      const rgb = [1, 3, 5].map(i => parseInt(ink.slice(i, i + 2), 16)).join(',');
+      const px = ctx.canvas.width / 1080; // 카드 1080px 기준 화소
+      const fy = y + fi.foot * h, cx = x + (fi.l + fi.r) / 2 * w, hw = Math.max(4, (fi.r - fi.l) / 2 * w * 1.25);
+      // 1) 넓고 옅은 둘레 그림자 (발 폭의 1.25배)
+      this._blurOnly(ctx, `rgba(${rgb},0.24)`, hw * 0.36, () => {
+        ctx.fillStyle = '#000'; ctx.beginPath(); ctx.ellipse(cx, fy + hw * 0.01, hw, hw * 0.11, 0, 0, Math.PI * 2); ctx.fill();
+      });
+      // 2) 발 모양 그대로 납작하게 눌러 닿는 그림자 — 발이 닿는 곳이 가장 진하다
+      const sh = img.height * 0.06, ch = Math.max(2, Math.round(h * 0.06 / 3));
+      const t = document.createElement('canvas'); t.width = Math.max(1, Math.round(w)); t.height = ch;
+      const tx = t.getContext('2d');
+      tx.drawImage(img, 0, Math.max(0, fi.foot * img.height - sh), img.width, sh, 0, 0, t.width, ch);
+      this._blurOnly(ctx, `rgba(${rgb},0.75)`, 8 * px, () => ctx.drawImage(t, x, fy - ch + 2 * px)); // 발끝과 겹치게 (아래로 2px만)
+      t.width = t.height = 0;
     }
-    ctx.save();
-    ctx.shadowColor = 'rgba(0,0,0,0.18)'; ctx.shadowBlur = Math.max(8, w * 0.045); ctx.shadowOffsetY = Math.max(3, w * 0.016);
     ctx.drawImage(img, x, y, w, h);
-    ctx.restore();
+    return { x, y, w, h };
   },
   // 글자 사이를 띄워 가운데 맞춰 그린다 (잡지 표지 제목). 폭을 넘으면 글자를 줄인다
   _spacedText(ctx, text, cx, y, spacing, font, size, maxW) {
@@ -5372,7 +5459,8 @@ App.pages.records = {
         if (el.dataset.key === 'none') this._drawImageCover(c.getContext('2d'), img, 0, 0, 112, 112);
         else this._paintFiltered(c, img, p, true);
         img._meta = keep;
-        el.style.backgroundImage = `url(${c.toDataURL('image/jpeg', 0.8)})`;
+        // 배경 없는(투명) 사진은 PNG 로 — JPEG 는 투명한 곳이 검게 나온다
+        el.style.backgroundImage = `url(${this._imgHasAlpha(img) ? c.toDataURL('image/png') : c.toDataURL('image/jpeg', 0.8)})`;
         c.width = c.height = 0;
       } catch (_) { el.style.backgroundImage = ''; }
     });
@@ -5385,6 +5473,7 @@ App.pages.records = {
     feed: ['pet', 'date', 'shop', 'service', 'nextvisit'],
     story: ['pet', 'date', 'shop', 'service', 'nextvisit'],
     plain: [],
+    scene: [],
     studio: ['pet', 'date', 'shop'],
     magazine: ['pet', 'date', 'shop', 'service']
   },
@@ -5405,7 +5494,7 @@ App.pages.records = {
     const hint = document.getElementById('card-text-support');
     if (hint) hint.textContent = frameMode
       ? '내 프레임은 정보를 넣지 않아요 — 위 \'글자 넣기\'로 원하는 자리에 넣으세요.'
-      : f.layout === 'plain' ? '틀 없이는 사진만 나와요 — 위 \'글자 넣기\'와 스티커로 꾸미세요.'
+      : (f.layout === 'plain' || f.layout === 'scene') ? '틀 없이는 사진만 나와요 — 위 \'글자 넣기\'와 스티커로 꾸미세요.'
       : (off.length ? `이 틀에는 ${off.join('·')} 자리가 없어요 — 필요하면 위 '글자 넣기'로 넣으세요.` : '다음 방문일을 넣으면 손님이 다시 예약하기 쉬워요.');
   },
   // 미리보기에서 강아지를 끌 수 있나: 사진 한 장 틀 + 떼어 낸 사진 + 내 프레임 아님
@@ -5416,6 +5505,7 @@ App.pages.records = {
       const holes = this._appliedFrame?.holes || [];
       return holes.length === 1 && this._appliedFrame.mode === 'overlay' && !!this._cardPhotos[0];
     }
+    if (layout === 'scene') return !!this._cardPhotos[0]; // 배경 그림: 구멍 뒤 사진·속에 든 강아지 모두 끌어 옮긴다
     if (!['plain', 'studio', 'magazine', 'single'].includes(layout)) return false;
     return !!(this._slotCut && this._slotCut[0] && this._cardPhotos[0]);
   },
@@ -5674,6 +5764,8 @@ App.pages.records = {
         <!-- 위치·확대 조정은 필요할 때만 펼친다 (사진마다 슬라이더 3개가 늘 펼쳐져 창이 길었다) -->
         <button type="button" class="card-adjust-btn" id="card-adjust-${i}" data-slot="${i}" hidden>위치</button>
         <button type="button" class="card-adjust-btn card-cutout-btn" id="card-cutout-${i}" data-slot="${i}" hidden>✂ 가장자리</button>
+        <button type="button" class="card-adjust-btn card-front-btn" id="card-front-${i}" data-slot="${i}" hidden>✂ 강아지 앞으로</button>
+        <button type="button" class="card-adjust-btn card-front-btn card-front-off" id="card-front-off-${i}" data-slot="${i}" hidden>앞으로 끄기</button>
         <div id="card-photo-controls-${i}" class="card-photo-controls" data-slot="${i}" style="display:none">
           <div class="card-photo-controls-title">${i + 1}번 사진 위치·확대</div>
           <div class="photo-slider-row" style="display:flex;align-items:center;gap:6px;margin-bottom:3px">
@@ -5766,7 +5858,7 @@ App.pages.records = {
       const adj = document.getElementById(`card-adjust-${i}`);
       if (adj) adj.hidden = false;
     }
-    container.querySelectorAll('.card-adjust-btn:not(.card-cutout-btn)').forEach(btn => btn.addEventListener('click', () => {
+    container.querySelectorAll('.card-adjust-btn:not(.card-cutout-btn):not(.card-front-btn)').forEach(btn => btn.addEventListener('click', () => {
       const ctrls = document.getElementById(`card-photo-controls-${btn.dataset.slot}`);
       if (!ctrls) return;
       const open = ctrls.style.display === 'none';
@@ -5780,6 +5872,11 @@ App.pages.records = {
     }));
     // 사진 빼기
     container.querySelectorAll('.card-cutout-btn').forEach(btn => btn.addEventListener('click', () => this._openCutoutEditor(Number(btn.dataset.slot))));
+    // 입체 꾸미기: 강아지 앞으로 (떼어내기 / 고치기) · 앞으로 끄기
+    container.querySelectorAll('.card-front-btn').forEach(btn => btn.addEventListener('click', () => {
+      const i = Number(btn.dataset.slot);
+      if (btn.classList.contains('card-front-off')) App.cutout?.turnOff(i); else App.cutout?.onFrontBtn(i);
+    }));
     container.querySelectorAll('.card-slot-remove').forEach(btn => btn.addEventListener('click', (e) => {
       e.stopPropagation();
       const i = Number(btn.dataset.slot);
@@ -5998,7 +6095,7 @@ App.pages.records = {
       const run = async () => {
         // 글꼴 받는 동안 다른 값을 또 고르면 늦게 끝난 옛 그림이 덮어쓰지 않게 — 마지막 요청만 반영
         const my = st._rev = (st._rev || 0) + 1;
-        const r = await this._makeTextSticker(st.text, st.style, st.fontKey || curFont(), st.color);
+        const r = await this._makeTextSticker(st.text, st.style, st.fontKey || curFont(), st.color, { band: st.band, glow: st.glow });
         if (my !== st._rev) return;
         if (st.w) st.size = Math.max(0.06, Math.min(1.2, st.size * r.w / st.w));
         st.src = r.src; st.w = r.w;
@@ -6148,7 +6245,8 @@ App.pages.records = {
   },
 
   // 글자 스티커 그림 만들기 — 글꼴·모양·색으로 그린다 (세 줄까지). { src, w } 를 돌려준다 (w: 그림 가로, 고칠 때 글자 크기 유지용)
-  async _makeTextSticker(text, style0, fontKey, color0) {
+  // opts: 'frame' 모양에서만 — band(띠 색, 없으면 null)·glow(네온 빛)
+  async _makeTextSticker(text, style0, fontKey, color0, opts = {}) {
     const lines = String(text || '').split('\n').map(l => l.trim()).filter(Boolean).slice(0, 3);
     if (!lines.length) lines.push('안녕');
     const { style, color } = this._textStickerDefaults(style0, color0);
@@ -6159,8 +6257,10 @@ App.pages.records = {
     m.font = font;
     const ws = lines.map(l => Math.ceil(m.measureText(l).width));
     const maxW = Math.max(...ws);
-    const padX = { plain: 24, outline: 32, neon: 50, box: 40, glass: 56, bubble: 56, label: 64 }[style] || 40;
-    const padY = { plain: 16, outline: 24, neon: 44, box: 14, glass: 34, bubble: 34, label: 28 }[style] || 24;
+    const fBand = style === 'frame' && /^#[0-9a-f]{6}$/i.test(opts.band || '') ? opts.band : null;
+    const fGlow = style === 'frame' && !!opts.glow;
+    const padX = style === 'frame' ? (fBand ? 40 : 12) + (fGlow ? 30 : 0) : ({ plain: 24, outline: 32, neon: 50, box: 40, glass: 56, bubble: 56, label: 64 }[style] || 40);
+    const padY = style === 'frame' ? (fBand ? 16 : 6) + (fGlow ? 30 : 0) : ({ plain: 16, outline: 24, neon: 44, box: 14, glass: 34, bubble: 34, label: 28 }[style] || 24);
     const tail = style === 'bubble' ? 40 : 0, edge = 18;
     const W = maxW + padX * 2 + edge * 2, H = lines.length * lh + padY * 2 + tail + edge * 2;
     const c = document.createElement('canvas'); c.width = W; c.height = H;
@@ -6175,7 +6275,14 @@ App.pages.records = {
     const texts = (fill) => { x.fillStyle = fill; lines.forEach((l, i) => x.fillText(l, cx, ly(i))); };
     // 색을 섞는다 (t=0 그 색, t=1 mix 색) — 네온 테두리·속 밝은 줄에 쓴다
     const mixHex = (hex, mix, t) => { const a = hex.replace('#', ''), b = mix.replace('#', ''); const ch = (k) => Math.round(parseInt(a.slice(k, k + 2), 16) * (1 - t) + parseInt(b.slice(k, k + 2), 16) * t); return `rgb(${ch(0)},${ch(2)},${ch(4)})`; };
-    if (style === 'plain') {
+    if (style === 'frame') {
+      // 내 프레임 만들기의 글자와 같게 (frameMaker._drawText): 띠(둥근 막대) 위 글자 · 네온이면 같은 색 빛
+      if (fBand) { x.fillStyle = fBand; lines.forEach((l, i) => { this._roundRect(x, cx - ws[i] / 2 - 36, ly(i) - 2 - fs * 0.75, ws[i] + 72, fs * 1.5, fs * 0.75); x.fill(); }); }
+      if (fGlow) {
+        x.save(); x.shadowColor = color; x.shadowBlur = 28; texts(color); x.shadowBlur = 12; texts(color); x.restore();
+        texts(mixHex(color, '#FFFFFF', 0.55));
+      } else texts(color);
+    } else if (style === 'plain') {
       // 어두운 글자는 밝은 그림자, 밝은 글자는 어두운 그림자 — 어떤 사진 위에서도 글자가 묻히지 않게
       x.save(); x.shadowColor = light ? 'rgba(0,0,0,0.35)' : 'rgba(255,255,255,0.55)'; x.shadowBlur = 10; x.shadowOffsetY = light ? 3 : 0; texts(color); x.restore();
     } else if (style === 'outline') {
@@ -6213,7 +6320,7 @@ App.pages.records = {
     }
     const src = c.toDataURL('image/png');
     c.width = c.height = 0;
-    return { src, w: W, chars: Math.max(...lines.map(l => [...l].length)) };
+    return { src, w: W, tw: maxW, chars: Math.max(...lines.map(l => [...l].length)) };
   },
 
   // 올린 그림을 스티커로 다듬는다: 테두리가 한 가지 색이면 그 배경을 지우고(ChatGPT 의 흰 배경 등), 빈 여백을 잘라 400px 이하로
@@ -6312,6 +6419,7 @@ App.pages.records = {
       const st = btn.dataset.cid ? { cid: btn.dataset.cid } : { id: btn.dataset.sticker };
       const sid = String(btn.dataset.sticker || '');
       const isText = sid.startsWith('pt_t_') || /^pt_chic_(gooddog|ticket|groomed|today_dog|bubble_done|bubble_bosong|stamp|pretty)$/.test(sid) || /^pt_hip_(omiwan|lucky|simkung|mungmung|slay|luv|newhair|main|glowup|caution)$/.test(sid);
+      if (sid.startsWith('pt_prop_') && App.bgLib) { const src = await App.bgLib.propSrc(sid).catch(() => null); if (src) st.src = src; }
       this._cardStickers.push({ ...st, x: 0.5, y: 0.45, size: btn.dataset.cid ? 0.3 : (sid.startsWith('ai_') ? 0.32 : (isText ? 0.4 : 0.24)), rot: 0 });
       this._stickerSel = this._cardStickers.length - 1;
       this._renderStickerLayer();
@@ -6397,7 +6505,7 @@ App.pages.records = {
         const m = this._cardPhotoMeta[0];
         const layout = document.querySelector('#card-pick-layout .card-pick-btn.active')?.dataset.key;
         const fhole = String(document.querySelector('#card-pick-theme .card-pick-btn.active')?.dataset.key || '').startsWith('frame:') ? (this._appliedFrame?.holes || [])[0] : null;
-        const [fx, fy] = fhole ? [fhole.w * (this._slotCut?.[0] ? 0.88 : 1), fhole.h * (this._slotCut?.[0] ? 0.9 : 1)] : (({ plain: [0.87, 0.92], studio: [0.8, 0.65], magazine: [0.93, 0.65] })[layout] || [0.88, 0.7]);
+        const [fx, fy] = fhole ? [fhole.w * (this._slotCut?.[0] ? 0.88 : 1), fhole.h * (this._slotCut?.[0] ? 0.9 : 1)] : (({ plain: [0.87, 0.92], scene: [1, 1], studio: [0.8, 0.65], magazine: [0.93, 0.65] })[layout] || [0.88, 0.7]);
         const vals = [...pts.values()];
         if (vals.length >= 2 && pdrag.p0.length >= 2) {
           const d = Math.hypot(vals[0][0] - vals[1][0], vals[0][1] - vals[1][1]);
@@ -6448,6 +6556,34 @@ App.pages.records = {
     this._renderStickerLayer();
   },
 
+  // 내 프레임의 글자(text 값)를 글자 스티커로 올린다 — 프레임을 바꿀 때만 새로 (이 카드에서 고친 글자·자리는 그대로, 프레임에는 저장하지 않는다)
+  // 글자 값이 없는 예전 프레임은 글자가 그림에 들어 있으므로 아무것도 하지 않는다
+  async _syncFrameText(f) {
+    const fid = (f && f.settings && f.settings.lastUsedFrameId) || null;
+    if ((this._frameTextFor || null) === fid) return;
+    this._frameTextFor = fid;
+    const had = (this._cardStickers || []).some(s => s.frameText);
+    this._cardStickers = (this._cardStickers || []).filter(s => !s.frameText);
+    if (had) this._stickerSel = -1;
+    const FM = App.frameMaker;
+    const fr = fid ? (this._cardFramesCache || []).find(x => x.id === fid) : null;
+    const td = fr && FM ? FM.normalizeFrameText(fr.text) : null;
+    if (td) {
+      const shop = (await DB.getSetting('shopName')) || '';
+      const fontKey = this._CARD_FONTS[td.font] ? td.font : 'system';
+      const band = td.band ? td.bandColor : null;
+      for (const it of td.items) {
+        const text = FM.fillShop(it.text, shop);
+        if (!text) continue;
+        const r = await this._makeTextSticker(text, 'frame', fontKey, td.color, { band, glow: td.glow });
+        if (this._frameTextFor !== fid) return; // 그사이 다른 프레임을 골랐다
+        this._cardStickers.push({ text, style: 'frame', color: td.color, fontKey, band, glow: td.glow, frameText: it.role,
+          src: r.src, w: r.w, x: it.x, y: it.y, size: FM.textStickerSize(it, r.w, r.tw), rot: 0 });
+      }
+    }
+    this._renderStickerLayer();
+  },
+
   _scheduleCardPreview() {
     clearTimeout(this._cardPreviewTimer);
     this._cardPreviewTimer = setTimeout(() => this._renderCardPreview().catch(e => console.warn('카드 미리보기 실패:', e)), 250);
@@ -6461,6 +6597,8 @@ App.pages.records = {
     this._cardPreviewToken = token;
     this._autoCardLayout((this._cardPhotos || []).filter(Boolean).length);
     const f = await this._readCardForm(this._cardPetName || '');
+    await this._syncFrameText(f);
+    if (token !== this._cardPreviewToken) return;
     const count = this._cardPhotoCount(f);
     this._updateTextSupport(f);
     this._syncBgLink(f);
@@ -6476,18 +6614,22 @@ App.pages.records = {
     const metas = this._cardPhotoMeta || [];
     const blank = { offsetX: 0, offsetY: 0, zoom: 1.0 };
     rec._photoMetas = { photoBefore: metas[0] || blank, photoAfter: metas[1] || blank, photo3: metas[2] || blank, photo4: metas[3] || blank };
+    if (App.cutout) rec._fronts = App.cutout.frontsFor(photos);
     const shopName = await DB.getSetting('shopName') || '펫살롱';
     const shopPhone = await DB.getSetting('shopPhone') || '';
     const ds = await this._designFrom(f.settings, f.layout, f.theme, pet?.name || '');
     const cv = await this._generateCardCanvas(rec, customer, pet, shopName, shopPhone, serviceNames, ds);
     if (token !== this._cardPreviewToken) { cv.width = cv.height = 0; return; } // 더 최근 미리보기가 진행 중 (버리는 캔버스 메모리도 돌려준다)
     img.src = cv.toDataURL('image/jpeg', 0.72);
+    this._frontView = { W: cv.width, H: cv.height, places: cv._frontPlaces || [] };
     cv.width = cv.height = 0; // iOS 는 캔버스 메모리를 늦게 돌려줘 슬라이더를 오래 끌면 한도를 넘는다
     img.hidden = false;
     if (empty) empty.hidden = true;
     img.closest('.card-live')?.setAttribute('data-shape', f.layout);
     this._syncPhotoDrag();
+    App.bgLib?.sync();
     this._renderStickerLayer();
+    App.cutout?.syncLineUI();
     // 칸보다 사진이 적으면 어떻게 나오는지 알려준다 (반복 채우지 않고 칸 수를 줄인다)
     const note = document.getElementById('card-live-note');
     this._refreshFilterThumbs();
@@ -6497,7 +6639,8 @@ App.pages.records = {
       note.hidden = false;
       note.textContent = `프레임 모양대로 만들어요 · 사진 칸 ${fHoles.length}개` +
         (n < fHoles.length ? ` (사진 ${n}장을 돌려 가며 넣어요)` : '') +
-        (nAll > count ? ` · 앞 ${count}장만 써요` : '');
+        (nAll > count ? ` · 앞 ${count}장만 써요` : '') +
+        ((this._cardStickers || []).some(s => s.frameText) ? ' · 프레임 글자는 끌어서 옮기고, 눌러서 글자 탭에서 고쳐요' : '');
     } else if (note) {
       const n = photos.filter(Boolean).length;
       // 피드·스토리는 1장이 기본이라 1장일 때는 안내가 필요 없다
@@ -6569,8 +6712,10 @@ App.pages.records = {
       if (this._slotCutSrc) this._slotCutSrc[slot] = null;
       const zs0 = document.querySelector(`.card-zoom-slider[data-slot="${slot}"]`); if (zs0) zs0.min = 100;
       this._syncSlotColorRow?.();
+      App.cutout?.syncSlot(slot);
       return;
     }
+    App.cutout?.syncSlot(slot);
     const meta = this._cardPhotoMeta[slot] || { offsetX: 0, offsetY: 0, zoom: 1.0 };
     // offsetX/Y = -50~+50 → object-position % = 0~100
     const colPct = (50 + (meta.offsetX || 0)) + '%';
@@ -6643,6 +6788,7 @@ App.pages.records = {
       customShowDate: (ds.showDate ?? ds.customShowDate) !== false,
       customShowShop: (ds.showShop ?? ds.customShowShop) !== false
     };
+    if (layout === 'scene' && App.bgLib) designSettings.scene = App.bgLib.cardScene(); // 배경 그림 (미리보기·저장 같은 값)
     return designSettings;
   },
 
@@ -6770,6 +6916,11 @@ App.pages.records = {
     this._cardPhotoMeta = [];
     // 스티커: 새 카드는 비우고, '다시 꾸미기'는 붙인 그대로
     this._cardStickers = keep ? (this._cardStickers || []) : [];
+    if (!keep) this._frameTextFor = null;
+    // 떼어 낸 강아지(입체 꾸미기) — 스티커처럼 '다시 꾸미기'는 그대로
+    this._cardFront = keep ? (this._cardFront || []) : [];
+    this._frontEditSlot = null;
+    this._frontView = null;
     this._stickerSel = -1;
     this._customStickers = (await DB.getSetting('customStickers')) || [];
     const cardPetName = (ctx.pet && ctx.pet.name) || '';
@@ -6881,6 +7032,7 @@ App.pages.records = {
             ${poolCount ? `<button type="button" class="btn btn-sm btn-secondary" id="card-use-record-photos">${App.icon('image')} ${App.escapeHtml(ctx.poolLabel || '기록 사진')} 넣기 (${poolCount}장)</button>` : ''}
           </div>
           <div id="card-photo-slots" class="card-slots-row"></div>
+          <div class="form-hint">아이폰에서 떼어낸 사진(배경 없는 사진)도 그대로 쓸 수 있어요</div>
           <details class="card-help">
             <summary>강아지만 떼어 색 배경에 올리려면?</summary>
             <ol>
@@ -6933,6 +7085,8 @@ App.pages.records = {
           </div>
           <div class="form-hint">사진 위에 아무 틀도 없어요. '글자'·'스티커' 탭에서 꾸미세요.</div>
         </div>
+        <!-- 배경 그림 — 보관함 (js/bg-library.js 가 채운다) -->
+        <div id="scene-options" class="form-group bgl-panel" style="display:${selectedLayout === 'scene' ? 'block' : 'none'}"></div>
         <!-- 배경색은 꾸미기 탭 한 곳에서 — 여기서는 지금 색을 보여 주고 바로 건너가게 -->
         <button type="button" class="card-bg-link" id="card-bg-link"><i id="card-bg-link-dot"></i><span>배경색 <b id="card-bg-link-name"></b></span><em>바꾸기 ›</em></button>
         </div>
@@ -6961,7 +7115,7 @@ App.pages.records = {
             ${userFrames.length ? `<label class="form-label" style="margin-top:14px">내 프레임 <span class="card-sub">· 고르면 프레임 모양 그대로 나와요</span></label>
             <div class="card-frame-row" aria-label="내 프레임">${userFrames.map(f => `
               <button type="button" class="card-pick-btn card-frame-btn${selectedFrameId === f.id ? ' active' : ''}" data-key="frame:${App.escapeHtml(f.id)}" data-frame-id="${App.escapeHtml(f.id)}" title="${App.escapeHtml(f.name)}">
-                <span class="card-frame-thumb"><img src="${f.image}" alt="" loading="lazy"></span>
+                <span class="card-frame-thumb"><img src="${f.thumb || f.image}" alt="" loading="lazy"></span>
                 <span class="card-frame-name">${App.escapeHtml(f.name)}</span>
                 ${f.mode === 'overlay' && Array.isArray(f.holes) && f.holes.length ? `<small class="card-frame-holes">사진 ${f.holes.length}칸</small>` : ''}
               </button>
@@ -7014,6 +7168,7 @@ App.pages.records = {
             <button type="button" class="card-sticker-set active" data-set="retro">레트로</button>
             <button type="button" class="card-sticker-set" data-set="brand">브랜드</button>
             <button type="button" class="card-sticker-set" data-set="modern">모던</button>
+            <button type="button" class="card-sticker-set" data-set="prop">소품</button>
             <button type="button" class="card-sticker-set" data-set="chic">세련된</button>
             <button type="button" class="card-sticker-set" data-set="emoji">이모지</button>
           </div>
@@ -7023,6 +7178,7 @@ App.pages.records = {
             <button type="button" class="card-sticker-tool" id="card-sticker-logo"><b>◎</b><small>내 로고</small></button>
             <span id="card-sticker-custom" class="card-sticker-custom"></span>
             ${Object.entries(this._AI_STICKER_SETS).map(([set, ids]) => ids.map(id => `<button type="button" class="card-sticker-btn" data-set="${set}" data-sticker="${id}" aria-label="스티커 붙이기"${set === 'retro' ? '' : ' hidden'}><img src="${this._stickerSrc(id)}" alt="" loading="lazy"></button>`).join('')).join('')}
+            ${this._PROP_STICKERS.map(id => `<button type="button" class="card-sticker-btn" data-set="prop" data-sticker="${id}" aria-label="소품 붙이기" hidden><img src="${this._stickerSrc(id)}" alt="" loading="lazy"></button>`).join('')}
             ${this._CHIC_STICKERS.map(id => `<button type="button" class="card-sticker-btn" data-set="chic" data-sticker="${id}" aria-label="스티커 붙이기" hidden><img src="${this._stickerSrc(id)}" alt="" loading="lazy"></button>`).join('')}
             ${this._STICKERS.map(id => `<button type="button" class="card-sticker-btn" data-set="emoji" data-sticker="${id}" aria-label="스티커 붙이기" hidden><img src="${this._stickerSrc(id)}" alt="" loading="lazy"></button>`).join('')}
           </div>
@@ -7110,6 +7266,7 @@ App.pages.records = {
       `,
       onSave: async () => {
         const f = await this._readCardForm(cardPetName);
+        await this._syncFrameText(f);
         const count = this._cardPhotoCount(f);
         const photos = this._cardPhotos.slice(0, count);
         if (!photos.some(Boolean)) { App.showToast('사진을 최소 1장 선택해주세요.', 'error'); return; }
@@ -7135,9 +7292,11 @@ App.pages.records = {
           const k = btn.dataset.key;
           const plainOpts = document.getElementById('plain-options');
           if (plainOpts) plainOpts.style.display = k === 'plain' ? 'block' : 'none';
+          App.bgLib?.onLayout(k === 'scene');
 
         });
       });
+      App.bgLib?.wire().catch(e => console.warn('배경 보관함:', e));
       // 틀 탭 → 꾸미기 탭 배경색으로 바로
       document.getElementById('card-bg-link')?.addEventListener('click', () => {
         document.querySelector('.card-tab[data-tab="deco"]')?.click();
@@ -7400,6 +7559,7 @@ App.pages.records = {
         photo3: (photoMetas && photoMetas[2]) || { offsetX: 0, offsetY: 0, zoom: 1.0 },
         photo4: (photoMetas && photoMetas[3]) || { offsetX: 0, offsetY: 0, zoom: 1.0 }
       };
+      if (App.cutout) record._fronts = App.cutout.frontsFor([photo1, photo2, photo3, photo4]);
       const { customer, pet, serviceNames } = ctx;
       const shopName = await DB.getSetting('shopName') || '펫살롱';
       const shopPhone = await DB.getSetting('shopPhone') || '';

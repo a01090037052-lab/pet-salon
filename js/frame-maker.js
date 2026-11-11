@@ -58,6 +58,32 @@ App.frameMaker = {
 
   defaults() { return { tpl: 'booth4', ...this.PRESETS.picnic, preset: 'picnic', logo: false, bgPhoto: null }; },
 
+  // ===== 프레임 글자 (2026-11-11) =====
+  // 위·아래 글자는 PNG 에 굽지 않고 값으로 저장한다 → 사진 카드에서 글자 스티커로 올려 옮기고 고칠 수 있다.
+  // text: { v:1, font, color, band, bandColor, glow, items:[{ role:'title'|'caption', text(원문, {매장명} 그대로), x, y(가운데, 0~1), size(글자 크기/프레임 가로), maxW(최대 폭/프레임 가로) }] }
+  fillShop(text, shop) { return String(text || '').replace(/\{매장명\}/g, shop || 'PET SALON').trim(); },
+  normalizeFrameText(t) {
+    if (!t || typeof t !== 'object' || !Array.isArray(t.items)) return null;
+    const hex = (c, d) => (/^#[0-9a-f]{6}$/i.test(c || '') ? c : d);
+    const num = (v, lo, hi, d) => { v = Number(v); return Number.isFinite(v) ? Math.max(lo, Math.min(hi, v)) : d; };
+    const items = t.items
+      .filter(i => i && typeof i.text === 'string' && i.text.trim())
+      .slice(0, 4)
+      .map(i => {
+        const role = i.role === 'title' ? 'title' : 'caption';
+        return { role, text: i.text.trim().slice(0, 60), x: num(i.x, 0, 1, 0.5), y: num(i.y, 0, 1, role === 'title' ? 0.06 : 0.94),
+          size: num(i.size, 0.01, 0.3, 0.06), maxW: num(i.maxW, 0.05, 1, 0.9) };
+      });
+    if (!items.length) return null;
+    return { v: 1, font: typeof t.font === 'string' && t.font ? t.font : 'system', color: hex(t.color, '#FFFFFF'),
+      band: !!t.band, bandColor: hex(t.bandColor, '#FFFFFF'), glow: !!t.glow, items };
+  },
+  // 글자 스티커 크기 (카드 가로 비율) — 스티커 그림은 88px 글자로 그린다. 프레임처럼 최대 폭을 넘으면 글자를 줄인다
+  textStickerSize(item, stickerW, textW) {
+    const f = Math.min(item.size, textW > 0 ? item.maxW * 88 / textW : item.size);
+    return Math.max(0.04, Math.min(1.2, stickerW * f / 88));
+  },
+
   // 칸 자리 (px) — 위 글자·아래 글자 자리를 먼저 잡고 남은 곳을 칸으로 나눈다
   cells(p) {
     const T = this.TEMPLATES[p.tpl] || this.TEMPLATES.booth4;
@@ -325,13 +351,18 @@ App.frameMaker = {
     x.fillText(text, cx, cy + 2);
   },
 
-  async render(p) {
+  // opts.noText: 글자(와 띠)를 굽지 않고 자리만 texts 로 돌려준다 (저장용)
+  async render(p, opts = {}) {
     const R = App.pages.records;
     const T = this.TEMPLATES[p.tpl] || this.TEMPLATES.booth4;
     const W = T.w, H = T.h;
     const shop = (await DB.getSetting('shopName')) || '';
-    const fill = (t) => String(t || '').replace(/\{매장명\}/g, shop || 'PET SALON').trim();
-    const title = fill(p.title), caption = fill(p.caption);
+    const title = this.fillShop(p.title, shop), caption = this.fillShop(p.caption, shop);
+    const texts = [];
+    const put = (role, text, cx, cy, maxW, size) => {
+      texts.push({ role, text: role === 'title' ? p.title : p.caption, x: cx / W, y: cy / H, size: size / W, maxW: maxW / W });
+      if (!opts.noText) this._drawText(x, text, cx, cy, maxW, size, p, fontStack);
+    };
     if (p.font && p.font !== 'system') await R._ensureCardFont(p.font, title + caption);
     const fontStack = R._cardFontStack(p.font);
     const bgImg = p.bgType === 'photo' && p.bgPhoto ? await R._loadImg(p.bgPhoto) : null;
@@ -382,39 +413,39 @@ App.frameMaker = {
     if (this._isPeek(p.tpl)) {
       // 글자·로고는 왼쪽 벽 위아래에
       const wc = cells[0].x / 2, ww = cells[0].x - 70;
-      if (title) this._drawText(x, title, wc, 130, ww, 64, p, fontStack);
-      if (caption) this._drawText(x, caption, wc, H - 110, ww, 52, p, fontStack);
+      if (title) put('title', title, wc, 130, ww, 64);
+      if (caption) put('caption', caption, wc, H - 110, ww, 52);
       if (logoImg) {
         const L = this._logoSpot(p, W, H, cells, !!title, !!caption);
         this._logoMark(x, logoImg, L.cx, L.cy, L.size, p.logoStyle || 'sign', p.bg1);
       }
       const holes = cells.map(cl => ({ x: cl.x / W, y: cl.y / H, w: cl.w / W, h: cl.h / H }));
-      return { canvas: c, holes, fw: W, fh: H, holeBg: this._holeBg(p) };
+      return { canvas: c, holes, fw: W, fh: H, holeBg: this._holeBg(p), texts };
     }
     // 위·아래 글자
     const last = cells[cells.length - 1];
     const bottomTop = last.y + last.h + 12, bottomH = H - bottomTop;
     const tSize = p.tpl === 'booth4' ? 92 : 80, cSize = p.tpl === 'polaroid' ? 88 : (p.tpl === 'booth4' ? 70 : 62);
-    if (title) this._drawText(x, title, W / 2, cells[0].y / 2 + 4, W - 120, tSize, p, fontStack);
+    if (title) put('title', title, W / 2, cells[0].y / 2 + 4, W - 120, tSize);
     // 로고를 끌어 놓았거나 모양·크기를 정했으면 그 자리에 따로 (아래 글자는 혼자)
     const freeLogo = logoImg && (p.logoX != null || (p.logoStyle && p.logoStyle !== 'plain') || p.logoSize != null) ? logoImg : null;
     if (freeLogo) logoImg = null;
     if (logoImg && caption) {
       const lh = 64, lw = logoImg.width * (lh / logoImg.height);
       x.drawImage(logoImg, (W - lw) / 2, bottomTop + bottomH * 0.22, lw, lh);
-      this._drawText(x, caption, W / 2, bottomTop + bottomH * 0.66, W - 120, Math.round(cSize * 0.85), p, fontStack);
+      put('caption', caption, W / 2, bottomTop + bottomH * 0.66, W - 120, Math.round(cSize * 0.85));
     } else if (logoImg) {
       const lh = 80, lw = logoImg.width * (lh / logoImg.height);
       x.drawImage(logoImg, (W - lw) / 2, bottomTop + (bottomH - lh) / 2, lw, lh);
     } else if (caption) {
-      this._drawText(x, caption, W / 2, bottomTop + bottomH / 2, W - 120, cSize, p, fontStack);
+      put('caption', caption, W / 2, bottomTop + bottomH / 2, W - 120, cSize);
     }
     if (freeLogo) {
       const L = this._logoSpot(p, W, H, cells, !!title, !!caption);
       this._logoMark(x, freeLogo, L.cx, L.cy, L.size, p.logoStyle || 'plain', p.bg1);
     }
     const holes = cells.map(cl => ({ x: cl.x / W, y: cl.y / H, w: cl.w / W, h: cl.h / H }));
-    return { canvas: c, holes, fw: W, fh: H, holeBg: this._holeBg(p) };
+    return { canvas: c, holes, fw: W, fh: H, holeBg: this._holeBg(p), texts };
   },
   // 로고 자리 (px) — 끌어 놓은 자리(logoX·Y, 0~1)가 있으면 그곳, 없으면 틀마다 기본 자리. 크기는 logoSize(가로 비율)
   _logoSpot(p, W, H, cells, hasTitle, hasCaption) {
@@ -464,6 +495,18 @@ App.frameMaker = {
     return url;
   },
 
+  // 작은 미리 그림 (가로 240px 이하·세로 480px 이하 JPEG) — 칸은 사진 뒤 색(없으면 연한 회색)으로 채운다
+  _thumbUrl(r) {
+    const k = Math.min(240 / r.canvas.width, 480 / r.canvas.height, 1);
+    const c = document.createElement('canvas'); c.width = Math.round(r.canvas.width * k); c.height = Math.round(r.canvas.height * k);
+    const x = c.getContext('2d');
+    x.fillStyle = r.holeBg || '#E5E7EB'; x.fillRect(0, 0, c.width, c.height);
+    x.drawImage(r.canvas, 0, 0, c.width, c.height);
+    const url = c.toDataURL('image/jpeg', 0.8);
+    r.canvas.width = r.canvas.height = 0; c.width = c.height = 0;
+    return url;
+  },
+
   // 만들기 창. frame 을 주면 그 프레임(만든 값 maker)을 고친다
   async open(frame) {
     const editing = !!(frame && frame.maker);
@@ -503,7 +546,12 @@ App.frameMaker = {
             <div class="form-group"><label class="form-label">글자 <span class="fm-sub">· {매장명}은 매장 이름으로 바뀌어요</span></label>
               <input type="text" id="fm-title" maxlength="24" placeholder="위 글자 (비우면 없음)" value="${App.escapeHtml(p.title || '')}">
               <input type="text" id="fm-caption" maxlength="30" placeholder="아래 글자 (비우면 없음)" value="${App.escapeHtml(p.caption || '')}" style="margin-top:6px">
-              ${hasLogo ? `<label class="card-toggle" style="margin-top:8px"><input type="checkbox" id="fm-logo" ${p.logo ? 'checked' : ''}> 매장 로고 넣기</label>
+              <div class="fm-logo-row">
+                <label class="card-toggle" id="fm-logo-toggle" ${hasLogo ? '' : 'hidden'}><input type="checkbox" id="fm-logo" ${p.logo ? 'checked' : ''}> 매장 로고 넣기</label>
+                <button type="button" class="btn btn-sm ${hasLogo ? 'btn-ghost' : 'btn-secondary'}" id="fm-logo-up">${hasLogo ? '로고 바꾸기' : App.icon('image') + ' 로고 올리기'}</button>
+                <input type="file" id="fm-logo-file" accept="image/*" hidden>
+              </div>
+              <div class="form-hint" id="fm-logo-hint" ${hasLogo ? 'hidden' : ''}>매장 로고를 올리면 프레임(벽 뒤 빼꼼은 벽)에 붙일 수 있어요. 올린 로고는 설정의 매장 로고로도 저장돼요.</div>
               <div id="fm-wall-logo" hidden>
                 <div class="fm-color-label">로고 모양</div>
                 <div class="fm-row" id="fm-logo-style">${chips({ sign: '흰 동그라미 간판', plain: '그대로', engrave: '새긴 듯 연하게' }, 'lstyle', p.logoStyle || (this._isPeek(p.tpl) ? 'sign' : 'plain'))}</div>
@@ -511,7 +559,7 @@ App.frameMaker = {
                 <div class="fm-row" id="fm-logo-pos">${chips({ top: '위', middle: '가운데', bottom: '아래' }, 'lpos', p.logoPos || 'middle')}</div>
                 <label class="fm-logo-size">크기 <input type="range" id="fm-logo-size" min="8" max="45" step="1" value="${Math.round((p.logoSize != null ? p.logoSize : (this._isPeek(p.tpl) ? 0.28 : 0.16)) * 100)}"></label>
                 <div class="fm-logo-warn" id="fm-logo-warn" hidden>로고가 사진 칸 위에 있어요 — 사진을 가릴 수 있어요.</div>
-              </div>` : `<div class="form-hint" style="margin-top:6px">설정 → 매장 관리에서 매장 로고를 올리면 프레임(벽 뒤 빼꼼은 벽)에 붙일 수 있어요.</div>`}
+              </div>
               <div class="fm-color-label">글꼴</div>
               <div class="card-font-row" id="fm-font">${Object.entries(R._CARD_FONTS).map(([k, f]) => `<button type="button" class="card-font-btn${k === p.font ? ' active' : ''}" data-key="${k}" style="font-family:${App.escapeHtml(R._cardFontStack(k))}">${f.name}</button>`).join('')}</div>
               <div class="fm-color-label">글자 색</div>${sw('fm-text', p.textColor)}
@@ -531,12 +579,16 @@ App.frameMaker = {
         if (!overwrite && all.length >= max) { App.showToast(`프레임은 최대 ${max}개까지 등록할 수 있어요. 안 쓰는 프레임을 지운 뒤 저장해 주세요.`, 'error'); return; }
         // 같은 이름이 있으면 뒤에 번호 (연달아 저장해도 구분되게)
         if (!overwrite && all.some(f => f.name === name)) { let n = 2; while (all.some(f => f.name === `${name} ${n}`)) n++; name = `${name} ${n}`; }
-        const r = await this.render(p);
+        // 글자는 그림에 굽지 않고 값(text)으로 — 사진 카드에서 옮기고 고칠 수 있게 (띠도 글자와 함께 움직이도록 글자 쪽에)
+        const r = await this.render(p, { noText: true });
         const image = r.canvas.toDataURL('image/png');
         r.canvas.width = r.canvas.height = 0;
+        const text = this.normalizeFrameText({ font: p.font, color: p.textColor, band: p.band, bandColor: p.bandColor, glow: p.glow, items: r.texts });
+        // 목록·카드 버튼용 작은 그림 — 글자까지 넣어서 (저장 그림에는 글자가 없어 알아보기 어렵다)
+        const thumb = await this._thumbUrl(await this.render(p));
         const rec = {
           id: overwrite ? frame.id : 'f' + Date.now() + Math.random().toString(36).slice(2, 5), name, image, mode: 'overlay', holes: r.holes, fw: r.fw, fh: r.fh, holeBg: r.holeBg || null,
-          accentColor: p.textColor, textColor: p.textColor, enabled: overwrite ? frame.enabled !== false : true,
+          text, thumb, accentColor: p.textColor, textColor: p.textColor, enabled: overwrite ? frame.enabled !== false : true,
           maker: { ...p }, createdAt: (overwrite && frame.createdAt) || new Date().toISOString()
         };
         const idx = all.findIndex(f => f.id === rec.id);
@@ -636,6 +688,23 @@ App.frameMaker = {
     $('fm-title')?.addEventListener('input', (e) => { p.title = e.target.value; draw(); });
     $('fm-caption')?.addEventListener('input', (e) => { p.caption = e.target.value; draw(); });
     $('fm-logo')?.addEventListener('change', (e) => { p.logo = e.target.checked; syncAll(); draw(); });
+    // 로고 올리기·바꾸기 — 설정의 매장 로고와 같은 값(shopLogo)으로 저장하고 바로 켠다
+    $('fm-logo-up')?.addEventListener('click', () => $('fm-logo-file')?.click());
+    $('fm-logo-file')?.addEventListener('change', async (e) => {
+      const f = e.target.files && e.target.files[0]; e.target.value = '';
+      if (!f) return;
+      const logo = await App.pages.settings._readLogoFile(f);
+      if (!logo) return;
+      await DB.setSetting('shopLogo', logo);
+      p.logo = true;
+      if ($('fm-logo')) $('fm-logo').checked = true;
+      if ($('fm-logo-toggle')) $('fm-logo-toggle').hidden = false;
+      if ($('fm-logo-hint')) $('fm-logo-hint').hidden = true;
+      const up = $('fm-logo-up');
+      if (up) { up.textContent = '로고 바꾸기'; up.classList.replace('btn-secondary', 'btn-ghost'); }
+      App.showToast('로고를 저장했어요.');
+      syncAll(); draw();
+    });
     on('fm-logo-style', 'lstyle', (k) => { p.logoStyle = k; });
     on('fm-logo-pos', 'lpos', (k) => {
       // 빠른 자리: 빼꼼은 벽 위·가운데·아래, 그 밖은 끌어 놓은 자리를 지우고 틀 기본 자리(위·가운데·아래 높이)로
