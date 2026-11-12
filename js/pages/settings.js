@@ -2186,7 +2186,7 @@ App.pages.settings = {
     try {
       const btn = document.getElementById('btn-undo-import');
       if (btn) { btn.disabled = true; btn.textContent = '되돌리는 중...'; }
-      await DB.importAll(autoBackup.data);
+      await DB.importAll(autoBackup.data, null, { keepDeviceAssets: false }); // 되돌리기는 그때 사본 그대로
       if (App.migratePetVisitStats) await App.migratePetVisitStats(true);
       if (App.migratePriceBands) await App.migratePriceBands(true);
       App.showToast('복원 직전 상태로 되돌렸습니다.');

@@ -2369,9 +2369,12 @@ App.pages.records = {
       const finalPrice = money.finalPrice;
       if (money.negative) { App.showToast('할인이 금액보다 큽니다. 할인 금액을 확인해주세요.', 'error'); App.highlightField('f-discount'); return; }
       const compTotal0 = money.complimentaryTotal;
-      if (finalPrice === 0 && paymentMethod !== 'unpaid' && !(mainFree || freeAddons.length)) {
+      if (finalPrice === 0 && !(mainFree || freeAddons.length)) {
         // 예약→기록 흐름에서 가격이 비어 0원 매출이 조용히 쌓이던 문제. (메뉴의 무료 서비스는 '서비스 제공'이 자동으로 켜져 여기 오지 않는다)
-        const okZero = await App.confirm('합계가 <strong>0원</strong>입니다. 0원으로 저장할까요?', { okLabel: '0원으로 저장', danger: false });
+        // 미결제도 묻는다 — 0원 미결제는 나중에 '결제 완료'를 눌러도 0원이라 받을 돈이 사라진다
+        const okZero = await App.confirm(paymentMethod === 'unpaid'
+          ? '미결제인데 받을 금액이 <strong>0원</strong>입니다. 금액 없이 저장할까요?'
+          : '합계가 <strong>0원</strong>입니다. 0원으로 저장할까요?', { okLabel: '0원으로 저장', danger: false });
         if (!okZero) { App.highlightField('f-servicePrice'); return; }
       }
       // 자동 채운 값 뒤에 이어 쳐서 3000030000원처럼 저장되던 문제 — 500만원이 넘으면 한 번 묻는다
@@ -2756,7 +2759,7 @@ App.pages.records = {
         <!-- 헤더 -->
         <div style="text-align:center;margin-bottom:20px;padding-bottom:16px;border-bottom:2px solid var(--border)">
           <div style="display:flex;align-items:center;justify-content:center;gap:8px;margin-bottom:8px">
-            <input type="date" id="report-date-picker" value="${reportDate}" style="width:auto;padding:8px 14px;font-size:1rem;font-weight:700;color:var(--text-primary);text-align:center;border-radius:8px;min-height:44px">
+            <input type="date" id="report-date-picker" value="${reportDate}" style="width:auto;padding:8px 14px;font-size:max(16px,1rem);font-weight:700;color:var(--text-primary);text-align:center;border-radius:8px;min-height:44px">
           </div>
           <div style="font-size:0.93rem;color:var(--text-muted);margin-bottom:4px">${reportDow}요일</div>
           <div style="font-size:2.2rem;font-weight:800;color:var(--primary)">${App.formatCurrency(totalRevenue)}</div>
@@ -3229,6 +3232,16 @@ App.pages.records = {
   },
 
   // --- Helper: truncate text to fit width ---
+  // 가운데 글자를 폭에 맞춰 그린다: 넘치면 글자 크기를 65%까지 줄이고, 그래도 넘치면 끝을 … 으로 (카드 양옆으로 잘려 나가지 않게)
+  _fitFill(ctx, text, x, y, maxW) {
+    text = String(text == null ? '' : text);
+    const w = ctx.measureText(text).width;
+    if (!(w > maxW)) { ctx.fillText(text, x, y); return; }
+    const font = ctx.font, m = font.match(/(\d+(?:\.\d+)?)px/);
+    if (m) ctx.font = font.replace(m[0], (parseFloat(m[1]) * Math.max(0.65, maxW / w)).toFixed(1) + 'px');
+    ctx.fillText(this._truncText(ctx, text, maxW), x, y);
+    ctx.font = font;
+  },
   _truncText(ctx, text, maxWidth) {
     if (ctx.measureText(text).width <= maxWidth) return text;
     let t = text;
@@ -3874,8 +3887,7 @@ App.pages.records = {
     // ===== Layout F: strip2 (2컷 스트립) =====
     else if (layout === 'strip2') {
       const W = 400, H = 900;
-      canvas.width = W; canvas.height = H;
-      ctx = canvas.getContext('2d');
+      ctx = this._sharpCanvas(canvas, W, H); // 400 기준 좌표 그대로, 그림은 처음부터 1080px 로 (예전엔 작게 그려 늘려서 사진·글자가 흐렸다)
       ctx.fillStyle = bgColor; ctx.fillRect(0, 0, W, H);
       // 2컷만 프레임(배경 이미지)을 그리지 않아 내 프레임을 골라도 흰 배경으로 나왔다
       if (_customBgImg) this._drawImageCover(ctx, _customBgImg, 0, 0, W, H);
@@ -3886,7 +3898,7 @@ App.pages.records = {
 
       // Shop name (토글)
       ctx.textAlign = 'center';
-      if (s.customShowShop) { ctx.fillStyle = textSub; ctx.font = '14px ' + fontFamily; ctx.fillText(shopName, W / 2, 30); }
+      if (s.customShowShop) { ctx.fillStyle = textSub; ctx.font = '14px ' + fontFamily; this._fitFill(ctx, shopName, W / 2, 30, W * 0.9); }
 
       const topY = 50;
       // 사진 위 BEFORE/AFTER 글씨는 넣지 않는다 (사장님 요청 — 사진을 가리고 꼭 전·후 사진만 쓰는 것도 아님)
@@ -3903,7 +3915,7 @@ App.pages.records = {
       const bottomY = afterY + photoS + 28;
       let iy = bottomY;
       ctx.textAlign = 'center';
-      if (s.customShowPet) { ctx.fillStyle = textColor; ctx.font = 'bold 18px ' + fontFamily; ctx.fillText(petName, W / 2, iy); iy += 22; }
+      if (s.customShowPet) { ctx.fillStyle = textColor; ctx.font = 'bold 18px ' + fontFamily; this._fitFill(ctx, petName, W / 2, iy, W * 0.9); iy += 22; }
       if (s.customShowDate) { ctx.fillStyle = textSub; ctx.font = '13px ' + fontFamily; ctx.fillText(dateStr, W / 2, iy); iy += 22; }
 
       // Info lines
@@ -3915,7 +3927,7 @@ App.pages.records = {
 
       // Footer message
       ctx.fillStyle = mainColor; ctx.font = '12px ' + fontFamily;
-      ctx.fillText(footerMessage, W / 2, H - 20);
+      this._fitFill(ctx, footerMessage, W / 2, H - 20, W * 0.9);
     }
 
     // ===== Layout G: grid4 (4컷 2x2 그리드) =====
@@ -3932,7 +3944,7 @@ App.pages.records = {
 
       // Shop name
       ctx.fillStyle = textSub; ctx.font = '14px ' + fontFamily; ctx.textAlign = 'center';
-      ctx.fillText(shopName, W / 2, 30);
+      this._fitFill(ctx, shopName, W / 2, 30, W * 0.9);
 
       const topY = 50;
       // Top-left
@@ -3948,7 +3960,7 @@ App.pages.records = {
       // Pet name + date
       const bottomY = topY + cellH * 2 + gap + 32;
       ctx.fillStyle = textColor; ctx.font = 'bold 18px ' + fontFamily; ctx.textAlign = 'center';
-      ctx.fillText(petName + ' \u2665', W / 2, bottomY);
+      this._fitFill(ctx, petName + ' \u2665', W / 2, bottomY, W * 0.9);
       ctx.fillStyle = textSub; ctx.font = '13px ' + fontFamily;
       ctx.fillText(dateStr, W / 2, bottomY + 22);
 
@@ -3961,7 +3973,7 @@ App.pages.records = {
 
       // Footer message
       ctx.fillStyle = mainColor; ctx.font = '12px ' + fontFamily;
-      ctx.fillText(footerMessage, W / 2, H - 20);
+      this._fitFill(ctx, footerMessage, W / 2, H - 20, W * 0.9);
     }
 
     // ===== 네컷 세로 (인생네컷 스타일) =====
@@ -3970,8 +3982,7 @@ App.pages.records = {
       const photoW = W - pad * 2;
       const photoH = Math.round(photoW * 3 / 4);
       const H = pad + (photoH + gap) * 4 - gap + 100;
-      canvas.width = W; canvas.height = H;
-      ctx = canvas.getContext('2d');
+      ctx = this._sharpCanvas(canvas, W, H);
       ctx.fillStyle = bgColor; ctx.fillRect(0, 0, W, H);
       if (_customBgImg) this._drawImageCover(ctx, _customBgImg, 0, 0, W, H);
 
@@ -4013,11 +4024,11 @@ App.pages.records = {
       }
       ctx.textAlign = 'center';
       let _ty = infoY + 22;
-      if (s.customShowPet) { ctx.fillStyle = textColor; ctx.font = 'bold 20px ' + fontFamily; ctx.fillText(petName, W / 2, _ty); _ty += 20; }
+      if (s.customShowPet) { ctx.fillStyle = textColor; ctx.font = 'bold 20px ' + fontFamily; this._fitFill(ctx, petName, W / 2, _ty, W * 0.9); _ty += 20; }
       if (s.customShowDate) { ctx.fillStyle = textSub; ctx.font = '13px ' + fontFamily; ctx.fillText(dateStr, W / 2, _ty); _ty += 18; }
       if (s.customShowShop) {
         if (_logoImg && _logoPos !== 'none') { const lh = 28 * _logoSizeMul, lw = _logoImg.width * (lh / _logoImg.height); ctx.drawImage(_logoOn(), (W - lw) / 2, _ty - 12, lw, lh); }
-        else if (!_logoImg) { ctx.fillStyle = mainColor; ctx.font = 'bold 13px ' + fontFamily; const shopLine = (s.showShopPhone && shopPhone) ? shopName + ' · ' + shopPhone : shopName; ctx.fillText(shopLine, W / 2, _ty); }
+        else if (!_logoImg) { ctx.fillStyle = mainColor; ctx.font = 'bold 13px ' + fontFamily; const shopLine = (s.showShopPhone && shopPhone) ? shopName + ' · ' + shopPhone : shopName; this._fitFill(ctx, shopLine, W / 2, _ty, W * 0.9); }
       }
     }
 
@@ -4039,7 +4050,7 @@ App.pages.records = {
         if (_logoImg && _logoPos !== 'none') {
           _drawLogoAt(ctx, { W: W, H: H, baseH: 40, topY: 20, bottomPad: 80 });
         } else if (!_logoImg) {
-          ctx.fillStyle = mainColor; ctx.font = 'bold 32px ' + fontFamily; ctx.fillText(emoji + ' ' + shopName, W / 2, 50);
+          ctx.fillStyle = mainColor; ctx.font = 'bold 32px ' + fontFamily; this._fitFill(ctx, emoji + ' ' + shopName, W / 2, 50, W * 0.9);
         }
       }
 
@@ -4072,12 +4083,12 @@ App.pages.records = {
         this._roundRect(ctx, 40, ftY - 10, W - 80, 120 + _extraH, 14); ctx.fill();
       }
       let _fty = ftY + 30;
-      if (_hasHeadline) { ctx.fillStyle = textColor; ctx.font = 'bold 38px ' + fontFamily; ctx.fillText(s.headline, W / 2, _fty); _fty += 44; }
-      if (_hasSubline) { ctx.fillStyle = textSub; ctx.font = '26px ' + fontFamily; ctx.fillText(s.subline, W / 2, _fty); _fty += 32; }
-      if (s.customShowPet) { ctx.fillStyle = textColor; ctx.font = 'bold 42px ' + fontFamily; ctx.fillText(petName, W / 2, _fty); _fty += 40; }
-      if (_svcLine) { ctx.fillStyle = textSub; ctx.font = '28px ' + fontFamily; ctx.fillText(_svcLine, W / 2, _fty); _fty += 35; }
+      if (_hasHeadline) { ctx.fillStyle = textColor; ctx.font = 'bold 38px ' + fontFamily; this._fitFill(ctx, s.headline, W / 2, _fty, W * 0.9); _fty += 44; }
+      if (_hasSubline) { ctx.fillStyle = textSub; ctx.font = '26px ' + fontFamily; this._fitFill(ctx, s.subline, W / 2, _fty, W * 0.9); _fty += 32; }
+      if (s.customShowPet) { ctx.fillStyle = textColor; ctx.font = 'bold 42px ' + fontFamily; this._fitFill(ctx, petName, W / 2, _fty, W * 0.9); _fty += 40; }
+      if (_svcLine) { ctx.fillStyle = textSub; ctx.font = '28px ' + fontFamily; this._fitFill(ctx, _svcLine, W / 2, _fty, W * 0.9); _fty += 35; }
       if (s.customShowDate) { ctx.fillStyle = textSub; ctx.font = '24px ' + fontFamily; ctx.fillText(dateStr, W / 2, _fty); _fty += 30; }
-      if (_nvLine) { ctx.fillStyle = mainColor; ctx.font = 'bold 24px ' + fontFamily; ctx.fillText(_nvLine, W / 2, _fty); }
+      if (_nvLine) { ctx.fillStyle = mainColor; ctx.font = 'bold 24px ' + fontFamily; this._fitFill(ctx, _nvLine, W / 2, _fty, W * 0.9); }
     }
 
     // ===== 인스타 스토리 (9:16) =====
@@ -4096,7 +4107,7 @@ App.pages.records = {
         if (_logoImg && _logoPos !== 'none') {
           _drawLogoAt(ctx, { W: W, H: H, baseH: 50, topY: 60, bottomPad: 100 });
         } else if (!_logoImg) {
-          ctx.fillStyle = mainColor; ctx.font = 'bold 40px ' + fontFamily; ctx.fillText(emoji + ' ' + shopName, W / 2, 100);
+          ctx.fillStyle = mainColor; ctx.font = 'bold 40px ' + fontFamily; this._fitFill(ctx, emoji + ' ' + shopName, W / 2, 100, W * 0.9);
         }
       }
 
@@ -4129,12 +4140,12 @@ App.pages.records = {
         this._roundRect(ctx, 60, infoY - 10, W - 120, 160 + _sExtraH, 16); ctx.fill();
       }
       let _sty = infoY + 40;
-      if (_sHasHl) { ctx.fillStyle = textColor; ctx.font = 'bold 44px ' + fontFamily; ctx.fillText(s.headline, W / 2, _sty); _sty += 50; }
-      if (_sHasSub) { ctx.fillStyle = textSub; ctx.font = '30px ' + fontFamily; ctx.fillText(s.subline, W / 2, _sty); _sty += 36; }
-      if (s.customShowPet) { ctx.fillStyle = textColor; ctx.font = 'bold 48px ' + fontFamily; ctx.fillText(petName, W / 2, _sty); _sty += 45; }
-      if (_svcLine) { ctx.fillStyle = textSub; ctx.font = '32px ' + fontFamily; ctx.fillText(_svcLine, W / 2, _sty); _sty += 40; }
+      if (_sHasHl) { ctx.fillStyle = textColor; ctx.font = 'bold 44px ' + fontFamily; this._fitFill(ctx, s.headline, W / 2, _sty, W - 140); _sty += 50; }
+      if (_sHasSub) { ctx.fillStyle = textSub; ctx.font = '30px ' + fontFamily; this._fitFill(ctx, s.subline, W / 2, _sty, W - 140); _sty += 36; }
+      if (s.customShowPet) { ctx.fillStyle = textColor; ctx.font = 'bold 48px ' + fontFamily; this._fitFill(ctx, petName, W / 2, _sty, W - 140); _sty += 45; }
+      if (_svcLine) { ctx.fillStyle = textSub; ctx.font = '32px ' + fontFamily; this._fitFill(ctx, _svcLine, W / 2, _sty, W - 140); _sty += 40; }
       if (s.customShowDate) { ctx.fillStyle = textSub; ctx.font = '28px ' + fontFamily; ctx.fillText(dateStr, W / 2, _sty); _sty += 36; }
-      if (_nvLine) { ctx.fillStyle = mainColor; ctx.font = 'bold 28px ' + fontFamily; ctx.fillText(_nvLine, W / 2, _sty); }
+      if (_nvLine) { ctx.fillStyle = mainColor; ctx.font = 'bold 28px ' + fontFamily; this._fitFill(ctx, _nvLine, W / 2, _sty, W - 140); }
 
       // 하단 브랜딩
       if (s.customShowShop) {
@@ -4144,10 +4155,10 @@ App.pages.records = {
           this._roundRect(ctx, W / 2 - 200, footerY - 30, 400, 80, 12); ctx.fill();
         }
         ctx.fillStyle = mainColor; ctx.font = 'bold 30px ' + fontFamily;
-        ctx.fillText(shopName, W / 2, footerY);
+        this._fitFill(ctx, shopName, W / 2, footerY, 380);
         if (s.showShopPhone && shopPhone) {
           ctx.fillStyle = textSub; ctx.font = '24px ' + fontFamily;
-          ctx.fillText(shopPhone, W / 2, footerY + 40);
+          this._fitFill(ctx, shopPhone, W / 2, footerY + 40, 380);
         }
       }
     }
@@ -4162,7 +4173,10 @@ App.pages.records = {
     }
 
     // 인스타그램 최적화: 1080px 미만이면 자동 업스케일 (흐림 방지)
-    const _baseW = canvas.width;
+    const _baseW = (ctx && ctx._logicalW) || canvas.width; // 좌표를 잡은 기준 폭 (선명하게 그린 틀은 400)
+    // 틀을 다 그렸으면 배율을 푼다 — 이 뒤(덮는 프레임·스티커·앞 강아지)는 최종 화소 좌표로 그린다.
+    // 풀지 않으면 그것들이 2.7배 크게, 엉뚱한 자리에 그려진다
+    if (ctx && ctx._scale && ctx._scale !== 1) { ctx.setTransform(1, 0, 0, 1, 0, 0); ctx._scale = 1; }
     let out = canvas;
     if (canvas.width < 1080) {
       const scale = 1080 / canvas.width;
@@ -4894,11 +4908,23 @@ App.pages.records = {
     if (this._footCache) this._footCache.set(img, res);
     return res;
   },
+  // 작은 좌표(W 기준)로 짠 틀을 1080px 폭으로 선명하게 그리기: 캔버스는 1080 폭, 좌표는 W 그대로 쓴다
+  _sharpCanvas(canvas, W, H) {
+    const k = W < 1080 ? 1080 / W : 1;
+    canvas.width = Math.round(W * k); canvas.height = Math.round(H * k);
+    const ctx = canvas.getContext('2d');
+    ctx.setTransform(k, 0, 0, k, 0, 0);
+    ctx.imageSmoothingQuality = 'high';
+    ctx._logicalW = W; ctx._scale = k;
+    return ctx;
+  },
   // 흐린 그림자만 그리기 (도형은 캔버스 밖으로 보내고 그림자만 제자리에 — ctx.filter 없는 옛 iOS 도 된다)
   _blurOnly(ctx, color, blur, draw) {
     const far = 100000;
+    // 그림자 번짐·거리는 캔버스 배율을 따르지 않는다(늘 화소 단위) → 배율을 곱해 준다 (_sharpCanvas 로 키운 캔버스에서도 같은 모양)
+    const k = ctx._scale || 1;
     ctx.save();
-    ctx.shadowColor = color; ctx.shadowBlur = blur; ctx.shadowOffsetX = far; ctx.shadowOffsetY = 0;
+    ctx.shadowColor = color; ctx.shadowBlur = blur * k; ctx.shadowOffsetX = far * k; ctx.shadowOffsetY = 0;
     ctx.translate(-far, 0);
     draw();
     ctx.restore();
@@ -4917,7 +4943,7 @@ App.pages.records = {
       const hex = /^#[0-9a-f]{6}$/i.test(bg || '') ? bg : '#B8B0A6';
       const ink = this._mixHex(hex, '#000000', 0.55);
       const rgb = [1, 3, 5].map(i => parseInt(ink.slice(i, i + 2), 16)).join(',');
-      const px = ctx.canvas.width / 1080; // 카드 1080px 기준 화소
+      const px = (ctx._logicalW || ctx.canvas.width) / 1080; // 카드 1080px 기준 화소 (좌표 기준 폭으로)
       const fy = y + fi.foot * h, cx = x + (fi.l + fi.r) / 2 * w, hw = Math.max(4, (fi.r - fi.l) / 2 * w * 1.25);
       // 1) 넓고 옅은 둘레 그림자 (발 폭의 1.25배)
       this._blurOnly(ctx, `rgba(${rgb},0.24)`, hw * 0.36, () => {
@@ -5422,9 +5448,13 @@ App.pages.records = {
   // 여러 장 넣기: startSlot 칸 → 그 뒤 빈 칸 → 앞쪽 빈 칸 순서 (최대 4장). startSlot 이 없으면 빈 칸부터
   // replaceFirst: 앞 칸 n개를 새 사진으로 바꾼다 (사진을 다 읽은 뒤에 비워서, 못 읽으면 원래 사진이 남는다)
   async _addCardPhotos(files, startSlot, replaceFirst = 0) {
+    // 사진 읽기(아이폰 HEIC 바꾸기·줄이기·가장자리 다듬기)는 몇 초 걸린다 — 그사이 창을 닫고 다른 강아지 카드를 열었으면
+    // 늦게 끝난 사진은 버린다 (앞 강아지 사진이 새 카드에 들어가지 않게)
+    const session = this._cardSession;
+    const stale = () => session !== this._cardSession;
     if (replaceFirst) {
       const datas = [];
-      for (const fl of files.slice(0, 4)) { const d = await this._readCardPhotoFile(fl, true); if (d) datas.push(d); }
+      for (const fl of files.slice(0, 4)) { const d = await this._readCardPhotoFile(fl, true); if (stale()) return; if (d) datas.push(d); }
       if (!datas.length) { App.showToast('사진을 읽지 못했어요. 다른 사진(JPG·PNG)을 골라 주세요.', 'error'); return; }
       for (let k = 0; k < 4; k++) {
         if (k >= replaceFirst && k >= datas.length) continue; // 나머지 칸은 그대로
@@ -5450,6 +5480,7 @@ App.pages.records = {
     let bad = 0;
     for (let n = 0; n < list.length; n++) {
       const data = await this._readCardPhotoFile(list[n], true);
+      if (stale()) return;
       if (!data) { bad++; continue; }
       const slot = order[n];
       this._cardPhotos[slot] = data;
@@ -6321,10 +6352,18 @@ App.pages.records = {
 
   // 내 프레임의 글자(text 값)를 글자 스티커로 올린다 — 프레임을 바꿀 때만 새로 (이 카드에서 고친 글자·자리는 그대로, 프레임에는 저장하지 않는다)
   // 글자 값이 없는 예전 프레임은 글자가 그림에 들어 있으므로 아무것도 하지 않는다
+  // 같은 프레임의 글자를 만드는 중이면(글꼴을 받는 몇 초) 그 작업이 끝나기를 기다린다 —
+  // 프레임을 고르자마자 [완성하기]를 누르면 저장 쪽 호출이 '이미 했음'으로 바로 돌아가 글자 없는 카드가 저장됐다
   async _syncFrameText(f) {
     const fid = (f && f.settings && f.settings.lastUsedFrameId) || null;
-    if ((this._frameTextFor || null) === fid) return;
+    if ((this._frameTextFor || null) === fid) { if (this._frameTextJob) await this._frameTextJob.catch(() => {}); return; }
     this._frameTextFor = fid;
+    const job = this._buildFrameText(fid);
+    this._frameTextJob = job;
+    try { await job; } finally { if (this._frameTextJob === job) this._frameTextJob = null; }
+  },
+  async _buildFrameText(fid) {
+    const tok = (this._frameTextTok = (this._frameTextTok || 0) + 1); // 작업 번호 — 같은 프레임을 다시 골라도 옛 작업이 글자를 한 번 더 넣지 않게
     const had = (this._cardStickers || []).some(s => s.frameText);
     this._cardStickers = (this._cardStickers || []).filter(s => !s.frameText);
     if (had) this._stickerSel = -1;
@@ -6339,7 +6378,7 @@ App.pages.records = {
         const text = FM.fillShop(it.text, shop);
         if (!text) continue;
         const r = await this._makeTextSticker(text, 'frame', fontKey, td.color, { band, glow: td.glow });
-        if (this._frameTextFor !== fid) return; // 그사이 다른 프레임을 골랐다
+        if (this._frameTextFor !== fid || this._frameTextTok !== tok) return; // 그사이 다른 프레임을 골랐거나 새 작업이 시작됐다
         this._cardStickers.push({ text, style: 'frame', color: td.color, fontKey, band, glow: td.glow, frameText: it.role,
           src: r.src, w: r.w, x: it.x, y: it.y, size: FM.textStickerSize(it, r.w, r.tw), rot: 0 });
       }
@@ -6689,6 +6728,7 @@ App.pages.records = {
   async openPhotoCard(ctx, opts = {}) {
     // 다른 카드에서 고른 사진이 남지 않게 새 카드마다 비운다 ('다시 꾸미기'는 같은 사진으로 돌아온다)
     const keep = opts.keepPhotos && this._cardCtx && this._cardCtx.key === ctx.key;
+    if (!keep) this._cardSession = (this._cardSession || 0) + 1; // 새 카드 번호 — 앞 카드에서 읽던 사진을 막는다 (_addCardPhotos)
     const keptPhotos = keep ? (this._cardPhotos || []) : [];
     const keptMeta = keep ? (this._cardPhotoMeta || []) : [];
     this._cardPhotos = [];

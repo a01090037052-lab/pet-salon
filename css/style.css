@@ -4051,6 +4051,8 @@ input.has-clear { padding-right: 44px; }
   .mobile-search-btn:active { transform: scale(0.95); }
   /* 첫 줄(제목·홈 인사말)이 돋보기 밑으로 들어가지 않게 오른쪽을 비운다 */
   .page-header > :first-child { padding-right: 52px; }
+  /* 고객 상세 맨 윗줄 [정보 수정]도 돋보기에 가려졌다 → 같은 만큼 비운다 */
+  .detail-topbar { padding-right: 52px; }
   /* 홈: 돋보기를 보라색 인사말 칸의 제목 줄 오른쪽 안에 앉힌다 — 칸 전체 오른쪽을 비우면 '오늘 예약' 칸 글자가 잘렸다.
      비우는 것은 제목·날짜 두 줄만, 아래 요약 칸 3개는 전체 폭 그대로 */
   .welcome-title, .welcome-subtitle { padding-right: 48px; }
@@ -4443,3 +4445,18 @@ tr.appt-flash td { background: var(--info-bg-soft); }
 
 /* 사진 카드: 지난 꾸미기 불러오기 */
 .card-load-last { margin: 0 0 10px; }
+
+/* 홈 연락할 손님: 목록에 다 못 그린 손님 안내 */
+.dash-cap-note { margin-top: 10px; font-size: max(0.85rem, 13px); color: var(--text-muted); line-height: 1.5; }
+.dash-cap-note a { color: var(--primary); font-weight: 600; }
+
+/* 홈 예약 카드의 주의 문구(성격·건강·알러지): 컴퓨터는 이름 아래, 폰은 카드 아래 한 줄 전체 */
+.appt-caution { font-size: max(0.93rem, 13px); color: var(--danger); margin-top: 2px; line-height: 1.45; }
+.appt-caution-row { display: none; }
+@media (max-width: 768px) {
+  .appt-caution-in { display: none; }
+  .appointment-item:has(> .appt-caution-row) { flex-wrap: wrap; row-gap: 8px; }
+  .appt-caution-row { display: block; flex: 1 1 100%; order: 1; margin-top: 0; }
+}
+/* [미용 완료]가 카드 아래 한 줄이 되는 폭(600px 이하)에서만 주의 문구 다음으로 보낸다 */
+@media (max-width: 600px) { .appointment-item > .btn.dash-complete-btn { order: 2; } }

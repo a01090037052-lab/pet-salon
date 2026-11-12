@@ -58,7 +58,13 @@ const App = {
       this.migratePetVisitStats();
       // v175 이전에 기록 본문에 박혀 있던 사진을 photos 스토어로 1회 옮긴다 — 그래야 반려견 상세 사진 줄에 보이고 동기화·보관 정리 대상이 된다
       setTimeout(() => this.migrateInlinePhotos().catch(e => console.warn('인라인 사진 변환 실패 (무시):', e)), 8000);
-      // 복원이 중간에 실패하면 남는 임시 사본(최대 수 MB)이 휴대폰 저장 공간을 계속 차지했다 → 7일 지나면 지운다
+      // 백업 복원이 끝나기 전에 앱이 꺼졌으면(아이폰이 앱을 닫음 등) 데이터가 일부만 들어가 있을 수 있다 → 한 번 알린다
+      try {
+        if (DB.importInterrupted && DB.importInterrupted()) {
+          setTimeout(() => this.showToast('백업 복원이 중간에 끊겼어요. 설정 → 데이터에서 다시 복원하거나 "복원 전 상태로 되돌리기"를 눌러 주세요.', 'error', { duration: 20000 }), 1500);
+        }
+      } catch (_) {}
+      // 예전 버전이 남긴 임시 사본은 지운다 (지금은 만들지 않는다)
       try {
         const snap = localStorage.getItem('__petsalon_import_snapshot__');
         if (snap) {
@@ -807,6 +813,8 @@ const App = {
 
     const saveBtn = document.getElementById('modal-save');
     saveBtn.textContent = saveText || '저장';
+    // 저장할 것이 없는 창(예: 메시지 보내기)에는 [저장]을 보이지 않는다 — 눌러도 아무 일도 없는 버튼이었다
+    saveBtn.style.display = onSave ? '' : 'none';
     saveBtn.disabled = false;
     delete saveBtn.dataset.label; // 저장 버튼 글자를 화면이 바꿔 둔 경우(예: 미리보기 → 'N개 적용') 저장 뒤 그 글자로 돌린다
     saveBtn.onclick = onSave ? async () => {
@@ -1706,13 +1714,17 @@ const App = {
     return customer.lastContactedAt ? [customer.lastContactedAt] : [];
   },
 
-  // 마지막 방문일(YYYY-MM-DD) 다음 날부터 한 연락 횟수 — 새로 방문하면 저절로 0이 된다
+  // 마지막 방문일(YYYY-MM-DD) 다음 날부터 한 연락 횟수 — 새로 방문하면 저절로 0이 된다.
+  // 같은 날 여러 번(문자 보내고 전화도 걸기 · 버튼 두 번 누르기)은 한 번으로 센다.
   contactsSinceVisit(customer, lastVisitDate) {
-    return this.contactLogOf(customer).filter(ts => {
+    const days = new Set();
+    for (const ts of this.contactLogOf(customer)) {
       const d = new Date(ts);
-      if (isNaN(d)) return false;
-      return !lastVisitDate || this.formatLocalDate(d) > lastVisitDate;
-    }).length;
+      if (isNaN(d)) continue;
+      const day = this.formatLocalDate(d);
+      if (!lastVisitDate || day > lastVisitDate) days.add(day);
+    }
+    return days.size;
   },
 
   // 올 때 됨·많이 늦음인데 마지막 방문 뒤 두 번 연락해도 안 온 손님 → '오래 안 옴'

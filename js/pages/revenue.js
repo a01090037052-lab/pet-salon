@@ -467,7 +467,7 @@ App.pages.revenue = {
                 <!-- 비어 있으면 '입력 안 함'(계산은 0원) — 예전엔 빈 칸 옆에 '원'만 보였다 -->
                 <input type="number" id="r-variableCost" value="${variableCost > 0 ? variableCost : ''}"
                   placeholder="입력 안 함" min="0" step="10000" inputmode="numeric" aria-label="이번 달 변동비 (원)"
-                  style="width:120px;min-height:44px;text-align:right;padding:4px 8px;font-size:1rem"
+                  style="width:120px;min-height:44px;text-align:right;padding:4px 8px;font-size:max(16px,1rem)"
                   onchange="App.pages.revenue.saveVariableCost(this.value)">
                 <span style="font-size:0.93rem;color:var(--text-muted)">원</span>
               </div>

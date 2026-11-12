@@ -72,9 +72,20 @@ App.pages.dashboard = {
     try {
       const customer = await DB.get('customers', customerId);
       if (!customer) return;
-      this._contactUndo = { customerId, prev: customer.lastContactedAt || null, prevLog: Array.isArray(customer.contactLog) ? customer.contactLog.slice() : null };
       const now = new Date().toISOString();
-      customer.contactLog = [...this._contactLogOf(customer), now].slice(-this._CONTACT_LOG_MAX);
+      // 같은 날 다시 누르면(문자 → 전화) 줄을 더하지 않고 그날 기록의 시간만 바꾼다 — 기록 5칸이 하루 치로 차지 않게
+      const log = this._contactLogOf(customer);
+      const today = App.formatLocalDate(new Date(now));
+      const lastTs = log.length ? new Date(log[log.length - 1]) : null;
+      const sameDay = !!(lastTs && !isNaN(lastTs) && App.formatLocalDate(lastTs) === today);
+      // 되돌리기는 손님마다 따로 둔다 (다른 손님을 누른 뒤 앞 손님의 '취소'를 눌러도 그 손님 것만 되돌린다).
+      // 같은 날 두 번째로 누른 것이면 처음 누르기 전 상태를 그대로 둔다 — '취소' 한 번에 오늘 연락이 모두 없던 일이 되게
+      const undos = this._contactUndos || (this._contactUndos = {});
+      const undo = (sameDay && undos[customerId] && undos[customerId].day === today && undos[customerId]) || { customerId, day: today, prev: customer.lastContactedAt || null, prevLog: Array.isArray(customer.contactLog) ? customer.contactLog.slice() : null };
+      undos[customerId] = undo;
+      this._contactUndo = undo;
+      if (sameDay) log[log.length - 1] = now; else log.push(now);
+      customer.contactLog = log.slice(-this._CONTACT_LOG_MAX);
       customer.lastContactedAt = now;
       await DB.update('customers', customer);
       // 행을 즉시 흐리게 처리 (전체 재렌더는 하지 않는다 — 되돌리기가 어려워지고
@@ -84,7 +95,7 @@ App.pages.dashboard = {
       App._dashboardDirty = true;
       App.showToast(
         `${App.escapeHtml(App.getCustomerLabel(customer, (this._petsByCustomer || {})[customer.id]))}님 연락함 · ${this._SNOOZE_DAYS}일간 알림에서 제외 ` +
-        `<button class="btn btn-sm btn-ghost" style="margin-left:6px" onclick="App.pages.dashboard._undoContact()">취소</button>`,
+        `<button class="btn btn-sm btn-ghost" style="margin-left:6px" onclick="App.pages.dashboard._undoContact(${Number(customerId)})">취소</button>`,
         'info', { html: true }
       );
     } catch (e) {
@@ -93,10 +104,12 @@ App.pages.dashboard = {
     }
   },
 
-  async _undoContact() {
-    const u = this._contactUndo;
+  async _undoContact(customerId) {
+    const map = this._contactUndos || {};
+    const u = customerId != null ? map[customerId] : this._contactUndo;
     if (!u) return;
-    this._contactUndo = null;
+    delete map[u.customerId];
+    if (this._contactUndo === u) this._contactUndo = null;
     try {
       const customer = await DB.get('customers', u.customerId);
       if (!customer) return;
@@ -144,7 +157,7 @@ App.pages.dashboard = {
         await DB.update('pets', pet);
         App.closeModal();
         App._dashboardDirty = true;
-        App.showToast(`${App.escapeHtml(petName)} 관리 제외 처리했습니다.`);
+        App.showToast(`${petName} 관리 제외 처리했습니다.`); // 글자로 넣는 토스트라 이스케이프하면 &amp; 가 그대로 보인다
         App.handleRoute();
       } catch (e) {
         console.error('_excludePet error:', e);
@@ -732,7 +745,7 @@ App.pages.dashboard = {
                     <button class="btn btn-sm btn-ghost btn-exclude-pet" data-pet-id="${a.pet.id}" data-pet-name="${App.escapeHtml(a.pet.name || '')}" onclick="event.stopPropagation()" title="관리 제외 (이사·사망 등)" style="flex-shrink:0;color:var(--text-muted)">제외</button>
                   </div>
                 </div>`;
-              }), 5, (n) => `나머지 ${n}명 보기`)}
+              }), 5, (n) => `나머지 ${n}명 보기`) + this._capNote(revisitAlerts.length, 15)}
             </div>
 
             <!-- 오래 안 옴 (미용 주기 2배 초과 — 매일 보는 목록에서 분리) -->
@@ -758,7 +771,7 @@ App.pages.dashboard = {
                     ${contactBtns(a)}
                     <button class="btn btn-sm btn-ghost btn-exclude-pet" data-pet-id="${a.pet.id}" data-pet-name="${App.escapeHtml(a.pet.name || '')}" onclick="event.stopPropagation()" title="관리 제외 (이사·사망 등)" style="flex-shrink:0;color:var(--text-muted)">제외</button>
                   </div>
-                </div>`))}`}
+                </div>`)) + this._capNote(longGoneAlerts.length, 10)}`}
             </div>
 
             <!-- VIP (미용 주기 지나도 안 온 VIP, 예약 잡힌 VIP 제외) -->
@@ -771,7 +784,7 @@ App.pages.dashboard = {
                   </a>
                   ${x.customer.phone ? `<a href="tel:${App.escapeHtml(App.phoneDigits(x.customer.phone))}" class="btn btn-sm btn-secondary" onclick="event.stopPropagation()" title="전화 걸기" style="flex-shrink:0">전화</a>` : ''}
                 </div>
-              `))}
+              `)) + this._capNote(vipUnvisitedAlerts.length, 15)}
             </div>
           </div>
         </div>`;
@@ -870,6 +883,11 @@ App.pages.dashboard = {
 
   // 홈 목록(연락할 손님): 처음엔 5건만, 나머지는 '더 보기 (N건)'으로 그 자리에서 펼친다.
   // 숨긴 줄도 DOM 에 있어 init 의 버튼 연결(결제·문자·제외 등)이 그대로 걸린다.
+  // 탭 숫자는 전체인데 목록은 급한 순으로 일부만 그린다 → 안 보이는 손님이 몇 명인지, 어디서 보는지 알려 준다
+  _capNote(total, cap) {
+    if (total <= cap) return '';
+    return `<div class="dash-cap-note">급한 순서로 ${cap}명만 보여요. 나머지 ${total - cap}명은 <a href="#customers">고객 화면</a>의 '방문 상태'에서 볼 수 있어요.</div>`;
+  },
   _moreList(items, shown = 5, labelFn) {
     if (items.length <= shown) return items.join('');
     const rest = items.length - shown;
@@ -891,8 +909,10 @@ App.pages.dashboard = {
           <div class="appointment-info">
             <div class="name">${dateLabel}<a href="#pets/${appt.petId}" onclick="event.stopPropagation()" style="color:inherit;font-weight:700;padding:14px 0">${App.escapeHtml(pet?.name || '?')}</a> <a href="#customers/${appt.customerId}" onclick="event.stopPropagation()" class="appt-guardian" style="padding:14px 0">${App.escapeHtml(App.getCustomerLabel(customer))}</a>${App.firstVisitBadge(appt.customerId, this._firstVisit, appt)}</div>
             <div class="detail">${App.escapeHtml(serviceNames || '서비스 미지정')}${appt.groomer ? ' &middot; ' + App.escapeHtml(appt.groomer) : ''}</div>
-            ${(() => { const w = [pet?.temperament, pet?.healthNotes, pet?.allergies].filter(Boolean); if (!w.length) return ''; const s = w.join(', '); return '<div style="font-size:0.93rem;color:var(--danger);margin-top:2px">' + App.icon('alert') + ' ' + App.escapeHtml(s.length > 50 ? s.slice(0, 50) + '...' : s) + '</div>'; })()}
+            ${(() => { const w = [pet?.temperament, pet?.healthNotes, pet?.allergies].filter(Boolean); if (!w.length) return ''; const s = w.join(', '); return '<div class="appt-caution appt-caution-in">' + App.icon('alert') + ' ' + App.escapeHtml(s.length > 50 ? s.slice(0, 50) + '...' : s) + '</div>'; })()}
           </div>
+          ${/* 폰: 주의 문구는 카드 아래 한 줄 전체로 (이름 옆 좁은 칸에서는 다섯 줄로 접혔다 — CSS .appt-caution-row) */
+            (() => { const w = [pet?.temperament, pet?.healthNotes, pet?.allergies].filter(Boolean); if (!w.length) return ''; const s = w.join(', '); return '<div class="appt-caution appt-caution-row">' + App.icon('alert') + ' ' + App.escapeHtml(s.length > 50 ? s.slice(0, 50) + '...' : s) + '</div>'; })()}
           <div style="flex-shrink:0;display:flex;align-items:center;gap:4px">
             ${customer?.phone ? `<a href="tel:${App.escapeHtml(App.phoneDigits(customer.phone))}" class="btn btn-sm btn-secondary" onclick="event.stopPropagation()" style="min-width:44px" aria-label="전화">${App.icon('phone')}</a>` : ''}
             ${customer?.phone && !['completed', 'cancelled', 'noshow'].includes(appt.status) ? `<button type="button" class="btn btn-sm btn-info" onclick="event.stopPropagation();App.pages.appointments.sendReminder(${Number(appt.id)})" style="min-width:44px" title="재확인 문자" aria-label="재확인 문자">${App.icon('send')}</button>` : ''}

@@ -864,7 +864,8 @@ const DB = {
     return migrated;
   },
 
-  async importAll(data, onProgress) {
+  // opts.keepDeviceAssets === false: '복원 전 상태로 되돌리기' — 그때 사본에 든 내 프레임·스티커·배경 그대로 (지금 기기 것과 합치지 않는다)
+  async importAll(data, onProgress, opts = {}) {
     if (this.mode === 'server') {
       await fetch('/api/import', {
         method: 'POST',
@@ -913,11 +914,13 @@ const DB = {
           return it;
         });
       } catch (_) {}
+      // 내 프레임·내 스티커·내 배경은 이 기기에만 있다(동기화 안 함). 옛 백업·다른 기기 백업을 복원해도 사라지지 않게
+      // 백업에 든 것 + 지금 기기에 있는 것을 합친다 (같은 id 는 백업 것). 숨긴 기본 배경 목록은 백업에 없을 때만 지금 것을 쓴다
+      if (opts.keepDeviceAssets !== false) { try { data.settings = await this._mergeDeviceAssets(data.settings); } catch (e) { console.warn('꾸미기 자료 합치기 실패 (무시):', e); } }
     }
 
     const CHUNK_SIZE = 500; // 사진 5만 장 + 트랜잭션 시간 초과 방지
     const totalItems = storeNames.reduce((sum, s) => sum + (data[s] ? data[s].length : 0), 0) + (photoStream ? (Number(data._photoCount) || 0) : 0);
-    let processed = 0;
 
     // 1c. ⚠ 인-플라이트 안전망 — 사진 외 데이터 snapshot (메모리 + localStorage)
     //     clear-insert 사이 crash 시 자동 rollback. settings는 IDB에 저장되므로 이 snapshot은 별도 보관.
@@ -933,20 +936,44 @@ const DB = {
         // 자동 백업 사본은 snapshot 에서 제외 (localStorage 용량 초과 방지) — rollback 후 별도로 복구
         if (sn === 'settings') snapshot[sn] = snapshot[sn].filter(item => !this._isInternalSetting(item.key));
       }
-      try {
-        localStorage.setItem('__petsalon_import_snapshot__', JSON.stringify({ ts: Date.now(), data: snapshot }));
-      } catch (lse) {
-        console.warn('snapshot localStorage 저장 실패 (메모리만 보관):', lse);
-      }
+      // (예전엔 이 사본을 localStorage 에도 썼지만 읽는 곳이 없었고, 전체 데이터를 글자로 바꾸느라 메모리만 크게 썼다 → 메모리에만 둔다.
+      //  앱이 통째로 꺼지는 경우는 아래 '복원 중' 표시 + 되돌리기 사본으로 대비한다)
     } catch (snapErr) {
       console.warn('snapshot 생성 실패 — import 계속:', snapErr);
     }
 
+    // 복원 중 표시 — 끝나기 전에 앱이 꺼지면 다음에 열 때 알려 준다 (App.init → DB.importInterrupted)
+    try { localStorage.setItem('__petsalon_import_running__', String(Date.now())); } catch (_) {}
+    let dirty = false;
+    try {
+      return await this._importAllBody({ data, storeNames, preservedSettings, snapshot, photoStream, skipPhotos, totalItems, onProgress, CHUNK_SIZE });
+    } catch (e) {
+      if (e && e.dbState === 'dirty') dirty = true; // 데이터가 일부만 들어간 채 실패 — 표시를 남겨 다음에 열 때도 알린다
+      throw e;
+    } finally {
+      if (!dirty) { try { localStorage.removeItem('__petsalon_import_running__'); } catch (_) {} }
+      // 복원 뒤에는 기억해 둔 '내 배경' 목록을 버린다 — 옛 목록으로 복원된 배경을 덮어쓰지 않게 (bg-library.js load)
+      try { if (typeof App !== 'undefined' && App.bgLib) App.bgLib._user = App.bgLib._hidden = null; } catch (_) {}
+    }
+  },
+  // 복원이 끝나기 전에 앱이 꺼졌는지 (true 면 한 번 알리고 표시를 지운다)
+  importInterrupted() {
+    try {
+      if (!localStorage.getItem('__petsalon_import_running__')) return false;
+      localStorage.removeItem('__petsalon_import_running__');
+      return true;
+    } catch (_) { return false; }
+  },
+  async _importAllBody({ data, storeNames, preservedSettings, snapshot, photoStream, skipPhotos, totalItems, onProgress, CHUNK_SIZE }) {
+    let processed = 0;
     // 2. 모든 스토어를 단일 트랜잭션으로 clear (원자적, 빠름)
     try {
       await new Promise((resolve, reject) => {
         const tx = this.db.transaction(storeNames, 'readwrite');
         for (const storeName of storeNames) tx.objectStore(storeName).clear();
+        // 기기 내부 설정(되돌리기 사본·동기화 연결·잠금 비밀번호·알림 등록)은 지우는 것과 같은 한 묶음 안에서 바로 다시 넣는다
+        // — 복원이 중간에 끊겨도(아이폰이 앱을 닫음) 이것들은 남는다
+        if (storeNames.includes('settings')) { const st = tx.objectStore('settings'); preservedSettings.forEach(item => { try { st.put(item); } catch (_) {} }); }
         tx.oncomplete = resolve;
         tx.onerror = () => reject(tx.error);
         tx.onabort = () => reject(tx.error);
@@ -987,7 +1014,8 @@ const DB = {
                   item.data = new Blob([arr], { type: mime });
                 } catch (e) { console.warn('photo blob 복원 실패:', item.id, e); }
               }
-              try { store.add(item); } catch (e) { console.warn(`importAll: skipped bad item in ${storeName}`, e); }
+              // put: 백업 파일에 같은 번호가 두 번 있어도 묶음 전체가 취소되지 않는다 (add 는 겹치면 복원 전체를 되돌렸다)
+              try { store.put(item); } catch (e) { console.warn(`importAll: skipped bad item in ${storeName}`, e); }
             }
             tx.oncomplete = resolve;
             tx.onerror = () => reject(tx.error);
@@ -1017,10 +1045,10 @@ const DB = {
         throw err;
       } catch (rbErr) {
         if (rbErr.dbState === 'rolled-back') throw rbErr;
-        console.error('rollback도 실패 — snapshot이 localStorage에 보관됨:', rbErr);
+        console.error('rollback도 실패:', rbErr);
         // 되돌리기 사본만이라도 다시 써 둔다 — 그래야 설정의 '복원 전 상태로 되돌리기'가 동작한다
         await this._restoreInternalSettings(preservedSettings);
-        const err = new Error('심각한 오류 — 앱을 닫지 마시고 즉시 개발자에게 문의하세요. (snapshot 보관 중)');
+        const err = new Error('복원 중 오류가 났고 자동으로 되돌리지 못했어요. 설정 → 데이터의 "복원 전 상태로 되돌리기"를 눌러 주세요.');
         err.dbState = 'dirty';
         throw err;
       }
@@ -1040,6 +1068,28 @@ const DB = {
 
     // 6. 동기화 중이면 복원된 데이터로 클라우드를 맞춘다 (백그라운드, 실패해도 복원 결과에는 영향 없음)
     try { if (typeof Sync !== 'undefined' && Sync.afterImport) Sync.afterImport(); } catch (e) { console.warn('Sync.afterImport 실패 (무시):', e); }
+  },
+
+  // 복원할 settings 목록에 이 기기의 내 프레임·내 스티커·내 배경을 합쳐 돌려준다 (순수 계산은 mergeAssetLists)
+  DEVICE_ASSET_KEYS: ['customFrames', 'customStickers', 'customBackgrounds'],
+  mergeAssetLists(fromBackup, onDevice) {
+    const a = Array.isArray(fromBackup) ? fromBackup.filter(Boolean) : [];
+    const b = Array.isArray(onDevice) ? onDevice.filter(Boolean) : [];
+    const seen = new Set(a.map(x => String(x.id)));
+    return a.concat(b.filter(x => x.id == null || !seen.has(String(x.id))));
+  },
+  async _mergeDeviceAssets(settings) {
+    const out = settings.slice();
+    for (const key of this.DEVICE_ASSET_KEYS) {
+      const cur = await this.getSetting(key);
+      if (!Array.isArray(cur) || !cur.length) continue;
+      const i = out.findIndex(it => it && it.key === key);
+      if (i < 0) out.push({ key, value: cur });
+      else out[i] = { ...out[i], value: this.mergeAssetLists(out[i].value, cur) };
+    }
+    const hid = await this.getSetting('bgHiddenBuiltins');
+    if (Array.isArray(hid) && hid.length && !out.some(it => it && it.key === 'bgHiddenBuiltins')) out.push({ key: 'bgHiddenBuiltins', value: hid });
+    return out;
   },
 
   async _restoreInternalSettings(items) {
@@ -1101,10 +1151,11 @@ const DB = {
         const store = tx.objectStore(sn);
         for (const item of snapshot[sn]) {
           if (sn === 'settings' && !item.key) continue;
-          try { store.add(item); } catch (_) {}
+          try { store.put(item); } catch (_) {}
         }
         tx.oncomplete = resolve;
         tx.onerror = () => reject(tx.error);
+        tx.onabort = () => reject(tx.error || new Error('rollback insert aborted')); // 공간 부족은 abort 로만 온다 — 없으면 화면이 영영 멈춘다
       });
     }
   },

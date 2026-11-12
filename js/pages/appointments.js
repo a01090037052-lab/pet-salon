@@ -962,6 +962,7 @@ App.pages.appointments = {
             App._earlyMoveConfirmedId = null;
           }
         }
+        const wasCompleted = appt.status === 'completed';
         appt.status = newStatus;
         // 미래 예약을 기록 없이 완료하면 실제로 한 날 = 오늘로 옮긴다 (기록 저장 경로와 같은 규칙):
         // 날짜 = 오늘, 시간 = 원래 시간과 '지금(10분 단위 내림)' 중 이른 쪽
@@ -989,6 +990,11 @@ App.pages.appointments = {
               await DB.update('pets', pet);
             }
           } catch (err) { console.warn('lastVisitDate 갱신 실패:', err); }
+        }
+        // '기록 없이 완료'를 취소·노쇼·대기로 바꾸면 그때 당겨 둔 마지막 방문일을 되돌린다 (재방문 알림이 한 주기 동안 사라지지 않게)
+        if (wasCompleted && newStatus !== 'completed' && appt.petId) {
+          await App.pages.records._recalcPetLastVisit(Number(appt.petId));
+          App._dashboardDirty = true;
         }
         // Update row data-status for filtering
         const row = e.target.closest('tr');
@@ -1912,8 +1918,15 @@ App.pages.appointments = {
           await DB.add('appointments', fresh);
           App.showToast('새 예약으로 등록했어요');
         } else {
+          const before = { status: existing.status, petId: Number(existing.petId) || null, date: existing.date };
           Object.assign(existing, data);
           await DB.update('appointments', existing);
+          // 완료한 예약의 날짜·반려견·상태를 고치면 마지막 방문일도 다시 계산 (기록 없이 완료한 방문이 여기에 들어 있다)
+          if ((before.status === 'completed' || existing.status === 'completed') &&
+              (before.status !== existing.status || before.petId !== petId || before.date !== existing.date)) {
+            for (const pid of new Set([before.petId, petId].filter(Boolean))) await App.pages.records._recalcPetLastVisit(pid);
+            App._dashboardDirty = true;
+          }
           App.showToast('예약이 수정되었습니다.');
         }
       } else {
@@ -2093,6 +2106,8 @@ App.pages.appointments = {
 
     try {
       await DB.delete('appointments', id);
+      // 완료한 예약(기록 없이 완료)을 지우면 그 방문도 없던 일 → 마지막 방문일을 다시 계산
+      if (appt.status === 'completed' && appt.petId) { await App.pages.records._recalcPetLastVisit(Number(appt.petId)); App._dashboardDirty = true; }
       App.showToast('예약이 삭제되었습니다.');
       if (opts.fromForm) {
         // 모달 위 confirm 의 history.back() 이 처리된 뒤 모달을 닫는다

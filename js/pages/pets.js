@@ -311,8 +311,10 @@ App.pages.pets = {
       // 권장 주기는 리포트·알림과 같은 App.getGroomingCycle — 평균 주기는 참고로만 보여 준다
       const cycleInfo = App.getGroomingCycleInfo(pet, await App.getRevisitDays());
       const cycle = cycleInfo.days;
-      if (cycle && sum.lastDate) {
-        const d = App.parseLocalDate(sum.lastDate);
+      // 마지막 방문 = 기록의 마지막 날과 '기록 없이 완료'한 방문(pet.lastVisitDate) 중 늦은 쪽 — 홈·알림과 같은 날을 쓴다
+      const lastVisit = [sum.lastDate, pet.lastVisitDate].filter(Boolean).sort().pop();
+      if (cycle && lastVisit) {
+        const d = App.parseLocalDate(lastVisit);
         d.setDate(d.getDate() + Number(cycle));
         const days = App.daysUntil(App.formatLocalDate(d));
         const label = days < 0 ? `${-days}일 지남` : days === 0 ? '오늘' : 'D-' + days;
