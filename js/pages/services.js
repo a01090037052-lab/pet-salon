@@ -675,6 +675,16 @@ App.pages.services = {
             ${App.icon('chevron-down')} 더 보기 <span id="f-more-summary" style="font-weight:500;font-size:0.93rem;color:var(--text-muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0"></span>
           </summary>
           <div style="padding:4px 0 8px">
+            <!-- 미용 코스·스타일만: 이걸로 미용하면 보통 몇 주 뒤에 오는지. 미용 기록의 '다음 미용' 추천에 쓴다 (이 아이 주기가 없을 때) -->
+            <div class="form-group" id="f-cycle-group" style="display:${['grooming', 'style'].includes(service.category || 'grooming') ? 'block' : 'none'}">
+              <label class="form-label">다음 미용 주기 <span style="color:var(--text-muted);font-size:0.93rem;font-weight:400">(선택)</span></label>
+              <select id="f-cycleDays">
+                <option value="">정하지 않음</option>
+                ${App.CYCLE_CHOICES.concat(App.normalizeCycle(service.cycleDays) && !App.CYCLE_CHOICES.includes(App.normalizeCycle(service.cycleDays)) ? [App.normalizeCycle(service.cycleDays)] : []).sort((a, b) => a - b)
+                  .map(d => `<option value="${d}" ${App.normalizeCycle(service.cycleDays) === d ? 'selected' : ''}>${App.formatCycle(d)}</option>`).join('')}
+              </select>
+              <div class="form-hint">처음 오는 아이 기록에서 &lsquo;다음 미용&rsquo;을 이 값으로 골라 둬요</div>
+            </div>
             <div class="form-group" id="f-overkg-group" style="${showOver ? '' : 'display:none'}">
               <label class="form-label">${headKg}kg 넘는 큰 아이 추가 요금</label>
               ${bandsOff ? `<div class="form-hint" style="margin:0 0 6px">구간을 꺼도 이 서비스만 따로 정한 추가 요금은 반려견 몸무게로 계속 붙어요. 받지 않으려면 '추가 요금 없음'을 고르세요.</div>` : ''}
@@ -769,6 +779,8 @@ App.pages.services = {
       else if (m === 'custom') parts.push(App.describeOverKgRule({ from: parseFloat($('f-overkg-from')?.value) || 0, perKg: Number($('f-overkg-per')?.value) || 0 }));
       else if (m === 'off' || (curMode() === 'flat' && table.overKg)) parts.push('큰 아이 추가 요금 없음');
       else if (table.overKg) parts.push('추가 요금 매장 기본');
+      const cyc = App.normalizeCycle($('f-cycleDays')?.value);
+      if (cyc && $('f-cycle-group')?.style.display !== 'none') parts.push('다음 미용 ' + App.formatCycle(cyc));
       if ($('f-fromPrice')?.checked) parts.push('~부터');
       const inc = ($('f-includedItems')?.value || '').split('|').filter(Boolean).length;
       if (inc) parts.push('포함 ' + inc + '개');
@@ -802,6 +814,7 @@ App.pages.services = {
     document.querySelectorAll('input[name="f-overkg"]').forEach(r => r.addEventListener('change', () => { if (overGroup) overGroup.dataset.touched = '1'; updateOverHint(); }));
     ['f-overkg-from', 'f-overkg-per', 'f-description'].forEach(x => $(x)?.addEventListener('input', updateMoreSummary));
     $('f-fromPrice')?.addEventListener('change', updateMoreSummary);
+    $('f-cycleDays')?.addEventListener('change', updateMoreSummary);
     // 이름 글자 수 — 40자를 넘으면 잘라 버리지 않고 알려 준다
     const nameCount = () => {
       const el = $('f-name-count'); const n = ($('f-name')?.value || '').trim().length;
@@ -823,6 +836,7 @@ App.pages.services = {
         const sw = $('f-styleIncluded-wrap'); if (sw) sw.style.display = btn.dataset.value === 'grooming' ? 'flex' : 'none';
         const bc = $('f-bycourse-group'); if (bc) bc.style.display = btn.dataset.value === 'style' ? 'block' : 'none';
         const lg = $('f-length-group'); if (lg) lg.style.display = btn.dataset.value === 'grooming' ? 'block' : 'none';
+        const cg = $('f-cycle-group'); if (cg) cg.style.display = ['grooming', 'style'].includes(btn.dataset.value) ? 'block' : 'none';
         // 새 서비스: 분류에 맞는 가격 방식으로 (미용 코스 = 몸무게별, 나머지 = 한 가격). 직접 고른 뒤엔 안 바꾼다
         if (!id && !priceModeTouched && !$('f-price-free')?.checked) setPriceMode(btn.dataset.value === 'grooming' && !bandsOff ? 'weight' : 'flat');
         setOverDefault();
@@ -1070,6 +1084,9 @@ App.pages.services = {
       const list = App.lengthOptionsOf({ category, lengthOptions: rows.map(r => ({ name: r.querySelector('.f-length-name').value, price: r.querySelector('.f-length-price').value.trim() })) });
       data.lengthOptions = list.length ? list : undefined;
     } else data.lengthOptions = undefined;
+    // 다음 미용 주기 (코스·스타일만, 선택) — 기록 폼 '다음 미용' 추천 (App.suggestNextCycle)
+    const cycleDays = ['grooming', 'style'].includes(category) ? App.normalizeCycle($('f-cycleDays')?.value) : 0;
+    data.cycleDays = cycleDays || undefined;
     App.applyLegacyPrices(data, table); // 구버전 기기용 priceSmall/Medium/Large + 서명
     const priceSig = (p) => JSON.stringify({
       m: p.mode, f: Number(p.flat) || 0, z: !!p.free,

@@ -138,3 +138,45 @@ describe('천 색으로 한 번에 지우기', () => {
     assert.equal(C.keyTol(200), 60);
   });
 });
+
+describe('천 색 찍어서 고르기', () => {
+  // 4×4: 왼쪽 두 줄 초록 천, 오른쪽 두 줄 갈색 털
+  const w = 4, h = 4, rgba = new Uint8ClampedArray(w * h * 4);
+  for (let i = 0; i < w * h; i++) { const x = i % w, q = i * 4; rgba.set(x < 2 ? [0, 200, 0, 255] : [120, 80, 40, 255], q); }
+  test('누른 곳 둘레 평균 색', () => {
+    const one = new Uint8ClampedArray([10, 20, 30, 255]);
+    assert.deepEqual(plain(C.pickColor(one, 1, 1, 0.4, 0.2)), [10, 20, 30]);
+    const c = C.pickColor(rgba, w, h, 0, 0); // 둘레 3×3 안: 초록 6칸 + 갈색 3칸
+    assert.deepEqual(plain(c), [40, 160, 13]);
+  });
+  test('사진 밖·투명한 곳은 null', () => {
+    assert.equal(C.pickColor(rgba, w, h, -1, 2), null);
+    assert.equal(C.pickColor(rgba, w, h, 4, 0), null);
+    assert.equal(C.pickColor(new Uint8ClampedArray(16), 2, 2, 0, 0), null);
+  });
+});
+
+describe('얼굴만 남기기', () => {
+  test('턱 선은 옆으로 그어야, 둘레는 크게 그려야 선이 된다', () => {
+    assert.equal(C.faceFromPath([10, 50, 12, 52], 'cut', 100, 100), null); // 점이 너무 적다
+    assert.equal(C.faceFromPath([50, 10, 51, 50, 52, 90], 'cut', 100, 100), null); // 세로
+    assert.equal(C.faceFromPath([10, 10, 12, 11, 13, 12], 'lasso', 100, 100), null); // 살짝 닿음
+    const cut = C.faceFromPath([10, 50, 50, 55, 90, 50], 'cut', 100, 100);
+    assert.equal(cut.k, 'cut'); assert.equal(cut.cp.length, 18); assert.ok(cut.p.length > cut.cp.length);
+    const las = C.faceFromPath([20, 20, 80, 20, 80, 80, 20, 80, 20, 22], 'lasso', 100, 100);
+    assert.equal(las.k, 'lasso'); assert.equal(las.cp.length, 28);
+  });
+  test('마스크에 곱한다: 턱 선 아래·둘레 밖은 지워지고 원래 지운 곳은 그대로', () => {
+    const w = 60, h = 60, A = box(w, h, 0, 0, 30, 60); // 왼쪽 반만 강아지
+    const cut = R._faceMask({ k: 'cut', p: [0, 30, 60, 30] }, w, h);
+    const out = C.applyFaces(A, [cut]);
+    assert.equal(out[10 * w + 10], 255); // 턱 위 강아지
+    assert.equal(out[50 * w + 10], 0); // 턱 아래
+    assert.equal(out[10 * w + 45], 0); // 원래 배경
+    assert.equal(A[50 * w + 10], 255); // 원래 마스크는 그대로
+    const las = R._faceMask({ k: 'lasso', p: [5, 5, 25, 5, 25, 25, 5, 25] }, w, h);
+    const both = C.applyFaces(A, [cut, las]);
+    assert.equal(both[15 * w + 15], 255); assert.equal(both[15 * w + 0], 0); // 둘레 밖 (경계는 몇 칸 부드럽게)
+    assert.deepEqual([...C.applyFaces(A, [])], [...A]);
+  });
+});

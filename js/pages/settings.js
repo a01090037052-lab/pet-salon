@@ -139,14 +139,14 @@ App.pages.settings = {
                 <div class="form-hint">견종을 모르는 아이(믹스견 등)는 이 기간을 써요. 마지막 미용 후 이 기간이 지나면 홈에 알림이 표시됩니다</div>
               </div>
               <details class="form-group" id="s-breedcycle-box">
-                <summary class="form-label" style="cursor:pointer">견종별 미용 주기</summary>
+                <summary class="form-label" style="cursor:pointer">처음 오는 아이 추천 주기 (견종)</summary>
                 ${App.BREED_CYCLE_GROUPS.map(g => `
                 <div style="display:flex;align-items:center;gap:8px;margin:8px 0">
                   <div style="flex:1;min-width:0"><b>${g.label}</b><div class="form-hint" style="margin:0">${g.breeds.join(', ')}</div></div>
                   <input type="number" id="s-bc-${g.key}" data-default="${g.days}" value="${Number(breedCycles[g.key]) > 0 ? Number(breedCycles[g.key]) : g.days}" min="1" max="365" style="width:72px"> <span>일</span>
                 </div>`).join('')}
                 <button type="button" class="btn btn-sm btn-secondary" id="s-bc-reset">기본값으로</button>
-                <div class="form-hint">손님 아이에게 따로 정한 주기가 없을 때 이 값을 써요</div>
+                <div class="form-hint">아이마다 미용 기록의 &lsquo;다음 미용&rsquo;에서 고른 주기가 먼저예요. 아직 정한 주기가 없는 아이에게 이 값을 써요 (코스·스타일에 정한 주기가 있으면 그게 먼저)</div>
               </details>
             </div>
           </div>

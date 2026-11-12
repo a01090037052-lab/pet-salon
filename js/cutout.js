@@ -429,6 +429,36 @@ App.cutout = {
   },
   // 순수 함수: 천 색이 고른 정도(spread) → 처음 지우는 정도
   keyTol(spread) { return Math.round(Math.min(60, Math.max(14, (spread || 0) * 1.3 + 8))); },
+  // 순수 함수: 천 색 찍어서 고르기 — 누른 곳 둘레(5×5) 보이는 칸 색의 평균. 사진 밖이면 null
+  pickColor(rgba, w, h, x, y) {
+    const cx = Math.round(x), cy = Math.round(y);
+    if (cx < 0 || cy < 0 || cx >= w || cy >= h) return null;
+    let r = 0, g = 0, b = 0, n = 0;
+    for (let yy = Math.max(0, cy - 2); yy <= Math.min(h - 1, cy + 2); yy++) for (let xx = Math.max(0, cx - 2); xx <= Math.min(w - 1, cx + 2); xx++) {
+      const q = (yy * w + xx) * 4; if (rgba[q + 3] < 128) continue;
+      r += rgba[q]; g += rgba[q + 1]; b += rgba[q + 2]; n++;
+    }
+    return n ? [Math.round(r / n), Math.round(g / n), Math.round(b / n)] : null;
+  },
+  // 순수 함수: 손으로 그은 선 → 얼굴만 남기기 선 { k: 'cut'(턱 아래 선) | 'lasso'(둘레), cp: 끌어 고칠 점, p: 부드러운 선 }
+  // 살짝 닿은 것·세로로 그은 턱 선은 null (사진이 통째로 지워지지 않게)
+  faceFromPath(path, k, w, h) {
+    if (!path || path.length < 6) return null;
+    let x0 = Infinity, x1 = -Infinity, y0 = Infinity, y1 = -Infinity;
+    for (let i = 0; i < path.length; i += 2) { x0 = Math.min(x0, path[i]); x1 = Math.max(x1, path[i]); y0 = Math.min(y0, path[i + 1]); y1 = Math.max(y1, path[i + 1]); }
+    const minSpan = Math.max(w, h) * 0.05;
+    const ok = k === 'lasso' ? (x1 - x0 > minSpan && y1 - y0 > minSpan) : (x1 - x0 > minSpan && x1 - x0 > (y1 - y0) * 1.5);
+    if (!ok) return null;
+    const R = App.pages.records, closed = k === 'lasso';
+    const cp = R._resamplePath(path, closed ? 14 : 9, closed);
+    return { k, cp, p: R._smoothPath(cp, closed) };
+  },
+  // 순수 함수: 마스크에 얼굴만 남기기(턱 선·둘레 마스크들, 0~255 남길 정도)를 곱한다
+  applyFaces(A, masks) {
+    const out = A.slice();
+    for (const m of masks || []) if (m) for (let i = 0; i < out.length; i++) out[i] = Math.round(out[i] * m[i] / 255);
+    return out;
+  },
   async openEditor(slot, opts = {}) {
     const R = App.pages.records;
     const out = opts.out === 'photo' ? 'photo' : 'front';
@@ -455,7 +485,11 @@ App.cutout = {
     for (let i = 0; i < N; i++) origA[i] = raw[i * 4 + 3];
     const known = known0 && (out === 'photo' || known0.src === cur) ? known0 : null;
     let A = null;
-    if (known && known.mw === W && known.mh === H) A = (await this._alphaOf(known))?.slice() || null;
+    // 얼굴만 남기기 선: 사진은 strokes 에, 강아지 앞으로는 faces 에 (그때는 얼굴을 곱하기 전 마스크가 base)
+    const faces0 = known && known.mw === W && known.mh === H ? (out === 'photo' ? known.strokes : (known.base && known.faces)) : null;
+    const faces = { cut: null, lasso: null };
+    for (const f of faces0 || []) if (f && (f.k === 'cut' || f.k === 'lasso') && f.cp) faces[f.k] = { k: f.k, cp: f.cp.slice(), p: f.p.slice() };
+    if (known && known.mw === W && known.mh === H) A = (await this._alphaOf(out === 'front' && faces0 ? { mask: known.base, mw: W, mh: H } : known))?.slice() || null;
     if (!A && isAlpha) A = origA.slice();
     let rgb = raw; // 보이는 색 (천 색을 지우면 털 둘레에 비친 천 색을 걷어 낸 색)
     // 카드 화소 → 마스크 화소 (경계 막대는 카드 1080px 기준)
@@ -463,10 +497,18 @@ App.cutout = {
     const pxPerOut = pl0 ? W / (pl0.iw * pl0.k) : Math.max(W, H) / 1080;
     const st = { tool: A ? 'erase' : 'tap', brush: 36, scale: 1, tx: 0, ty: 0, closed: false, cursor: null,
       grow: known ? known.grow || 0 : 0, feather: known ? (known.feather ?? 2) : (isAlpha ? 0 : 2), manual: false, path: null,
-      key: known && known.key ? { color: known.key.color.slice(), tol: known.key.tol } : null };
+      key: known && known.key ? { color: known.key.color.slice(), tol: known.key.tol } : null, faces };
     if (st.key) { const k = raw.slice(); R._chromaKey(k, W, H, st.key.color, st.key.tol); rgb = k; }
     const undo = [];
-    const push = () => { undo.push({ A: A ? A.slice() : null, grow: st.grow, feather: st.feather, key: st.key ? { ...st.key } : null, rgb }); if (undo.length > 20) undo.shift(); };
+    const push = () => { undo.push({ A: A ? A.slice() : null, grow: st.grow, feather: st.feather, key: st.key ? { ...st.key } : null, rgb, faces: { ...st.faces } }); if (undo.length > 20) undo.shift(); };
+    // 얼굴만 남기기: 선마다 마스크를 한 번만 만든다 (선을 고치면 새 선 = 새 마스크)
+    const faceMaskCache = new WeakMap();
+    const faceList = () => [st.faces.cut, st.faces.lasso].filter(Boolean);
+    const faced = () => {
+      if (!A) return null;
+      const fl = faceList(); if (!fl.length) return A;
+      return this.applyFaces(A, fl.map(f => { let m = faceMaskCache.get(f); if (!m) { m = R._faceMask(f, W, H); faceMaskCache.set(f, m); } return m; }));
+    };
     const title = out === 'photo' ? (isAlpha || known ? '떼어낸 사진 고치기' : '배경 지우기') : (known ? '떼어낸 강아지 고치기' : '강아지 떼어내기');
     const wide = window.matchMedia('(min-width: 900px) and (orientation: landscape)').matches;
 
@@ -491,10 +533,17 @@ App.cutout = {
           <button type="button" class="card-tstyle-btn fx-big" data-tool="move" hidden>✥ 화면 옮기기</button>
         </div>
         <label class="cutout-ed-slider fx-brush">붓 크기 <input type="range" min="10" max="90" step="2" value="${st.brush}" data-brush aria-label="붓 크기"></label>
-        <details class="cutout-ed-more"${wide ? ' open' : ''}><summary>더 고치기 (경계·자동 붓)</summary>
+        <details class="cutout-ed-more"${wide ? ' open' : ''}><summary>더 고치기 (경계·천 색·얼굴만·자동 붓)</summary>
           <label class="cutout-ed-slider">경계를 안쪽으로 <input type="range" min="-10" max="10" step="1" value="${st.grow}" data-grow aria-label="경계 안쪽 바깥쪽"> 바깥으로</label>
           <label class="cutout-ed-slider">가장자리 또렷하게 <input type="range" min="0" max="12" step="1" value="${st.feather}" data-feather aria-label="가장자리 또렷하게 부드럽게"> 부드럽게</label>
+          <div class="cutout-ed-row fx-pick"><span class="cutout-ed-lb">천 색</span>
+            <i class="cutout-ed-swatch" hidden></i>
+            <button type="button" class="card-tstyle-btn" data-tool="pick">천 색 찍어서 고르기</button></div>
           <label class="cutout-ed-slider fx-key" hidden>천 색을 덜 지우기 <input type="range" min="4" max="90" step="1" value="${st.key ? st.key.tol : 30}" data-tol aria-label="천 색 지우는 정도"> 더 지우기</label>
+          <div class="cutout-ed-row fx-face"><span class="cutout-ed-lb">얼굴만 남기기</span>
+            <button type="button" class="card-tstyle-btn" data-tool="cut">턱 아래 선 긋기</button>
+            <button type="button" class="card-tstyle-btn" data-tool="lasso">얼굴 둘레 그리기</button>
+            <button type="button" class="card-tstyle-btn" data-act="faceoff" hidden>얼굴만 풀기</button></div>
           <div class="cutout-ed-row fx-auto"><span class="cutout-ed-lb">자동 붓</span>
             <button type="button" class="card-tstyle-btn" data-tool="plus">＋ 빠진 강아지 칠하기</button>
             <button type="button" class="card-tstyle-btn" data-tool="minus">－ 남은 배경 칠하기</button></div>
@@ -509,7 +558,10 @@ App.cutout = {
       minus: '남은 배경을 대충 칠하면 그 둘레만 빼요.',
       erase: '문지른 곳을 지워요. 두 손가락으로 크게 볼 수 있어요.',
       restore: '너무 지운 곳을 문지르면 되살아나요.',
-      move: '한 손가락으로 화면을 옮겨요.'
+      move: '한 손가락으로 화면을 옮겨요.',
+      pick: '사진에서 천(배경)을 콕 누르면 그 색을 지워요. 두 손가락으로 크게 볼 수 있어요.',
+      cut: '턱 바로 아래를 옆으로 한 번 그으면 그 아래가 지워져요. 그은 뒤 점을 끌어 턱선에 맞추세요.',
+      lasso: '얼굴 둘레를 크게 한 바퀴 그리면 안쪽만 남아요. 그은 뒤 점을 끌어 맞추세요.'
     };
     const tip = (t, ms = 3500) => { tipEl.textContent = t; tipEl.hidden = !t; clearTimeout(st.tipT); if (t) st.tipT = setTimeout(() => { tipEl.hidden = true; }, ms); };
     const busy = (t) => { busyEl.textContent = t || ''; busyEl.hidden = !t; };
@@ -519,9 +571,9 @@ App.cutout = {
     const vx = vc.getContext('2d');
     const oc = document.createElement('canvas'); oc.width = W; oc.height = H;
     const ox = oc.getContext('2d');
-    const finalMask = () => this.processMask(A, W, H, st.grow * pxPerOut, st.feather * pxPerOut);
+    const finalMask = () => this.processMask(faced(), W, H, st.grow * pxPerOut, st.feather * pxPerOut);
     const rebuild = (fast) => {
-      const P = !A ? null : (fast ? A : finalMask());
+      const P = !A ? null : (fast ? faced() : finalMask());
       const d = vx.createImageData(W, H), o = ox.createImageData(W, H);
       for (let i = 0; i < N; i++) {
         const q = i * 4, p = P ? Math.min(P[i], origA[i]) : 255;
@@ -578,6 +630,22 @@ App.cutout = {
         if (st.path.length === 2) g.lineTo(v.ox + st.path[0] * v.s + 0.1, v.oy + st.path[1] * v.s);
         g.stroke(); g.restore();
       }
+      // 얼굴만 남기기: 고칠 수 있는 선과 점(보라), 그리는 중인 선(빨강)
+      const ef = (st.tool === 'cut' || st.tool === 'lasso') && !st.fpath ? st.faces[st.tool] : null;
+      const line = (pp, closed) => { g.beginPath(); for (let i = 0; i < pp.length; i += 2) { const X = v.ox + pp[i] * v.s, Y = v.oy + pp[i + 1] * v.s; i ? g.lineTo(X, Y) : g.moveTo(X, Y); } if (closed) g.closePath(); g.stroke(); };
+      if (ef) {
+        g.save(); g.lineWidth = 2 * dpr; g.strokeStyle = '#7C3AED'; g.setLineDash([6 * dpr, 5 * dpr]);
+        line(ef.p, ef.k === 'lasso'); g.setLineDash([]);
+        for (let i = 0; i < ef.cp.length; i += 2) {
+          g.beginPath(); g.arc(v.ox + ef.cp[i] * v.s, v.oy + ef.cp[i + 1] * v.s, 10 * dpr, 0, Math.PI * 2);
+          g.fillStyle = '#FFFFFF'; g.fill(); g.lineWidth = 3 * dpr; g.strokeStyle = '#7C3AED'; g.stroke();
+        }
+        g.restore();
+      }
+      if (st.fpath && st.fpath.length >= 4) {
+        g.save(); g.lineWidth = 3 * dpr; g.strokeStyle = '#EF4444'; g.setLineDash([8 * dpr, 6 * dpr]);
+        line(st.fpath, st.tool === 'lasso'); g.restore();
+      }
       // 붓 동그라미 (손가락에 가려도 둘레가 보이게)
       if (st.cursor && (st.tool === 'erase' || st.tool === 'restore')) {
         const X = v.ox + st.cursor[0] * v.s, Y = v.oy + st.cursor[1] * v.s;
@@ -592,6 +660,10 @@ App.cutout = {
       ov.querySelectorAll('.fx-auto button').forEach(b => { b.disabled = st.manual || !A; });
       ov.querySelector('.fx-auto').hidden = st.manual;
       ov.querySelector('.fx-key').hidden = !st.key;
+      ov.querySelector('.fx-pick').hidden = isAlpha; // 이미 배경이 투명한 사진은 천 색이 없다
+      const sw = ov.querySelector('.cutout-ed-swatch');
+      sw.hidden = !st.key; if (st.key) sw.style.background = `rgb(${st.key.color.join(',')})`;
+      ov.querySelector('[data-act="faceoff"]').hidden = !faceList().length;
       ov.querySelector('[data-tool="move"]').hidden = st.scale <= 1.01 && st.tool !== 'move';
       const u = ov.querySelector('[data-act="undo"]'); if (u) u.disabled = !undo.length;
       ov.querySelector('[data-grow]').value = st.grow; ov.querySelector('[data-feather]').value = st.feather;
@@ -709,18 +781,20 @@ App.cutout = {
       else if (b.dataset.act === 'key') { startKey(); return; }
       else if (b.dataset.act === 'undo') {
         const u = undo.pop();
-        if (u) { A = u.A; st.grow = u.grow; st.feather = u.feather; st.key = u.key; rgb = u.rgb; if (!A && !st.manual) st.tool = 'tap'; rebuild(); }
+        if (u) { A = u.A; st.grow = u.grow; st.feather = u.feather; st.key = u.key; rgb = u.rgb; st.faces = u.faces; if (!A && !st.manual) st.tool = 'tap'; rebuild(); }
       }
+      else if (b.dataset.act === 'faceoff') { push(); st.faces = { cut: null, lasso: null }; rebuild(); tip('얼굴만 남기기를 풀었어요.'); }
       else if (b.dataset.act === 'cancel') { close(); return; }
       else if (b.dataset.act === 'sticker') {
-        if (!A || !this.bbox(A, W, H)) { tip('강아지를 먼저 골라 주세요. 강아지를 한 번 콕 눌러요.'); return; }
+        if (!A || !this.bbox(faced(), W, H)) { tip('강아지를 먼저 골라 주세요. 강아지를 한 번 콕 눌러요.'); return; }
         b.disabled = true;
         const c = renderCut(false);
         try { await R._saveCutoutSticker(c); } finally { c.width = c.height = 0; if (!st.closed) b.disabled = false; }
         return;
       }
       else if (b.dataset.act === 'done') {
-        const bb = A && this.bbox(A, W, H);
+        const AF = faced(), fl = faceList().map(f => ({ k: f.k, cp: f.cp.slice(), p: f.p.slice() }));
+        const bb = AF && this.bbox(AF, W, H);
         if (!bb) { tip('강아지를 먼저 골라 주세요. 강아지를 한 번 콕 눌러요.'); return; }
         if (R._cardPhotos[slot] !== cur) { App.showToast('그사이 사진이 바뀌어서 고친 것은 넣지 않았어요.', 'error'); close(); return; }
         st.saving = true;
@@ -733,14 +807,16 @@ App.cutout = {
           catch (err) { console.warn('배경 지운 사진 만들기 실패:', err); }
           if (!url) { busy(''); st.saving = false; App.showToast('저장하지 못했어요. 다시 해 주세요.', 'error'); return; }
           R._cardPhotos[slot] = url;
-          R._cutoutSrc.set(url, { orig: source, level: 0, strokes: [], key: st.key, mask: this.alphaToUrl(A, W, H), mw: W, mh: H, grow: st.grow, feather: st.feather });
+          R._cutoutSrc.set(url, { orig: source, level: 0, strokes: fl, key: st.key, mask: this.alphaToUrl(A, W, H), mw: W, mh: H, grow: st.grow, feather: st.feather });
           R._pruneCutoutSrc();
           R._refreshPhotoPreview(slot);
           R._scheduleCardPreview();
         } else {
           R._cardFront = R._cardFront || [];
-          R._cardFront[slot] = { src: cur, mask: this.alphaToUrl(A, W, H), mw: W, mh: H, bbox: bb, grow: st.grow, feather: st.feather,
+          R._cardFront[slot] = { src: cur, mask: this.alphaToUrl(AF, W, H), mw: W, mh: H, bbox: bb, grow: st.grow, feather: st.feather,
             line: known && known.line ? { ...known.line } : this.defaultLine(bb), on: true, alpha: isAlpha };
+          // 얼굴만 남겼으면 곱하기 전 마스크·선도 기억 (다시 열면 선을 고칠 수 있게)
+          if (fl.length) Object.assign(R._cardFront[slot], { base: this.alphaToUrl(A, W, H), faces: fl });
           R._frontEditSlot = slot;
           this.syncSlot(slot);
           R._scheduleCardPreview();
@@ -764,14 +840,15 @@ App.cutout = {
     }
     // 손가락: 하나 = 붓(또는 화면 옮기기), 둘 = 확대·이동
     const pts = new Map();
-    let pinch = null, pan = null, brush = null;
+    let pinch = null, pan = null, brush = null, hdrag = null;
     const restoreTo = () => (isAlpha ? origA : true);
     cv.addEventListener('pointerdown', (e) => {
       try { cv.setPointerCapture(e.pointerId); } catch (_) {}
       pts.set(e.pointerId, [e.clientX, e.clientY]);
       if (pts.size >= 2) {
         if (brush) { const u = undo.pop(); if (u) A = u.A; brush = null; rebuild(); }
-        st.path = null; pan = null; st.tapAt = null; st.cursor = null;
+        st.path = null; pan = null; st.tapAt = null; st.cursor = null; st.fpath = null; st.pickAt = null;
+        if (hdrag) { const moved = hdrag.moved; hdrag = null; if (moved) rebuild(); }
         if (pts.size === 2) { const [a, b] = [...pts.values()]; pinch = { d: Math.hypot(a[0] - b[0], a[1] - b[1]), scale: st.scale, tx: st.tx, ty: st.ty, mx: (a[0] + b[0]) / 2, my: (a[1] + b[1]) / 2 }; }
         draw(); return;
       }
@@ -779,6 +856,19 @@ App.cutout = {
       if (st.tool === 'move') { pan = { x: e.clientX, y: e.clientY, tx: st.tx, ty: st.ty }; return; }
       const [ix, iy] = toImg(e.clientX, e.clientY);
       if (st.tool === 'tap') { st.tapAt = [ix, iy]; return; }
+      // 천 색 찍어서 고르기: 손을 뗄 때 고른다 (칠하지 않고 모델도 부르지 않는다)
+      if (st.tool === 'pick') { st.pickAt = [ix, iy, e.clientX, e.clientY]; return; }
+      if (st.tool === 'cut' || st.tool === 'lasso') {
+        // 점 가까이(손가락 크기) 누르면 그 점을 끈다
+        const ef = st.faces[st.tool];
+        if (ef) {
+          const hitR = 26 * dpr / view().s;
+          let best = -1, bd = hitR;
+          for (let i = 0; i < ef.cp.length; i += 2) { const d = Math.hypot(ef.cp[i] - ix, ef.cp[i + 1] - iy); if (d < bd) { bd = d; best = i; } }
+          if (best >= 0) { hdrag = { i: best, moved: false }; return; }
+        }
+        st.fpath = [Math.round(ix), Math.round(iy)]; draw(); return;
+      }
       if (st.tool === 'erase' || st.tool === 'restore') {
         push();
         if (!A) A = isAlpha ? origA.slice() : new Uint8Array(N).fill(255); // 고르기 전에 붓부터 — 사진 전체에서 시작
@@ -817,8 +907,25 @@ App.cutout = {
         if (!st.raf) st.raf = requestAnimationFrame(() => { st.raf = 0; if (!st.closed) rebuild(true); });
         return;
       }
+      if (hdrag) {
+        // 처음 움직일 때 되돌리기 한 번 쌓고 새 선으로 (같은 선을 고치면 마스크 기억이 어긋난다)
+        const k = st.tool, f = st.faces[k]; if (!f) { hdrag = null; return; }
+        if (!hdrag.moved) { push(); hdrag.moved = true; sync(); }
+        const cp = f.cp.slice(); cp[hdrag.i] = Math.round(ix); cp[hdrag.i + 1] = Math.round(iy);
+        st.faces = { ...st.faces, [k]: { k, cp, p: R._smoothPath(cp, k === 'lasso') } };
+        draw(); rebuildSoon(); return;
+      }
+      if (st.fpath) { st.fpath.push(Math.round(ix), Math.round(iy)); draw(); return; }
       if (st.path) { st.path.push(Math.round(ix), Math.round(iy)); draw(); }
     });
+    const doPick = (ix, iy) => {
+      const c = this.pickColor(raw, W, H, ix, iy);
+      if (!c) { tip('사진 안의 천(배경)을 눌러 주세요.'); return; }
+      push();
+      st.key = { color: c, tol: st.key ? st.key.tol : this.keyTol(R._guessKeyColor(raw, W, H).spread) };
+      applyKey(); rebuild(); sync();
+      tip('누른 색을 지웠어요. 다른 곳을 누르면 다시 골라요. 덜·더 지우기는 아래 막대로 맞춰요.', 5000);
+    };
     const up = (e) => {
       pts.delete(e.pointerId);
       if (pts.size < 2 && pinch) { pinch = null; sync(); if (pts.size === 1 && st.tool === 'move') { const [p] = [...pts.values()]; pan = { x: p[0], y: p[1], tx: st.tx, ty: st.ty }; } }
@@ -826,6 +933,18 @@ App.cutout = {
       pan = null;
       if (e.pointerType !== 'mouse') st.cursor = null;
       if (brush) { brush = null; rebuild(); sync(); return; }
+      if (st.pickAt) { const [ix, iy, sx, sy] = st.pickAt; st.pickAt = null; if (e.type === 'pointerup' && Math.hypot(e.clientX - sx, e.clientY - sy) < 12) doPick(ix, iy); return; } // 끌면 고르지 않는다
+      if (hdrag) { const moved = hdrag.moved; hdrag = null; if (moved) { rebuild(); sync(); } return; }
+      if (st.fpath) {
+        const path = st.fpath; st.fpath = null;
+        const f = e.type === 'pointerup' ? this.faceFromPath(path, st.tool, W, H) : null;
+        if (!f) { draw(); if (e.type === 'pointerup') tip(st.tool === 'lasso' ? '얼굴 둘레를 크게 한 바퀴 그려 주세요.' : '턱 아래를 옆으로(왼쪽↔오른쪽) 그어 주세요.'); return; }
+        push();
+        if (!A) A = isAlpha ? origA.slice() : new Uint8Array(N).fill(255); // 고르기 전이면 사진 전체에서
+        st.faces = { ...st.faces, [f.k]: f };
+        rebuild(); sync();
+        return;
+      }
       if (st.tapAt) { const [ix, iy] = st.tapAt; st.tapAt = null; if (e.type === 'pointerup') doTap(ix, iy); return; }
       if (st.path) { const p = st.path; st.path = null; draw(); if (e.type === 'pointerup') doStroke(p, st.tool === 'minus' ? -1 : 1); }
     };

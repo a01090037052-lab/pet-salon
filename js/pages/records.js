@@ -1048,6 +1048,13 @@ App.pages.records = {
             style="margin-top:8px;display:${record.cashReceiptYn ? 'block' : 'none'};min-height:44px;width:100%;padding:8px 10px;border:1px solid var(--border);border-radius:6px;font-size:max(16px,0.9rem)">
         </div>
 
+        <!-- 다음 미용: 이 아이 주기를 미리 골라 둔다. 누르면 바뀌고, 저장하면 이 아이 권장 주기가 된다 -->
+        <div class="form-group" id="f-next-cycle-group">
+          <label class="form-label">다음 미용 <span id="f-next-cycle-note" style="color:var(--text-muted);font-size:0.93rem;font-weight:400"></span></label>
+          <div id="f-next-cycle-chips" style="display:flex;gap:6px;flex-wrap:wrap"></div>
+          <input type="hidden" id="f-nextCycle" value="" data-saved="${App.normalizeCycle(record.nextCycle) || ''}">
+        </div>
+
         </div><div class="rec-form-side">
         <!-- 컨디션 (기본 표시 — 리포트 가치) -->
         <div class="form-group" style="margin-bottom:12px">
@@ -1612,6 +1619,46 @@ App.pages.records = {
     courseInput?.addEventListener('change', () => setTimeout(syncStyleChips, 300));
     document.getElementById('f-petId')?.addEventListener('change', () => setTimeout(syncStyleChips, 500)); // 이 아이 가격 표시도 반려견 따라
 
+    // 다음 미용 칩 (2주~8주). 새 기록은 이 아이 주기 → 오늘 고른 스타일·코스의 주기 → 견종 → 매장 기준을 미리 골라 둔다 (App.suggestNextCycle).
+    // 사장님이 한 번 누르면 그 값을 그대로 둔다. 기록 수정은 저장된 값 — 값이 없던 옛 기록은 눌렀을 때만 저장한다 (saveRecord)
+    const cycleChips = document.getElementById('f-next-cycle-chips');
+    const cycleInput = document.getElementById('f-nextCycle');
+    const cycleNote = document.getElementById('f-next-cycle-note');
+    const savedCycle = App.normalizeCycle(record.nextCycle);
+    let cycleSeq = 0;
+    const paintCycleChips = (days) => {
+      if (!cycleChips || !cycleChips.isConnected) return;
+      // 칩에 없는 값(예: 49일)도 고른 칩으로 보여 준다
+      const list = App.CYCLE_CHOICES.concat(days && !App.CYCLE_CHOICES.includes(days) ? [days] : []).sort((a, b) => a - b);
+      cycleChips.innerHTML = list.map(d => `<button type="button" class="payment-chip chip-compact cycle-pick-chip${d === days ? ' active' : ''}" data-days="${d}" aria-pressed="${d === days ? 'true' : 'false'}">${App.formatCycle(d)}</button>`).join('');
+      if (cycleInput) cycleInput.value = days || '';
+    };
+    const suggestCycle = async () => {
+      const my = ++cycleSeq;
+      const [pet, courses, revisitDays] = await Promise.all([currentPet(), courseSvcsOf(courseInput?.value), App.getRevisitDays()]);
+      const avg = pet && pet.id ? this._cycleAvgNote(await DB.getByIndex('records', 'petId', pet.id).catch(() => [])) : '';
+      if (my !== cycleSeq || !cycleChips || !cycleChips.isConnected) return;
+      if (cycleNote) cycleNote.textContent = avg ? '· ' + avg : '';
+      if (cycleInput && cycleInput.dataset.touched) return;
+      if (savedCycle) { paintCycleChips(savedCycle); return; }
+      const styles = styleSvcs.filter(sv => styleTagOf(App.normalizeServiceName(sv.name)));
+      paintCycleChips(App.suggestNextCycle(pet, [...styles, ...courses], revisitDays).days);
+    };
+    let cycleTimer = null;
+    const suggestCycleSoon = () => { clearTimeout(cycleTimer); cycleTimer = setTimeout(() => suggestCycle().catch(err => console.warn('다음 미용 추천 실패:', err)), 350); };
+    paintCycleChips(savedCycle);
+    suggestCycleSoon();
+    cycleChips?.addEventListener('click', (e) => {
+      const b = e.target.closest('.cycle-pick-chip');
+      if (!b) return;
+      this._modalDirty = true;
+      if (cycleInput) cycleInput.dataset.touched = '1';
+      paintCycleChips(App.normalizeCycle(b.dataset.days));
+    });
+    courseInput?.addEventListener('change', suggestCycleSoon);
+    document.getElementById('f-petId')?.addEventListener('change', suggestCycleSoon);
+    if (addonTagsEl) new MutationObserver(suggestCycleSoon).observe(addonTagsEl, { childList: true }); // 스타일 칩·태그를 바꾸면
+
     // 서비스 선택 시 가격 자동 채움 (사이즈 변경 시에도 다시 계산)
     const serviceInput = document.getElementById('f-service');
     const servicePriceInput = document.getElementById('f-servicePrice');
@@ -2066,22 +2113,26 @@ App.pages.records = {
 
   },
 
-  // 반려견 lastVisitDate 를 그 반려견의 모든 기록 기준으로 다시 계산 (수정·삭제·반려견 변경 공통)
+  // 기록 폼 '다음 미용' 옆 작은 글: 3번 이상 온 아이만 실제로 온 간격의 평균 (반려견 상세와 같은 계산 — pets.visitSummary)
+  _cycleAvgNote(petRecords) {
+    if (!App.pages.pets || !App.pages.pets.visitSummary) return '';
+    const sum = App.pages.pets.visitSummary(petRecords || []);
+    return sum.count >= 3 && sum.avgCycle ? '실제 평균 ' + App.formatCycle(sum.avgCycle) : '';
+  },
+
+  // 반려견 lastVisitDate·미용 주기를 그 반려견의 모든 기록 기준으로 다시 계산 (수정·삭제·반려견 변경 공통)
   async _recalcPetLastVisit(petId) {
     if (!petId) return;
     try {
       const [petRecords, pet] = await Promise.all([DB.getByIndex('records', 'petId', petId), DB.get('pets', petId)]);
       if (!pet) return;
-      let first = null, latest = null, count = 0;
-      petRecords.forEach(r => { if (!r.date) return; count++; if (!first || r.date < first) first = r.date; if (!latest || r.date > latest) latest = r.date; });
-      // '기록 없이 완료'한 예약도 방문이다 — 기록만 보고 다시 셈하면 그 방문이 사라져 재방문 알림이 한 달 일찍 떴다
-      try {
-        const appts = await DB.getByIndex('appointments', 'petId', petId);
-        const today = App.getToday();
-        const recApptIds = new Set(petRecords.map(r => r.appointmentId).filter(Boolean).map(Number));
-        appts.forEach(a => { if (a.status === 'completed' && a.date && a.date <= today && !recApptIds.has(Number(a.id)) && (!latest || a.date > latest)) latest = a.date; });
-      } catch (_) {}
-      if ((pet.lastVisitDate || null) !== latest || (pet.firstVisitDate || null) !== first || (pet.visitCount || 0) !== count) {
+      // '기록 없이 완료'한 예약도 방문이다 — 기록만 보고 다시 셈하면 그 방문이 사라져 재방문 알림이 한 달 일찍 떴다 (규칙: App.computePetVisitStats)
+      let appts = [];
+      try { appts = await DB.getByIndex('appointments', 'petId', petId); } catch (_) {}
+      const { first, last: latest, count } = App.computePetVisitStats(petRecords, appts);
+      // 미용 주기도 같이 다시 정한다 — 가장 최근 기록의 '다음 미용' 값 (규칙: App.computePetCycle)
+      const cycleChanged = App.applyPetCycle(pet, petRecords);
+      if (cycleChanged || (pet.lastVisitDate || null) !== latest || (pet.firstVisitDate || null) !== first || (pet.visitCount || 0) !== count) {
         pet.lastVisitDate = latest;
         pet.firstVisitDate = first;
         pet.visitCount = count;
@@ -2288,12 +2339,17 @@ App.pages.records = {
       const earStatus = document.getElementById('f-earStatus')?.value || '';
       const mattingLevel = document.getElementById('f-mattingLevel')?.value || '';
 
-      // 다음 미용 추천일: 반려견 권장 주기 → 없으면 설정의 재방문 기준(기본 30일). 리포트·다음 예약 등록이 이 날짜를 쓴다
+      // 다음 미용: 고른 칩(record.nextCycle, 일). 새 기록은 늘 저장, 수정은 원래 값이 있었거나 칩을 눌렀을 때만.
+      // 저장 뒤 _recalcPetLastVisit 이 이 아이 권장 주기로 옮긴다 (가장 최근 기록 기준 — App.computePetCycle)
+      const cycleEl = document.getElementById('f-nextCycle');
+      const pickedCycle = App.normalizeCycle(cycleEl?.value);
+      const nextCycle = pickedCycle && (!id || cycleEl.dataset.touched || cycleEl.dataset.saved) ? pickedCycle : 0;
+      // 다음 미용 추천일 = 날짜 + 고른 주기 (없으면 반려견 권장 주기 → 설정의 재방문 기준). 리포트·다음 예약 등록이 이 날짜를 쓴다
       let nextVisitDate = '';
       if (petId) {
         try {
           const pet = await DB.get('pets', petId);
-          nextVisitDate = App.calcNextVisitDate(date || App.getToday(), App.getGroomingCycle(pet, await App.getRevisitDays()), 30);
+          nextVisitDate = App.calcNextVisitDate(date || App.getToday(), nextCycle || App.getGroomingCycle(pet, await App.getRevisitDays()), 30);
         } catch (e) { /* ignore */ }
       }
 
@@ -2386,6 +2442,7 @@ App.pages.records = {
 
       const data = { customerId, petId, date, groomer, nextVisitDate, service, serviceId, servicePrice, serviceCategory, addons, addonServiceIds, addonPrice, style, serviceNames, totalPrice, discount, extraCharge, finalPrice, memo, paymentMethod, cashReceiptYn, cashReceiptNo, appointmentId, status, condition, cooperativeness, skinStatus, earStatus, mattingLevel };
       if (prepaidUsed > 0) data.prepaidUsed = prepaidUsed;
+      if (nextCycle) data.nextCycle = nextCycle;
       if (courses) data.courses = courses;
       // 서비스(무료)로 제공한 항목 — 금액(finalPrice)에는 안 들어가고, 원래 가격만 남긴다 (영수증 '서비스' 줄 · 매출 화면 '서비스로 제공한 금액')
       if (mainFree || freeAddons.length) {
@@ -2472,6 +2529,7 @@ App.pages.records = {
               const moved = this._moveEarlyAppointment(appt, date, new Date());
               appt.status = 'completed';
               appt.completedAt = new Date().toISOString();
+              delete appt.cancelledAt;
               await DB.update('appointments', appt);
               apptDone = moved ? 'moved' : true; // 저장 완료 토스트에 함께 적는다
             }

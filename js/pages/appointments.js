@@ -99,13 +99,21 @@ App.pages.appointments = {
     appointments.forEach(a => { if (statusCounts[a.status] !== undefined) statusCounts[a.status]++; });
 
     // 목록·달력엔 이름·연락처만 쓰므로 사진·메모 같은 큰 필드는 빼고 읽는다 (records 목록과 같은 제외 목록)
-    const [customers, pets, services, recentRecords, prepaidEntries] = await Promise.all([
+    const [customers, pets, services, recentRecords, prepaidEntries, noShowStats] = await Promise.all([
       DB.getAllLight('customers', ['memo', 'address']),
       DB.getAllLight('pets', ['photo', 'temperament', 'healthNotes', 'preferredStyle']),
       DB.getAll('services'),
       DB.getByDateRange('records', 'date', listFrom, '9999-12-31'),
-      Prepaid.getAllEntries()
+      Prepaid.getAllEntries(),
+      App.loadNoShowStats() // 최근 6개월 노쇼·당일 취소 (한 번 읽기)
     ]);
+    // 고객 이름 옆 작은 빨간 표시 — 이력이 없으면 아무것도 안 붙는다
+    const riskTags = (a) => {
+      const r = noShowStats[a.customerId];
+      if (!r) return '';
+      return (r.noShow > 0 ? ` <span class="appt-risk-tag">노쇼 ${r.noShow}회</span>` : '')
+        + (r.lateCancel > 0 ? ` <span class="appt-risk-tag">당일취소 ${r.lateCancel}회</span>` : '');
+    };
     // 예약금은 정액권 충전(메모: 예약금)으로 받는다 — 예약과 묶이지 않으니 잔액만 한 줄로 알려 준다 (장부 한 번 읽어 고객별 합산)
     const prepaidBal = Prepaid.balanceMap(prepaidEntries);
     const balLine = (a, style) => {
@@ -271,7 +279,7 @@ App.pages.appointments = {
                     <tr data-id="${a.id}" data-status="${st(a)}" data-date="${App.escapeHtml(a.date || '')}" data-search="${search}"
                         style="${isToday ? 'background:var(--info-bg-soft)' : ''}">
                       <td class="appt-td-time"><strong>${App.escapeHtml(a.time || '-')}</strong>${a.duration && a.duration !== 60 ? `<div class="appt-sub">${a.duration}분</div>` : ''}</td>
-                      <td><a href="#pets/${a.petId}" style="color:var(--primary);font-weight:700" onclick="event.stopPropagation()">${App.escapeHtml(pet?.name || '-')}</a> <span class="appt-sub">${App.escapeHtml(App.getCustomerLabel(customer))}</span>${overdue ? ' <span class="badge badge-danger appt-overdue-badge">지남</span>' : ''}${App.firstVisitBadge(a.customerId, firstVisit, a)}${customer?.phone ? ` <a href="sms:${App.escapeHtml(App.phoneDigits(customer.phone))}" onclick="event.stopPropagation()" title="문자 보내기" aria-label="문자 보내기" style="color:var(--text-muted)">${App.icon('message')}</a>` : ''}<div class="appt-sub appt-cell-clip appt-svc-inline">${App.escapeHtml(serviceNames)}</div>${balLine(a, 'margin-top:2px')}</td>
+                      <td><a href="#pets/${a.petId}" style="color:var(--primary);font-weight:700" onclick="event.stopPropagation()">${App.escapeHtml(pet?.name || '-')}</a> <span class="appt-sub">${App.escapeHtml(App.getCustomerLabel(customer))}</span>${riskTags(a)}${overdue ? ' <span class="badge badge-danger appt-overdue-badge">지남</span>' : ''}${App.firstVisitBadge(a.customerId, firstVisit, a)}${customer?.phone ? ` <a href="sms:${App.escapeHtml(App.phoneDigits(customer.phone))}" onclick="event.stopPropagation()" title="문자 보내기" aria-label="문자 보내기" style="color:var(--text-muted)">${App.icon('message')}</a>` : ''}<div class="appt-sub appt-cell-clip appt-svc-inline">${App.escapeHtml(serviceNames)}</div>${balLine(a, 'margin-top:2px')}</td>
                       <td class="appt-col-svc" title="${App.escapeHtml(serviceNames + (a.memo ? ' / ' + a.memo : ''))}"><div class="appt-cell-clip">${App.escapeHtml(serviceNames || '-')}</div>${a.memo ? `<div class="appt-cell-clip appt-sub">${App.icon('note')} ${App.escapeHtml(a.memo)}</div>` : ''}</td>
                       ${multiGroomer ? `<td>${App.escapeHtml(a.groomer || '-')}</td>` : ''}
                       <td>
@@ -296,7 +304,7 @@ App.pages.appointments = {
               ${g.items.map(a => {
               const { customer, pet, serviceNames, isToday, overdue, search } = rowInfo(a);
               const done = a.status === 'completed';
-              const line2 = [App.getCustomerLabel(customer), serviceNames, multiGroomer ? (a.groomer || '') : '',
+              const line2 = [serviceNames, multiGroomer ? (a.groomer || '') : '',
                 a.duration && a.duration !== 60 ? `${a.duration}분` : '',
                 a.status === 'cancelled' && a.cancelReason ? `취소: ${a.cancelReason}` : '', a.memo || ''].filter(Boolean);
               return `
@@ -308,7 +316,7 @@ App.pages.appointments = {
                     <strong class="appt-card-pet">${App.escapeHtml(pet?.name || '-')}</strong>
                     ${isToday ? '<span class="badge badge-info appt-today-badge">오늘</span>' : ''}${overdue ? '<span class="badge badge-danger appt-overdue-badge">지남</span>' : ''}${App.firstVisitBadge(a.customerId, firstVisit, a)}
                   </div>
-                  <div class="appt-card-l2">${line2.map(t => App.escapeHtml(t)).join(' · ')}</div>
+                  <div class="appt-card-l2"><span class="appt-l2-name">${App.escapeHtml(App.getCustomerLabel(customer))}</span>${riskTags(a)}${line2.length ? `<span class="appt-l2-rest">· ${line2.map(t => App.escapeHtml(t)).join(' · ')}</span>` : ''}</div>
                   ${balLine(a)}
                 </div>
                 <div class="appt-card-side">
@@ -966,6 +974,7 @@ App.pages.appointments = {
         }
         if (newStatus === 'cancelled') { if (cancelReason) appt.cancelReason = cancelReason; }
         else delete appt.cancelReason;
+        App.markCancelledAt(appt, newStatus); // 당일 취소 세기용 — 취소한 때
         await DB.update('appointments', appt);
         // 기록 없이 완료해도 방문은 한 것 — 반려견 마지막 방문일(lastVisitDate)을 앞으로 당겨 재방문 알림이 맞게 한다.
         // (기록 저장 경로는 records._recalcPetLastVisit 이 기록 기준으로 계산한다. 기록이 없으니 여기서는 예약 날짜로)
@@ -1753,23 +1762,27 @@ App.pages.appointments = {
         } else if (hint) hint.remove();
       }
     };
+    // 노쇼·당일 취소 이력 경고 (최근 6개월) — 고객을 고르면 고객 칸 아래 한 줄. 없으면 비운다
+    const showNoShowWarning = async (cid) => {
+      const warn = document.getElementById('noshow-warning');
+      if (!warn) return;
+      let line = '';
+      const ticket = (showNoShowWarning._t = (showNoShowWarning._t || 0) + 1); // 고객을 빨리 바꾸면 앞 고객 경고가 늦게 덮지 않게
+      if (cid) {
+        try {
+          const custAppts = await DB.getByIndex('appointments', 'customerId', Number(cid));
+          line = App.noShowLine(App.noShowStats(custAppts, App.getToday())[Number(cid)]);
+        } catch (e) { console.warn('노쇼 이력 읽기 실패', e); }
+      }
+      if (ticket !== showNoShowWarning._t) return;
+      warn.innerHTML = line ? `<div style="color:var(--danger);font-size:0.93rem;margin-top:4px;font-weight:600">${App.icon('alert')} ${line}</div>` : '';
+    };
     // 검색 가능한 고객 선택 렌더링
     await App.renderCustomerSelect('appt-customer-select', appt.customerId, async (cid, preferPetId) => {
       // 반려견 목록 갱신 + 없으면 그 자리에서 등록 버튼 제공
       await App.refreshPetSelect(cid, preferPetId);
       await applyPetChoice(cid);
-      // 노쇼 이력 경고
-      const warn = document.getElementById('noshow-warning');
-      if (warn) {
-        warn.innerHTML = '';
-        if (cid) {
-          const custAppts = await DB.getByIndex('appointments', 'customerId', Number(cid));
-          const noshowCount = custAppts.filter(a => a.status === 'noshow').length;
-          if (noshowCount > 0) {
-            warn.innerHTML = `<div style="color:var(--danger);font-size:0.93rem;margin-top:4px;font-weight:600">${App.icon('alert')} 이 고객은 노쇼 ${noshowCount}회 이력이 있습니다</div>`;
-          }
-        }
-      }
+      await showNoShowWarning(cid);
     });
     // 고객이 정해진 채로 연 새 예약(고객 상세 '+ 예약' 등): 반려견 미리 고르기 + 안내. 수정은 저장된 반려견을 그대로 둔다
     // (아래 '고객만 정해진 채로 열렸으면 반려견 목록을 다시 그린다' 뒤에서 고른다 — 그 다시 그리기가 골라 둔 값을 지웠다)
@@ -1803,14 +1816,7 @@ App.pages.appointments = {
     if (!id && appt.customerId) await applyPetChoice(appt.customerId);
 
     // 기존 고객 선택 시 노쇼 이력 즉시 표시
-    if (appt.customerId) {
-      const custAppts2 = await DB.getByIndex('appointments', 'customerId', Number(appt.customerId));
-      const noshowCount = custAppts2.filter(a => a.status === 'noshow').length;
-      if (noshowCount > 0) {
-        const warn = document.getElementById('noshow-warning');
-        if (warn) warn.innerHTML = `<div style="color:var(--danger);font-size:0.93rem;margin-top:4px;font-weight:600">${App.icon('alert')} 이 고객은 노쇼 ${noshowCount}회 이력이 있습니다</div>`;
-      }
-    }
+    if (appt.customerId) await showNoShowWarning(appt.customerId);
   },
 
   // ========== Validation & Save ==========
@@ -2062,6 +2068,7 @@ App.pages.appointments = {
       for (const a of targets) {
         a.status = 'cancelled';
         a.cancelReason = '반복 중단';
+        App.markCancelledAt(a, 'cancelled');
         await DB.update('appointments', a);
       }
       App.showToast(`반복 예약 ${targets.length}건을 취소했습니다.`);

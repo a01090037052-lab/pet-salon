@@ -119,15 +119,19 @@ App.pages.analytics = {
     });
 
     // 평균 방문 주기 — 기간 내 고객의 반려견별 (마지막 방문 - 첫 방문) / (방문 수 - 1) 평균
-    let totalCycles = 0, cycleCount = 0;
+    // 비교 기준(권장)도 같은 반려견들의 각자 주기(App.getGroomingCycle) 평균 — 매장 기준 하나와 견주지 않는다
+    const revisitDaysSetting = await App.getRevisitDays();
+    let totalCycles = 0, cycleCount = 0, totalRecCycle = 0;
     periodCustomerIds.forEach(cid => (petsByCustomer[cid] || []).forEach(p => {
       if (!p.firstVisitDate || !p.lastVisitDate || !(Number(p.visitCount) >= 2)) return;
       const span = (App.parseLocalDate(p.lastVisitDate) - App.parseLocalDate(p.firstVisitDate)) / 86400000;
       if (!(span > 0)) return;
       totalCycles += span / (Number(p.visitCount) - 1);
+      totalRecCycle += App.getGroomingCycle(p, revisitDaysSetting);
       cycleCount++;
     }));
     const avgCycle = cycleCount > 0 ? Math.round(totalCycles / cycleCount) : 0;
+    const recCycle = cycleCount > 0 ? Math.round(totalRecCycle / cycleCount) : 0;
 
     // ===== 견종 분석 =====
     const breedRevMap = {};
@@ -335,7 +339,6 @@ App.pages.analytics = {
     const returnRatePct = periodCustomerIds.length > 0 ? Math.round((returnCount / periodCustomerIds.length) * 100) : 0;
 
     // ===== 인사이트 자동 생성 =====
-    const revisitDaysSetting = await App.getRevisitDays();
     const insights = [];
 
     // 1. 재방문율 평가
@@ -357,10 +360,11 @@ App.pages.analytics = {
     // 3. 평균 방문 주기 vs 권장
     if (avgCycle > 0) {
       // 권장 이내 → 잘 유지 / +5일 이내 → 조금 김 / 1.5배 이내 → N일 늦음 / 그 이상 → 경고 (예전엔 +5일도 '권장 내'라고 적었다)
-      if (avgCycle <= revisitDaysSetting) insights.push({ type: 'good', text: `평균 방문 주기 ${avgCycle}일 — 권장 ${revisitDaysSetting}일 안에서 잘 유지` });
-      else if (avgCycle <= revisitDaysSetting + 5) insights.push({ type: 'info', text: `평균 방문 주기 ${avgCycle}일 — 권장 ${revisitDaysSetting}일보다 조금 김` });
-      else if (avgCycle <= revisitDaysSetting * 1.5) insights.push({ type: 'info', text: `평균 방문 주기 ${avgCycle}일 — 권장 ${revisitDaysSetting}일보다 ${avgCycle - revisitDaysSetting}일 늦음` });
-      else insights.push({ type: 'warning', text: `평균 방문 주기 ${avgCycle}일 — 권장 ${revisitDaysSetting}일보다 많이 김, 재방문 문자 권장` });
+      // 권장 = 반려견별 주기 평균 (recCycle)
+      if (avgCycle <= recCycle) insights.push({ type: 'good', text: `평균 방문 주기 ${avgCycle}일 — 권장 ${recCycle}일 안에서 잘 유지` });
+      else if (avgCycle <= recCycle + 5) insights.push({ type: 'info', text: `평균 방문 주기 ${avgCycle}일 — 권장 ${recCycle}일보다 조금 김` });
+      else if (avgCycle <= recCycle * 1.5) insights.push({ type: 'info', text: `평균 방문 주기 ${avgCycle}일 — 권장 ${recCycle}일보다 ${avgCycle - recCycle}일 늦음` });
+      else insights.push({ type: 'warning', text: `평균 방문 주기 ${avgCycle}일 — 권장 ${recCycle}일보다 많이 김, 재방문 문자 권장` });
     }
 
     // 4. 최대 견종 비중
@@ -406,7 +410,7 @@ App.pages.analytics = {
     const atRiskPets = [], remindPets = [];
     pets.forEach(p => {
       if ((p.petStatus || 'active') !== 'active') return;
-      const s = App.getPetVisitStatus(p, revisitDaysSetting);
+      const s = App.getPetVisitStatus(p, revisitDaysSetting, null, customerMap[p.customerId]);
       if (s === 'at-risk') atRiskPets.push(p);
       else if (s === 'remind') remindPets.push(p);
     });
@@ -449,7 +453,7 @@ App.pages.analytics = {
       }
     });
     const todayMs = Date.now();
-    // 대시보드와 같은 헬퍼·기준(revisitDays) — 두 화면의 VIP 수가 달랐던 문제 해소
+    // 대시보드와 같은 헬퍼·기준(반려견별 미용 주기) — 두 화면의 VIP 수가 달랐던 문제 해소
     const vipUnvisitedArr = App.computeVipUnvisited(customers, pets, customerLastVisitMap, revisitDaysSetting).map(x => x.customer);
     if (vipUnvisitedArr.length > 0) {
       const vipList = vipUnvisitedArr
@@ -468,7 +472,7 @@ App.pages.analytics = {
         });
       insights.push({
         type: 'warning',
-        text: `VIP 손님 ${vipUnvisitedArr.length}명 ${revisitDaysSetting}일 이상 미방문`,
+        text: `VIP 손님 ${vipUnvisitedArr.length}명 미용 주기 지나도 안 옴`,
         link: { page: 'customers', custTag: 'vip', custSort: 'lastVisit', list: vipList, totalCount: vipUnvisitedArr.length }
       });
     }

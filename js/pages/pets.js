@@ -27,7 +27,7 @@ App.pages.pets = {
     const revisitDays = await App.getRevisitDays();
     const visitStatusMap = {};
     pets.forEach(p => {
-      visitStatusMap[p.id] = App.getPetVisitStatus(p, revisitDays, petLastVisit[p.id]);
+      visitStatusMap[p.id] = App.getPetVisitStatus(p, revisitDays, petLastVisit[p.id], customerMap[p.customerId]);
     });
 
     const sortKey = this._sortKey || 'name';
@@ -104,7 +104,7 @@ App.pages.pets = {
             rightChip = `<span style="font-size:0.93rem;padding:4px 10px;background:var(--bg);color:var(--text-secondary);border:1px solid var(--border-light);border-radius:12px;font-weight:600;flex-shrink:0;white-space:nowrap">오래 안 옴</span>`;
           } else if (vs === 'new') {
             rightChip = `<span style="font-size:0.93rem;padding:4px 10px;background:var(--bg);color:var(--text-muted);border:1px solid var(--border);border-radius:12px;font-weight:600;flex-shrink:0;white-space:nowrap">방문 전</span>`;
-          } else if (p.groomingCycle && (p.lastVisitDate || lastVisit)) { // 목록은 간단히 — 주기를 직접 정한 아이만 D-날짜
+          } else if (['record', 'manual'].includes(App.getGroomingCycleInfo(p, revisitDays).source) && (p.lastVisitDate || lastVisit)) { // 목록은 간단히 — 이 아이 주기를 정한 아이만 D-날짜
             // 자정 기준 정수 일수 (예전엔 '지금'과 자정의 차를 내림해 하루 전에 '오늘', 당일에 '1일 초과'로 표시됐다)
             const next = App.parseLocalDate(p.lastVisitDate || lastVisit); next.setDate(next.getDate() + App.getGroomingCycle(p, revisitDays));
             const days = App.daysUntil(App.formatLocalDate(next));
@@ -187,6 +187,15 @@ App.pages.pets = {
     const avgCycle = n >= 2 ? Math.round((dates[n - 1] - dates[0]) / 86400000 / (n - 1)) : null;
     const lastDate = n ? App.formatLocalDate(dates[n - 1]) : null;
     return { count, total, avgSpend: count ? Math.round(total / count) : 0, avgCycle, lastDate, lastDays: lastDate ? (-App.daysUntil(lastDate) || 0) : null };
+  },
+
+  // 권장 주기 + 어디서 정했는지: '4주 · 11/12 미용 때 정함' · '4주 · 직접 정함' · '5주 · 견종 기준' · '30일 · 매장 기준'
+  cycleText(info) {
+    if (!info || !info.days) return '';
+    const md = (d) => { const p = App.parseLocalDate(d); return p && !isNaN(p) ? `${p.getMonth() + 1}/${p.getDate()}` : ''; };
+    const src = info.source === 'record' ? (md(info.date) ? md(info.date) + ' 미용 때 정함' : '미용 때 정함')
+      : info.source === 'manual' ? '직접 정함' : info.source === 'breed' ? '견종 기준' : '매장 기준';
+    return `${App.formatCycle(info.days)} · ${src}`;
   },
 
   // '방문 6회 · 평균 32일마다 · 평균 55,000원 · 총 330,000원'
@@ -300,14 +309,15 @@ App.pages.pets = {
         <span class="pd-chev">${App.icon('chevron-right')}</span></a>`;
     } else {
       // 권장 주기는 리포트·알림과 같은 App.getGroomingCycle — 평균 주기는 참고로만 보여 준다
-      const cycle = App.getGroomingCycle(pet, await App.getRevisitDays());
+      const cycleInfo = App.getGroomingCycleInfo(pet, await App.getRevisitDays());
+      const cycle = cycleInfo.days;
       if (cycle && sum.lastDate) {
         const d = App.parseLocalDate(sum.lastDate);
         d.setDate(d.getDate() + Number(cycle));
         const days = App.daysUntil(App.formatLocalDate(d));
         const label = days < 0 ? `${-days}일 지남` : days === 0 ? '오늘' : 'D-' + days;
         next = `<div class="pd-card pd-next pd-next-hint${days < 0 ? ' is-over' : ''}">
-          ${App.icon('clock')}<span><b>다음 미용 권장</b> ${label} · ${md(App.formatLocalDate(d))} <small>(권장 ${cycle}일${sum.avgCycle ? ' · 평균 ' + sum.avgCycle + '일' : ''})</small></span></div>`;
+          ${App.icon('clock')}<span><b>다음 미용 권장</b> ${label} · ${md(App.formatLocalDate(d))} <small>(${esc(this.cycleText(cycleInfo))}${sum.avgCycle ? ' · 평균 ' + sum.avgCycle + '일' : ''})</small></span></div>`;
       }
     }
 
@@ -362,7 +372,7 @@ App.pages.pets = {
       ['견종', pet.breed], ['몸무게', pet.weight ? App.formatKg(pet.weight) + 'kg' : ''],
       ['최근 몸무게', weighIns.length >= 2 ? weighIns.map(r => Number(r.weightAtVisit)).join(' → ') + 'kg (' + weighIns.map(r => md(r.date)).join('·') + ')' : ''],
       ['나이', age], ['성별', genderText],
-      ['사이즈', this.getSizeLabel(pet.size, pet.weight)], ['권장 주기', pet.groomingCycle ? pet.groomingCycle + '일' : '']
+      ['사이즈', this.getSizeLabel(pet.size, pet.weight)], ['권장 주기', this.cycleText(App.getGroomingCycleInfo(pet, await App.getRevisitDays()))]
     ].filter(([, v]) => v && v !== '-');
     const noNotes = ![pet.preferredStyle, pet.temperament, pet.healthNotes, pet.allergies, pet.memo].some(v => v && String(v).trim());
     const info = `
@@ -548,6 +558,9 @@ App.pages.pets = {
       return b ? `견종 기본 (${cycleText(b)})` : `매장 기준 (${cycleText(shopDays)})`;
     };
     const defaultCycleLabel = defaultCycleLabelFor(pet.breed);
+    // 지금 이 아이 주기 (기록 때 고른 값일 수도 있다). 칩에 없는 값(예: 49일)도 고를 수 있게 목록에 넣는다
+    const curCycle = App.normalizeCycle(pet.groomingCycle);
+    const cycleOptions = App.CYCLE_CHOICES.concat(curCycle && !App.CYCLE_CHOICES.includes(curCycle) ? [curCycle] : []).sort((a, b) => a - b);
     // 보호자가 정해져 들어온 경우(고객 상세)만 잠긴 셀렉트, 그 외엔 검색형 고객 선택 + 인라인 신규 등록
     const customerOptions = presetCustomerId ? await App.getCustomerOptions(presetCustomerId) : '';
     const curYear = new Date().getFullYear();
@@ -662,16 +675,11 @@ App.pages.pets = {
         </div>
         <div class="form-group">
           <label class="form-label">권장 미용 주기 (일)</label>
-          <select id="f-groomingCycle">
+          <select id="f-groomingCycle" data-current="${curCycle || ''}">
             <option value="">${defaultCycleLabel}</option>
-            <option value="14" ${pet.groomingCycle == 14 ? 'selected' : ''}>2주 (14일)</option>
-            <option value="21" ${pet.groomingCycle == 21 ? 'selected' : ''}>3주 (21일)</option>
-            <option value="28" ${pet.groomingCycle == 28 ? 'selected' : ''}>4주 (28일)</option>
-            <option value="35" ${pet.groomingCycle == 35 ? 'selected' : ''}>5주 (35일)</option>
-            <option value="42" ${pet.groomingCycle == 42 ? 'selected' : ''}>6주 (42일)</option>
-            <option value="56" ${pet.groomingCycle == 56 ? 'selected' : ''}>8주 (56일)</option>
+            ${cycleOptions.map(d => `<option value="${d}" ${curCycle === d ? 'selected' : ''}>${App.formatCycle(d)}${d % 7 === 0 ? ` (${d}일)` : ''}</option>`).join('')}
           </select>
-          <div class="form-hint">정하지 않으면 견종에 맞는 기본 주기를 써요. 정하면 홈 알림·리포트에 반영돼요</div>
+          <div class="form-hint">미용 기록에서 &lsquo;다음 미용&rsquo;을 고르면 여기도 바뀌어요. 정하지 않으면 견종에 맞는 기본 주기를 써요</div>
         </div>
         ${id ? `<div class="form-group">
           <label class="form-label">상태</label>
@@ -808,14 +816,18 @@ App.pages.pets = {
       const allergies = document.getElementById('f-allergies').value.trim();
       const memo = document.getElementById('f-memo').value.trim();
       const preferredStyle = document.getElementById('f-preferredStyle')?.value.trim() || '';
-      const groomingCycle = Number(document.getElementById('f-groomingCycle')?.value) || null;
+      // 주기는 바꿨을 때만 '직접 정함'으로 남긴다 — 다른 칸만 고치고 저장해도 기록 때 고른 주기를 덮지 않게 (규칙: App.computePetCycle)
+      const cycleSel = document.getElementById('f-groomingCycle');
+      const cyclePicked = App.normalizeCycle(cycleSel?.value);
+      const cycleChanged = !!cycleSel && cyclePicked !== App.normalizeCycle(cycleSel.dataset.current);
       const petStatus = document.getElementById('f-petStatus')?.value || 'active';
       const photoRaw = document.getElementById('f-photo-data')?.value || '';
 
       if (!customerId) { App.showToast('보호자를 선택해주세요.', 'error'); App.highlightField(presetCustomerId ? 'f-customerId' : 'pet-customer-select-input'); return; }
       if (!name) { App.showToast('이름을 입력해주세요.', 'error'); App.highlightField('f-name'); return; }
 
-      const data = { customerId, name, breed, weight, gender, birthDate, birthYear, neutered, size, temperament, healthNotes, allergies, memo, preferredStyle, groomingCycle, petStatus };
+      const data = { customerId, name, breed, weight, gender, birthDate, birthYear, neutered, size, temperament, healthNotes, allergies, memo, preferredStyle, petStatus };
+      if (!id && cycleChanged) { App.setManualCycle(data, cyclePicked); App.applyPetCycle(data, []); }
       if (ageUnchanged) { delete data.birthDate; delete data.birthYear; }
 
       // 인라인 고객 등록에서 같은 이름의 반려견이 이미 만들어졌다면 새로 추가하지 않고 그 반려견을 채운다
@@ -860,6 +872,10 @@ App.pages.pets = {
         }
         const prevCustomerId = existing.customerId;
         Object.assign(existing, data);
+        if (cycleChanged) {
+          App.setManualCycle(existing, cyclePicked);
+          App.applyPetCycle(existing, await DB.getByIndex('records', 'petId', id).catch(() => []));
+        }
         await DB.update('pets', existing);
         // 보호자를 바꾸면 이 반려견의 미용 기록·예약도 새 보호자로 옮긴다
         // (안 옮기면 예약 문자가 옛 보호자에게 가고, 옛 보호자를 지울 때 기록이 함께 지워진다)

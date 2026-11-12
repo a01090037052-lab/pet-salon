@@ -35,7 +35,8 @@ App.pages.customers = {
     pets.forEach(p => { (petsByCustomer[p.customerId] = petsByCustomer[p.customerId] || []).push(p); });
     const customerVisitStatus = {};
     customers.forEach(c => {
-      customerVisitStatus[c.id] = App.getCustomerVisitStatus(petsByCustomer[c.id], revisitDays, lastVisit[c.id]);
+      // c 를 넘겨 홈과 같은 규칙: 마지막 방문 뒤 두 번 연락해도 안 오면 '오래 안 옴'
+      customerVisitStatus[c.id] = App.getCustomerVisitStatus(petsByCustomer[c.id], revisitDays, lastVisit[c.id], c);
     });
     // _renderCustomerRow/_renderCustomerCard가 이 값을 읽으므로
     // container.innerHTML 대입(=템플릿 평가)보다 반드시 먼저 대입해야 한다.
@@ -229,7 +230,8 @@ App.pages.customers = {
 
     const pets = await DB.getByIndex('pets', 'customerId', customerId);
     const records = (await DB.getByIndex('records', 'customerId', customerId)).sort((a, b) => (b.date || '').localeCompare(a.date || ''));
-    const appointments = (await DB.getByIndex('appointments', 'customerId', customerId))
+    const allAppts = await DB.getByIndex('appointments', 'customerId', customerId);
+    const appointments = allAppts
       .filter(a => a.status !== 'cancelled')
       .sort((a, b) => (b.date || '').localeCompare(a.date || ''));
 
@@ -238,7 +240,8 @@ App.pages.customers = {
     const visitCount = new Set(records.map(r => r.date).filter(Boolean)).size;
     const unpaidRecords = records.filter(r => r.paymentMethod === 'unpaid');
     const unpaidBalance = unpaidRecords.reduce((sum, r) => sum + App.getUnpaidAmount(r), 0);
-    const noshowCount = appointments.filter(a => a.status === 'noshow').length;
+    // 최근 6개월 노쇼·당일 취소 — 예약 화면과 같은 숫자 (없으면 아무것도 안 보인다)
+    const noShowLine = App.noShowLine(App.noShowStats(allAppts, App.getToday())[customerId]);
     // 정액권 — 반려견 칸 바로 아래 늘 보인다. 내역이 없으면 '정액권 잔액 0원 · 충전' 한 줄, 있으면 장부 전체
     const prepaidEntries = await Prepaid.listByCustomer(customerId);
     const prepaidBal = Prepaid.balanceOf(prepaidEntries);
@@ -260,9 +263,9 @@ App.pages.customers = {
             <span>방문 ${visitCount}회</span>
             <span>총 ${App.formatCurrency(totalSpend)}</span>
             ${unpaidBalance > 0 ? `<span style="color:var(--danger);font-weight:700">미결제 ${App.formatCurrency(unpaidBalance)}</span>` : ''}
-            ${noshowCount > 0 ? `<span style="color:var(--danger);font-weight:700">노쇼 ${noshowCount}회</span>` : ''}
             ${prepaidBal !== 0 ? `<span class="prepaid-meta">정액권 ${App.formatCurrency(prepaidBal)}</span>` : ''}
           </div>
+          ${noShowLine ? `<div class="cust-noshow-line" style="color:var(--danger);font-weight:700;font-size:0.93rem;margin-top:4px">${App.icon('alert')} ${noShowLine}</div>` : ''}
         </div>
         <div style="margin-left:auto;display:flex;gap:8px;flex-wrap:wrap">
           ${App.phoneDigits(customer.phone) ? `<a class="btn btn-secondary" href="tel:${App.escapeHtml(App.phoneDigits(customer.phone))}" style="min-height:44px;flex:1 1 auto;text-decoration:none">${App.icon('phone')} 전화</a>` : ''}

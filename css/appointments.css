@@ -32,6 +32,13 @@
 /* 이름이 배지보다 먼저 — 배지가 많으면 이름이 한 글자로 잘렸다. 넘치면 줄 끝 배지가 잘린다 */
 .appt-v2 .appt-card-pet { flex-shrink: 1; min-width: 0; max-width: 100%; overflow: hidden; text-overflow: ellipsis; font-size: 1.02rem; }
 .appt-v2 .appt-card-l2 { margin-top: 2px; font-size: max(0.85rem, 13px); color: var(--text-secondary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* 노쇼·당일 취소 이력 (최근 6개월) — 고객 이름 옆 작은 빨간 표시 */
+/* 이름·노쇼 표시는 그대로 두고, 나머지(서비스·메모)만 넘치면 … 으로 */
+.appt-v2 .appt-card-l2 { display: flex; align-items: center; gap: 4px; }
+.appt-v2 .appt-card-l2 .appt-l2-name { flex: 0 1 auto; max-width: 60%; min-width: 3.5em; overflow: hidden; text-overflow: ellipsis; }
+.appt-v2 .appt-card-l2 .appt-l2-rest { flex: 1 1 0; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.appt-v2 .appt-card-l2 .appt-risk-tag { flex-shrink: 0; }
+.appt-v2 .appt-risk-tag { display: inline-block; padding: 0 5px; border-radius: 4px; background: var(--danger-bg-soft); color: var(--danger); font-size: max(0.78rem, 12px); font-weight: 700; line-height: 1.5; white-space: nowrap; vertical-align: 1px; }
 .appt-v2 .appt-card .appt-prepaid-bal { margin-top: 2px; font-size: max(0.8rem, 12px) !important; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .appt-v2 .appt-card-side { display: flex; flex-direction: column; align-items: flex-end; gap: 4px; }
 .appt-v2 .appt-card-side .btn-complete-appt { min-height: 44px; padding: 0 12px; white-space: nowrap; }

@@ -409,28 +409,29 @@ const App = {
   // 나머지 코드는 전부 small/medium/large를 전제하므로(서비스 가격 키가 priceSmall 등)
   // 그대로 두면 영수증 금액이 0원으로 찍힌다. 1회만 정정한다.
   // 반려견별 방문 통계 비정규화. 고객/반려견 목록·분석이 매번 records 전체를 읽지 않도록
-  // pet.firstVisitDate / lastVisitDate / visitCount 를 채운다. 이후엔 기록 저장·삭제 시 records.js 가 유지.
+  // pet.firstVisitDate / lastVisitDate / visitCount (+ 미용 주기 groomingCycle) 를 채운다. 이후엔 기록 저장·삭제 시 records.js 가 유지.
   // 플래그는 IDB 설정에 두어 백업 복원(구버전 데이터) 후에도 다시 실행되게 한다 (force=true 로 호출).
   async migratePetVisitStats(force = false) {
     if (DB.mode === 'server') return;
     try {
       if (!force && (await DB.getSetting('petVisitStatsVersion')) === 1) return;
-      const [pets, records] = await Promise.all([
+      const [pets, records, appts] = await Promise.all([
         DB.getAll('pets'),
-        DB.getAllLight('records', ['photoBefore', 'photoAfter', 'photo3', 'photo4', 'memo', 'addons', 'skinStatus'])
+        DB.getAllLight('records', ['photoBefore', 'photoAfter', 'photo3', 'photo4', 'memo', 'addons', 'skinStatus']),
+        DB.getAll('appointments').catch(() => [])
       ]);
-      const stat = {};
-      records.forEach(r => {
-        if (!r.petId || !r.date) return;
-        const s = stat[r.petId] || (stat[r.petId] = { first: null, last: null, count: 0 });
-        s.count++;
-        if (!s.first || r.date < s.first) s.first = r.date;
-        if (!s.last || r.date > s.last) s.last = r.date;
-      });
+      const recsByPet = {};
+      records.forEach(r => { if (r.petId) (recsByPet[r.petId] = recsByPet[r.petId] || []).push(r); });
+      const apptsByPet = {};
+      (appts || []).forEach(a => { if (a.petId && a.status === 'completed') (apptsByPet[a.petId] = apptsByPet[a.petId] || []).push(a); });
+      const today = this.getToday();
       let changed = 0;
       for (const p of pets) {
-        const s = stat[p.id] || { first: null, last: null, count: 0 };
-        if (p.firstVisitDate !== s.first || p.lastVisitDate !== s.last || p.visitCount !== s.count) {
+        // 기록 저장·삭제 때(records._recalcPetLastVisit)와 같은 규칙 — '기록 없이 완료'한 예약도 방문
+        const s = this.computePetVisitStats(recsByPet[p.id], apptsByPet[p.id], today);
+        // 미용 주기도 기록 기준으로 다시 정한다 (백업 복원·동기화 뒤 — 규칙: computePetCycle)
+        const cycleChanged = this.applyPetCycle(p, recsByPet[p.id] || []);
+        if (cycleChanged || p.firstVisitDate !== s.first || p.lastVisitDate !== s.last || p.visitCount !== s.count) {
           p.firstVisitDate = s.first; p.lastVisitDate = s.last; p.visitCount = s.count;
           await DB.update('pets', p); changed++;
         }
@@ -440,6 +441,26 @@ const App = {
     } catch (e) {
       console.warn('pet visit stats migration failed', e);
     }
+  },
+
+  // 반려견 방문 통계 한 규칙: 첫/마지막 방문일·횟수 = 날짜 있는 기록,
+  // 마지막 방문일엔 '기록 없이 완료'한 예약(오늘까지, 그 예약으로 만든 기록이 없는 것)도 센다.
+  // migratePetVisitStats 와 records._recalcPetLastVisit 가 같이 쓴다 — 둘이 다른 답을 내면 복원 뒤 재방문 알림이 일찍 뜬다
+  computePetVisitStats(petRecords, petAppts, today) {
+    let first = null, last = null, count = 0;
+    const recApptIds = new Set();
+    (petRecords || []).forEach(r => {
+      if (r.appointmentId) recApptIds.add(Number(r.appointmentId));
+      if (!r.date) return;
+      count++;
+      if (!first || r.date < first) first = r.date;
+      if (!last || r.date > last) last = r.date;
+    });
+    const t = today || this.getToday();
+    (petAppts || []).forEach(a => {
+      if (a.status === 'completed' && a.date && a.date <= t && !recApptIds.has(Number(a.id)) && (!last || a.date > last)) last = a.date;
+    });
+    return { first, last, count };
   },
 
   async migratePetSizes() {
@@ -1526,12 +1547,110 @@ const App = {
     return own > 0 ? own : g.days;
   },
 
-  // 반려견의 권장 미용 주기 = 개별 설정 → 견종 기본 → 매장 재방문 기준. 모든 화면이 이 한 곳을 쓴다.
+  // 반려견의 권장 미용 주기 = 이 아이 주기(기록 때 고른 값·직접 정한 값) → 견종 기본 → 매장 재방문 기준. 모든 화면이 이 한 곳을 쓴다.
   getGroomingCycle(pet, revisitDays, breedCycles) {
-    if (pet && Number(pet.groomingCycle) > 0) return Number(pet.groomingCycle);
+    return this.getGroomingCycleInfo(pet, revisitDays, breedCycles).days;
+  },
+
+  // 주기와 어디서 왔는지: source = 'record'(미용 기록 때 정함) · 'manual'(직접 정함) · 'breed'(견종 기준) · 'shop'(매장 기준)
+  // date = 정한 날 (기록이면 그 미용 날짜, 직접이면 바꾼 날 — 예전 데이터는 '')
+  getGroomingCycleInfo(pet, revisitDays, breedCycles) {
+    const own = this.normalizeCycle(pet && pet.groomingCycle);
+    if (own) {
+      const from = pet.groomingCycleFrom;
+      const isRec = !!(from && from.type === 'record');
+      return { days: own, source: isRec ? 'record' : 'manual', date: (from && from.date) || '' };
+    }
     const byBreed = this.getBreedCycle(pet && pet.breed, breedCycles);
-    if (byBreed > 0) return byBreed;
-    return Number(revisitDays) > 0 ? Number(revisitDays) : 30;
+    if (byBreed > 0) return { days: byBreed, source: 'breed', date: '' };
+    return { days: this.normalizeCycle(revisitDays) || 30, source: 'shop', date: '' };
+  },
+
+  // 기록 폼 '다음 미용' 칩 값
+  CYCLE_CHOICES: [14, 21, 28, 35, 42, 56],
+
+  // 주기 값 정리: 1~365 사이 정수(일)만 인정. 글자 '28' 은 28, 0·음수·글자·빈 값은 0
+  normalizeCycle(v) {
+    const n = Math.round(Number(v));
+    return Number.isFinite(n) && n >= 1 && n <= 365 ? n : 0;
+  },
+
+  // 28 → '4주', 33 → '33일'
+  formatCycle(days) {
+    const d = this.normalizeCycle(days);
+    if (!d) return '';
+    return d % 7 === 0 ? `${d / 7}주` : `${d}일`;
+  },
+
+  // 새 기록의 '다음 미용' 추천: 이 아이 주기 → 오늘 고른 스타일·코스의 주기(services.cycleDays) → 견종 기본 → 매장 기준
+  // services: 오늘 고른 스타일들 먼저, 그다음 코스 순서로 넘긴다
+  suggestNextCycle(pet, services, revisitDays, breedCycles) {
+    const own = this.normalizeCycle(pet && pet.groomingCycle);
+    if (own) return { days: own, source: 'pet' };
+    const sv = (services || []).find(s => s && this.normalizeCycle(s.cycleDays));
+    if (sv) return { days: this.normalizeCycle(sv.cycleDays), source: 'style', name: sv.name || '' };
+    const info = this.getGroomingCycleInfo({ breed: pet && pet.breed }, revisitDays, breedCycles);
+    return { days: info.days, source: info.source };
+  },
+
+  // ===== 반려견 미용 주기 정하기 (규칙은 여기 한 곳 — 기록 저장·수정·삭제·반려견 수정·백업 복원·동기화가 모두 이 함수를 거친다) =====
+  //  1) 기록 쪽 값 = record.nextCycle 이 있는 기록 중 가장 최근 것 (미용 날짜 → 같은 날이면 나중에 만든 기록(createdAt) → id 큰 것).
+  //     그래서 옛 기록을 고쳐도 더 최근 기록의 값을 덮지 않고, 최근 기록을 지우면 그 앞 기록의 값으로 돌아간다.
+  //  2) 직접 정한 값 = 반려견 수정 화면에서 바꾼 값 pet.groomingCycleManual = { days, date, at } (days 0 = '정하지 않음'으로 바꿈).
+  //     예전 데이터(groomingCycleFrom·groomingCycleManual 없이 groomingCycle 만 있음)는 날짜 없는 직접 값으로 본다.
+  //  3) 둘 다 있으면 날짜가 늦은 쪽이 이긴다 (기록 = 미용 날짜, 직접 = 바꾼 날). 같은 날이면 나중에 한 쪽 (기록 updatedAt·없으면 createdAt ↔ 직접 at).
+  //  4) 둘 다 없으면 비워 둔다 → getGroomingCycleInfo 가 견종 → 매장 기준으로 채운다.
+  //  결과는 pet.groomingCycle(일) · pet.groomingCycleFrom({ type:'record', date, recordId } | { type:'manual', date }) 에 저장 — 모든 화면은 이 값만 읽는다.
+  computePetCycle(pet, records) {
+    let rec = null;
+    (records || []).forEach(r => {
+      if (!r || !r.date || !this.normalizeCycle(r.nextCycle)) return;
+      if (!rec) { rec = r; return; }
+      const d = String(r.date).localeCompare(String(rec.date))
+        || String(r.createdAt || '').localeCompare(String(rec.createdAt || ''))
+        || (Number(r.id) || 0) - (Number(rec.id) || 0);
+      if (d > 0) rec = r;
+    });
+    let manual = pet && pet.groomingCycleManual && typeof pet.groomingCycleManual === 'object' ? pet.groomingCycleManual : null;
+    const legacy = !manual && pet && !pet.groomingCycleFrom && this.normalizeCycle(pet.groomingCycle);
+    if (legacy) manual = { days: legacy, date: '', at: '' };
+    let useManual = !!manual;
+    if (manual && rec) {
+      const md = String(manual.date || ''), rd = String(rec.date);
+      // 같은 날이면 나중에 한 쪽 — 기록은 마지막으로 고친 때(updatedAt, 없으면 createdAt). 오늘 기록을 고쳐 다른 값을 고르면 그게 이긴다
+      useManual = md > rd || (md === rd && String(manual.at || '') >= String(rec.updatedAt || rec.createdAt || ''));
+    }
+    if (useManual) {
+      const days = this.normalizeCycle(manual.days);
+      return { days, from: days ? { type: 'manual', date: manual.date || '' } : null, manual, legacy: !!legacy };
+    }
+    if (rec) return { days: this.normalizeCycle(rec.nextCycle), from: { type: 'record', date: rec.date, recordId: rec.id != null ? rec.id : null }, manual, legacy: !!legacy };
+    return { days: 0, from: null, manual: null, legacy: false };
+  },
+
+  // computePetCycle 결과를 pet 에 넣는다. 바뀐 게 있으면 true (저장은 부르는 쪽이 한다)
+  applyPetCycle(pet, records) {
+    if (!pet) return false;
+    const r = this.computePetCycle(pet, records);
+    // 예전 직접 값이 기록 값에 밀린 경우 — 나중에 그 기록이 지워지면 돌아갈 수 있게 직접 값으로 남겨 둔다
+    if (r.legacy && r.from && r.from.type === 'record') pet.groomingCycleManual = r.manual;
+    // 예전 직접 값만 있는 아이는 건드리지 않는다 (복원·동기화 때 반려견 전체를 다시 쓰지 않게)
+    if (r.legacy && (!r.from || r.from.type === 'manual')) return false;
+    const nextDays = r.days || null;
+    // 칸마다 비교 (JSON 글자 비교는 키 순서가 바뀐 동기화 데이터를 다르다고 봐서 반려견 전체를 다시 썼다)
+    const a = pet.groomingCycleFrom || null, b = r.from || null;
+    const sameFrom = (!a && !b) || (!!a && !!b && a.type === b.type && String(a.date || '') === String(b.date || '')
+      && String(a.recordId != null ? a.recordId : '') === String(b.recordId != null ? b.recordId : ''));
+    const same = this.normalizeCycle(pet.groomingCycle) === (r.days || 0) && sameFrom;
+    if (same && !(r.legacy && r.from && r.from.type === 'record')) return false;
+    pet.groomingCycle = nextDays;
+    if (r.from) pet.groomingCycleFrom = r.from; else delete pet.groomingCycleFrom;
+    return true;
+  },
+
+  // 반려견 수정 화면에서 주기를 직접 바꿨을 때 (days 0 = 정하지 않음). 이어서 applyPetCycle 로 다시 정한다
+  setManualCycle(pet, days) {
+    pet.groomingCycleManual = { days: this.normalizeCycle(days), date: this.getToday(), at: new Date().toISOString() };
   },
 
   // 다음 미용 추천일: 방문일 + 반려견 권장 주기(없으면 fallbackDays — 설정 '재방문 기준', 기본 30일). 'YYYY-MM-DD' 또는 ''
@@ -1556,20 +1675,50 @@ const App = {
 
   // 반려견 1마리의 상태. 주기 미설정 시 매장 기본 재방문 주기(revisitDays)를 쓴다.
   // (예전엔 대시보드만 revisitDays 를 쓰고 고객/분석 페이지는 30일 고정이라 서로 다른 수가 나왔다)
-  getPetVisitStatus(pet, revisitDays, fallbackLastVisit) {
+  // customer 를 넘기면 '두 번 연락해도 안 옴' 규칙(applyContactRule)까지 적용한다 — 홈 '연락할 손님'과 고객 목록 필터가 같은 답을 낸다
+  getPetVisitStatus(pet, revisitDays, fallbackLastVisit, customer) {
     const last = pet.lastVisitDate || fallbackLastVisit || null;
-    return this.classifyVisitStatus(last, this.getGroomingCycle(pet, revisitDays));
+    const s = this.classifyVisitStatus(last, this.getGroomingCycle(pet, revisitDays));
+    return customer ? this.applyContactRule(s, customer, last) : s;
   },
 
   // 고객 단위 상태 = 활성 반려견 중 가장 좋은 상태 (반려견 없으면 기록 기준)
-  getCustomerVisitStatus(customerPets, revisitDays, fallbackLastVisit) {
+  getCustomerVisitStatus(customerPets, revisitDays, fallbackLastVisit, customer) {
     let best = null;
     (customerPets || []).forEach(p => {
       if (p.petStatus && p.petStatus !== 'active') return;
-      const s = this.getPetVisitStatus(p, revisitDays, fallbackLastVisit);
+      const s = this.getPetVisitStatus(p, revisitDays, fallbackLastVisit, customer);
       if (best === null || this.VISIT_STATUS_PRIORITY[s] < this.VISIT_STATUS_PRIORITY[best]) best = s;
     });
-    return best || this.classifyVisitStatus(fallbackLastVisit, revisitDays);
+    if (best) return best;
+    const s = this.classifyVisitStatus(fallbackLastVisit, this.getGroomingCycle(null, revisitDays));
+    return customer ? this.applyContactRule(s, customer, fallbackLastVisit) : s;
+  },
+
+  // ===== 연락 기록 (홈 '연락함' 버튼이 customer.contactLog 에 쌓는다) =====
+  // 마지막 방문 뒤 이만큼 연락했는데도 안 오면 '오래 안 옴'
+  CONTACT_GIVE_UP: 2,
+
+  // 고객의 연락 기록 (예전 데이터는 lastContactedAt 한 번만 있다)
+  contactLogOf(customer) {
+    if (!customer) return [];
+    if (Array.isArray(customer.contactLog)) return customer.contactLog.filter(Boolean);
+    return customer.lastContactedAt ? [customer.lastContactedAt] : [];
+  },
+
+  // 마지막 방문일(YYYY-MM-DD) 다음 날부터 한 연락 횟수 — 새로 방문하면 저절로 0이 된다
+  contactsSinceVisit(customer, lastVisitDate) {
+    return this.contactLogOf(customer).filter(ts => {
+      const d = new Date(ts);
+      if (isNaN(d)) return false;
+      return !lastVisitDate || this.formatLocalDate(d) > lastVisitDate;
+    }).length;
+  },
+
+  // 올 때 됨·많이 늦음인데 마지막 방문 뒤 두 번 연락해도 안 온 손님 → '오래 안 옴'
+  applyContactRule(status, customer, lastVisitDate) {
+    if ((status === 'remind' || status === 'at-risk') && this.contactsSinceVisit(customer, lastVisitDate) >= this.CONTACT_GIVE_UP) return 'churned';
+    return status;
   },
 
   getVisitStatusLabel(status) {
@@ -1585,21 +1734,41 @@ const App = {
 
   // VIP 미방문: 활성 반려견 lastVisitDate 와 전달받은 기록 기반 최근 방문일 중 최신값 기준.
   // 방문 기록이 전혀 없는 VIP 는 제외 (데이터 입력 중인 손님을 '미방문'으로 몰지 않는다).
-  computeVipUnvisited(customers, pets, recordLastVisitMap, thresholdDays) {
+  // 기준 = 반려견마다 자기 미용 주기(getGroomingCycle). 한 마리라도 주기 안이면 미방문이 아니다.
+  // 반려견 없이 기록만 있는 손님은 매장 기준(revisitDays).
+  computeVipUnvisited(customers, pets, recordLastVisitMap, revisitDays) {
     const lastMap = { ...(recordLastVisitMap || {}) };
+    const petsOf = {};
     (pets || []).forEach(p => {
       if (p.petStatus && p.petStatus !== 'active') return;
+      (petsOf[p.customerId] = petsOf[p.customerId] || []).push(p);
       if (p.lastVisitDate && (!lastMap[p.customerId] || p.lastVisitDate > lastMap[p.customerId])) lastMap[p.customerId] = p.lastVisitDate;
     });
-    const limit = thresholdDays || 30;
+    const shopDays = this.getGroomingCycle(null, revisitDays);
     return (customers || [])
       .filter(c => (c.tags || []).includes('vip'))
       .map(c => {
         const lv = lastMap[c.id] || null;
         const days = lv ? this.getDaysAgo(lv) : null;
-        return { customer: c, lastVisit: lv, days };
+        // 넘긴 날 = 주기를 지난 날수. 반려견 중 가장 덜 지난 아이 기준
+        // 손님의 최근 방문(lv — 반려견 없이 남긴 기록 포함)이 어느 반려견 날짜보다 늦으면 그날 왔다고 보고
+        // 반려견 주기 중 가장 긴 것(반려견이 없으면 매장 기준)으로 잰다 (방금 다녀간 VIP 를 미방문으로 몰지 않게)
+        let over = null, petLatest = null, longest = 0;
+        (petsOf[c.id] || []).forEach(p => {
+          const cyc = this.getGroomingCycle(p, revisitDays);
+          if (cyc > longest) longest = cyc;
+          if (!p.lastVisitDate) return;
+          if (!petLatest || p.lastVisitDate > petLatest) petLatest = p.lastVisitDate;
+          const o = this.getDaysAgo(p.lastVisitDate) - cyc;
+          if (over === null || o < over) over = o;
+        });
+        if (lv && (!petLatest || lv > petLatest)) {
+          const o = days - (longest || shopDays);
+          if (over === null || o < over) over = o;
+        }
+        return { customer: c, lastVisit: lv, days, over };
       })
-      .filter(x => x.lastVisit && x.days > limit)
+      .filter(x => x.lastVisit && x.over > 0)
       .sort((a, b) => b.days - a.days);
   },
 
@@ -2462,6 +2631,52 @@ const App = {
     return [...(list || [])].sort((a, b) => (c[b.id] || 0) - (c[a.id] || 0)
       || (a.sortOrder || 999) - (b.sortOrder || 999)
       || String(a.name || '').localeCompare(String(b.name || ''), 'ko'));
+  },
+
+  // ===== 노쇼 위험 (예약 목록·예약 폼·고객 상세·홈 리마인더가 같은 숫자를 쓴다) =====
+  // 최근 6개월(오늘 포함)의 고객별 { noShow, lateCancel }. 순수 함수 (테스트 있음)
+  // 당일 취소 = 취소한 날(cancelledAt, 내 시간 기준)이 예약 날짜와 같거나 그 뒤. cancelledAt 이 없는 예전 취소는 안 센다
+  noShowSince(today) {
+    const d = this.parseLocalDate(today);
+    d.setMonth(d.getMonth() - 6);
+    return this.formatLocalDate(d);
+  },
+  noShowStats(appts, today) {
+    const since = this.noShowSince(today);
+    const out = {};
+    for (const a of (appts || [])) {
+      if (!a || a.customerId == null || a.customerId === '') continue;
+      const date = String(a.date || '');
+      if (!date || date < since || date > today) continue;
+      let key = null;
+      if (a.status === 'noshow' || a.status === 'no_show') key = 'noShow';
+      else if (a.status === 'cancelled' && a.cancelledAt) {
+        const t = new Date(a.cancelledAt);
+        if (!isNaN(t) && this.formatLocalDate(t) >= date) key = 'lateCancel';
+      }
+      if (!key) continue;
+      const s = out[a.customerId] || (out[a.customerId] = { noShow: 0, lateCancel: 0 });
+      s[key]++;
+    }
+    return out;
+  },
+  // 화면마다 한 번: 6개월 치 예약을 날짜 색인으로 한 번 읽어 고객별로 센다
+  async loadNoShowStats() {
+    const today = this.getToday();
+    try {
+      return this.noShowStats(await DB.getByDateRange('appointments', 'date', this.noShowSince(today), today), today);
+    } catch (e) { console.warn('노쇼 이력 읽기 실패:', e); return {}; }
+  },
+  // '최근 6개월 노쇼 2회 · 당일 취소 1회' — 둘 다 0이면 '' (아무것도 안 보인다)
+  noShowLine(s) {
+    if (!s) return '';
+    const parts = [s.noShow > 0 ? `노쇼 ${s.noShow}회` : '', s.lateCancel > 0 ? `당일 취소 ${s.lateCancel}회` : ''].filter(Boolean);
+    return parts.length ? `최근 6개월 ${parts.join(' · ')}` : '';
+  },
+  // 예약 상태를 바꿀 때: 취소면 취소한 때를 남기고(이미 있으면 그대로), 취소가 아니면 지운다
+  markCancelledAt(appt, status) {
+    if (status === 'cancelled') { if (!appt.cancelledAt) appt.cancelledAt = new Date().toISOString(); }
+    else delete appt.cancelledAt;
   },
 
   // 최근 90일 사용 횟수 — 폼을 열 때 fresh 로 한 번 읽고, 그 폼 안(반려견 바꿔 다시 그리기 등)에서는 같은 값을 쓴다.

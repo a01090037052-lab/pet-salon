@@ -4392,6 +4392,10 @@ tr.appt-flash td { background: var(--info-bg-soft); }
 .fx-ed .cutout-ed-actions .btn { min-height: 40px; }
 .fx-ed .cutout-ed-more .cutout-ed-slider { margin: 6px 0; flex-wrap: nowrap; white-space: nowrap; }
 .fx-ed .cutout-ed-more .cutout-ed-row { margin-top: 4px; }
+/* 더 고치기 안: 천 색 찍어서 고르기 · 얼굴만 남기기 — 이름은 한 줄 위에, 단추는 넉넉하게 */
+.fx-ed .cutout-ed-more .fx-pick > .cutout-ed-lb, .fx-ed .cutout-ed-more .fx-face > .cutout-ed-lb { width: 100%; }
+.fx-ed .cutout-ed-more .fx-pick .card-tstyle-btn, .fx-ed .cutout-ed-more .fx-face .card-tstyle-btn { flex: 1 1 auto; min-height: 44px; }
+.fx-ed .cutout-ed-more .fx-pick .cutout-ed-swatch { width: 32px; height: 32px; flex: 0 0 auto; }
 .fx-hint { position: absolute; left: 50%; top: 14px; transform: translateX(-50%); max-width: 80%; padding: 14px 22px; border-radius: 16px; background: rgba(17,24,39,.72); color: #fff;
   font-size: 20px; font-weight: 700; text-align: center; line-height: 1.35; pointer-events: none; box-shadow: 0 4px 16px rgba(0,0,0,.25); }
 @media (pointer: coarse) {

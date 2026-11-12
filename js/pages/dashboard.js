@@ -3,6 +3,30 @@ App.pages.dashboard = {
 
   // 연락 후 알림을 내려두는 기간 (일)
   _SNOOZE_DAYS: 14,
+  // 연락 기록은 최근 몇 번만 남긴다 (고객 문서가 계속 커지지 않게)
+  _CONTACT_LOG_MAX: 5,
+
+  // 연락 기록·횟수·'두 번 연락해도 안 옴' 기준은 App 한 곳 (고객 목록 필터도 같은 함수를 쓴다)
+  _contactLogOf(customer) { return App.contactLogOf(customer); },
+  _contactsSinceVisit(customer, lastVisitDate) { return App.contactsSinceVisit(customer, lastVisitDate); },
+
+  // '올 때 됨·늦음' 과 '오래 안 옴' 나누기.
+  // 오래 안 옴 = 주기 2배 초과(churned) 또는 마지막 방문 뒤 두 번 연락해도 안 온 손님 (지우지 않고 옮긴다).
+  // 올 때 됨 순서: 오래 안 옴이 될 날이 가까운 순 → 단골(방문 많은) 순 → 오래 지난 순.
+  _splitContactAlerts(alerts, visitCountByCustomer) {
+    const vc = visitCountByCustomer || {};
+    const giveUp = App.CONTACT_GIVE_UP;
+    const due = [];
+    const gone = [];
+    alerts.forEach(a => {
+      if (a.visitStatus === 'churned' || (a.contactCount || 0) >= giveUp) gone.push(a);
+      else due.push(a);
+    });
+    due.sort((a, b) => (a.daysUntilChurn - b.daysUntilChurn)
+      || ((vc[b.customer.id] || 0) - (vc[a.customer.id] || 0))
+      || (b.days - a.days));
+    return { due, gone };
+  },
 
   _computeRevisitAlerts(pets, customerMap, revisitDays, snoozeDays, bookedPetIds) {
     // pets의 lastVisitDate를 직접 사용 (records 전체 로드 불필요)
@@ -31,7 +55,8 @@ App.pages.dashboard = {
         if (visitStatus === 'normal') return;
         // 이탈 판정까지 남은 일수 (classifyVisitStatus 기준: 주기 2배 초과 = churned)
         const daysUntilChurn = Math.max(0, cycleDays * 2 - days);
-        alerts.push({ pet, customer, days, lastDate: pet.lastVisitDate, cycleDays, visitStatus, contactedAgo, daysUntilChurn });
+        const contactCount = this._contactsSinceVisit(customer, pet.lastVisitDate);
+        alerts.push({ pet, customer, days, lastDate: pet.lastVisitDate, cycleDays, visitStatus, contactedAgo, daysUntilChurn, contactCount });
       }
     });
     // 오래 지난 순.
@@ -47,8 +72,10 @@ App.pages.dashboard = {
     try {
       const customer = await DB.get('customers', customerId);
       if (!customer) return;
-      this._contactUndo = { customerId, prev: customer.lastContactedAt || null };
-      customer.lastContactedAt = new Date().toISOString();
+      this._contactUndo = { customerId, prev: customer.lastContactedAt || null, prevLog: Array.isArray(customer.contactLog) ? customer.contactLog.slice() : null };
+      const now = new Date().toISOString();
+      customer.contactLog = [...this._contactLogOf(customer), now].slice(-this._CONTACT_LOG_MAX);
+      customer.lastContactedAt = now;
       await DB.update('customers', customer);
       // 행을 즉시 흐리게 처리 (전체 재렌더는 하지 않는다 — 되돌리기가 어려워지고
       // 사장님이 방금 누른 버튼이 화면에서 사라져 혼란스럽다)
@@ -75,6 +102,8 @@ App.pages.dashboard = {
       if (!customer) return;
       if (u.prev) customer.lastContactedAt = u.prev;
       else delete customer.lastContactedAt;
+      if (u.prevLog) customer.contactLog = u.prevLog;
+      else delete customer.contactLog;
       await DB.update('customers', customer);
       this._setAlertRowMuted(u.customerId, false);
       App._dashboardDirty = true;
@@ -253,19 +282,8 @@ App.pages.dashboard = {
         .filter(a => a.status !== 'cancelled' && a.status !== 'completed')
         .sort((a, b) => (a.date || '').localeCompare(b.date || '') || (a.time || '').localeCompare(b.time || ''));
 
-      // 노쇼 카운트 (각 customer별 과거 노쇼 횟수)
-      const noShowCountByCustomer = {};
-      if (tomorrowAppts.length > 0) {
-        // 최근 6개월 데이터로 노쇼 계산 (성능)
-        const sixMonthsAgo = new Date(); sixMonthsAgo.setMonth(sixMonthsAgo.getMonth() - 6);
-        const sixMonthsAgoStr = App.formatLocalDate(sixMonthsAgo);
-        const noShowAppts = await DB.getByDateRange('appointments', 'date', sixMonthsAgoStr, today);
-        noShowAppts.forEach(a => {
-          if (a.status === 'noshow' && a.customerId) {
-            noShowCountByCustomer[a.customerId] = (noShowCountByCustomer[a.customerId] || 0) + 1;
-          }
-        });
-      }
+      // 노쇼·당일 취소 횟수 (최근 6개월, 예약 화면과 같은 공용 계산) — 내일 예약이 있을 때만 읽는다
+      const noShowStats = tomorrowAppts.length > 0 ? await App.loadNoShowStats() : {};
 
       // 시간대별 그룹핑
       const timeGroupOf = (timeStr) => {
@@ -319,11 +337,13 @@ App.pages.dashboard = {
         });
       } catch (_) {}
       const allRevisitAlerts = this._computeRevisitAlerts(pets, customerMap, revisitDays, null, bookedPetIds);
-      // 이탈(주기 2배 초과)은 매일 보는 카드에서 분리 — 지우는 게 아니라 접어둔다.
-      const revisitAlerts = allRevisitAlerts.filter(a => a.visitStatus !== 'churned');
-      const longGoneAlerts = allRevisitAlerts.filter(a => a.visitStatus === 'churned');
+      // 단골 순서용 방문 횟수 — 반려견에 저장된 visitCount 합 (기록 전체를 읽지 않는다)
+      const visitCountByCustomer = {};
+      pets.forEach(p => { visitCountByCustomer[p.customerId] = (visitCountByCustomer[p.customerId] || 0) + (Number(p.visitCount) || 0); });
+      // 이탈(주기 2배 초과)·두 번 연락해도 안 온 손님은 매일 보는 목록에서 분리 — 지우는 게 아니라 접어둔다.
+      const { due: revisitAlerts, gone: longGoneAlerts } = this._splitContactAlerts(allRevisitAlerts, visitCountByCustomer);
 
-      // VIP 미방문 알림 (30일 이상)
+      // VIP 미방문 알림 (반려견별 미용 주기가 지난 VIP)
       const customerLastVisitMap = {};
       pets.forEach(p => {
         if (!p.lastVisitDate) return;
@@ -381,8 +401,8 @@ App.pages.dashboard = {
       const greeting = App.getGreeting();
       const shopName = await DB.getSetting('shopName');
 
-      // Pre-build SMS bodies — 화면에 그려지는 항목만 (재방문 5 + 이탈 10). 이탈 명단은 해가 갈수록 쌓이므로 전체 생성은 금물
-      const smsTargets = [...revisitAlerts.slice(0, 5), ...longGoneAlerts.slice(0, 10)];
+      // Pre-build SMS bodies — 화면에 그려지는 항목만 (재방문 15(5 + 접힌 10) + 이탈 10). 이탈 명단은 해가 갈수록 쌓이므로 전체 생성은 금물
+      const smsTargets = [...revisitAlerts.slice(0, 15), ...longGoneAlerts.slice(0, 10)];
       for (const a of smsTargets) {
         const smsType = a.visitStatus === 'churned' ? 'churned' : a.visitStatus === 'at-risk' ? 'atRisk' : 'revisit';
         const msg = await App.buildSms(smsType, {
@@ -565,7 +585,8 @@ App.pages.dashboard = {
                     const customer = customerMap[a.customerId];
                     const pet = petMap[a.petId];
                     const phoneClean = App.phoneDigits(customer?.phone);
-                    const noShowCount = noShowCountByCustomer[a.customerId] || 0;
+                    const noShowCount = noShowStats[a.customerId]?.noShow || 0;
+                    const lateCancelCount = noShowStats[a.customerId]?.lateCancel || 0;
                     const allergies = App.hasPetNote(pet?.allergies) ? App.escapeHtml(pet.allergies) : '';
                     const healthNotes = App.hasPetNote(pet?.healthNotes) ? App.escapeHtml(pet.healthNotes) : '';
                     const temperament = pet?.temperament ? App.escapeHtml(pet.temperament) : '';
@@ -584,12 +605,13 @@ App.pages.dashboard = {
                             ${breedSize ? `<span class="reminder-pet-meta">· ${App.escapeHtml(breedSize)}</span>` : ''}
                           </div>
                           <a href="#customers/${a.customerId}" class="reminder-customer" onclick="event.stopPropagation()" style="padding:14px 0">${App.escapeHtml(App.getCustomerLabel(customer))}</a>
-                          ${(allergies || healthNotes || temperament || noShowCount > 0) ? `
+                          ${(allergies || healthNotes || temperament || noShowCount > 0 || lateCancelCount > 0) ? `
                             <div class="reminder-warnings">
                               ${allergies ? `<span class="reminder-warning"><span class="reminder-warning-icon">${App.icon('alert')}</span> 알레르기: ${allergies}</span>` : ''}
                               ${healthNotes ? `<span class="reminder-warning"><span class="reminder-warning-icon">${App.icon('alert')}</span> ${healthNotes}</span>` : ''}
                               ${temperament ? `<span class="reminder-warning reminder-warning-soft">${temperament}</span>` : ''}
                               ${noShowCount > 0 ? `<span class="reminder-warning reminder-warning-danger"><span class="reminder-warning-icon">${App.icon('alert')}</span> 노쇼 ${noShowCount}회</span>` : ''}
+                              ${lateCancelCount > 0 ? `<span class="reminder-warning reminder-warning-danger"><span class="reminder-warning-icon">${App.icon('alert')}</span> 당일 취소 ${lateCancelCount}회</span>` : ''}
                             </div>
                           ` : ''}
                           <div class="reminder-actions">
@@ -649,6 +671,7 @@ App.pages.dashboard = {
         ${(revisitAlerts.length + longGoneAlerts.length + vipUnvisitedAlerts.length) > 0 ? (() => {
           const segs = [
             // 탭·고객 목록 필터가 같은 말을 쓴다: 올 때 됨 / 많이 늦음 / 오래 안 옴
+            // '오래 안 옴'에는 두 번 연락해도 안 온 손님도 들어온다 (고객 목록 필터도 같은 규칙 — App.applyContactRule)
             { key: 'due', label: '올 때 됨·늦음', count: revisitAlerts.length },
             { key: 'gone', label: '오래 안 옴', count: longGoneAlerts.length },
             { key: 'vip', label: 'VIP', count: vipUnvisitedAlerts.length }
@@ -709,14 +732,14 @@ App.pages.dashboard = {
                     <button class="btn btn-sm btn-ghost btn-exclude-pet" data-pet-id="${a.pet.id}" data-pet-name="${App.escapeHtml(a.pet.name || '')}" onclick="event.stopPropagation()" title="관리 제외 (이사·사망 등)" style="flex-shrink:0;color:var(--text-muted)">제외</button>
                   </div>
                 </div>`;
-              }))}
+              }), 5, (n) => `나머지 ${n}명 보기`)}
             </div>
 
             <!-- 오래 안 옴 (미용 주기 2배 초과 — 매일 보는 목록에서 분리) -->
             <div class="dash-contact-panel" data-seg="gone" style="display:${active === 'gone' ? 'block' : 'none'}">
               ${longGoneAlerts.length === 0 ? empty : `
               <div style="font-size:0.93rem;color:var(--text-muted);margin-bottom:10px;line-height:1.5">
-                미용 주기의 2배가 지난 손님입니다. 다시 안 올 손님은 <strong>제외</strong>로 정리하면 목록이 계속 쌓이지 않습니다.
+                미용 주기의 2배가 지났거나, 두 번 연락해도 안 온 손님입니다. 다시 안 올 손님은 <strong>제외</strong>로 정리하면 목록이 계속 쌓이지 않습니다.
               </div>
               ${this._moreList(longGoneAlerts.slice(0, 10).map(a => `
                 <div class="alert-item" data-alert-customer="${a.customer.id}">
@@ -727,6 +750,7 @@ App.pages.dashboard = {
                     <span class="badge badge-secondary alert-contacted-tag" style="font-size:0.93rem;margin-left:4px;padding:3px 8px;display:none">연락함</span>
                     <div style="font-size:0.93rem;color:var(--text-secondary);margin-top:2px">
                       마지막 미용: ${App.formatDate(a.lastDate)}
+                      ${a.contactCount >= App.CONTACT_GIVE_UP ? ` | <span style="color:var(--text-muted)">연락 ${a.contactCount}번</span>` : ''}
                       ${a.contactedAgo !== null ? ` | <span style="color:var(--text-muted)">${a.contactedAgo}일 전 연락함</span>` : ''}
                     </div>
                   </div>
@@ -737,7 +761,7 @@ App.pages.dashboard = {
                 </div>`))}`}
             </div>
 
-            <!-- VIP (30일+ 미방문, 예약 잡힌 VIP 제외) -->
+            <!-- VIP (미용 주기 지나도 안 온 VIP, 예약 잡힌 VIP 제외) -->
             <div class="dash-contact-panel" data-seg="vip" style="display:${active === 'vip' ? 'block' : 'none'}">
               ${vipUnvisitedAlerts.length === 0 ? empty : this._moreList(vipUnvisitedAlerts.slice(0, 15).map(x => `
                 <div style="display:flex;align-items:center;gap:10px;padding:10px 0;border-bottom:1px solid var(--border-light)">
@@ -846,12 +870,13 @@ App.pages.dashboard = {
 
   // 홈 목록(연락할 손님): 처음엔 5건만, 나머지는 '더 보기 (N건)'으로 그 자리에서 펼친다.
   // 숨긴 줄도 DOM 에 있어 init 의 버튼 연결(결제·문자·제외 등)이 그대로 걸린다.
-  _moreList(items, shown = 5) {
+  _moreList(items, shown = 5, labelFn) {
     if (items.length <= shown) return items.join('');
     const rest = items.length - shown;
+    const label = labelFn ? labelFn(rest) : `더 보기 (${rest}건)`;
     return items.slice(0, shown).join('')
       + `<div class="dash-more-rest" hidden>${items.slice(shown).join('')}</div>`
-      + `<button type="button" class="dash-more-btn" aria-expanded="false" data-rest="${rest}"><span class="dash-more-label">더 보기 (${rest}건)</span>${App.icon('chevron-down')}</button>`;
+      + `<button type="button" class="dash-more-btn" aria-expanded="false" data-rest="${rest}" data-label="${App.escapeHtml(label)}"><span class="dash-more-label">${label}</span>${App.icon('chevron-down')}</button>`;
   },
 
   renderAppointmentList(appointments, customerMap, petMap, serviceMap) {
@@ -936,7 +961,7 @@ App.pages.dashboard = {
         rest.hidden = !open;
         btn.setAttribute('aria-expanded', String(open));
         btn.classList.toggle('open', open);
-        btn.querySelector('.dash-more-label').textContent = open ? '접기' : `더 보기 (${btn.dataset.rest}건)`;
+        btn.querySelector('.dash-more-label').textContent = open ? '접기' : (btn.dataset.label || `더 보기 (${btn.dataset.rest}건)`);
       });
     });
 
