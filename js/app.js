@@ -4833,6 +4833,60 @@ const App = {
   },
 
   // ========== Shared Image Resize Utility ==========
+  // 아이폰 원본 사진(HEIC)은 크롬(맥·윈도·안드로이드)이 못 읽는다 → 그런 파일만 앱에 넣어 둔 변환기로 JPG로 바꾼다.
+  // 변환기: js/vendor/heic-to-1.6.7.js (libheif, LGPL-3.0, 고정 버전) — HEIC를 처음 고를 때만 받고 기기 안에서만 바꾼다.
+  // 사파리처럼 HEIC를 직접 읽는 브라우저는 원본 그대로. 바꾸지 못하면 원본을 돌려줘 원래 안내('읽지 못했어요')가 뜬다.
+  isHeicFile(f) { return !!f && (/^image\/hei[cf]/i.test(f.type || '') || /\.(heic|heif)$/i.test(f.name || '')); },
+  // 이름·종류가 비어 있거나 엉뚱한 파일(이름을 바꾼 사진, 끌어 놓기·공유로 온 파일)은 앞부분 글자(ftyp 상표)로 HEIC인지 본다
+  HEIC_BRANDS: ['heic', 'heix', 'hevc', 'hevx', 'heim', 'heis', 'hevm', 'hevs', 'mif1', 'msf1'],
+  // 앞부분 상표(ftyp 다음 4글자)를 돌려준다 — HEIF가 아니면 '' (8바이트만 읽는다)
+  async heicBrand(file) {
+    try {
+      if (!file || typeof file.slice !== 'function' || file.size < 12) return '';
+      const b = new Uint8Array(await file.slice(4, 12).arrayBuffer());
+      const s = String.fromCharCode(...b);
+      const brand = s.slice(4, 8).trim();
+      return s.slice(0, 4) === 'ftyp' && this.HEIC_BRANDS.includes(brand) ? brand : '';
+    } catch (_) { return ''; }
+  },
+  async sniffHeic(file) { return !!(await this.heicBrand(file)); },
+  // 진짜 아이폰식 HEIC 상표 — 이 파일이 브라우저에서 바로 열리면 '이 브라우저는 HEIC를 읽는다'고 기억해도 된다
+  // (mif1·msf1 은 AVIF 등 다른 사진일 수도 있어서 기억하지 않는다)
+  HEVC_BRANDS: ['heic', 'heix', 'hevc', 'hevx', 'heim', 'heis', 'hevm', 'hevs'],
+  async readableImage(file) {
+    if (!file) return file;
+    // 이름을 .jpg 로 바꾼 HEIC는 종류도 image/jpeg 로 온다 → 모든 사진의 앞 8바이트만 읽어 확인 (아주 가볍다)
+    const brand = await this.heicBrand(file);
+    if (!brand && !this.isHeicFile(file)) return file;
+    // 사파리처럼 직접 읽는 브라우저: 확인된 뒤로는 바로 원본 (사진마다 한 번 더 푸는 일을 줄인다)
+    if (this._heicNative === true) return file;
+    try {
+      if (typeof createImageBitmap === 'function') {
+        const bm = await createImageBitmap(file); if (bm && bm.close) bm.close();
+        if (this.HEVC_BRANDS.includes(brand)) this._heicNative = true;
+        return file;
+      }
+    } catch (_) {}
+    // 한 번 멈춘 변환기는 뒤 사진도 줄줄이 기다리게 한다 → 이 창에서는 더 바꾸지 않고 바로 안내
+    if (this._heicStuck) return file;
+    try {
+      // 처음엔 변환기를 받느라 더 걸린다 — 받기 전에 알린다
+      if (!this._heicToastAt || Date.now() - this._heicToastAt > 4000) { this._heicToastAt = Date.now(); this.showToast('아이폰 사진(HEIC)을 바꾸는 중이에요…', 'info'); }
+      if (!this._heicMod) this._heicMod = import('./vendor/heic-to-1.6.7.js').catch(e => { this._heicMod = null; throw e; });
+      const mod = await this._heicMod;
+      // 아주 큰 사진(4500만 화소)도 컴퓨터에서 3~4초 — 90초가 넘으면 멈춘 것으로 보고 원본을 돌려준다 (창이 멈추지 않게)
+      let timer;
+      const blob = await Promise.race([
+        mod.heicTo({ blob: file, type: 'image/jpeg', quality: 0.92 }),
+        new Promise((_, rej) => { timer = setTimeout(() => { this._heicStuck = true; rej(new Error('HEIC 바꾸기 시간 초과')); }, 90000); }),
+      ]).finally(() => clearTimeout(timer));
+      return blob instanceof Blob && blob.size ? blob : file;
+    } catch (e) {
+      console.warn('HEIC 바꾸기 실패:', e);
+      return file;
+    }
+  },
+
   resizeImage(dataUrl, callback, maxSize = 800, quality = 0.7) {
     const img = new Image();
     img.onload = () => {

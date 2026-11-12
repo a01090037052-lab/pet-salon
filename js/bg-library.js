@@ -673,6 +673,7 @@ App.bgLib = {
   },
   async _importFile(file) {
     const R = this._R();
+    file = await App.readableImage(file); // 아이폰 원본(HEIC)도
     const url = await new Promise((res, rej) => { const fr = new FileReader(); fr.onload = () => res(fr.result); fr.onerror = rej; fr.readAsDataURL(file); }).catch(() => null);
     const img = url ? await R._loadImg(url, true) : null;
     if (!img) { App.showToast('그림을 읽지 못했어요.', 'error'); return; }

@@ -1471,9 +1471,10 @@ App.pages.settings = {
   // PNG·WebP·GIF 는 PNG 로 남겨 투명한 배경을 지킨다 (JPEG 로 바꾸면 투명한 곳이 검게 됐다)
   async _readLogoFile(file) {
     if (!file) return null;
-    if (file.type && !file.type.startsWith('image/')) { App.showToast('사진(이미지) 파일만 올릴 수 있어요.', 'error'); return null; }
-    // 너무 큰 원본은 폰 메모리 부족으로 멈출 수 있어 막는다 (작게 줄여서 저장하므로 보통 사진은 충분)
+    // 너무 큰 원본은 폰 메모리 부족으로 멈출 수 있어 막는다 (원본 크기로 본다 — HEIC를 바꾼 JPG는 더 클 수 있다)
     if (file.size > 20 * 1024 * 1024) { App.showToast('파일이 너무 커요 (20MB 이하만).', 'error'); return null; }
+    file = await App.readableImage(file); // 아이폰 원본(HEIC)도 (설정·프레임 만들기의 로고 올리기)
+    if (file.type && !file.type.startsWith('image/')) { App.showToast('사진(이미지) 파일만 올릴 수 있어요.', 'error'); return null; }
     const out = await new Promise((resolve) => {
       const url = URL.createObjectURL(file);
       const img = new Image();

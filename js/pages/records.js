@@ -2174,6 +2174,9 @@ App.pages.records = {
       }
     }
     // 타일이 <label> 이라 파일 창은 브라우저가 직접 연다 (JS 의 input.click() 은 일부 브라우저에서 막힌다)
+    // 칸마다 마지막으로 고른 사진 번호 — 아이폰 사진(HEIC) 바꾸기는 몇 초 걸려서, 늦게 끝난 사진이
+    // 지운 칸·더 새로 고른 사진·다른 기록의 폼에 들어가지 않게 한다 (formToken 은 폼, seq 는 칸)
+    const photoSeq = {};
     document.querySelectorAll('.rec-photo-tile').forEach(tile => {
       const field = tile.dataset.field;
       const input = tile.querySelector('.rec-photo-input');
@@ -2181,6 +2184,7 @@ App.pages.records = {
         e.preventDefault(); // label 활성화(파일 창) 막기
         e.stopPropagation();
         this._formPhotos[field] = { data: null, changed: true };
+        photoSeq[field] = (photoSeq[field] || 0) + 1; // 바꾸는 중이던 사진이 늦게 끝나도 지운 칸에 다시 들어오지 않게
         App._modalDirty = true; // stopPropagation 이라 App 의 작성 중 감시에 안 잡힌다
         if (input) input.value = '';
         paint(field);
@@ -2191,10 +2195,14 @@ App.pages.records = {
         App._modalDirty = true; // 사진을 넣었으면 닫을 때 한 번 묻는다
         // 사진 처리가 끝나기 전에 저장을 누르면 사진이 빠지던 문제 — 진행 중 작업을 기록해 saveRecord 가 기다린다
         const jobs = this._pendingPhotoJobs || (this._pendingPhotoJobs = new Set());
-        const job = new Promise((resolve) => {
+        const seq = (photoSeq[field] = (photoSeq[field] || 0) + 1);
+        const current = () => formToken === this._formPhotoToken && seq === photoSeq[field];
+        const job = App.readableImage(file).then(img => new Promise((resolve) => { // 아이폰 원본(HEIC)을 크롬에서도
+          if (!current()) { resolve(); return; }
           const reader = new FileReader();
           reader.onload = () => {
             App.resizeImage(reader.result, (data) => {
+              if (!current()) { resolve(); return; }
               if (!data) { App.showToast('사진을 읽지 못했습니다.', 'error'); resolve(); return; }
               this._formPhotos[field] = { data, changed: true };
               paint(field);
@@ -2202,8 +2210,8 @@ App.pages.records = {
             }, 800, 0.7);
           };
           reader.onerror = () => { App.showToast('사진을 읽지 못했습니다.', 'error'); resolve(); };
-          reader.readAsDataURL(file);
-        });
+          reader.readAsDataURL(img);
+        }));
         jobs.add(job);
         job.finally(() => jobs.delete(job));
       });
@@ -5401,7 +5409,8 @@ App.pages.records = {
   },
   // 사진 파일 하나 → 줄인 dataURL (못 읽으면 null)
   // refine: 카드 사진 칸 — 떼어 낸 사진이면 가장자리를 자동으로 다듬는다 (프레임 배경 그림 등은 그대로)
-  _readCardPhotoFile(file, refine) {
+  async _readCardPhotoFile(file, refine) {
+    file = await App.readableImage(file); // 아이폰 원본(HEIC)을 크롬에서도
     return new Promise(resolve => {
       const reader = new FileReader();
       // 카드 출력(1080px) 대응. 배경을 지운(투명) 사진은 투명한 채로 둔다 — 사진관·잡지 표지에서 색 배경 위에 올린다
@@ -6187,7 +6196,7 @@ App.pages.records = {
       for (const f of files) {
         if (list.length >= this.MAX_CUSTOM_STICKERS) { App.showToast(`내 스티커는 ${this.MAX_CUSTOM_STICKERS}개까지예요. 정리 후 추가해주세요.`, 'error'); break; }
         try {
-          const r = await this._prepareStickerImage(f);
+          const r = await this._prepareStickerImage(await App.readableImage(f)); // 아이폰 원본(HEIC)도
           if (!r) continue;
           list.unshift({ id: 'u' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6), image: r.image, createdAt: new Date().toISOString() });
           added++; if (r.removedBg) removed++;
@@ -7291,12 +7300,20 @@ App.pages.records = {
       document.getElementById('card-custom-bgimg-btn')?.addEventListener('click', () => {
         document.getElementById('card-custom-bgimg')?.click();
       });
-      document.getElementById('card-custom-bgimg')?.addEventListener('change', (e) => {
-        const file = e.target.files[0];
-        if (!file) return;
+      document.getElementById('card-custom-bgimg')?.addEventListener('change', async (e) => {
+        const input = e.target;
+        if (!input.files[0]) return;
+        // 아이폰 사진(HEIC) 바꾸기는 몇 초 — 그사이 '제거'·다른 그림·창 닫기를 하면 늦게 끝난 그림은 버린다
+        const seq = (this._customBgSeq = (this._customBgSeq || 0) + 1);
+        const current = () => input.isConnected && seq === this._customBgSeq;
+        const file = await App.readableImage(input.files[0]); // 아이폰 원본(HEIC)도
+        if (!file || !current()) return;
         const reader = new FileReader();
+        reader.onerror = () => { if (current()) App.showToast('그림을 읽지 못했어요. 다른 그림(JPG·PNG)을 골라 주세요.', 'error'); };
         reader.onload = (ev) => {
           App.resizeImage(ev.target.result, (compressed) => {
+            if (!current()) return;
+            if (!compressed) { input.value = ''; App.showToast('그림을 읽지 못했어요. 다른 그림(JPG·PNG)을 골라 주세요.', 'error'); return; }
             this._customBgImage = compressed;
             this._scheduleCardPreview();
             const nameEl = document.getElementById('card-custom-bgimg-name');
@@ -7315,6 +7332,7 @@ App.pages.records = {
         reader.readAsDataURL(file);
       });
       document.getElementById('card-custom-bgimg-remove')?.addEventListener('click', () => {
+        this._customBgSeq = (this._customBgSeq || 0) + 1; // 바꾸는 중이던 그림이 다시 들어오지 않게
         this._customBgImage = null;
         const nameEl = document.getElementById('card-custom-bgimg-name');
         if (nameEl) nameEl.textContent = '';

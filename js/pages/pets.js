@@ -743,16 +743,27 @@ App.pages.pets = {
       document.getElementById('f-photo')?.click();
     });
     document.getElementById('f-photo')?.addEventListener('change', (e) => {
-      const file = e.target.files[0];
-      if (!file) return;
-      if (file.size > 10 * 1024 * 1024) {
+      const input = e.target;
+      const orig = input.files[0];
+      if (!orig) return;
+      // 크기는 원본으로 본다 (HEIC를 바꾼 JPG가 원본보다 커질 수 있다)
+      if (orig.size > 10 * 1024 * 1024) {
         App.showToast('파일이 너무 큽니다 (10MB 이하만 업로드 가능)', 'error');
-        e.target.value = '';
+        input.value = '';
         return;
       }
+      // 아이폰 원본(HEIC)을 크롬에서 바꾸는 데 몇 초 걸린다 — 저장은 이 작업을 기다리고(savePet),
+      // 늦게 끝나면 닫힌 폼·다른 반려견 폼·더 새로 고른 사진에 들어가지 않게 한다
+      const seq = (this._petPhotoSeq = (this._petPhotoSeq || 0) + 1);
+      const current = () => input.isConnected && seq === this._petPhotoSeq;
+      this._pendingPetPhoto = App.readableImage(orig).then(file => new Promise(done => {
+      if (!current()) { done(); return; }
       const reader = new FileReader();
+      reader.onerror = () => { App.showToast('사진을 읽지 못했습니다.', 'error'); done(); };
       reader.onload = (ev) => {
         this.resizeImage(ev.target.result, (compressedDataUrl) => {
+          if (!current()) { done(); return; }
+          if (!compressedDataUrl) { App.showToast('사진을 읽지 못했습니다.', 'error'); done(); return; }
           document.getElementById('f-photo-data').value = compressedDataUrl;
           this._photoRemoved = false;
           const preview = document.getElementById('f-photo-preview');
@@ -766,6 +777,7 @@ App.pages.pets = {
             removeBtn.style.marginLeft = '8px';
             removeBtn.textContent = '삭제';
             removeBtn.addEventListener('click', () => {
+              this._petPhotoSeq = (this._petPhotoSeq || 0) + 1; // 바꾸는 중이던 사진이 다시 들어오지 않게
               document.getElementById('f-photo-data').value = '';
               this._photoRemoved = true;
               preview.innerHTML = '<span class="pet-photo-placeholder">' + App.icon('paw', 'ico-xl') + '</span>';
@@ -773,11 +785,14 @@ App.pages.pets = {
             });
             document.getElementById('f-photo-btn')?.after(removeBtn);
           }
+          done();
         });
       };
       reader.readAsDataURL(file);
+      }));
     });
     document.getElementById('f-photo-remove')?.addEventListener('click', () => {
+      this._petPhotoSeq = (this._petPhotoSeq || 0) + 1;
       document.getElementById('f-photo-data').value = '';
       this._photoRemoved = true;
       const preview = document.getElementById('f-photo-preview');
@@ -788,6 +803,8 @@ App.pages.pets = {
 
   async savePet(id, presetCustomerId) {
     try {
+      // 사진 바꾸기(아이폰 HEIC)가 끝나기 전에 저장을 누르면 사진이 빠지던 문제 — 끝날 때까지 기다린다
+      if (this._pendingPetPhoto) { try { await this._pendingPetPhoto; } catch (_) {} this._pendingPetPhoto = null; }
       const customerId = presetCustomerId || Number(document.getElementById('pet-customer-select-value')?.value || document.getElementById('f-customerId')?.value);
       const name = document.getElementById('f-name').value.trim();
       const breed = App.normalizeBreed(document.getElementById('f-breed').value);

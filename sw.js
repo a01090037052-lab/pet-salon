@@ -1,4 +1,4 @@
-const CACHE_NAME = 'petsalon-offline-v214';
+const CACHE_NAME = 'petsalon-offline-v215';
 const FONT_CACHE = 'petsalon-fonts-v1';
 const ASSETS = [
   './',
@@ -132,6 +132,8 @@ const ASSETS = [
 // 스티커 이미지는 버전과 상관없는 따로 보관함에 둔다 — 앱을 업데이트할 때마다 1.6MB 를 다시 받지 않도록.
 // 파일 이름이 같으면 내용도 같다고 본다: 스티커 그림을 바꿀 때는 파일 이름을 새로 지을 것.
 const STICKER_CACHE = 'petsalon-stickers-v1';
+// 버전 이름이 붙은 외부 도구(js/vendor/, 예: 아이폰 HEIC 변환기 3MB) — 처음 쓸 때 한 번 받아 두고 앱이 바뀌어도 지우지 않는다
+const VENDOR_CACHE = 'petsalon-vendor-v1';
 const isSticker = (u) => u.includes('/assets/stickers/');
 const CORE_ASSETS = ASSETS.filter(u => !isSticker(u));
 const STICKER_ASSETS = ASSETS.filter(isSticker);
@@ -152,7 +154,7 @@ self.addEventListener('install', (e) => {
 self.addEventListener('activate', (e) => {
   e.waitUntil(
     caches.keys().then(keys =>
-      Promise.all(keys.filter(k => k !== CACHE_NAME && k !== FONT_CACHE && k !== STICKER_CACHE).map(k => caches.delete(k)))
+      Promise.all(keys.filter(k => k !== CACHE_NAME && k !== FONT_CACHE && k !== STICKER_CACHE && k !== VENDOR_CACHE).map(k => caches.delete(k)))
     ).then(() => self.clients.claim())
   );
 });
@@ -179,6 +181,19 @@ self.addEventListener('fetch', (e) => {
   // sw.js 는 캐시하지 않는다 — 버전 표시용으로 './sw.js?v=<timestamp>' 를 매번
   // 새 URL로 요청하기 때문에, 캐시하면 앱을 열 때마다 항목이 영구 누적된다.
   if (url.pathname.endsWith('/sw.js')) return;
+
+  // 외부 도구: 파일 이름에 버전이 있어 바뀌지 않는다 — 있으면 그대로, 없을 때만 받아 보관
+  if (url.pathname.includes('/js/vendor/')) {
+    e.respondWith(
+      caches.open(VENDOR_CACHE).then(vc =>
+        vc.match(e.request, { ignoreSearch: true }).then(hit => hit || fetch(e.request).then(response => {
+          if (response.ok) vc.put(e.request, response.clone());
+          return response;
+        }))
+      )
+    );
+    return;
+  }
 
   // 스티커: 보관함에 있으면 그대로 쓰고, 없을 때만 받아서 보관한다.
   if (isSticker(url.pathname)) {
