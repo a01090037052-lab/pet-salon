@@ -4440,3 +4440,6 @@ tr.appt-flash td { background: var(--info-bg-soft); }
 .bglib-check { justify-content: flex-start; text-align: left; font-weight: 500; }
 .bglib-check input { width: 20px; height: 20px; flex: none; }
 #bgi-color { width: 64px; height: 38px; border: none; border-radius: 8px; padding: 0; cursor: pointer; }
+
+/* 사진 카드: 지난 꾸미기 불러오기 */
+.card-load-last { margin: 0 0 10px; }

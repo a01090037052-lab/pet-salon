@@ -402,7 +402,10 @@ App.bgLib = {
   // 카드 창이 열릴 때 (openPhotoCard 의 Wire up)
   async wire() {
     await this.load();
-    if (!this.state || !this.def(this.state.id)) this.state = this.stateFor(this.def('torn'));
+    // 지운 배경을 가리키던 상태면 기본 배경으로 바꾸고 미리보기도 다시 (첫 미리보기가 먼저 그려졌을 수 있다)
+    const gone = !!(this.state && !this.def(this.state.id));
+    if (!this.state || gone) this.state = this.stateFor(this.def('torn'));
+    if (gone) this._changed();
     this.dragOn = false;
     const stage = document.querySelector('.card-maker .card-live-stage');
     if (stage && !document.getElementById('card-live-bgmove')) {

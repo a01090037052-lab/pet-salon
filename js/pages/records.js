@@ -6549,6 +6549,20 @@ App.pages.records = {
   },
 
   // 카드 만들기 창의 현재 선택을 읽어 저장용 설정으로 만든다 (만들기·미리보기 공용)
+  // 새 카드에 이어 쓰는 '가게 스타일' — 나머지(틀·배경색·프레임·배경 그림·사진 느낌·큰 제목)는 카드마다 처음부터
+  _CARD_KEEP_KEYS: ['fontKey', 'logoPosition', 'logoSize', 'showPet', 'showDate', 'showShop', 'showService', 'showNextVisit', 'footerMessage',
+    'customBgColor', 'customTextColor', 'customAccentColor', 'customBgImage'],
+  _freshCardSettings(stored) {
+    const o = {};
+    // 지난 카드가 내 프레임이면 custom* 칸에 그 프레임 그림·색이 들어 있다 → 새 카드로 넘기지 않는다
+    const fromFrame = !!(stored && stored.lastUsedFrameId);
+    for (const k of this._CARD_KEEP_KEYS) {
+      if (fromFrame && k.startsWith('custom')) continue;
+      if (stored && stored[k] !== undefined) o[k] = stored[k];
+    }
+    return o;
+  },
+
   async _readCardForm(cardPetName) {
     const layout = document.querySelector('#card-pick-layout .card-pick-btn.active')?.dataset.key || 'strip2';
     let theme = document.querySelector('#card-pick-theme .card-pick-btn.active')?.dataset.key || 'classic';
@@ -6626,6 +6640,8 @@ App.pages.records = {
     settings.showPet = document.getElementById('card-show-pet')?.checked !== false;
     settings.showDate = document.getElementById('card-show-date')?.checked !== false;
     settings.showShop = document.getElementById('card-show-shop')?.checked !== false;
+    // 배경 그림(색·크기·위치)도 '지난 꾸미기'에 같이 남긴다
+    if (layout === 'scene' && App.bgLib) settings.scene = App.bgLib.cardScene(); else delete settings.scene;
     return { layout, theme, settings };
   },
 
@@ -6697,7 +6713,13 @@ App.pages.records = {
     this._cardLayoutPicked = !!keep;
     const poolCount = Object.values(this._cardPool).filter(Boolean).length;
 
-    const saved = await DB.getSetting('cardDesignSettings') || {};
+    // 새 카드: 가게 스타일(글꼴·로고·표시 항목·인사말)만 이어 쓰고, 틀·배경색·프레임·배경 그림·사진 느낌·큰 제목은 처음부터.
+    // '다시 꾸미기'와 [지난 꾸미기 불러오기]는 지난번 그대로
+    const stored = (await DB.getSetting('cardDesignSettings')) || {};
+    const useLast = keep || !!opts.useLast;
+    const saved = useLast ? { ...stored } : this._freshCardSettings(stored);
+    this._cardCanLoadLast = !useLast && !!stored.layout;
+    if (App.bgLib) { if (opts.useLast) App.bgLib.state = stored.scene ? { ...stored.scene } : null; else if (!keep) App.bgLib.state = null; }
     // 삭제된 레이아웃/테마 자동 마이그레이션
     const validLayouts = Object.keys(this._CARD_LAYOUTS).filter(k => !this._CARD_LAYOUTS[k].legacy);
     let selectedLayout = saved.layout || 'photobooth';
@@ -6705,7 +6727,8 @@ App.pages.records = {
     const validThemes = [...Object.keys(this._CARD_THEMES), 'custom'];
     let selectedTheme = saved.template || 'classic';
     if (!validThemes.includes(selectedTheme)) { selectedTheme = 'classic'; saved.template = 'classic'; }
-    if (saved.layout !== selectedLayout || saved.template !== selectedTheme) await DB.setSetting('cardDesignSettings', saved);
+    // 지난 설정을 고쳐 쓸 때만 저장 (새 카드의 기본값으로 지난 꾸미기를 덮지 않게)
+    if (useLast && (saved.layout !== selectedLayout || saved.template !== selectedTheme)) await DB.setSetting('cardDesignSettings', saved);
     const LAYOUTS = this._CARD_LAYOUTS;
     const THEMES = this._CARD_THEMES;
     // 사용자 프레임 라이브러리 (활성 + 이미지 있는 것만)
@@ -6811,6 +6834,7 @@ App.pages.records = {
         </div>
         </div>
         <div class="card-tabpanel" data-panel="layout" hidden>
+        ${this._cardCanLoadLast ? '<button type="button" class="btn btn-sm btn-secondary card-load-last" id="card-load-last">↺ 지난 꾸미기 불러오기</button>' : ''}
         <!-- 틀을 장수로 묶는다 — 고른 사진 장수에 맞는 줄이 위로 (틀이 8개라 한눈에 찾기 어려웠다) -->
         <div id="card-pick-layout" class="card-pick-layout">
           ${[['one', '사진 한 장'], ['many', '사진 여러 장']].map(([g, label]) => `
@@ -7053,7 +7077,13 @@ App.pages.records = {
 
         });
       });
-      App.bgLib?.wire().catch(e => console.warn('배경 보관함:', e));
+      // 지난 꾸미기를 불러오면 간판 매장명도 그 배경에 맞춰 (없으면 지우고, 있으면 놓는다)
+      App.bgLib?.wire().then(() => { if (opts.useLast) App.bgLib._signSticker?.(); }).catch(e => console.warn('배경 보관함:', e));
+      // 지난 카드의 틀·배경·프레임·배경 그림을 그대로 — 고른 사진·스티커는 그대로 들고 다시 연다
+      document.getElementById('card-load-last')?.addEventListener('click', () => {
+        App.closeModal();
+        setTimeout(async () => { await this.openPhotoCard(ctx, { keepPhotos: true, useLast: true }); App.showToast('지난 꾸미기를 불러왔어요.'); }, 200);
+      });
       // 틀 탭 → 꾸미기 탭 배경색으로 바로
       document.getElementById('card-bg-link')?.addEventListener('click', () => {
         document.querySelector('.card-tab[data-tab="deco"]')?.click();
