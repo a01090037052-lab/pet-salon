@@ -249,3 +249,19 @@ describe('사진 빼기 — 뒤 칸을 앞으로', () => {
     assert.equal(R._cardFront.length, 4);
   });
 });
+
+describe('강아지 뒤로 (스티커·글자)', () => {
+  const a = { id: 'a' }, b = { id: 'b', behind: true }, c = { id: 'c', text: 'HI', behind: true }, d = { id: 'd', behind: false };
+  test('앞 강아지가 있으면 뒤로 한 것만 먼저, 순서는 그대로', () => {
+    const r = R._splitBehind([a, b, c, d], true);
+    assert.deepEqual(r.back.map(x => x.id), ['b', 'c']);
+    assert.deepEqual(r.top.map(x => x.id), ['a', 'd']);
+  });
+  test('앞 강아지가 없으면 모두 위 (예전 그대로)', () => {
+    const r = R._splitBehind([a, b, c, d], false);
+    assert.equal(r.back.length, 0);
+    assert.deepEqual(r.top.map(x => x.id), ['a', 'b', 'c', 'd']);
+  });
+  test('예전 저장값(behind 없음)은 모두 위', () => assert.equal(R._splitBehind([a, d], true).back.length, 0));
+  test('스티커가 없어도 된다', () => { const r = R._splitBehind(undefined, true); assert.equal(r.back.length + r.top.length, 0); });
+});

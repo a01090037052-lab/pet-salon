@@ -160,7 +160,9 @@ App.pages.appointments = {
         ${apptTotal === 0 ? '<button class="btn btn-primary" onclick="App.pages.appointments.showForm()">+ 첫 예약 등록하기</button>' : ''}
       </div>`;
     // 주간 띠 ↔ 달력 펼침 (휴대폰). 고른 보기는 이 탭 동안 기억한다
-    const calMonthOpen = sessionStorage.getItem('appt-cal-view') === 'month';
+    // 주간/달력 고른 보기는 앱을 다시 열어도 기억한다 (이 기기에만)
+    let calMonthOpen = false;
+    try { calMonthOpen = localStorage.getItem('appt-cal-view') === 'month'; } catch (_) {}
 
     container.innerHTML = `
       <div class="appt-v2${calMonthOpen ? ' appt-cal-month' : ''}" id="appt-v2">
@@ -829,7 +831,7 @@ App.pages.appointments = {
       const root = document.getElementById('appt-v2');
       const open = !root.classList.contains('appt-cal-month');
       root.classList.toggle('appt-cal-month', open);
-      sessionStorage.setItem('appt-cal-view', open ? 'month' : 'week');
+      try { localStorage.setItem('appt-cal-view', open ? 'month' : 'week'); } catch (_) {}
       e.currentTarget.setAttribute('aria-expanded', String(open));
       document.getElementById('appt-cal-toggle-text').textContent = open ? '주간으로 접기' : '달력';
     });

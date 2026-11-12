@@ -4174,6 +4174,25 @@ App.pages.records = {
       if (_ov) this._drawImageCover(out.getContext('2d'), _ov, 0, 0, out.width, out.height);
     }
 
+    // 스티커·글자 — '강아지 뒤로' 한 것은 앞 강아지보다 먼저(강아지가 덮게), 나머지는 맨 위에
+    const _stk = this._splitBehind(s.stickers, _frontPlaces.length > 0 && !!App.cutout);
+    // 미리보기는 '뒤' 스티커만 넘긴다 — 앞 강아지가 없으면 화면 위 스티커가 이미 보이므로 그림에 또 그리지 않는다 (두 번 보임 방지)
+    if (s._behindOnly) _stk.top = [];
+    const _drawStickers = async (list) => {
+      const octx = out.getContext('2d');
+      for (const st of list) {
+        const sImg = await this._loadImg(st.src || this._stickerSrc(st.id));
+        if (!sImg) continue;
+        const w = st.size * out.width, h = w * (sImg.height / sImg.width);
+        octx.save();
+        octx.translate(st.x * out.width, st.y * out.height);
+        octx.rotate((st.rot || 0) * Math.PI / 180);
+        octx.drawImage(sImg, -w / 2, -h / 2, w, h);
+        octx.restore();
+      }
+    };
+    await _drawStickers(_stk.back);
+
     // 입체 꾸미기 — 떼어 낸 강아지를 프레임 위(스티커 아래)에, 칸 사진과 같은 자리·같은 크기로 (최종 크기에서 그려 선명하게)
     if (_frontPlaces.length && App.cutout) {
       const S = out.width / _baseW;
@@ -4184,20 +4203,8 @@ App.pages.records = {
       out._frontPlaces = places.map(({ img, ...p }) => p);
     }
 
-    // 스티커 — 프레임보다도 위에
-    if (Array.isArray(s.stickers) && s.stickers.length) {
-      const octx = out.getContext('2d');
-      for (const st of s.stickers) {
-        const sImg = await this._loadImg(st.src || this._stickerSrc(st.id));
-        if (!sImg) continue;
-        const w = st.size * out.width, h = w * (sImg.height / sImg.width);
-        octx.save();
-        octx.translate(st.x * out.width, st.y * out.height);
-        octx.rotate((st.rot || 0) * Math.PI / 180);
-        octx.drawImage(sImg, -w / 2, -h / 2, w, h);
-        octx.restore();
-      }
-    }
+    // 스티커 — 프레임·강아지보다도 위에
+    await _drawStickers(_stk.top);
 
     return out;
   },
@@ -4271,6 +4278,15 @@ App.pages.records = {
   // 소품 — 작은 선물 상자 (배경 '리본 선물 상자' 옆에). 배경 그림에서 상자 색·리본 색을 바꿨으면 같은 색으로 붙는다
   _PROP_STICKERS: ['pt_prop_gift1', 'pt_prop_gift2', 'pt_prop_gift3', 'pt_prop_gift4', 'pt_prop_gift5'],
   _CHIC_STICKERS: ['pt_chic_goodvibes', 'pt_chic_nobad', 'pt_chic_beyou', 'pt_chic_sofluffy', 'pt_chic_freshcut', 'pt_chic_club', 'pt_chic_gooddog', 'pt_chic_ticket', 'pt_chic_fresh_star', 'pt_chic_tag', 'pt_chic_stamp', 'pt_chic_pretty', 'pt_chic_today_dog', 'pt_chic_bubble_done', 'pt_chic_bubble_bosong', 'pt_chic_groomed', 'pt_chic_withlove', 'pt_chic_green_paw', 'pt_chic_dogline', 'pt_chic_aura_lovely', 'pt_chic_aura_fluffy', 'pt_chic_aura_heart'],
+  // 스티커 목록을 강아지 뒤(back)·위(top)로 나눈다 — 앞 강아지가 없으면 모두 위 (뒤로 갈 것이 없다). 순서는 그대로
+  _splitBehind(list, hasFront) {
+    const all = Array.isArray(list) ? list : [];
+    return { back: hasFront ? all.filter(st => st && st.behind) : [], top: hasFront ? all.filter(st => st && !st.behind) : all.slice() };
+  },
+  // 미리보기에 떼어 낸 앞 강아지가 있는지 ('강아지 뒤로' 버튼은 이때만)
+  _hasFrontDog() { return !!(this._frontView && this._frontView.places && this._frontView.places.length); },
+  // 강아지 뒤 스티커는 미리보기 그림 안에 그려지므로, 옮기거나 바꾸면 미리보기를 다시 그린다
+  _behindChanged(st) { if (st && st.behind) this._photoDragPreview(); },
   _stickerSrc(id) { return /^(pt|ai)_/.test(String(id)) ? `assets/stickers/${id}.webp` : `assets/stickers/emoji_u${id}.webp`; },
   _stickerSrcOf(st) {
     if (st.src) return st.src; // 글자 스티커 (만들어 둔 그림)
@@ -5720,7 +5736,8 @@ App.pages.records = {
     if (!layer) return;
     layer.hidden = !img || img.hidden;
     const list = this._cardStickers || [];
-    layer.innerHTML = list.map((st, i) => `<img class="card-sticker${i === this._stickerSel ? ' sel' : ''}" data-i="${i}" src="${this._stickerSrcOf(st)}" alt="" draggable="false"
+    const front = this._hasFrontDog();
+    layer.innerHTML = list.map((st, i) => `<img class="card-sticker${i === this._stickerSel ? ' sel' : ''}${front && st.behind ? ' behind' : ''}" data-i="${i}" src="${this._stickerSrcOf(st)}" alt="" draggable="false"
       style="left:${st.x * 100}%;top:${st.y * 100}%;width:${st.size * 100}%;transform:translate(-50%,-50%) rotate(${st.rot}deg)">`).join('');
     const edit = document.getElementById('card-sticker-edit');
     const sel = list[this._stickerSel];
@@ -5732,6 +5749,8 @@ App.pages.records = {
     // 스티커를 고른 동안은 미리보기를 크게 (작은 화면에서 손가락으로 옮기기 쉽게)
     // 글자 탭에서는 아래 고르는 칸(모양·색·글꼴)이 보여야 해 키우지 않는다
     layer.closest('.card-live')?.classList.toggle('sticker-editing', !!sel && this._cardTab === 'sticker');
+    const bh = document.getElementById('card-sticker-behind');
+    if (bh) { bh.hidden = !sel || !front; bh.textContent = sel && sel.behind ? '강아지 앞으로' : '강아지 뒤로'; }
     if (sel) {
       const sz = document.getElementById('card-sticker-size'); if (sz) sz.value = Math.round(sel.size * 100);
       const rt = document.getElementById('card-sticker-rot'); if (rt) rt.value = sel.rot;
@@ -5822,6 +5841,7 @@ App.pages.records = {
         if (st.w) st.size = Math.max(0.06, Math.min(1.2, st.size * r.w / st.w));
         st.src = r.src; st.w = r.w;
         this._renderStickerLayer();
+        this._behindChanged(st);
       };
       if (now) await run(); else timer = setTimeout(run, 250);
     };
@@ -6248,6 +6268,7 @@ App.pages.records = {
       st.y = Math.min(1, Math.max(0, (e.clientY - r.top) / r.height - drag.dy));
       const el = layer.querySelector(`.card-sticker[data-i="${drag.i}"]`);
       if (el) { el.style.left = st.x * 100 + '%'; el.style.top = st.y * 100 + '%'; }
+      this._behindChanged(st);
     };
     layer.onlostpointercapture = (e) => { if (pdrag && pts.has(e.pointerId)) { pts.delete(e.pointerId); if (!pts.size) { pdrag = null; this._syncSlotSliders(0); this._scheduleCardPreview(); } } };
     layer.onpointerup = layer.onpointercancel = (e) => {
@@ -6267,15 +6288,25 @@ App.pages.records = {
       if (!el) { this._renderStickerLayer(); return; }
       el.style.width = st.size * 100 + '%';
       el.style.transform = `translate(-50%,-50%) rotate(${st.rot}deg)`;
+      this._behindChanged(st);
     };
     const sz = document.getElementById('card-sticker-size');
     if (sz) sz.oninput = () => upd(st => { st.size = Number(sz.value) / 100; });
     const rt = document.getElementById('card-sticker-rot');
     if (rt) rt.oninput = () => upd(st => { st.rot = Number(rt.value); });
     const del = document.getElementById('card-sticker-del');
-    if (del) del.onclick = () => { if (this._stickerSel < 0) return; this._cardStickers.splice(this._stickerSel, 1); this._stickerSel = -1; this._renderStickerLayer(); };
+    if (del) del.onclick = () => { if (this._stickerSel < 0) return; const [gone] = this._cardStickers.splice(this._stickerSel, 1); this._stickerSel = -1; this._renderStickerLayer(); this._behindChanged(gone); };
     const clr = document.getElementById('card-sticker-clear');
-    if (clr) clr.onclick = () => { this._cardStickers = []; this._stickerSel = -1; this._renderStickerLayer(); };
+    if (clr) clr.onclick = () => { const back = this._cardStickers.some(st => st.behind); this._cardStickers = []; this._stickerSel = -1; this._renderStickerLayer(); if (back) this._scheduleCardPreview(); };
+    // 강아지 뒤로 ↔ 앞으로 — 떼어 낸 강아지가 글자·스티커를 덮게
+    const bh = document.getElementById('card-sticker-behind');
+    if (bh) bh.onclick = () => {
+      const st = this._cardStickers[this._stickerSel];
+      if (!st) return;
+      st.behind = !st.behind;
+      this._renderStickerLayer();
+      this._photoDragPreview();
+    };
     this._renderStickerLayer();
   },
 
@@ -6341,6 +6372,9 @@ App.pages.records = {
     const shopName = await DB.getSetting('shopName') || '펫살롱';
     const shopPhone = await DB.getSetting('shopPhone') || '';
     const ds = await this._designFrom(f.settings, f.layout, f.theme, pet?.name || '');
+    // 강아지 뒤 스티커만 미리보기 그림에 넣는다 (강아지가 덮게) — 나머지는 위에 얹은 끌 수 있는 그림
+    ds.stickers = (this._cardStickers || []).filter(st => st.behind).map(st => ({ ...st, src: this._stickerSrcOf(st) })).filter(st => st.src);
+    ds._behindOnly = true;
     const cv = await this._generateCardCanvas(rec, customer, pet, shopName, shopPhone, serviceNames, ds);
     if (token !== this._cardPreviewToken) { cv.width = cv.height = 0; return; } // 더 최근 미리보기가 진행 중 (버리는 캔버스 메모리도 돌려준다)
     img.src = cv.toDataURL('image/jpeg', 0.72);
@@ -6731,6 +6765,7 @@ App.pages.records = {
             <label class="card-sticker-slider">크기 <input type="range" id="card-sticker-size" min="6" max="100" step="1"></label>
             <label class="card-sticker-slider">회전 <input type="range" id="card-sticker-rot" min="-180" max="180" step="5"></label>
             <div class="card-sticker-actions">
+              <button type="button" class="btn btn-sm btn-secondary" id="card-sticker-behind" hidden>강아지 뒤로</button>
               <button type="button" class="btn btn-sm btn-secondary" id="card-sticker-del">${App.icon('trash')} 이 스티커 삭제</button>
               <button type="button" class="btn btn-sm btn-ghost" id="card-sticker-clear">모두 지우기</button>
             </div>

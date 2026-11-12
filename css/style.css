@@ -3626,6 +3626,9 @@ a.stat-card { display: flex; }
 .card-sticker-layer[hidden] { display: none; }
 .card-live .card-sticker { position: absolute; max-height: none; max-width: none; height: auto; border-radius: 0; box-shadow: none; background: transparent; touch-action: none; user-select: none; -webkit-user-select: none; -webkit-user-drag: none; cursor: grab; }
 .card-live .card-sticker.sel { outline: 2px dashed var(--primary); outline-offset: 2px; }
+/* 강아지 뒤 스티커는 미리보기 그림 안에 그려진다 — 위 그림은 비워 두고 자리(누르기·끌기·점선)만 남긴다 */
+.card-sticker.behind { object-position: -99999px 0; }
+.card-sticker-actions .btn[hidden] { display: none; }
 .card-sticker-row { display: flex; gap: 6px; overflow-x: auto; padding-bottom: 4px; -webkit-overflow-scrolling: touch; }
 .card-sticker-btn { flex: 0 0 auto; width: 48px; height: 48px; padding: 6px; border: 1px solid var(--border); border-radius: 10px; background: var(--bg-white); cursor: pointer; }
 .card-sticker-btn img { width: 100%; height: 100%; object-fit: contain; display: block; }
