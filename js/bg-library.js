@@ -193,12 +193,35 @@ App.bgLib = {
     const k = v => Math.round(v * 10000) / 10000;
     return { y: k(ry / h), x0: k(l / w), x1: k(r / w) };
   },
-  // 카드 위 배경 자리: 카드를 늘 다 덮게(cover) × 크기, ox·oy(카드 비율)는 빈 띠가 안 생기게 묶는다
+  // 카드 위 배경 자리: 카드를 덮게(cover) × 크기. ox·oy(카드 비율)는 남는 만큼 + SLACK 까지 —
+  // 100%(남는 곳 없음)에서도 옮겨진다. 밖으로 나간 자리는 drawCard 가 그림 끝 줄을 늘여 채운다 (미리보기·저장 같음)
+  SLACK: 0.12,
   geom(bw, bh, W, H, sc) {
     const k = Math.max(W / bw, H / bh) * Math.max(1, Math.min(1.7, sc.scale || 1));
-    const w = bw * k, h = bh * k, mx = (w - W) / 2 / W, my = (h - H) / 2 / H;
+    const w = bw * k, h = bh * k, mx = (w - W) / 2 / W + this.SLACK, my = (h - H) / 2 / H + this.SLACK;
     const ox = Math.max(-mx, Math.min(mx, sc.ox || 0)), oy = Math.max(-my, Math.min(my, sc.oy || 0));
     return { x: (W - w) / 2 + ox * W, y: (H - h) / 2 + oy * H, w, h, ox, oy };
+  },
+  // 그림이 카드를 다 덮지 못한 띠: 그림 끝을 거울처럼 비춰 채운다 (꽃·종이 무늬가 자연스럽게 이어지게). g: geom
+  // 순수 함수: 채울 띠 목록 [{ sx, sy, sw, sh, dx, dy, dw, dh, fx, fy }] (그림 화소 → 카드 좌표, fx·fy: 가로·세로 뒤집어 그리기)
+  edgeStrips(bw, bh, g, W, H) {
+    const out = [], x0 = g.x, y0 = g.y, x1 = g.x + g.w, y1 = g.y + g.h;
+    const L = Math.max(0, x0), R = Math.max(0, W - x1), T = Math.max(0, y0), B = Math.max(0, H - y1);
+    const cx0 = Math.max(0, x0), cx1 = Math.min(W, x1), cy0 = Math.max(0, y0), cy1 = Math.min(H, y1);
+    const kx = bw / g.w, ky = bh / g.h;
+    const midX = { sx: (cx0 - x0) * kx, sw: (cx1 - cx0) * kx, dx: cx0, dw: cx1 - cx0 };
+    const midY = { sy: (cy0 - y0) * ky, sh: (cy1 - cy0) * ky, dy: cy0, dh: cy1 - cy0 };
+    const left = { sx: 0, sw: Math.min(bw, L * kx), dx: 0, dw: L }, right = { sx: Math.max(0, bw - R * kx), sw: Math.min(bw, R * kx), dx: x1, dw: R };
+    const top = { sy: 0, sh: Math.min(bh, T * ky), dy: 0, dh: T }, bottom = { sy: Math.max(0, bh - B * ky), sh: Math.min(bh, B * ky), dy: y1, dh: B };
+    if (L > 0.5) out.push({ ...left, ...midY, fx: true, fy: false });
+    if (R > 0.5) out.push({ ...right, ...midY, fx: true, fy: false });
+    if (T > 0.5) out.push({ ...midX, ...top, fx: false, fy: true });
+    if (B > 0.5) out.push({ ...midX, ...bottom, fx: false, fy: true });
+    if (L > 0.5 && T > 0.5) out.push({ ...left, ...top, fx: true, fy: true });
+    if (R > 0.5 && T > 0.5) out.push({ ...right, ...top, fx: true, fy: true });
+    if (L > 0.5 && B > 0.5) out.push({ ...left, ...bottom, fx: true, fy: true });
+    if (R > 0.5 && B > 0.5) out.push({ ...right, ...bottom, fx: true, fy: true });
+    return out;
   },
   // 배경 그림 안 비율 x → 뒤집기 반영
   fx(def, sc, x) { return sc.flip ? 1 - x : x; },
@@ -270,6 +293,7 @@ App.bgLib = {
 
   // ---------- 그림 준비 (색 입히기는 색마다 한 번만 · 최근 6개 기억) ----------
   _prep: new Map(),
+  _refs: new Map(),
   async prepared(def, color, part) {
     const R = App.pages.records;
     const img = await R._loadImg(def.src);
@@ -288,7 +312,12 @@ App.bgLib = {
     const id = x.getImageData(0, 0, c.width, c.height);
     // 색 입히기 먼저 (빨간 부분은 건너뜀) → 그다음 빨간 부분 색 바꾸기 (거꾸로 하면 바꾼 리본 색이 다시 물든다)
     if (tintOn) this.tint(id.data, color, def.paper, { keepWhite: def.keepWhite, skipRed: !!def.part });
-    if (partOn) this.recolorPart(id.data, part, def._ref ?? (def._ref = this.redRef(id.data)));
+    // 빨간 부분 대표 밝기는 그림마다 한 번만 (def 는 부를 때마다 새 객체라 그림 주소로 기억)
+    if (partOn) {
+      const rk = def.src.length + '|' + def.src.slice(-40);
+      if (!this._refs.has(rk)) this._refs.set(rk, this.redRef(id.data));
+      this.recolorPart(id.data, part, this._refs.get(rk));
+    }
     x.putImageData(id, 0, 0);
     this._prep.set(key, c);
     while (this._prep.size > 6) { const [k0, c0] = this._prep.entries().next().value; this._prep.delete(k0); c0.width = c0.height = 0; }
@@ -337,8 +366,18 @@ App.bgLib = {
       o.drawPhoto(0, 0, W, H);
     }
     ctx.save();
-    if (sc.flip) { ctx.translate(g.x + g.w, g.y); ctx.scale(-1, 1); ctx.drawImage(bg, 0, 0, g.w, g.h); }
-    else ctx.drawImage(bg, g.x, g.y, g.w, g.h);
+    // 뒤집기는 카드 전체를 거울로 비춘 좌표에서 그린다 (그림 자리 g 는 그대로, 띠 채우기도 같은 좌표에서)
+    if (sc.flip) { ctx.translate(W, 0); ctx.scale(-1, 1); }
+    const gx = sc.flip ? { ...g, x: W - g.x - g.w } : g;
+    ctx.drawImage(bg, gx.x, gx.y, gx.w, gx.h);
+    for (const t of this.edgeStrips(bg.width, bg.height, gx, W, H)) {
+      if (t.sw < 0.5 || t.sh < 0.5) continue;
+      ctx.save();
+      ctx.translate(t.fx ? t.dx + t.dw : t.dx, t.fy ? t.dy + t.dh : t.dy);
+      ctx.scale(t.fx ? -1 : 1, t.fy ? -1 : 1);
+      ctx.drawImage(bg, t.sx, t.sy, t.sw, t.sh, -0.25, -0.25, t.dw + 0.5, t.dh + 0.5);
+      ctx.restore();
+    }
     ctx.restore();
     if (inside) {
       if (def.booth) {
@@ -416,8 +455,7 @@ App.bgLib = {
       bm.classList.toggle('on', this.dragOn); bm.textContent = this.dragOn ? '✓ 옮기기 끝' : '✥ 배경 옮기기';
       bm.setAttribute('aria-pressed', this.dragOn ? 'true' : 'false');
     }
-    const lay = document.getElementById('card-sticker-layer');
-    if (lay && this.dragOn) lay.style.touchAction = 'none';
+    R._syncMoveSurface?.();
     const def = on ? this.def(this.state?.id) : null;
     const st = (R._cardFront || [])[0];
     const needCut = !!(def && def.kind === 'inside' && photo && !(st && st.on && st.src === photo && st.mask));
@@ -653,9 +691,16 @@ App.bgLib = {
     this._importScreen(info);
   },
   _importScreen(info, inp) {
-    document.querySelector('.bglib-ed')?.remove();
-    const ov = document.createElement('div');
-    ov.className = 'cutout-ed bglib-ed';
+    // 안내 화면 → 그림을 고르면 같은 화면을 바꿔 쓴다 (뒤로가기 항목은 하나만)
+    let ov = document.querySelector('.bglib-ed');
+    if (!ov) {
+      ov = document.createElement('div');
+      ov.className = 'cutout-ed bglib-ed';
+      document.body.appendChild(ov);
+      let closed = false;
+      ov._close = (viaHistory) => { if (closed) return; closed = true; if (!viaHistory) App.popOverlayHistory(); ov.remove(); };
+      App.pushOverlayHistory(() => ov._close(true)); // 휴대폰 뒤로가기 → 이 화면만 닫힘
+    }
     const n = (this._user || []).filter(u => !u.base).length + 1;
     ov.innerHTML = `
       <div class="cutout-ed-top"><b>새 배경 추가</b><button type="button" class="btn btn-sm btn-ghost" data-act="close">닫기</button></div>
@@ -681,8 +726,7 @@ App.bgLib = {
         <ol class="bglib-steps"><li>AI 그림 도구에서 강아지 자리를 초록(#00FF00)으로 칠해 달라고 해요.</li><li>그 그림을 여기서 고르면 초록이 저절로 지워져요.</li><li>흰 그림이면 카드에서 원하는 색으로 바꿀 수 있어요.</li></ol>
         <button type="button" class="btn btn-primary" data-act="pickfile">그림 고르기</button>`}
       </div>`;
-    document.body.appendChild(ov);
-    const close = () => ov.remove();
+    const close = () => ov._close();
     ov.querySelector('[data-act="close"]').onclick = close;
     const pickAgain = () => { const i2 = document.createElement('input'); i2.type = 'file'; i2.accept = 'image/*'; i2.onchange = () => { const f = i2.files && i2.files[0]; if (f) this._importFile(f); }; i2.click(); };
     ov.querySelector('[data-act="pickfile"]')?.addEventListener('click', () => (inp ? inp.click() : pickAgain()));

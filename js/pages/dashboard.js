@@ -15,7 +15,7 @@ App.pages.dashboard = {
       if (pet.petStatus && pet.petStatus !== 'active') return;
       const days = App.getDaysAgo(pet.lastVisitDate);
       if (days === null) return;
-      const cycleDays = pet.groomingCycle || revisitDays;
+      const cycleDays = App.getGroomingCycle(pet, revisitDays);
       if (days >= cycleDays) {
         const customer = customerMap[pet.customerId];
         if (!customer) return;
@@ -306,7 +306,7 @@ App.pages.dashboard = {
       }
 
       // Revisit alerts (pets의 lastVisitDate 사용, records 전체 로드 불필요)
-      const revisitDays = await DB.getSetting('revisitDays') || 30;
+      const revisitDays = await App.getRevisitDays();
       // 오늘부터 앞으로 잡힌 예약(취소·노쇼·완료 제외)이 있는 반려견은 재방문 알림에서 뺀다
       const bookedPetIds = new Set();
       const bookedCustomerIds = new Set();

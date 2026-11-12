@@ -4381,8 +4381,23 @@ tr.appt-flash td { background: var(--info-bg-soft); }
 .fx-bar .fx-bar-row b { margin-right: 4px; }
 .fx-bar .fx-bar-hint { margin-top: 6px; font-size: max(0.78rem, 12px); color: var(--text-muted); line-height: 1.5; }
 .fx-line .fx-line-h.v { right: auto; bottom: 56px; transform: translateX(-50%); }
-.fx-ed .cutout-ed-row[hidden] { display: none; }
+.fx-ed .cutout-ed-row[hidden], .fx-ed [hidden] { display: none !important; }
 .fx-ed .fx-brush { flex: 1 1 140px; }
+.fx-ed .cutout-ed-bar > .fx-brush { flex: 0 0 auto; min-height: 40px; }
+.fx-ed .card-tstyle-btn:disabled { opacity: .4; cursor: default; }
+/* 하나로 합친 떼어내기 화면 — 큰 단추 두세 개, 나머지는 '더 고치기' 안에 */
+.fx-ed .cutout-ed-row.fx-start, .fx-ed .cutout-ed-row.fx-modes { flex-wrap: nowrap; }
+.fx-ed .cutout-ed-row .card-tstyle-btn.fx-big { flex: 1 1 0; min-width: 0; min-height: 44px; font-size: 15px; font-weight: 700; white-space: normal; word-break: keep-all; line-height: 1.2; }
+.fx-ed .fx-modes .card-tstyle-btn.fx-big[data-tool="move"] { flex: 0 1 auto; font-size: 13px; font-weight: 600; }
+.fx-ed .cutout-ed-actions .btn { min-height: 40px; }
+.fx-ed .cutout-ed-more .cutout-ed-slider { margin: 6px 0; flex-wrap: nowrap; white-space: nowrap; }
+.fx-ed .cutout-ed-more .cutout-ed-row { margin-top: 4px; }
+.fx-hint { position: absolute; left: 50%; top: 14px; transform: translateX(-50%); max-width: 80%; padding: 14px 22px; border-radius: 16px; background: rgba(17,24,39,.72); color: #fff;
+  font-size: 20px; font-weight: 700; text-align: center; line-height: 1.35; pointer-events: none; box-shadow: 0 4px 16px rgba(0,0,0,.25); }
+@media (pointer: coarse) {
+  .fx-ed .cutout-ed-row .card-tstyle-btn, .fx-ed .cutout-ed-more > summary { min-height: 44px; }
+  .fx-ed .cutout-ed-actions .btn { min-height: 44px; }
+}
 
 /* ===== 배경 보관함 (js/bg-library.js, 2026-11-11) ===== */
 .lay-scene { width: 26px; height: 32px; padding: 0; border-width: 0; background: #F7B3C2 url(../assets/backgrounds/thumbs/torn.webp) center / cover; }

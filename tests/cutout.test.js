@@ -126,3 +126,15 @@ describe('떼어 낸 사진 발끝 찾기 (바닥 그림자)', () => {
   });
   test('다 투명하면 null', () => assert.equal(R._footLine(new Uint8Array(9), 3, 3), null));
 });
+
+describe('천 색으로 한 번에 지우기', () => {
+  test('지운 결과의 투명도가 마스크, 원래 투명한 곳은 그대로', () => {
+    const rgba = new Uint8ClampedArray([1, 2, 3, 0, 1, 2, 3, 255, 1, 2, 3, 200]);
+    assert.deepEqual([...C.keyMask(rgba, new Uint8Array([255, 255, 100]))], [0, 255, 100]);
+  });
+  test('천 색이 고를수록 덜 지우고, 시작 정도는 14~60', () => {
+    assert.equal(C.keyTol(0), 14);
+    assert.equal(C.keyTol(20), 34);
+    assert.equal(C.keyTol(200), 60);
+  });
+});

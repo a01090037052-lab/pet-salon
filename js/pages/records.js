@@ -2293,7 +2293,7 @@ App.pages.records = {
       if (petId) {
         try {
           const pet = await DB.get('pets', petId);
-          nextVisitDate = App.calcNextVisitDate(date || App.getToday(), pet && pet.groomingCycle, await App.getRevisitDays());
+          nextVisitDate = App.calcNextVisitDate(date || App.getToday(), App.getGroomingCycle(pet, await App.getRevisitDays()), 30);
         } catch (e) { /* ignore */ }
       }
 
@@ -3124,8 +3124,19 @@ App.pages.records = {
   },
 
   // --- Helper: draw image covering area (object-fit:cover) ---
-  // img._meta = { offsetX: -50~+50, offsetY: -50~+50, zoom: 1.0~2.0 } 가 있으면 적용
-  _drawImageCover(ctx, img, x, y, w, h) {
+  // img._meta = { offsetX, offsetY: 칸 너비·높이의 %(+면 사진이 왼쪽·위로), zoom: 0.3~3 } 가 있으면 적용
+  // 순수 함수: 칸(w×h)을 덮는(cover) 크기 × zoom, 가운데에서 offset 만큼. 여백이 없어도 옮겨지고 줄일 수도 있다 (빈 곳은 fill 색).
+  // 사진이 칸 밖으로 다 나가지 않게 (작은 쪽 변의 15%는 겹치게) 묶은 값도 돌려준다 → offsetX·offsetY
+  _coverPlace(iw, ih, w, h, meta) {
+    const m = meta || {};
+    const zoom = Math.max(0.3, Math.min(3, m.zoom || 1));
+    const k = Math.max(w / iw, h / ih) * zoom, dw = iw * k, dh = ih * k;
+    const lim = (d, b) => ((d + b) / 2 - Math.min(d, b) * 0.15) / b * 100;
+    const lx = lim(dw, w), ly = lim(dh, h);
+    const offsetX = Math.max(-lx, Math.min(lx, m.offsetX || 0)), offsetY = Math.max(-ly, Math.min(ly, m.offsetY || 0));
+    return { dx: (w - dw) / 2 - offsetX / 100 * w, dy: (h - dh) / 2 - offsetY / 100 * h, dw, dh, k, offsetX, offsetY };
+  },
+  _drawImageCover(ctx, img, x, y, w, h, fill) {
     if (!img) {
       ctx.fillStyle = '#E2E8F0';
       ctx.fillRect(x, y, w, h);
@@ -3135,23 +3146,20 @@ App.pages.records = {
       ctx.fillText('No Photo', x + w / 2, y + h / 2 + 5);
       return;
     }
-    const iw = img.width, ih = img.height;
-    const scale = Math.max(w / iw, h / ih);
-    let sw = w / scale, sh = h / scale;
-    // 사용자 슬라이더 메타 (offsetX/Y -50~+50, zoom 1~2)
-    const meta = img._meta || { offsetX: 0, offsetY: 0, zoom: 1.0 };
-    const zoom = Math.max(1.0, Math.min(3.0, meta.zoom || 1.0));
-    sw /= zoom; sh /= zoom;
-    // offsetX/Y -50~+50 → 0~1 비율
-    const fracX = 0.5 + (meta.offsetX || 0) / 100;
-    const fracY = 0.5 + (meta.offsetY || 0) / 100;
-    let sx = (iw - sw) * fracX;
-    let sy = (ih - sh) * fracY;
-    // 경계 안전 클램프
-    sx = Math.max(0, Math.min(iw - sw, sx));
-    sy = Math.max(0, Math.min(ih - sh, sy));
-    ctx.drawImage(img, sx, sy, sw, sh, x, y, w, h);
-    return { sx, sy, sw, sh };
+    const meta = img._meta;
+    const p = this._coverPlace(img.width, img.height, w, h, meta);
+    // 끌다 끝에 닿으면 거기서 멈춤 (되돌아올 때 헛도는 구간이 없게)
+    if (meta && (meta.offsetX || 0) !== p.offsetX) meta.offsetX = p.offsetX;
+    if (meta && (meta.offsetY || 0) !== p.offsetY) meta.offsetY = p.offsetY;
+    const dx = x + p.dx, dy = y + p.dy;
+    const covers = dx <= x + 0.01 && dy <= y + 0.01 && dx + p.dw >= x + w - 0.01 && dy + p.dh >= y + h - 0.01;
+    ctx.save();
+    ctx.beginPath(); ctx.rect(x, y, w, h); ctx.clip();
+    if (!covers) { ctx.fillStyle = fill || '#FFFFFF'; ctx.fillRect(x, y, w, h); }
+    ctx.drawImage(img, dx, dy, p.dw, p.dh);
+    ctx.restore();
+    // 예전 값 모양 그대로 (sx·sy: 칸 왼쪽 위가 사진의 어느 화소인지, sw: 칸 너비가 사진 몇 화소인지)
+    return { sx: (x - dx) / p.k, sy: (y - dy) / p.k, sw: w / p.k, sh: h / p.k };
   },
 
   // --- Helper: truncate text to fit width ---
@@ -3369,7 +3377,7 @@ App.pages.records = {
         const r = this._drawCutout(ctx, img, x + w * 0.06, y + h * 0.04, w * 0.88, h * 0.88, false, sc);
         if (_fronts && _fronts[img._slot] && !_frontPlaces.some(p => p.slot === img._slot)) _frontPlaces.push({ slot: img._slot, img, ox: r.x, oy: r.y, k: r.w / img.width });
       } else if (img) {
-        const r = this._drawImageCover(ctx, img, x, y, w, h);
+        const r = this._drawImageCover(ctx, img, x, y, w, h, (_frameHoles && s.frameHoleBg) || bgColor);
         // 같은 사진이 여러 칸에 돌아 들어가면 앞으로는 처음 칸 하나만 (다른 칸 사진을 덮지 않게)
         if (_fronts && _fronts[img._slot] && !_frontPlaces.some(p => p.slot === img._slot)) { const k = w / r.sw; _frontPlaces.push({ slot: img._slot, img, ox: x - r.sx * k, oy: y - r.sy * k, k }); }
       } else {
@@ -4619,378 +4627,9 @@ App.pages.records = {
   },
 
   // ===== 떼기·손질 화면 =====
-  // 떼어 낸 사진: 가장자리 다듬기 단계 · 지우기/비슷한 색만 지우기/되살리기 붓 · 얼굴만(턱 아래 선, 둘레) · 스티커로 저장
-  // 일반 사진: 위에 더해 '한 가지 색 천' 지우기 (천 색 자동 짐작, 찍어서 고르기, 지우는 정도)
-  async _openCutoutEditor(slot) {
-    const cur = this._cardPhotos[slot];
-    if (!cur || this._cutoutOpening || document.querySelector('.cutout-ed')) return; // 두 번 눌러도 하나만
-    this._cutoutOpening = true;
-    const known = this._cutoutSrc.get(cur);
-    const img = await this._loadImg(known ? known.orig : cur, true).catch(() => null);
-    this._cutoutOpening = false;
-    // 기다리는 사이 카드 창이 닫혔거나 사진이 바뀌면 열지 않는다
-    if (this._cardPhotos[slot] !== cur || !document.querySelector('.card-maker')) return;
-    if (!img) { App.showToast('사진을 읽지 못했어요.', 'error'); return; }
-    const W = img.width, H = img.height;
-    const oc = document.createElement('canvas'); oc.width = W; oc.height = H;
-    const ox = oc.getContext('2d', { willReadFrequently: true }); ox.drawImage(img, 0, 0);
-    let raw;
-    try { raw = ox.getImageData(0, 0, W, H).data; } catch (e) { oc.width = oc.height = 0; App.showToast('사진을 읽지 못했어요.', 'error'); return; }
-    const isCut = this._alphaShare(raw) > 0.03;
-    let guess = null;
-    const info = known ? { ...known, key: known.key ? { color: known.key.color.slice(), tol: known.key.tol } : null,
-      strokes: (known.strokes || []).map(t => ({ ...t, p: t.p.slice(), cp: t.cp ? t.cp.slice() : undefined, c: t.c ? t.c.slice() : undefined })) }
-      : (isCut ? { orig: cur, level: 0, strokes: [], key: null }
-        : (guess = this._guessKeyColor(raw, W, H), { orig: cur, level: 0, strokes: [], key: { color: guess.color, tol: Math.round(Math.min(60, Math.max(14, guess.spread * 1.3 + 8))) } }));
-    const keyMode = !!info.key;
-    info.level = this._edgeOf(info.level || 0); // 막대 값으로 (예전 단계 숫자도 그대로 이어받는다)
-    if (keyMode && !guess) guess = this._guessKeyColor(raw, W, H);
-    const work = document.createElement('canvas'); work.width = W; work.height = H;
-    const wx = work.getContext('2d', { willReadFrequently: true });
-    const st = { tool: keyMode ? 'smart' : 'erase', brush: 36, bg: 'check', scale: 1, tx: 0, ty: 0, busy: false, dirty: false, closed: false, saving: false, path: null };
-    let base = raw; // 천 색을 지운 뒤 그림 (비슷한 색 붓의 색 고르기용)
-    const bgOf = { black: '#111111', white: '#FFFFFF' };
-    const hex = (c) => '#' + c.map(v => Math.round(v).toString(16).padStart(2, '0')).join('');
-    const ov = document.createElement('div');
-    ov.className = 'cutout-ed';
-    const chip = (attr, k, label) => `<button type="button" class="card-tstyle-btn" data-${attr}="${k}">${label}</button>`;
-    ov.innerHTML = `
-      <div class="cutout-ed-top">
-        <button type="button" class="btn btn-sm btn-ghost" data-act="cancel">취소</button>
-        <b>${keyMode ? '배경 지우기' : '가장자리 손질'}</b>
-        <span class="cutout-ed-actions"><button type="button" class="btn btn-sm btn-secondary" data-act="undo" aria-label="한 번 되돌리기">↶</button>
-        <button type="button" class="btn btn-sm btn-primary" data-act="done">완료</button></span>
-      </div>
-      <div class="cutout-ed-stage"><canvas></canvas><div class="cutout-ed-busy" hidden>다듬는 중…</div><div class="cutout-ed-tip" hidden></div></div>
-      <div class="cutout-ed-bar">
-        ${keyMode ? `<div class="cutout-ed-row"><span class="cutout-ed-lb">천 색</span>
-          <i class="cutout-ed-swatch" style="background:${hex(info.key.color)}"></i>
-          ${chip('tool', 'pick', '찍어서 고르기')}
-          <label class="cutout-ed-slider">덜 <input type="range" min="4" max="90" step="1" value="${info.key.tol}" data-tol aria-label="지우는 정도"> 더</label></div>
-          ${guess && guess.spread > 40 ? '<div class="cutout-ed-warn">배경이 한 가지 색이 아니라 깔끔하지 않을 수 있어요. 남은 곳은 붓으로 지우세요.</div>' : ''}` : ''}
-        <div class="cutout-ed-row"><span class="cutout-ed-lb">가장자리</span>
-          ${Object.entries(this._CUTOUT_LEVELS).map(([k, n]) => chip('level', k, n)).join('')}</div>
-        <!-- 단계 단추는 시작점, 막대로 따로 맞춘다 (손을 뗄 때 한 번 계산). 좁은 화면에서는 접어 둔다 -->
-        <details class="cutout-ed-more"${window.matchMedia('(min-width: 900px) and (orientation: landscape)').matches ? ' open' : ''}><summary>세밀하게 (깎기·부드럽게·털 색)</summary>
-        <div class="cutout-ed-row cutout-ed-edge"><span class="cutout-ed-lb">깎기</span><input type="range" min="0" max="8" step="1" data-edge="e" aria-label="가장자리 깎기"><b data-edge-v="e"></b></div>
-        <div class="cutout-ed-row cutout-ed-edge"><span class="cutout-ed-lb">부드럽게</span><input type="range" min="0" max="8" step="1" data-edge="f" aria-label="가장자리 부드럽게"><b data-edge-v="f"></b></div>
-        <div class="cutout-ed-row cutout-ed-edge"><span class="cutout-ed-lb">털 색</span><input type="range" min="0" max="100" step="10" data-edge="c" aria-label="털 색 바로잡기"><b data-edge-v="c"></b></div>
-        </details>
-        <div class="cutout-ed-row"><span class="cutout-ed-lb">붓</span>
-          ${chip('tool', 'smart', '비슷한 색만 지우기')}${chip('tool', 'erase', '지우기')}${chip('tool', 'restore', '되살리기')}${chip('tool', 'move', '옮기기')}</div>
-        <div class="cutout-ed-row"><span class="cutout-ed-lb">얼굴만</span>
-          ${chip('tool', 'cut', '턱 아래 선 긋기')}${chip('tool', 'lasso', '둘레 그리기')}
-          <button type="button" class="card-tstyle-btn" data-act="sticker">내 스티커로 저장</button></div>
-        <div class="cutout-ed-row"><span class="cutout-ed-lb">붓 크기</span><input type="range" min="10" max="90" step="2" value="${st.brush}" data-brush>
-          ${chip('bg', 'check', '격자')}${chip('bg', 'black', '검정')}${chip('bg', 'white', '흰색')}</div>
-      </div>`;
-    document.body.appendChild(ov);
-    const cv = ov.querySelector('canvas'), stage = ov.querySelector('.cutout-ed-stage'), busyEl = ov.querySelector('.cutout-ed-busy'), tipEl = ov.querySelector('.cutout-ed-tip');
-    const TIPS = {
-      smart: '처음 댄 곳과 비슷한 색만 지워요 — 남은 배경을 문지르세요. 털은 덜 지워져요.',
-      erase: '문지른 곳을 모두 지워요.',
-      restore: '너무 지운 곳을 문지르면 원래대로 돌아와요.',
-      move: '한 손가락으로 옮기고, 두 손가락으로 크게 보세요.',
-      cut: '턱 바로 아래를 한 번 그으면 그 아래가 지워져요. 그은 뒤 점을 끌어 턱선에 딱 맞추세요.',
-      lasso: '머리 위·귀 바깥은 빈 곳으로 크게, 턱 아래만 정확히 한 바퀴. 그은 뒤 점을 끌어 맞추세요.',
-      pick: '사진에서 천(배경)을 한 번 누르면 그 색을 지워요.'
-    };
-    const dpr = Math.min(2, window.devicePixelRatio || 1);
-    let fit = 1;
-    const resize = () => {
-      const r = stage.getBoundingClientRect();
-      cv.width = Math.max(1, Math.round(r.width * dpr)); cv.height = Math.max(1, Math.round(r.height * dpr));
-      cv.style.width = r.width + 'px'; cv.style.height = r.height + 'px';
-      fit = Math.min(cv.width / W, cv.height / H) * 0.94;
-      draw();
-    };
-    const view = () => { const s = fit * st.scale; return { s, ox: (cv.width - W * s) / 2 + st.tx * dpr, oy: (cv.height - H * s) / 2 + st.ty * dpr }; };
-    const clampPan = () => {
-      const r = stage.getBoundingClientRect(), s = fit * st.scale / dpr;
-      const mx = Math.max(0, (W * s - r.width) / 2 + r.width * 0.3), my = Math.max(0, (H * s - r.height) / 2 + r.height * 0.3);
-      st.tx = Math.max(-mx, Math.min(mx, st.tx)); st.ty = Math.max(-my, Math.min(my, st.ty));
-    };
-    const toImg = (cx, cy) => { const r = cv.getBoundingClientRect(), v = view(); return [((cx - r.left) * dpr - v.ox) / v.s, ((cy - r.top) * dpr - v.oy) / v.s]; };
-    const draw = () => {
-      if (st.closed) return;
-      const g = cv.getContext('2d'), v = view();
-      g.setTransform(1, 0, 0, 1, 0, 0);
-      g.clearRect(0, 0, cv.width, cv.height);
-      if (st.bg === 'check') {
-        const t = 14 * dpr;
-        for (let y = 0; y < cv.height; y += t) for (let x = 0; x < cv.width; x += t) { g.fillStyle = ((x / t + y / t) & 1) ? '#D1D5DB' : '#F3F4F6'; g.fillRect(x, y, t, t); }
-      } else { g.fillStyle = bgOf[st.bg]; g.fillRect(0, 0, cv.width, cv.height); }
-      g.imageSmoothingQuality = 'high';
-      g.drawImage(work, v.ox, v.oy, W * v.s, H * v.s);
-      // 고칠 수 있는 턱 선·둘레와 점
-      const ef = editFace();
-      if (ef && !st.path) {
-        const pp = ef.p;
-        g.save(); g.lineWidth = 2 * dpr; g.strokeStyle = '#7C3AED'; g.setLineDash([6 * dpr, 5 * dpr]);
-        g.beginPath();
-        for (let i = 0; i < pp.length; i += 2) { const X = v.ox + pp[i] * v.s, Y = v.oy + pp[i + 1] * v.s; i ? g.lineTo(X, Y) : g.moveTo(X, Y); }
-        if (ef.k === 'lasso') g.closePath();
-        g.stroke(); g.setLineDash([]);
-        for (let i = 0; i < ef.cp.length; i += 2) {
-          const X = v.ox + ef.cp[i] * v.s, Y = v.oy + ef.cp[i + 1] * v.s;
-          g.beginPath(); g.arc(X, Y, 9 * dpr, 0, Math.PI * 2); g.fillStyle = '#FFFFFF'; g.fill(); g.lineWidth = 3 * dpr; g.strokeStyle = '#7C3AED'; g.stroke();
-        }
-        g.restore();
-      }
-      // 그리는 중인 턱 선·둘레
-      if (st.path && st.path.length >= 4) {
-        g.save(); g.lineWidth = 3 * dpr; g.strokeStyle = '#EF4444'; g.setLineDash([8 * dpr, 6 * dpr]);
-        g.beginPath();
-        for (let i = 0; i < st.path.length; i += 2) { const X = v.ox + st.path[i] * v.s, Y = v.oy + st.path[i + 1] * v.s; i ? g.lineTo(X, Y) : g.moveTo(X, Y); }
-        if (st.tool === 'lasso') g.closePath();
-        g.stroke(); g.restore();
-      }
-    };
-    const recompute = () => {
-      if (st.busy) { st.dirty = true; return; }
-      st.busy = true; busyEl.hidden = false;
-      setTimeout(() => {
-        if (st.closed) return;
-        try {
-          // 천 색 지우기는 천 색·정도가 바뀔 때만 다시 (붓질마다 다시 하면 아이폰에서 느리다)
-          if (info.key) {
-            const kk = info.key.color.join(',') + '|' + info.key.tol;
-            if (st.keyCache !== kk) { base = raw.slice(); this._chromaKey(base, W, H, info.key.color, info.key.tol); st.keyCache = kk; }
-          } else base = raw;
-          const out = base.slice();
-          this._refineCutout(out, W, H, info.level || 0, info.strokes, base, raw);
-          const d = wx.createImageData(W, H); d.data.set(out);
-          wx.putImageData(d, 0, 0);
-        } catch (e) { console.warn('떼기 계산 실패:', e); }
-        st.busy = false; st.ready = true; busyEl.hidden = true; draw();
-        if (st.dirty) { st.dirty = false; recompute(); }
-      }, 30);
-    };
-    const sync = () => {
-      const E = info.level;
-      ov.querySelectorAll('[data-level]').forEach(b => { const P = this._edgeOf(Number(b.dataset.level)); b.classList.toggle('active', P.e === E.e && P.f === E.f && P.c === E.c); });
-      ov.querySelectorAll('[data-edge]').forEach(inp => { const k = inp.dataset.edge; if (document.activeElement !== inp) inp.value = k === 'c' ? Math.round(E.c * 100) : E[k]; });
-      ov.querySelectorAll('[data-edge-v]').forEach(b => { const k = b.dataset.edgeV; b.textContent = k === 'c' ? Math.round(E.c * 100) + '%' : E[k] + '칸'; });
-      ov.querySelectorAll('[data-tool]').forEach(b => b.classList.toggle('active', b.dataset.tool === st.tool));
-      ov.querySelectorAll('[data-bg]').forEach(b => b.classList.toggle('active', b.dataset.bg === st.bg));
-      const u = ov.querySelector('[data-act="undo"]'); if (u && !st.saving) u.disabled = !info.strokes.length;
-      const sw = ov.querySelector('.cutout-ed-swatch'); if (sw && info.key) sw.style.background = hex(info.key.color);
-      // 도구를 바꿀 때만 안내를 잠깐 (강아지를 가리지 않게)
-      if (st.tipFor !== st.tool) {
-        st.tipFor = st.tool;
-        tipEl.textContent = TIPS[st.tool] || ''; tipEl.hidden = !TIPS[st.tool];
-        clearTimeout(st.tipT); st.tipT = setTimeout(() => { tipEl.hidden = true; }, 3500);
-      }
-      cv.style.cursor = st.tool === 'move' ? 'grab' : 'crosshair';
-    };
-    // viaHistory: 뒤로가기·카드 창 닫기에서 온 것 (history 항목은 그쪽에서 정리)
-    const close = (viaHistory) => {
-      if (st.closed) return;
-      st.closed = true;
-      if (!viaHistory) App.popOverlayHistory();
-      window.removeEventListener('resize', resize);
-      ov.remove(); work.width = work.height = oc.width = oc.height = 0;
-    };
-    ov._close = close; // 카드 창이 닫힐 때도 정리되게
-    App.pushOverlayHistory(() => close(true)); // 안드로이드 뒤로가기 → 이 화면만 닫힘 (카드 창은 그대로)
-    const waitIdle = async () => { while (!st.ready || st.busy || st.dirty) { if (st.closed) return false; await new Promise(r => setTimeout(r, 50)); } return !st.closed; };
-    ov.addEventListener('click', async (e) => {
-      const b = e.target.closest('button'); if (!b || st.saving) return;
-      if (b.dataset.level != null) { info.level = this._edgeOf(Number(b.dataset.level)); recompute(); }
-      else if (b.dataset.tool) st.tool = b.dataset.tool;
-      else if (b.dataset.bg) { st.bg = b.dataset.bg; draw(); }
-      else if (b.dataset.act === 'undo') { info.strokes.pop(); recompute(); }
-      else if (b.dataset.act === 'cancel') { close(); return; }
-      else if (b.dataset.act === 'sticker') {
-        if (st.stickerBusy) return;
-        st.stickerBusy = true; b.disabled = true;
-        try { if (await waitIdle()) await this._saveCutoutSticker(work); }
-        finally { st.stickerBusy = false; if (!st.closed) b.disabled = false; }
-      }
-      else if (b.dataset.act === 'done') {
-        st.saving = true;
-        ov.querySelectorAll('button').forEach(x => { x.disabled = true; });
-        if (!(await waitIdle()) || !ov.isConnected) return;
-        const url = work.toDataURL('image/png');
-        if (this._cardPhotos[slot] === cur) {
-          this._cardPhotos[slot] = url;
-          this._cutoutSrc.set(url, { orig: info.orig, level: { ...info.level }, strokes: info.strokes, key: info.key || null });
-          this._pruneCutoutSrc();
-          this._refreshPhotoPreview(slot);
-          this._scheduleCardPreview();
-        } else App.showToast('그사이 사진이 바뀌어서 손질한 것은 넣지 않았어요.', 'error');
-        close();
-        return;
-      }
-      sync();
-    });
-    ov.querySelector('[data-brush]').addEventListener('input', (e) => { st.brush = Number(e.target.value); });
-    // 가장자리 막대: 움직이는 동안은 숫자만, 손을 떼면 계산
-    ov.querySelectorAll('[data-edge]').forEach(inp => {
-      const read = () => { const k = inp.dataset.edge, v = Number(inp.value); info.level = { ...info.level, [k]: k === 'c' ? v / 100 : v }; };
-      inp.addEventListener('input', () => { read(); const k = inp.dataset.edge, b = ov.querySelector(`[data-edge-v="${k}"]`); if (b) b.textContent = k === 'c' ? inp.value + '%' : inp.value + '칸'; });
-      inp.addEventListener('change', () => { read(); recompute(); sync(); });
-    });
-    ov.querySelector('[data-tol]')?.addEventListener('change', (e) => { info.key.tol = Number(e.target.value); recompute(); });
-    // 손가락: 하나 = 붓·선(또는 옮기기), 둘 = 확대·이동
-    const pts = new Map();
-    let stroke = null, pinch = null, pan = null, snap = null, hdrag = null;
-    // 지금 도구(턱 선·둘레)로 고칠 수 있는 마지막 선 — 점(cp)이 있는 것
-    function editFace() {
-      if (st.tool !== 'cut' && st.tool !== 'lasso') return null;
-      for (let i = info.strokes.length - 1; i >= 0; i--) { const t = info.strokes[i]; if (t.k === st.tool) return t.cp ? t : null; }
-      return null;
-    }
-    const sample = (ix, iy) => { const x = Math.max(0, Math.min(W - 1, Math.round(ix))), y = Math.max(0, Math.min(H - 1, Math.round(iy))), q = (y * W + x) * 4; return [raw[q], raw[q + 1], raw[q + 2]]; };
-    const dab = (ix, iy, r) => {
-      // 그리는 동안은 바로 보이게 작업 그림에 직접 (손을 떼면 전체를 다시 계산한다)
-      const x0 = Math.max(0, Math.floor(ix - r)), y0 = Math.max(0, Math.floor(iy - r));
-      const ww = Math.min(W, Math.ceil(ix + r)) - x0, hh = Math.min(H, Math.ceil(iy + r)) - y0;
-      if (ww <= 0 || hh <= 0) return;
-      if (stroke.c) {
-        const d = wx.getImageData(x0, y0, ww, hh), rr = r * r;
-        for (let y = 0; y < hh; y++) for (let x = 0; x < ww; x++) {
-          const dx = x0 + x - ix, dy = y0 + y - iy; if (dx * dx + dy * dy > rr) continue;
-          const q = ((y0 + y) * W + x0 + x) * 4;
-          if (this._keyDist(raw[q], raw[q + 1], raw[q + 2], stroke.c) <= stroke.t) d.data[(y * ww + x) * 4 + 3] = 0;
-        }
-        wx.putImageData(d, x0, y0);
-        return;
-      }
-      wx.save(); wx.beginPath(); wx.arc(ix, iy, r, 0, Math.PI * 2); wx.clip();
-      wx.clearRect(x0, y0, ww, hh);
-      if (stroke.m > 0) wx.drawImage(oc, x0, y0, ww, hh, x0, y0, ww, hh);
-      wx.restore();
-    };
-    // 비슷한 색만 지우기 — 한 번 움직인 구간을 한 번에 (칸마다 읽고 쓰지 않게)
-    const smartSeg = (ax, ay, bx, by, r, n) => {
-      const x0 = Math.max(0, Math.floor(Math.min(ax, bx) - r)), y0 = Math.max(0, Math.floor(Math.min(ay, by) - r));
-      const x1 = Math.min(W, Math.ceil(Math.max(ax, bx) + r)), y1 = Math.min(H, Math.ceil(Math.max(ay, by) + r));
-      const ww = x1 - x0, hh = y1 - y0; if (ww <= 0 || hh <= 0) return;
-      const d = wx.getImageData(x0, y0, ww, hh), rr = r * r;
-      const cs = []; for (let k = 1; k <= n; k++) cs.push(ax + (bx - ax) * k / n, ay + (by - ay) * k / n);
-      for (let y = 0; y < hh; y++) for (let x = 0; x < ww; x++) {
-        const gx = x0 + x, gy = y0 + y;
-        let inside = false;
-        for (let k = 0; k < cs.length && !inside; k += 2) { const dx = gx - cs[k], dy = gy - cs[k + 1]; inside = dx * dx + dy * dy <= rr; }
-        if (!inside) continue;
-        const q = (gy * W + gx) * 4;
-        if (this._keyDist(raw[q], raw[q + 1], raw[q + 2], stroke.c) <= stroke.t) d.data[(y * ww + x) * 4 + 3] = 0;
-      }
-      wx.putImageData(d, x0, y0);
-    };
-    cv.addEventListener('pointerdown', (e) => {
-      try { cv.setPointerCapture(e.pointerId); } catch (_) {}
-      pts.set(e.pointerId, [e.clientX, e.clientY]);
-      if (pts.size >= 2) {
-        // 두 손가락 — 그리던 것은 버리고 확대로. 세 번째 손가락은 무시
-        if (stroke) { info.strokes.pop(); stroke = null; if (snap) { wx.putImageData(snap, 0, 0); snap = null; } }
-        st.path = null; pan = null;
-        if (hdrag) { const moved = !!hdrag.s; hdrag = null; if (moved) recompute(); }
-        if (pts.size === 2) {
-          const [a, b] = [...pts.values()];
-          pinch = { d: Math.hypot(a[0] - b[0], a[1] - b[1]), scale: st.scale, tx: st.tx, ty: st.ty, mx: (a[0] + b[0]) / 2, my: (a[1] + b[1]) / 2 };
-        }
-        draw(); sync();
-        return;
-      }
-      if (pinch) return;
-      if (st.tool === 'move') { pan = { x: e.clientX, y: e.clientY, tx: st.tx, ty: st.ty }; return; }
-      const [ix, iy] = toImg(e.clientX, e.clientY);
-      if (st.tool === 'pick') {
-        if (!info.key) return;
-        info.key.color = sample(ix, iy); st.tool = 'smart'; recompute(); sync(); return;
-      }
-      if (st.tool === 'cut' || st.tool === 'lasso') {
-        const ef = editFace();
-        if (ef) {
-          // 점 가까이(손가락 크기) 누르면 그 점을 끈다 — 되돌리기로 돌아갈 수 있게 선을 하나 새로 쌓는다
-          const hitR = 26 * dpr / view().s;
-          let best = -1, bd = hitR;
-          for (let i = 0; i < ef.cp.length; i += 2) { const d = Math.hypot(ef.cp[i] - ix, ef.cp[i + 1] - iy); if (d < bd) { bd = d; best = i; } }
-          if (best >= 0) { hdrag = { src: ef, s: null, i: best }; return; } // 움직일 때 선을 하나 새로 쌓는다 (톡 누르기만 하면 그대로)
-        }
-        st.path = [Math.round(ix), Math.round(iy)]; draw(); return;
-      }
-      if (st.busy) return; // 계산 중에는 붓을 받지 않는다 (계산이 붓 자국을 덮어쓴다)
-      try { snap = wx.getImageData(0, 0, W, H); } catch (_) { snap = null; }
-      const r = st.brush / 2 * dpr / view().s;
-      stroke = { m: st.tool === 'restore' ? 1 : -1, r: Math.round(r * 10) / 10, p: [Math.round(ix), Math.round(iy)] };
-      if (st.tool === 'smart') { stroke.c = sample(ix, iy); stroke.t = 34; }
-      info.strokes.push(stroke);
-      dab(ix, iy, stroke.r); draw();
-    });
-    cv.addEventListener('pointermove', (e) => {
-      if (!pts.has(e.pointerId)) return;
-      pts.set(e.pointerId, [e.clientX, e.clientY]);
-      if (pinch && pts.size >= 2) {
-        const [a, b] = [...pts.values()];
-        const d = Math.hypot(a[0] - b[0], a[1] - b[1]);
-        const ns = Math.max(1, Math.min(8, pinch.scale * d / Math.max(1, pinch.d)));
-        // 손가락 가운데 아래 지점이 그대로 있게
-        const rc = cv.getBoundingClientRect(), cx = rc.left + rc.width / 2, cy = rc.top + rc.height / 2;
-        const k = ns / pinch.scale, mx = (a[0] + b[0]) / 2, my = (a[1] + b[1]) / 2;
-        st.scale = ns;
-        st.tx = mx - cx - (pinch.mx - cx - pinch.tx) * k;
-        st.ty = my - cy - (pinch.my - cy - pinch.ty) * k;
-        clampPan(); draw(); return;
-      }
-      if (pan) { st.tx = pan.tx + e.clientX - pan.x; st.ty = pan.ty + e.clientY - pan.y; clampPan(); draw(); return; }
-      const [ix, iy] = toImg(e.clientX, e.clientY);
-      if (hdrag) {
-        if (!hdrag.s) { hdrag.s = { k: hdrag.src.k, cp: hdrag.src.cp.slice(), p: hdrag.src.p.slice() }; info.strokes.push(hdrag.s); sync(); }
-        hdrag.s.cp[hdrag.i] = Math.round(ix); hdrag.s.cp[hdrag.i + 1] = Math.round(iy);
-        hdrag.s.p = this._smoothPath(hdrag.s.cp, hdrag.s.k === 'lasso');
-        draw(); return;
-      }
-      if (st.path) { st.path.push(Math.round(ix), Math.round(iy)); draw(); return; }
-      if (stroke) {
-        const p = stroke.p, lx = p[p.length - 2], ly = p[p.length - 1];
-        const n = Math.ceil(Math.hypot(ix - lx, iy - ly) / Math.max(1, stroke.r / 2));
-        if (stroke.c) smartSeg(lx, ly, ix, iy, stroke.r, n);
-        else for (let k = 1; k <= n; k++) dab(lx + (ix - lx) * k / n, ly + (iy - ly) * k / n, stroke.r);
-        p.push(Math.round(ix), Math.round(iy));
-        draw();
-      }
-    });
-    const up = (e) => {
-      pts.delete(e.pointerId);
-      if (pts.size < 2 && pinch) {
-        pinch = null;
-        if (pts.size === 1 && st.tool === 'move') { const [p] = [...pts.values()]; pan = { x: p[0], y: p[1], tx: st.tx, ty: st.ty }; }
-      }
-      if (pts.size) return;
-      pan = null; snap = null;
-      if (hdrag) { const moved = !!hdrag.s; hdrag = null; if (moved) { recompute(); sync(); } return; }
-      if (st.path) {
-        const path = st.path; st.path = null;
-        let x0 = Infinity, x1 = -Infinity, y0 = Infinity, y1 = -Infinity;
-        for (let i = 0; i < path.length; i += 2) { x0 = Math.min(x0, path[i]); x1 = Math.max(x1, path[i]); y0 = Math.min(y0, path[i + 1]); y1 = Math.max(y1, path[i + 1]); }
-        const minSpan = Math.max(W, H) * 0.05;
-        const okPath = st.tool === 'lasso' ? (x1 - x0 > minSpan && y1 - y0 > minSpan) : (x1 - x0 > minSpan && x1 - x0 > (y1 - y0) * 1.5);
-        if (!okPath && path.length >= 2) {
-          // 살짝 닿은 것·세로로 그은 것은 버린다 (사진이 통째로 지워지지 않게)
-          tipEl.textContent = st.tool === 'lasso' ? '얼굴 둘레를 크게 한 바퀴 그려 주세요.' : '턱 아래를 옆으로(왼쪽↔오른쪽) 그어 주세요.';
-          tipEl.hidden = false; clearTimeout(st.tipT); st.tipT = setTimeout(() => { tipEl.hidden = true; }, 3000);
-          draw(); sync(); return;
-        }
-        if (path.length >= 6) {
-          // 고칠 점으로 줄이고(둘레 14개·턱 선 9개) 부드러운 곡선으로
-          const closed = st.tool === 'lasso';
-          const cp = this._resamplePath(path, closed ? 14 : 9, closed);
-          info.strokes.push({ k: st.tool, cp, p: this._smoothPath(cp, closed) });
-          recompute();
-        } else draw();
-        sync();
-      }
-      if (stroke) { stroke = null; recompute(); sync(); }
-    };
-    cv.addEventListener('pointerup', up);
-    cv.addEventListener('pointercancel', up);
-    cv.addEventListener('wheel', (e) => { e.preventDefault(); if (!e.deltaY) return; st.scale = Math.max(1, Math.min(8, st.scale * (e.deltaY < 0 ? 1.15 : 1 / 1.15))); clampPan(); draw(); }, { passive: false });
-    window.addEventListener('resize', resize);
-    sync();
-    requestAnimationFrame(() => { resize(); recompute(); });
+  // '배경 지우기'·'떼어낸 사진 고치기'도 강아지 떼어내기와 같은 화면 하나로 (js/cutout.js openEditor) — 결과는 배경을 지운 칸 사진
+  _openCutoutEditor(slot) {
+    return App.cutout?.openEditor(slot, { out: 'photo' });
   },
   // 손질한 그림을 투명한 곳을 잘라 내 스티커로 저장 (얼굴만 오린 것을 다른 카드에 붙이기)
   async _saveCutoutSticker(canvas) {
@@ -5513,16 +5152,20 @@ App.pages.records = {
     const ok = this._photoDragOk();
     if (!ok) this._photoDragOn = false;
     const on = ok && this._photoDragOn;
-    const lay = document.getElementById('card-sticker-layer');
-    if (lay) { lay.style.touchAction = on ? 'none' : ''; lay.classList.toggle('photo-drag', on); }
     const mb = document.getElementById('card-live-move');
     if (mb) {
       mb.hidden = !ok || !!document.getElementById('card-live-img')?.hidden;
       mb.classList.toggle('on', on); mb.setAttribute('aria-pressed', on ? 'true' : 'false');
       mb.textContent = on ? '✓ 옮기기 끝' : '✥ 강아지 옮기기';
     }
-    const live = document.querySelector('.card-live');
-    if (live) live.classList.toggle('photo-moving', on);
+    this._syncMoveSurface();
+  },
+  // 강아지 옮기기·배경 옮기기 중 하나라도 켜져 있으면: 미리보기가 화면 스크롤을 받지 않게(아이폰에서 끌기가 끊기지 않게) + 점선 테두리
+  _syncMoveSurface() {
+    const on = !!(this._photoDragOn || App.bgLib?.dragOn);
+    const lay = document.getElementById('card-sticker-layer');
+    if (lay) { lay.style.touchAction = on ? 'none' : ''; lay.classList.toggle('photo-drag', on); }
+    document.querySelector('.card-live')?.classList.toggle('photo-moving', on);
   },
   // 끄는 동안 미리보기를 자주(한 번에 하나씩) 다시 그린다
   _photoDragPreview() {
@@ -5536,7 +5179,7 @@ App.pages.records = {
   _syncSlotSliders(slot) {
     const m = this._cardPhotoMeta[slot] || {};
     const zs = document.querySelector(`.card-zoom-slider[data-slot="${slot}"]`);
-    if (zs) zs.min = (this._slotCut || [])[slot] ? 30 : 100; // 값보다 범위를 먼저
+    if (zs) zs.min = 30; // 값보다 범위를 먼저
     const set = (sel, v, id, t) => { const el = document.querySelector(sel); if (el) el.value = v; const l = document.getElementById(id); if (l) l.textContent = t; };
     set(`.card-x-slider[data-slot="${slot}"]`, Math.round(m.offsetX || 0), `card-x-label-${slot}`, Math.round(m.offsetX || 0) + '%');
     set(`.card-y-slider[data-slot="${slot}"]`, Math.round(m.offsetY || 0), `card-y-label-${slot}`, Math.round(m.offsetY || 0) + '%');
@@ -5770,17 +5413,17 @@ App.pages.records = {
           <div class="card-photo-controls-title">${i + 1}번 사진 위치·확대</div>
           <div class="photo-slider-row" style="display:flex;align-items:center;gap:6px;margin-bottom:3px">
             <span style="color:var(--text-muted);flex-shrink:0;min-width:30px">좌↔우</span>
-            <input type="range" min="-50" max="50" step="2" value="0" class="card-x-slider" data-slot="${i}" style="flex:1;height:36px;min-height:0;cursor:pointer">
+            <input type="range" min="-100" max="100" step="2" value="0" class="card-x-slider" data-slot="${i}" style="flex:1;height:36px;min-height:0;cursor:pointer">
             <span id="card-x-label-${i}" style="color:var(--text-muted);flex-shrink:0;min-width:36px;text-align:right">0%</span>
           </div>
           <div class="photo-slider-row" style="display:flex;align-items:center;gap:6px;margin-bottom:3px">
             <span style="color:var(--text-muted);flex-shrink:0;min-width:30px">위↕아</span>
-            <input type="range" min="-50" max="50" step="2" value="0" class="card-y-slider" data-slot="${i}" style="flex:1;height:36px;min-height:0;cursor:pointer">
+            <input type="range" min="-100" max="100" step="2" value="0" class="card-y-slider" data-slot="${i}" style="flex:1;height:36px;min-height:0;cursor:pointer">
             <span id="card-y-label-${i}" style="color:var(--text-muted);flex-shrink:0;min-width:36px;text-align:right">0%</span>
           </div>
           <div class="photo-slider-row" style="display:flex;align-items:center;gap:6px;margin-bottom:3px">
             <span style="color:var(--text-muted);flex-shrink:0;min-width:30px">줌</span>
-            <input type="range" min="${(this._slotCut || [])[i] ? 30 : 100}" max="300" step="5" value="100" class="card-zoom-slider" data-slot="${i}" style="flex:1;height:36px;min-height:0;cursor:pointer">
+            <input type="range" min="30" max="300" step="5" value="100" class="card-zoom-slider" data-slot="${i}" style="flex:1;height:36px;min-height:0;cursor:pointer">
             <span id="card-zoom-label-${i}" style="color:var(--text-muted);flex-shrink:0;min-width:36px;text-align:right">100%</span>
           </div>
           <button type="button" class="card-reset-btn" data-slot="${i}" style="width:100%;margin-top:4px;padding:4px;font-size:0.93rem;border:1px solid var(--border);border-radius:4px;background:var(--bg-white);color:var(--text-muted);cursor:pointer">초기화</button>
@@ -5880,17 +5523,38 @@ App.pages.records = {
     container.querySelectorAll('.card-slot-remove').forEach(btn => btn.addEventListener('click', (e) => {
       e.stopPropagation();
       const i = Number(btn.dataset.slot);
-      this._cardPhotos[i] = null;
+      const gone = this._cardPhotos[i];
+      // 뒤 칸 사진을 한 칸씩 앞으로 (배경 그림·사진관처럼 첫 칸만 쓰는 틀에서 빈 카드가 되지 않게) — 칸마다 따로 가진 값도 같이
+      this._shiftSlotsOut(i);
+      if (!this._cardPhotos[0]) {
+        const d = this._slotDefaults(count)[0];
+        if (d && d !== gone) this._cardPhotos[0] = d;
+      }
       this._pruneCutoutSrc();
-      this._cardPhotoMeta[i] = { offsetX: 0, offsetY: 0, zoom: 1.0 };
-      if (this._cardUserPicked) this._cardUserPicked[i] = false;
-      const ctrls = document.getElementById(`card-photo-controls-${i}`);
-      if (ctrls) ctrls.style.display = 'none';
-      this._refreshPhotoPreview(i);
+      if (this._frontEditSlot != null) this._frontEditSlot = null;
+      document.querySelectorAll('.card-photo-controls').forEach(c => { c.style.display = 'none'; });
+      container.querySelectorAll('.card-adjust-btn').forEach(b => b.classList.remove('open'));
+      for (let k = 0; k < 4; k++) {
+        this._refreshPhotoPreview(k);
+        this._syncSlotSliders(k);
+        const adj = document.getElementById(`card-adjust-${k}`); if (adj) adj.hidden = !this._cardPhotos[k];
+      }
       this._scheduleCardPreview();
     }));
   },
 
+  // 칸 i 를 빼고 뒤 칸들을 앞으로 당긴다 (끝 칸은 빈 칸). 칸마다 따로 가진 배열을 모두 같이
+  _shiftSlotsOut(i) {
+    const fills = { _cardPhotos: () => null, _cardPhotoMeta: () => ({ offsetX: 0, offsetY: 0, zoom: 1.0 }), _cardUserPicked: () => false,
+      _slotCut: () => false, _slotCutSrc: () => null, _cardFront: () => null };
+    for (const [k, blank] of Object.entries(fills)) {
+      const arr = this[k];
+      if (!Array.isArray(arr)) continue;
+      while (arr.length < 4) arr.push(blank());
+      arr.splice(i, 1);
+      arr.push(blank());
+    }
+  },
   // 레이아웃별 기본 사진: 한 장짜리는 미용 후 사진, 여러 장은 전 → 후 → 3 → 4 순서
   _slotDefaults(count) {
     if (!this._cardUsePool) return [];
@@ -6511,8 +6175,9 @@ App.pages.records = {
           const d = Math.hypot(vals[0][0] - vals[1][0], vals[0][1] - vals[1][1]);
           m.zoom = Math.max(0.3, Math.min(3, pdrag.m0.zoom * d / Math.max(1, pdrag.d0)));
         } else if (vals.length === 1 && pdrag.p0.length === 1) {
-          m.offsetX = Math.max(-50, Math.min(50, pdrag.m0.offsetX - (vals[0][0] - pdrag.p0[0][0]) / (r.width * fx) * 100));
-          m.offsetY = Math.max(-50, Math.min(50, pdrag.m0.offsetY - (vals[0][1] - pdrag.p0[0][1]) / (r.height * fy) * 100));
+          // 범위는 그릴 때 사진 크기에 맞춰 묶는다 (_coverPlace) — 여기서는 크게만
+          m.offsetX = Math.max(-100, Math.min(100, pdrag.m0.offsetX - (vals[0][0] - pdrag.p0[0][0]) / (r.width * fx) * 100));
+          m.offsetY = Math.max(-100, Math.min(100, pdrag.m0.offsetY - (vals[0][1] - pdrag.p0[0][1]) / (r.height * fy) * 100));
         }
         this._photoDragPreview();
         return;
@@ -6710,7 +6375,6 @@ App.pages.records = {
       preview.innerHTML = App.icon('camera');
       if (this._slotCut) this._slotCut[slot] = false;
       if (this._slotCutSrc) this._slotCutSrc[slot] = null;
-      const zs0 = document.querySelector(`.card-zoom-slider[data-slot="${slot}"]`); if (zs0) zs0.min = 100;
       this._syncSlotColorRow?.();
       App.cutout?.syncSlot(slot);
       return;
@@ -6722,17 +6386,17 @@ App.pages.records = {
     const rowPct = (50 + (meta.offsetY || 0)) + '%';
     preview.innerHTML = `<img src="${photo}" style="width:100%;height:100%;object-fit:cover;object-position:${colPct} ${rowPct};transform:scale(${meta.zoom});transform-origin:${colPct} ${rowPct};transition:transform 0.12s,object-position 0.12s">`;
     preview.classList.remove('cutout');
-    // 사진 아래 버튼: 떼어 낸 사진이면 '가장자리' 손질, 일반 사진이면 '배경 지우기'(한 가지 색 천 앞 사진)
+    // 사진 아래 버튼: 떼어 낸 사진이면 '배경 고치기', 일반 사진이면 '배경 지우기' (둘 다 같은 떼어내기 화면)
     const zs = document.querySelector(`.card-zoom-slider[data-slot="${slot}"]`);
     this._slotCut = this._slotCut || []; this._slotCutSrc = this._slotCutSrc || [];
     const apply = (cut) => {
       this._slotCut[slot] = cut; this._slotCutSrc[slot] = photo;
       preview.classList.toggle('cutout', cut);
-      if (cutBtn) { cutBtn.hidden = false; cutBtn.textContent = cut ? '✂ 가장자리' : '✂ 배경 지우기'; }
+      if (cutBtn) { cutBtn.hidden = false; cutBtn.textContent = cut ? '✂ 배경 고치기' : '✂ 배경 지우기'; }
       if (zs) {
-        // 값을 지키며 범위를 바꾼다 (떼어 낸 강아지는 줄여서 여백을 둘 수 있게 30%부터)
+        // 값을 지키며 범위를 바꾼다 (줄여서 여백을 둘 수 있게 30%부터)
         const v = Math.round(((this._cardPhotoMeta[slot] || {}).zoom || 1) * 100);
-        zs.min = cut ? 30 : 100; zs.value = v;
+        zs.min = 30; zs.value = v;
       }
       if (cut && !preview.querySelector('.card-slot-badge')) preview.insertAdjacentHTML('beforeend', '<span class="card-slot-badge">배경 지움</span>');
       this._syncSlotColorRow?.();
@@ -7040,7 +6704,7 @@ App.pages.records = {
               <li>강아지만 떠오르면 [공유] → [이미지 저장]을 눌러요.</li>
               <li>저장된 사진을 여기 칸에 넣으면 '배경 지움' 표시가 붙고, 어느 틀에서든 강아지만 배경색 위에 올라가요 (발밑 그림자는 자동).</li>
               <li>털 둘레에 남은 배경색 띠는 앱이 자동으로 다듬어요. 덩어리째 남은 배경은 칸 아래 [✂ 가장자리]에서 지우고, 얼굴만 남길 수도 있어요.</li>
-              <li><b>더 깔끔하게:</b> 털 색과 다른 파랑·초록 천 앞에서 찍은 사진을 그대로 넣고 [✂ 배경 지우기]를 누르면 앱이 천 색만 지워 털 끝까지 보송하게 남겨요.</li>
+              <li><b>더 깔끔하게:</b> 털 색과 다른 파랑·초록 천 앞에서 찍은 사진을 그대로 넣고 [✂ 배경 지우기] → [천 색으로 한 번에 지우기]를 누르면 앱이 천 색만 지워 털 끝까지 보송하게 남겨요.</li>
               <li>틀 없이·사진관·잡지 표지에서는 미리보기의 [✥ 강아지 옮기기]를 누르고 강아지를 끌어 옮기거나 두 손가락으로 크기를 바꿔요.</li>
             </ol>
           </details>
@@ -7329,6 +6993,7 @@ App.pages.records = {
       // 미리보기 크게 보기 (휴대폰에서 작게 보이는 카드를 화면 가득 — 스티커·글자까지)
       document.getElementById('card-live-move')?.addEventListener('click', () => {
         this._photoDragOn = !this._photoDragOn;
+        if (this._photoDragOn && App.bgLib?.dragOn) App.bgLib.setDrag(false); // 둘 중 하나만
         this._syncPhotoDrag();
         if (this._photoDragOn) App.showToast('미리보기의 강아지를 끌어 옮기고, 두 손가락으로 크기를 바꾸세요.', 'info');
       });
@@ -7771,7 +7436,7 @@ App.pages.records = {
       mainSvc = names[0] || '';
       subSvc = names.slice(1).concat(Array.isArray(record.addons) ? record.addons.filter(Boolean).map(String) : []);
     }
-    const tips = (App.getHomeCareAdvice ? App.getHomeCareAdvice(record) : []).slice(0, 3);
+    const tips = (App.getHomeCareAdvice ? App.getHomeCareAdvice(record, pet) : []).slice(0, 3);
     const status = [];
     if (record.condition) status.push(['컨디션', L.condition[record.condition] || record.condition, this._reportTone('condition', record.condition)]);
     if (record.cooperativeness) status.push(['미용 협조', L.cooperativeness[record.cooperativeness] || record.cooperativeness, this._reportTone('cooperativeness', record.cooperativeness)]);

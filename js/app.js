@@ -1494,7 +1494,44 @@ const App = {
   VISIT_STATUS_PRIORITY: { normal: 0, new: 1, remind: 2, 'at-risk': 3, churned: 4 },
 
   async getRevisitDays() {
+    // 견종별 주기(설정)도 함께 읽어 둔다 — getGroomingCycle 이 동기 함수라서, 주기를 쓰는 화면은 모두 이 함수를 먼저 부른다
+    try { this._breedCycles = (await DB.getSetting('breedCycles')) || null; } catch (e) { this._breedCycles = null; }
     return Number(await DB.getSetting('revisitDays')) || 30;
+  },
+
+  // 견종 묶음별 권장 미용 주기(일). 믹스견·모르는 견종은 여기 없음 → 매장 재방문 기준으로
+  BREED_CYCLE_GROUPS: [
+    { key: 'curly', label: '곱슬·계속 자라는 털', days: 28, breeds: ['푸들', '토이푸들', '비숑프리제', '베들링턴테리어', '말티푸', '골든두들'] },
+    { key: 'long', label: '긴 털', days: 35, breeds: ['말티즈', '시츄', '요크셔테리어', '슈나우저', '코카스패니얼', '페키니즈'] },
+    { key: 'double', label: '이중모', days: 49, breeds: ['포메라니안', '스피츠', '폼피츠', '웰시코기', '시바견', '진돗개', '사모예드', '골든리트리버', '래브라도리트리버', '보더콜리'] },
+    { key: 'short', label: '단모', days: 56, breeds: ['치와와', '퍼그', '프렌치불독', '비글', '미니핀', '닥스훈트', '이탈리안그레이하운드'] }
+  ],
+
+  _breedGroup(breed) {
+    const b = this.normalizeBreed(breed);
+    return b ? this.BREED_CYCLE_GROUPS.find(g => g.breeds.includes(b)) || null : null;
+  },
+
+  isShortCoat(breed) {
+    const g = this._breedGroup(breed);
+    return !!g && g.key === 'short';
+  },
+
+  // 견종 기본 주기: 사장님이 설정에서 바꾼 값 → 내장 기본값 → 0(없음)
+  getBreedCycle(breed, breedCycles) {
+    const g = this._breedGroup(breed);
+    if (!g) return 0;
+    const bc = breedCycles === undefined ? this._breedCycles : breedCycles;
+    const own = Number(bc && bc[g.key]);
+    return own > 0 ? own : g.days;
+  },
+
+  // 반려견의 권장 미용 주기 = 개별 설정 → 견종 기본 → 매장 재방문 기준. 모든 화면이 이 한 곳을 쓴다.
+  getGroomingCycle(pet, revisitDays, breedCycles) {
+    if (pet && Number(pet.groomingCycle) > 0) return Number(pet.groomingCycle);
+    const byBreed = this.getBreedCycle(pet && pet.breed, breedCycles);
+    if (byBreed > 0) return byBreed;
+    return Number(revisitDays) > 0 ? Number(revisitDays) : 30;
   },
 
   // 다음 미용 추천일: 방문일 + 반려견 권장 주기(없으면 fallbackDays — 설정 '재방문 기준', 기본 30일). 'YYYY-MM-DD' 또는 ''
@@ -1521,7 +1558,7 @@ const App = {
   // (예전엔 대시보드만 revisitDays 를 쓰고 고객/분석 페이지는 30일 고정이라 서로 다른 수가 나왔다)
   getPetVisitStatus(pet, revisitDays, fallbackLastVisit) {
     const last = pet.lastVisitDate || fallbackLastVisit || null;
-    return this.classifyVisitStatus(last, pet.groomingCycle || revisitDays || 30);
+    return this.classifyVisitStatus(last, this.getGroomingCycle(pet, revisitDays));
   },
 
   // 고객 단위 상태 = 활성 반려견 중 가장 좋은 상태 (반려견 없으면 기록 기준)
@@ -1607,19 +1644,23 @@ const App = {
     return { thisMonth, lastToDate, lastFull, pct, compareDay };
   },
 
-  // 미용 리포트: 컨디션 기반 관리법 자동 매칭
-  getHomeCareAdvice(record) {
+  // 미용 리포트: 컨디션 기반 관리법 자동 매칭 (일반적인 권유 문구 — 진단이 아님). pet 은 선택(견종별 빗질 안내용)
+  // 병원 권유 문구를 앞에 둬서 리포트 이미지의 3개 제한에 잘리지 않게 한다.
+  getHomeCareAdvice(record, pet) {
     const tips = [];
-    const skin = record.skinStatus || [];
-    if (skin.includes('건조')) tips.push('피부가 건조해요. 보습 스프레이를 2~3일에 한 번 뿌려주세요.');
-    if (skin.includes('발적')) tips.push('피부에 발적이 있어요. 긁거나 핥지 않도록 주의해주시고, 지속되면 병원 방문을 권합니다.');
-    if (skin.includes('각질')) tips.push('각질이 보여요. 저자극 샴푸 사용을 추천합니다.');
-    if (skin.includes('습진')) tips.push('습진 증상이 있어요. 동물병원에서 진료받으시길 권합니다.');
-    if (record.earStatus === 'dirty') tips.push('귀에 경미한 오염이 있어요. 귀 세정제로 주 1회 관리해주세요.');
-    if (record.earStatus === 'infected') tips.push('귀에 염증이 의심돼요. 동물병원 방문을 꼭 권합니다.');
-    if (record.mattingLevel === 'mild') tips.push('털 엉킴이 약간 있었어요. 주 2~3회 빗질을 해주세요.');
-    if (record.mattingLevel === 'severe') tips.push('털 엉킴이 심했어요. 매일 5분 빗질이 필요합니다. 슬리커 브러시를 추천해요.');
-    if (tips.length === 0 && record.condition) tips.push('컨디션이 좋아요! 지금처럼 관리해주시면 됩니다.');
+    const skin = (record.skinStatus || []).filter(x => x !== '정상' || (record.skinStatus || []).length === 1);
+    if (skin.includes('발적')) tips.push('피부가 붉어 보이는 부분이 있었어요. 긁거나 핥지 않게 살펴 주시고, 계속되면 동물병원 진료를 권해요.');
+    if (skin.includes('습진')) tips.push('습진처럼 보이는 부분이 있었어요. 동물병원 진료를 권해요.');
+    if (record.earStatus === 'infected') tips.push('귀 상태가 걱정돼요. 동물병원에서 한번 봐 주시길 권해요.');
+    if (skin.includes('건조')) tips.push('피부가 조금 건조해 보였어요. 보습제를 발라 주시면 좋아요.');
+    if (skin.includes('각질')) tips.push('각질이 보였어요. 순한 샴푸를 쓰시면 좋아요.');
+    if (record.earStatus === 'dirty') tips.push('귀가 지저분해 보이면 세정제로 닦아 주시면 좋아요.');
+    const short = pet && this.isShortCoat(pet.breed);
+    if (record.mattingLevel === 'mild') tips.push(short ? '털이 조금 엉켜 있었어요. 부드러운 브러시로 가끔 빗어 주시면 좋아요.' : '털이 조금 엉켜 있었어요. 자주 빗어 주시면 좋아요.');
+    if (record.mattingLevel === 'severe') tips.push(short ? '털 엉킴이 있었어요. 고무 브러시로 자주 빗어 주시면 좋아요.' : '털 엉킴이 많았어요. 매일 조금씩 빗어 주시고, 슬리커 브러시를 써 보시길 권해요.');
+    if (tips.length === 0 && record.condition) {
+      tips.push(record.condition === 'good' ? '컨디션이 좋았어요! 지금처럼 관리해 주시면 좋아요.' : '오늘 컨디션을 살펴 주시고, 평소와 다르면 동물병원 상담을 권해요.');
+    }
     return tips;
   },
 
@@ -1653,7 +1694,7 @@ const App = {
     if (record.earStatus) lines.push(`귀: ${earLabels[record.earStatus] || record.earStatus}`);
     if (record.mattingLevel) lines.push(`엉킴: ${mattingLabels[record.mattingLevel] || record.mattingLevel}`);
 
-    const tips = this.getHomeCareAdvice(record);
+    const tips = this.getHomeCareAdvice(record, pet);
     if (tips.length > 0) {
       lines.push('');
       lines.push('집에서 관리법:');

@@ -335,7 +335,7 @@ App.pages.analytics = {
     const returnRatePct = periodCustomerIds.length > 0 ? Math.round((returnCount / periodCustomerIds.length) * 100) : 0;
 
     // ===== 인사이트 자동 생성 =====
-    const revisitDaysSetting = Number(await DB.getSetting('revisitDays')) || 30;
+    const revisitDaysSetting = await App.getRevisitDays();
     const insights = [];
 
     // 1. 재방문율 평가

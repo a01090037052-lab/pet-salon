@@ -35,6 +35,7 @@ App.pages.settings = {
     const shopAddress = await DB.getSetting('shopAddress') || '';
     const shopReviewLink = await DB.getSetting('shopReviewLink') || '';
     const revisitDays = await DB.getSetting('revisitDays') || 30;
+    const breedCycles = (await DB.getSetting('breedCycles')) || {};
     const groomers = await DB.getSetting('groomers') || [];
 
     const notifMinutes = await DB.getSetting('notifMinutes');
@@ -135,8 +136,18 @@ App.pages.settings = {
               <div class="form-group">
                 <label class="form-label">재방문 알림 기준 (일)</label>
                 <input type="number" id="s-revisitDays" value="${revisitDays}" min="1" max="365" placeholder="30">
-                <div class="form-hint">마지막 미용 후 이 기간이 지나면 홈에 알림이 표시됩니다</div>
+                <div class="form-hint">견종을 모르는 아이(믹스견 등)는 이 기간을 써요. 마지막 미용 후 이 기간이 지나면 홈에 알림이 표시됩니다</div>
               </div>
+              <details class="form-group" id="s-breedcycle-box">
+                <summary class="form-label" style="cursor:pointer">견종별 미용 주기</summary>
+                ${App.BREED_CYCLE_GROUPS.map(g => `
+                <div style="display:flex;align-items:center;gap:8px;margin:8px 0">
+                  <div style="flex:1;min-width:0"><b>${g.label}</b><div class="form-hint" style="margin:0">${g.breeds.join(', ')}</div></div>
+                  <input type="number" id="s-bc-${g.key}" data-default="${g.days}" value="${Number(breedCycles[g.key]) > 0 ? Number(breedCycles[g.key]) : g.days}" min="1" max="365" style="width:72px"> <span>일</span>
+                </div>`).join('')}
+                <button type="button" class="btn btn-sm btn-secondary" id="s-bc-reset">기본값으로</button>
+                <div class="form-hint">손님 아이에게 따로 정한 주기가 없을 때 이 값을 써요</div>
+              </details>
             </div>
           </div>
 
@@ -1106,6 +1117,13 @@ App.pages.settings = {
       await DB.setSetting('shopAddress', document.getElementById('s-shopAddress').value.trim());
       await DB.setSetting('shopReviewLink', (document.getElementById('s-shopReviewLink')?.value || '').trim());
       await DB.setSetting('revisitDays', Number(document.getElementById('s-revisitDays').value) || 30);
+      // 견종별 주기: 기본값과 다른 것만 저장
+      const bc = {};
+      App.BREED_CYCLE_GROUPS.forEach(g => {
+        const v = Math.round(Number(document.getElementById('s-bc-' + g.key)?.value));
+        if (v > 0 && v <= 365 && v !== g.days) bc[g.key] = v; // 1~365일만
+      });
+      await DB.setSetting('breedCycles', bc);
       await App.applyShopName();
       await DB.setSetting('groomers', groomers0);
       // 휴무일
@@ -1125,6 +1143,10 @@ App.pages.settings = {
     document.getElementById('btn-save-tab-shop')?.addEventListener('click', () => saveShop().catch(e => { console.error('매장 설정 저장 실패:', e); App.showToast('저장 중 오류가 났어요. 다시 시도해 주세요.', 'error'); }));
 
     // 로고 업로드/제거
+    document.getElementById('s-bc-reset')?.addEventListener('click', () => {
+      App.BREED_CYCLE_GROUPS.forEach(g => { const el = document.getElementById('s-bc-' + g.key); if (el) el.value = g.days; });
+      App.showToast('기본값으로 돌렸어요. 저장을 눌러 주세요.');
+    });
     document.getElementById('s-logo-upload')?.addEventListener('click', () => document.getElementById('s-logo-file')?.click());
     document.getElementById('s-logo-file')?.addEventListener('change', async (e) => {
       const file = e.target.files[0];
@@ -1425,7 +1447,7 @@ App.pages.settings = {
   // 저장 버튼이 있는 탭(매장 관리·운영 설정)만 본다 — 데이터·보안 탭은 누르면 바로 반영되고,
   // 문자 템플릿(tpl-*)은 입력하면 자동 저장된다.
   _UNSAVED_FIELDS: {
-    shop: ['s-shopName', 's-shopPhone', 's-shopAddress', 's-shopReviewLink', 's-revisitDays'],
+    shop: ['s-shopName', 's-shopPhone', 's-shopAddress', 's-shopReviewLink', 's-revisitDays'].concat(App.BREED_CYCLE_GROUPS.map(g => 's-bc-' + g.key)),
     operation: ['s-notifMinutes', 's-monthlyGoal', 's-fixedCost']
   },
   _UNSAVED_TAB_LABELS: { shop: '매장 관리', operation: '운영 설정' },

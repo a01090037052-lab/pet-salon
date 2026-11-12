@@ -205,3 +205,47 @@ describe('가장자리 막대 값', () => {
     assert.ok(g(a) > g(b), `${g(a)} > ${g(b)}`);
   });
 });
+
+describe('칸 사진 놓기 (끌기·확대)', () => {
+  test('기본값은 예전처럼 가운데 cover', () => {
+    const p = R._coverPlace(900, 1200, 1080, 1350, null);
+    assert.ok(Math.abs(p.dw - 1080) < 1e-9 && Math.abs(p.dx) < 1e-9);
+    assert.ok(Math.abs(p.dy - (1350 - p.dh) / 2) < 1e-9);
+  });
+  test('남는 곳이 없어도(3:4 사진, 4:5 칸 가로) 옮겨진다 — 칸 너비 %만큼', () => {
+    const p = R._coverPlace(900, 1200, 1080, 1350, { offsetX: -20 });
+    assert.ok(Math.abs(p.dx - 216) < 1e-9);
+  });
+  test('100% 아래로 줄일 수 있다 (빈 곳은 배경색)', () => {
+    const p = R._coverPlace(1000, 1000, 1000, 1000, { zoom: 0.5 });
+    assert.equal(p.dw, 500); assert.equal(p.dx, 250);
+  });
+  test('너무 멀리 끌면 칸 안에 15%는 남게 묶는다', () => {
+    const p = R._coverPlace(1000, 1000, 1000, 1000, { offsetX: 500, offsetY: -500 });
+    assert.equal(p.offsetX, 85); assert.equal(p.offsetY, -85);
+    assert.ok(Math.abs(p.dx + 850) < 1e-9); // 오른쪽 150 화소가 칸 안에
+  });
+  test('확대 3배 넘게·0.3배 아래로는 안 된다', () => {
+    assert.equal(R._coverPlace(100, 100, 100, 100, { zoom: 9 }).dw, 300);
+    assert.equal(R._coverPlace(100, 100, 100, 100, { zoom: 0.1 }).dw, 30);
+  });
+});
+
+describe('사진 빼기 — 뒤 칸을 앞으로', () => {
+  test('첫 칸을 빼면 2번 사진이 첫 칸으로, 칸마다 값도 같이', () => {
+    R._cardPhotos = ['a', 'b', 'c', null];
+    R._cardPhotoMeta = [{ offsetX: 1 }, { offsetX: 2 }, { offsetX: 3 }, { offsetX: 4 }];
+    R._cardUserPicked = [true, true, true, false];
+    R._slotCut = [false, true];
+    R._slotCutSrc = ['a', 'b'];
+    R._cardFront = [null, { src: 'b' }];
+    R._shiftSlotsOut(0);
+    assert.deepEqual(R._cardPhotos, ['b', 'c', null, null]);
+    assert.deepEqual(R._cardPhotoMeta.map(m => m.offsetX), [2, 3, 4, 0]);
+    assert.deepEqual(R._cardUserPicked, [true, true, false, false]);
+    assert.deepEqual(R._slotCut, [true, false, false, false]);
+    assert.deepEqual(R._slotCutSrc, ['b', null, null, null]);
+    assert.equal(R._cardFront[0].src, 'b');
+    assert.equal(R._cardFront.length, 4);
+  });
+});

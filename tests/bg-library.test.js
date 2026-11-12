@@ -108,11 +108,33 @@ describe('종류 고르기·앞 테두리', () => {
 });
 
 describe('카드 위 배경 자리', () => {
-  test('언제나 카드를 덮는다 — 크기·옮기기 범위 제한', () => {
+  test('크기 100% 아래로는 안 줄어든다 · 옮기기는 남는 만큼 + SLACK 까지', () => {
     const g = B.geom(1122, 1402, 1080, 1350, { scale: 1.35, ox: 5, oy: -5 });
-    assert.ok(g.x <= 0 && g.y <= 0 && g.x + g.w >= 1080 - 1e-6 && g.y + g.h >= 1350 - 1e-6);
+    const mx = (g.w - 1080) / 2 / 1080 + B.SLACK, my = (g.h - 1350) / 2 / 1350 + B.SLACK;
+    assert.ok(Math.abs(g.ox - mx) < 1e-9 && Math.abs(g.oy + my) < 1e-9);
     const g1 = B.geom(1122, 1402, 1080, 1350, { scale: 0.5 });
-    assert.ok(g1.w >= 1080 - 1e-6 && g1.h >= 1350 - 1e-6); // 100% 아래로는 안 줄어든다
+    assert.ok(g1.w >= 1080 - 1e-6 && g1.h >= 1350 - 1e-6);
+  });
+  test('기본 배경(남는 곳 거의 없음)도 100%에서 끌어 옮겨진다', () => {
+    const g = B.geom(1122, 1402, 1080, 1350, { scale: 1, ox: 0.08, oy: -0.05 });
+    assert.equal(g.oy, -0.05);
+    assert.ok(g.ox > 0.07 && g.x > 1080 * 0.07);
+  });
+  test('카드를 다 덮으면 채울 띠가 없다', () => {
+    assert.equal(B.edgeStrips(1122, 1402, B.geom(1122, 1402, 1080, 1350, { scale: 1.2 }), 1080, 1350).length, 0);
+  });
+  test('오른쪽으로 옮기면 왼쪽 빈 띠를 그림 왼쪽 끝을 거울로 비춰 채운다', () => {
+    const g = { x: 100, y: 0, w: 1080, h: 1350 };
+    const t = B.edgeStrips(1080, 1350, g, 1080, 1350);
+    assert.equal(t.length, 1);
+    assert.deepEqual([t[0].sx, t[0].sw, t[0].dx, t[0].dw, t[0].dy, t[0].dh, t[0].fx, t[0].fy], [0, 100, 0, 100, 0, 1350, true, false]);
+  });
+  test('대각선으로 옮기면 모서리도 채운다', () => {
+    const t = B.edgeStrips(1000, 1000, { x: -50, y: 40, w: 1000, h: 1000 }, 1000, 1000);
+    // 오른쪽·위 띠 + 오른쪽 위 모서리
+    assert.equal(t.length, 3);
+    const corner = t.find(s => s.fx && s.fy);
+    assert.deepEqual([corner.sx, corner.sy, corner.sw, corner.sh, corner.dx, corner.dy, corner.dw, corner.dh], [950, 0, 50, 40, 950, 0, 50, 40]);
   });
   test('속에 들어가는 배경: 몸통 선이 테두리에, 가로선·위쪽이 앞', () => {
     const def = { rim: { y: 0.6, x0: 0.3, x1: 0.7 }, sink: 0.4 };

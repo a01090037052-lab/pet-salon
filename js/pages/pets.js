@@ -104,9 +104,9 @@ App.pages.pets = {
             rightChip = `<span style="font-size:0.93rem;padding:4px 10px;background:var(--bg);color:var(--text-secondary);border:1px solid var(--border-light);border-radius:12px;font-weight:600;flex-shrink:0;white-space:nowrap">오래 안 옴</span>`;
           } else if (vs === 'new') {
             rightChip = `<span style="font-size:0.93rem;padding:4px 10px;background:var(--bg);color:var(--text-muted);border:1px solid var(--border);border-radius:12px;font-weight:600;flex-shrink:0;white-space:nowrap">방문 전</span>`;
-          } else if (p.groomingCycle && (p.lastVisitDate || lastVisit)) {
+          } else if (p.groomingCycle && (p.lastVisitDate || lastVisit)) { // 목록은 간단히 — 주기를 직접 정한 아이만 D-날짜
             // 자정 기준 정수 일수 (예전엔 '지금'과 자정의 차를 내림해 하루 전에 '오늘', 당일에 '1일 초과'로 표시됐다)
-            const next = App.parseLocalDate(p.lastVisitDate || lastVisit); next.setDate(next.getDate() + p.groomingCycle);
+            const next = App.parseLocalDate(p.lastVisitDate || lastVisit); next.setDate(next.getDate() + App.getGroomingCycle(p, revisitDays));
             const days = App.daysUntil(App.formatLocalDate(next));
             const label = days < 0 ? Math.abs(days) + '일 초과' : days === 0 ? '오늘' : 'D-' + days;
             const cColor = days < 0 ? 'var(--danger)' : 'var(--success)';
@@ -290,7 +290,7 @@ App.pages.pets = {
         </div>
       </div>` : '';
 
-    // 3. 다음 예약 — 잡힌 예약이 있으면 그것, 없으면 권장일 (권장 주기 우선, 없으면 평균 주기)
+    // 3. 다음 예약 — 잡힌 예약이 있으면 그것, 없으면 권장일 (권장 주기: 개별 설정 → 견종 기본 → 매장 기준)
     const nextAppt = this.pickNextAppt(appts, App.getToday());
     let next = '';
     if (nextAppt) {
@@ -299,14 +299,15 @@ App.pages.pets = {
         ${App.icon('calendar')}<span><b>다음 예약</b> ${md(nextAppt.date, true)} ${esc(nextAppt.time || '')}${svc ? ' · ' + esc(svc) : ''}</span>
         <span class="pd-chev">${App.icon('chevron-right')}</span></a>`;
     } else {
-      const cycle = pet.groomingCycle || sum.avgCycle;
+      // 권장 주기는 리포트·알림과 같은 App.getGroomingCycle — 평균 주기는 참고로만 보여 준다
+      const cycle = App.getGroomingCycle(pet, await App.getRevisitDays());
       if (cycle && sum.lastDate) {
         const d = App.parseLocalDate(sum.lastDate);
         d.setDate(d.getDate() + Number(cycle));
         const days = App.daysUntil(App.formatLocalDate(d));
         const label = days < 0 ? `${-days}일 지남` : days === 0 ? '오늘' : 'D-' + days;
         next = `<div class="pd-card pd-next pd-next-hint${days < 0 ? ' is-over' : ''}">
-          ${App.icon('clock')}<span><b>다음 미용 권장</b> ${label} · ${md(App.formatLocalDate(d))} <small>(${pet.groomingCycle ? '권장' : '평균'} ${cycle}일)</small></span></div>`;
+          ${App.icon('clock')}<span><b>다음 미용 권장</b> ${label} · ${md(App.formatLocalDate(d))} <small>(권장 ${cycle}일${sum.avgCycle ? ' · 평균 ' + sum.avgCycle + '일' : ''})</small></span></div>`;
       }
     }
 
@@ -539,6 +540,14 @@ App.pages.pets = {
 
   async showForm(id, presetCustomerId) {
     let pet = id ? await DB.get('pets', id) : {};
+    // 주기 미설정일 때 실제로 쓰일 값을 선택지에 보여 준다 (견종 기본 → 매장 기준)
+    const shopDays = await App.getRevisitDays();
+    const cycleText = (d) => d % 7 === 0 ? (d / 7) + '주' : d + '일';
+    const defaultCycleLabelFor = (breed) => {
+      const b = App.getBreedCycle(breed);
+      return b ? `견종 기본 (${cycleText(b)})` : `매장 기준 (${cycleText(shopDays)})`;
+    };
+    const defaultCycleLabel = defaultCycleLabelFor(pet.breed);
     // 보호자가 정해져 들어온 경우(고객 상세)만 잠긴 셀렉트, 그 외엔 검색형 고객 선택 + 인라인 신규 등록
     const customerOptions = presetCustomerId ? await App.getCustomerOptions(presetCustomerId) : '';
     const curYear = new Date().getFullYear();
@@ -654,7 +663,7 @@ App.pages.pets = {
         <div class="form-group">
           <label class="form-label">권장 미용 주기 (일)</label>
           <select id="f-groomingCycle">
-            <option value="">미설정</option>
+            <option value="">${defaultCycleLabel}</option>
             <option value="14" ${pet.groomingCycle == 14 ? 'selected' : ''}>2주 (14일)</option>
             <option value="21" ${pet.groomingCycle == 21 ? 'selected' : ''}>3주 (21일)</option>
             <option value="28" ${pet.groomingCycle == 28 ? 'selected' : ''}>4주 (28일)</option>
@@ -662,7 +671,7 @@ App.pages.pets = {
             <option value="42" ${pet.groomingCycle == 42 ? 'selected' : ''}>6주 (42일)</option>
             <option value="56" ${pet.groomingCycle == 56 ? 'selected' : ''}>8주 (56일)</option>
           </select>
-          <div class="form-hint">개별 미용 주기를 설정하면 홈 재방문 알림에 반영됩니다</div>
+          <div class="form-hint">정하지 않으면 견종에 맞는 기본 주기를 써요. 정하면 홈 알림·리포트에 반영돼요</div>
         </div>
         ${id ? `<div class="form-group">
           <label class="form-label">상태</label>
@@ -718,6 +727,10 @@ App.pages.pets = {
     }
 
     // 사진 업로드 이벤트
+    document.getElementById('f-breed')?.addEventListener('input', (e) => {
+      const opt = document.querySelector('#f-groomingCycle option[value=""]');
+      if (opt) opt.textContent = defaultCycleLabelFor(App.normalizeBreed(e.target.value));
+    });
     document.getElementById('f-photo-btn')?.addEventListener('click', () => {
       document.getElementById('f-photo')?.click();
     });
