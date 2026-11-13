@@ -1076,7 +1076,10 @@ const DB = {
     const a = Array.isArray(fromBackup) ? fromBackup.filter(Boolean) : [];
     const b = Array.isArray(onDevice) ? onDevice.filter(Boolean) : [];
     const seen = new Set(a.map(x => String(x.id)));
-    return a.concat(b.filter(x => x.id == null || !seen.has(String(x.id))));
+    // 옛 백업의 프레임에 작은 그림이 없으면, 그림이 같은 기기 쪽 작은 그림을 이어 쓴다 (다시 만들지 않게)
+    const dev = new Map(b.filter(x => x.id != null).map(x => [String(x.id), x]));
+    const a2 = a.map(x => { const d = dev.get(String(x.id)); return (!x.thumb && d && d.thumb && d.image === x.image) ? { ...x, thumb: d.thumb } : x; });
+    return a2.concat(b.filter(x => x.id == null || !seen.has(String(x.id))));
   },
   async _mergeDeviceAssets(settings) {
     const out = settings.slice();

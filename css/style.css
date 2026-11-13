@@ -4456,7 +4456,7 @@ tr.appt-flash td { background: var(--info-bg-soft); }
 .appt-caution-row { display: none; }
 @media (max-width: 768px) {
   .appt-caution-in { display: none; }
-  .appointment-item:has(> .appt-caution-row) { flex-wrap: wrap; row-gap: 8px; }
+  .appointment-item { flex-wrap: wrap; row-gap: 8px; } /* :has() 없는 옛 아이폰(iOS 15.3↓)에서도 주의 문구가 아래 줄로 */
   .appt-caution-row { display: block; flex: 1 1 100%; order: 1; margin-top: 0; }
 }
 /* [미용 완료]가 카드 아래 한 줄이 되는 폭(600px 이하)에서만 주의 문구 다음으로 보낸다 */

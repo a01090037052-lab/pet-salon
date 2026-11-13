@@ -56,6 +56,10 @@ describe('복원: 이 기기에만 있는 꾸미기 자료 합치기 (DB.mergeAs
   vm.createContext(ctx);
   vm.runInContext(read('js/db.js') + '\nthis.DB = DB;', ctx, { filename: 'js/db.js' });
   const DB = ctx.DB;
+  test('옛 백업 프레임에 작은 그림이 없으면 그림이 같은 기기 것의 작은 그림을 쓴다', () => {
+    const r = plain(DB.mergeAssetLists([{ id: 'a', image: 'X' }, { id: 'b', image: 'Y' }], [{ id: 'a', image: 'X', thumb: 't' }, { id: 'b', image: 'Z', thumb: 'u' }]));
+    assert.equal(r[0].thumb, 't'); assert.equal(r[1].thumb, undefined);
+  });
   test('백업 것 + 기기에만 있는 것, 같은 id 는 백업 것', () => {
     const r = plain(DB.mergeAssetLists([{ id: 'a', name: '백업' }], [{ id: 'a', name: '기기' }, { id: 'b', name: '새로 만든 것' }]));
     assert.deepEqual(r, [{ id: 'a', name: '백업' }, { id: 'b', name: '새로 만든 것' }]);
@@ -131,7 +135,7 @@ describe('오래 써도 느려지지 않게 (C)', () => {
     assert.match(read('js/pages/settings.js'), /App\.frameMaker\.thumbFromImage\(image, image === frame\.image \? frame\.holeBg : undefined\)/);
     assert.match(read('js/pages/settings.js'), /App\.frameMaker\.ensureThumbs\(frames\)/);
     assert.match(read('js/pages/settings.js'), /d\.thumb && !f\.thumb && d\.image === f\.image/); // 다시 읽은 목록에 끼워 넣기
-    assert.match(read('js/pages/records.js'), /App\.frameMaker\.ensureThumbs\(this\._cardFramesCache\)/);
+    assert.match(read('js/pages/records.js'), /App\.frameMaker\.ensureThumbs\(frames\)\)\) return/);
   });
   test('ensureThumbs: 그림은 있는데 작은 그림이 없는 것만 채운다', async () => {
     const { App } = loadApp({ files: ['js/app.js', 'js/frame-maker.js'] });

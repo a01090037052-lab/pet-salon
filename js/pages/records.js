@@ -4174,6 +4174,7 @@ App.pages.records = {
 
     // 인스타그램 최적화: 1080px 미만이면 자동 업스케일 (흐림 방지)
     const _baseW = (ctx && ctx._logicalW) || canvas.width; // 좌표를 잡은 기준 폭 (선명하게 그린 틀은 400)
+    if (ctx) delete ctx._logicalW; // 이 뒤로는 화소 좌표 — 남겨 두면 뒤에서 읽는 코드가 잘못 줄인다
     // 틀을 다 그렸으면 배율을 푼다 — 이 뒤(덮는 프레임·스티커·앞 강아지)는 최종 화소 좌표로 그린다.
     // 풀지 않으면 그것들이 2.7배 크게, 엉뚱한 자리에 그려진다
     if (ctx && ctx._scale && ctx._scale !== 1) { ctx.setTransform(1, 0, 0, 1, 0, 0); ctx._scale = 1; }
@@ -5677,7 +5678,9 @@ App.pages.records = {
   },
   // 고른 사진의 버튼 줄만 보이게 — 고른 칸이 비었으면 사진이 있는 첫 칸으로. 사진이 한 장이면 번호·테두리 없이
   _syncSlotActions() {
-    const filled = (this._cardPhotos || []).map(Boolean);
+    // 지금 틀에 보이는 칸까지만 본다 — 4칸 틀에서 1칸 틀로 바꾸면 4번째 칸이 골라진 채 버튼 줄이 안 보였다
+    const nShown = typeof document !== 'undefined' ? document.querySelectorAll('#card-slot-actions .card-slot-acts').length : 0;
+    const filled = (this._cardPhotos || []).slice(0, nShown || 4).map(Boolean);
     let sel = this._slotSel;
     if (sel == null || !filled[sel]) sel = filled.indexOf(true);
     this._slotSel = sel >= 0 ? sel : null;
@@ -6857,13 +6860,18 @@ App.pages.records = {
       } catch (e) { console.warn('프레임 칸 저장 실패:', e); }
     }
     // 예전에 올린 프레임은 작은 그림이 없다 — 처음 한 번 만들어 저장한다 (그 뒤로는 버튼에 작은 그림만 쓴다)
-    try {
-      if (App.frameMaker && this._cardFramesCache.some(f => App.frameMaker.needsThumb(f)) && await App.frameMaker.ensureThumbs(this._cardFramesCache)) {
-        const all = (await DB.getSetting('customFrames')) || [];
-        all.forEach(f => { const d = this._cardFramesCache.find(x => x.id === f.id); if (d && d.thumb && !f.thumb && d.image === f.image) f.thumb = d.thumb; });
-        await DB.setSetting('customFrames', all);
-      }
-    } catch (e) { console.warn('프레임 작은 그림 만들기 실패:', e); }
+    // 창을 먼저 띄우고 뒤에서 만든다 (업데이트 뒤 처음 열 때 큰 그림을 푸느라 몇 초 기다리게 하지 않게 — 이번엔 원본으로 보이고 다음부터 작은 그림)
+    if (App.frameMaker && this._cardFramesCache.some(f => App.frameMaker.needsThumb(f))) {
+      const frames = this._cardFramesCache;
+      setTimeout(async () => {
+        try {
+          if (!(await App.frameMaker.ensureThumbs(frames))) return;
+          const all = (await DB.getSetting('customFrames')) || [];
+          all.forEach(f => { const d = frames.find(x => x.id === f.id); if (d && d.thumb && !f.thumb && d.image === f.image) f.thumb = d.thumb; });
+          await DB.setSetting('customFrames', all);
+        } catch (e) { console.warn('프레임 작은 그림 만들기 실패:', e); }
+      }, 1500);
+    }
     const userFrames = this._cardFramesCache.filter(f => f.enabled !== false && f.image);
     const selectedFrameId = saved.lastUsedFrameId || null;
     // 배경색 줄에서 켜 둘 칸: 프레임이면 없음, 더 꾸미기면 custom, 파스텔·자동이면 bg:키, 아니면 테마
