@@ -170,3 +170,22 @@ describe('오래 써도 느려지지 않게 (C)', () => {
     assert.match(read('js/app.js'), /_scheduleCardRelease\?\.\(\)/);
   });
 });
+
+describe('사진 카드 화면 다듬기 (2026-11-13)', () => {
+  const { App } = loadApp({ files: ['js/app.js', 'js/pages/records.js'] });
+  const R = App.pages.records;
+  test('고른 사진: 빈 칸이면 사진 있는 첫 칸으로, 없으면 없음', () => {
+    R._cardPhotos = [null, 'b', 'c', null]; R._slotSel = 0; R._syncSlotActions(); assert.equal(R._slotSel, 1);
+    R._slotSel = 2; R._syncSlotActions(); assert.equal(R._slotSel, 2);
+    R._cardPhotos = [null, null, null, null]; R._syncSlotActions(); assert.equal(R._slotSel, null);
+  });
+  test('버튼은 그림 아래 도구 줄·탭 아래 조절 칸에 둔다', () => {
+    const src = read('js/pages/records.js');
+    assert.ok(src.indexOf('id="card-live-tools"') > 0 && src.indexOf('id="card-live-tools"') < src.indexOf('class="card-tabs"'));
+    assert.ok(src.indexOf('class="card-edit-slot"') > src.indexOf('class="card-tabs"'), '조절 칸은 탭 뒤');
+    assert.match(src, /id="card-slot-actions"/);
+    assert.match(read('js/bg-library.js'), /getElementById\('card-live-tools'\) \|\| stage\)\.appendChild\(b\)/);
+    assert.match(read('js/cutout.js'), /getElementById\('card-live-tools'\) \|\| stage\)\.appendChild\(lb\)/);
+    assert.match(read('css/style.css'), /grid-template-areas: "live tabs" "live edit" "live panels"/);
+  });
+});

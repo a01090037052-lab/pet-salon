@@ -421,7 +421,19 @@ App.bgLib = {
       const b = document.createElement('button');
       b.type = 'button'; b.id = 'card-live-bgmove'; b.className = 'card-live-move card-live-bgmove'; b.hidden = true; b.textContent = '✥ 배경 옮기기';
       b.addEventListener('click', () => this.setDrag(!this.dragOn));
-      stage.appendChild(b);
+      (document.getElementById('card-live-tools') || stage).appendChild(b); // 그림 아래 도구 줄에 (그림을 가리지 않게)
+    }
+    // '속에 쏙' 배경은 강아지를 먼저 떼어내야 한다 — 안내를 미리보기 바로 아래에 둔다 (예전엔 배경 목록 아래라 화면 밖에 있었다)
+    const live = document.querySelector('.card-maker .card-live');
+    if (live && !document.getElementById('bgl-cut')) {
+      const c = document.createElement('div');
+      c.id = 'bgl-cut'; c.className = 'bgl-cut'; c.hidden = true;
+      c.innerHTML = '<span>강아지를 먼저 떼어내면 속에 쏙 들어가요</span><button type="button" class="btn btn-sm btn-primary" id="bgl-cut-btn">✂ 떼어내기</button>';
+      c.querySelector('#bgl-cut-btn').addEventListener('click', () => {
+        if (!(this._R()._cardPhotos || [])[0]) { App.showToast('사진을 먼저 골라 주세요.', 'info'); return; }
+        App.cutout.onFrontBtn(0);
+      });
+      (document.getElementById('card-live-tools') || live).insertAdjacentElement('afterend', c);
     }
     this._wireDrag();
     this.renderPanel();
@@ -516,7 +528,6 @@ App.bgLib = {
         <button type="button" class="bgl-item bgl-add" id="bgl-add"><span class="bgl-thumb"><b>＋</b></span><span class="bgl-name">새 배경 추가</span></button>
       </div>
       ${nHidden ? `<button type="button" class="btn btn-sm btn-ghost" id="bgl-show-hidden">${this._showHidden ? '숨긴 배경 다시 감추기' : `숨긴 배경 ${nHidden}개 보기`}</button>` : ''}
-      <div id="bgl-cut" class="bgl-cut" hidden><span>이 배경은 강아지가 속에 들어가요. 강아지를 먼저 떼어내요.</span><button type="button" class="btn btn-sm btn-primary" id="bgl-cut-btn">✂ 강아지 떼어내기</button></div>
       <label class="form-label bgl-lab">크기 <b id="bgl-scale-v">${Math.round((sc.scale || 1) * 100)}%</b></label>
       <input type="range" id="bgl-scale" min="100" max="170" step="1" value="${Math.round((sc.scale || 1) * 100)}" class="bgl-range" aria-label="배경 크기">
       ${tintRow}${partRow}${bdRow}
@@ -539,10 +550,6 @@ App.bgLib = {
     box.querySelectorAll('.bgl-item[data-id]').forEach(b => b.addEventListener('click', () => this.pick(b.dataset.id)));
     box.querySelector('#bgl-add')?.addEventListener('click', () => this.openImport());
     box.querySelector('#bgl-show-hidden')?.addEventListener('click', () => { this._showHidden = !this._showHidden; this.renderPanel(); });
-    box.querySelector('#bgl-cut-btn')?.addEventListener('click', () => {
-      if (!(this._R()._cardPhotos || [])[0]) { App.showToast('사진을 먼저 골라 주세요.', 'info'); return; }
-      App.cutout.onFrontBtn(0);
-    });
     const sl = box.querySelector('#bgl-scale'), sv = box.querySelector('#bgl-scale-v');
     sl?.addEventListener('input', () => { sc.scale = Number(sl.value) / 100; if (sv) sv.textContent = sl.value + '%'; this._R()._photoDragPreview(); this._signSticker(); });
     box.querySelectorAll('.bgl-row').forEach(row => {

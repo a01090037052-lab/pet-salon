@@ -5483,6 +5483,7 @@ App.pages.records = {
       if (stale()) return;
       if (!data) { bad++; continue; }
       const slot = order[n];
+      this._slotSel = slot; // 방금 넣은 사진의 버튼이 보이게
       this._cardPhotos[slot] = data;
       this._cardPhotoMeta[slot] = { offsetX: 0, offsetY: 0, zoom: 1.0 };
       if (this._cardUserPicked) this._cardUserPicked[slot] = true;
@@ -5516,13 +5517,8 @@ App.pages.records = {
     container.innerHTML = Array.from({ length: count }, (_, i) => `
       <div class="card-slot">
         <input type="file" id="card-photo-${i}" accept="image/*" multiple style="display:none">
-        <div id="card-preview-${i}" class="card-slot-tile" role="button" aria-label="${i + 1}번 사진 고르기" onclick="document.getElementById('card-photo-${i}').click()">${App.icon('camera')}</div>
+        <div id="card-preview-${i}" class="card-slot-tile" role="button" aria-label="${i + 1}번 사진" onclick="App.pages.records._onSlotTile(${i})">${App.icon('camera')}</div>
         <button type="button" class="card-slot-remove" data-slot="${i}" aria-label="${i + 1}번 사진 빼기" hidden>×</button>
-        <!-- 위치·확대 조정은 필요할 때만 펼친다 (사진마다 슬라이더 3개가 늘 펼쳐져 창이 길었다) -->
-        <button type="button" class="card-adjust-btn" id="card-adjust-${i}" data-slot="${i}" hidden>위치</button>
-        <button type="button" class="card-adjust-btn card-cutout-btn" id="card-cutout-${i}" data-slot="${i}" hidden>✂ 가장자리</button>
-        <button type="button" class="card-adjust-btn card-front-btn" id="card-front-${i}" data-slot="${i}" hidden>✂ 강아지 앞으로</button>
-        <button type="button" class="card-adjust-btn card-front-btn card-front-off" id="card-front-off-${i}" data-slot="${i}" hidden>앞으로 끄기</button>
         <div id="card-photo-controls-${i}" class="card-photo-controls" data-slot="${i}" style="display:none">
           <div class="card-photo-controls-title">${i + 1}번 사진 위치·확대</div>
           <div class="photo-slider-row" style="display:flex;align-items:center;gap:6px;margin-bottom:3px">
@@ -5543,7 +5539,18 @@ App.pages.records = {
           <button type="button" class="card-reset-btn" data-slot="${i}" style="width:100%;margin-top:4px;padding:4px;font-size:0.93rem;border:1px solid var(--border);border-radius:4px;background:var(--bg-white);color:var(--text-muted);cursor:pointer">초기화</button>
         </div>
       </div>
-    `).join('');
+    `).join('') + `
+      <!-- 고른 사진의 버튼은 사진 칸 아래 한 줄 전체에 (예전엔 80px 칸 폭에 세로로 쌓여 글자가 세 줄로 접혔다).
+           사진을 누르면 그 사진의 버튼이 나온다. 위치·확대 조정은 필요할 때만 펼친다 -->
+      <div class="card-slot-actions" id="card-slot-actions">${Array.from({ length: count }, (_, i) => `
+        <div class="card-slot-acts" data-slot="${i}" hidden>
+          <span class="card-slot-acts-label" hidden>${i + 1}번 사진</span>
+          <button type="button" class="card-adjust-btn" id="card-adjust-${i}" data-slot="${i}" hidden>위치</button>
+          <button type="button" class="card-adjust-btn card-cutout-btn" id="card-cutout-${i}" data-slot="${i}" hidden>✂ 가장자리</button>
+          <button type="button" class="card-adjust-btn card-front-btn" id="card-front-${i}" data-slot="${i}" hidden>✂ 강아지 앞으로</button>
+          <button type="button" class="card-adjust-btn card-front-btn card-front-off" id="card-front-off-${i}" data-slot="${i}" hidden>앞으로 끄기</button>
+        </div>`).join('')}
+      </div>`;
 
     // 파일 선택 핸들러 — 한 칸에서 여러 장을 고르면 그 칸부터 빈 칸 순서로 채운다
     for (let i = 0; i < count; i++) {
@@ -5639,6 +5646,8 @@ App.pages.records = {
       const i = Number(btn.dataset.slot);
       const gone = this._cardPhotos[i];
       // 뒤 칸 사진을 한 칸씩 앞으로 (배경 그림·사진관처럼 첫 칸만 쓰는 틀에서 빈 카드가 되지 않게) — 칸마다 따로 가진 값도 같이
+      // 고른 사진 번호도 같이 당긴다 (앞 사진을 빼면 고른 사진이 한 칸 앞으로 온다)
+      if (this._slotSel === i) this._slotSel = null; else if (this._slotSel > i) this._slotSel--;
       this._shiftSlotsOut(i);
       if (!this._cardPhotos[0]) {
         const d = this._slotDefaults(count)[0];
@@ -5655,6 +5664,33 @@ App.pages.records = {
       }
       this._scheduleCardPreview();
     }));
+  },
+
+  // 사진 칸을 누르면: 빈 칸이거나 이미 고른 사진이면 사진 고르기(바꾸기), 다른 사진이면 그 사진을 고른다(아래에 그 사진의 버튼 줄).
+  // 사진이 한 장이면 늘 그 사진이 골라져 있으므로 예전처럼 누르면 바로 바꾼다
+  _onSlotTile(i) {
+    if (!(this._cardPhotos || [])[i] || this._slotSel === i) { document.getElementById(`card-photo-${i}`)?.click(); return; }
+    document.querySelectorAll('.card-photo-controls').forEach(c => { c.style.display = 'none'; });
+    document.querySelectorAll('#card-photo-slots .card-adjust-btn').forEach(b => b.classList.remove('open'));
+    this._slotSel = i;
+    this._syncSlotActions();
+  },
+  // 고른 사진의 버튼 줄만 보이게 — 고른 칸이 비었으면 사진이 있는 첫 칸으로. 사진이 한 장이면 번호·테두리 없이
+  _syncSlotActions() {
+    const filled = (this._cardPhotos || []).map(Boolean);
+    let sel = this._slotSel;
+    if (sel == null || !filled[sel]) sel = filled.indexOf(true);
+    this._slotSel = sel >= 0 ? sel : null;
+    const many = filled.filter(Boolean).length > 1;
+    if (typeof document === 'undefined') return;
+    document.querySelectorAll('#card-slot-actions .card-slot-acts').forEach(g => {
+      const i = Number(g.dataset.slot);
+      g.hidden = i !== this._slotSel;
+      const lab = g.querySelector('.card-slot-acts-label'); if (lab) lab.hidden = !many;
+    });
+    document.querySelectorAll('#card-photo-slots .card-slot-tile').forEach(t => {
+      t.classList.toggle('selected', many && Number(String(t.id).replace('card-preview-', '')) === this._slotSel);
+    });
   },
 
   // 칸 i 를 빼고 뒤 칸들을 앞으로 당긴다 (끝 칸은 빈 칸). 칸마다 따로 가진 배열을 모두 같이
@@ -6386,6 +6422,14 @@ App.pages.records = {
     this._renderStickerLayer();
   },
 
+  // 카드 창 본문을 el 이 위쪽 고정 칸(미리보기·탭) 바로 아래에 오도록 내린다
+  _scrollCardPanelTo(el) {
+    const body = document.getElementById('modal-body'), head = document.querySelector('.card-maker .card-tabs');
+    if (!el || !body || !head) return;
+    const d = el.getBoundingClientRect().top - head.getBoundingClientRect().bottom - 8;
+    if (Math.abs(d) < 4) return;
+    try { body.scrollBy({ top: d, behavior: 'smooth' }); } catch (_) { body.scrollTop += d; }
+  },
   _scheduleCardPreview() {
     clearTimeout(this._cardPreviewTimer);
     this._cardPreviewTimer = setTimeout(() => this._renderCardPreview().catch(e => console.warn('카드 미리보기 실패:', e)), 250);
@@ -6504,6 +6548,7 @@ App.pages.records = {
     if (!preview) return;
     const photo = this._cardPhotos[slot];
     preview.classList.toggle('filled', !!photo);
+    this._syncSlotActions(); // 고른 사진의 버튼 줄
     const rm = document.querySelector(`.card-slot-remove[data-slot="${slot}"]`);
     if (rm) rm.hidden = !photo;
     const adj = document.getElementById(`card-adjust-${slot}`);
@@ -6743,6 +6788,7 @@ App.pages.records = {
     clearTimeout(this._cardReleaseTimer);
     // 다른 카드에서 고른 사진이 남지 않게 새 카드마다 비운다 ('다시 꾸미기'는 같은 사진으로 돌아온다)
     const keep = opts.keepPhotos && this._cardCtx && this._cardCtx.key === ctx.key;
+    if (!keep) this._slotSel = null;
     if (!keep) this._cardSession = (this._cardSession || 0) + 1; // 새 카드 번호 — 앞 카드에서 읽던 사진을 막는다 (_addCardPhotos)
     const keptPhotos = keep ? (this._cardPhotos || []) : [];
     const keptMeta = keep ? (this._cardPhotoMeta || []) : [];
@@ -6849,22 +6895,15 @@ App.pages.records = {
             <img id="card-live-img" alt="사진 카드 미리보기" hidden>
             <div id="card-sticker-layer" class="card-sticker-layer" hidden></div>
             <button type="button" class="card-live-zoom" id="card-live-zoom" aria-label="크게 보기" title="크게 보기">⤢</button>
+          </div>
+          <!-- 옮기기 버튼들은 그림 위가 아니라 바로 아래 한 줄에 (그림 위에 떠서 강아지 발·상자를 가렸다).
+               배경 옮기기(bg-library)·몸통 선(cutout)·떼어내기 안내도 여기에 붙는다 -->
+          <div class="card-live-tools" id="card-live-tools">
             <!-- 떼어 낸 강아지 옮기기 — 켠 동안만 미리보기를 끌면 강아지가 움직인다 (꺼 두면 창이 그대로 스크롤된다) -->
             <button type="button" class="card-live-move" id="card-live-move" hidden aria-pressed="false">✥ 강아지 옮기기</button>
           </div>
           <div id="card-live-empty" class="card-live-empty">${App.icon('image')} 사진을 고르면 여기에 미리 보여요</div>
           <div id="card-live-note" class="card-live-note" hidden></div>
-          <!-- 스티커를 고르면 크기·회전·삭제를 미리보기 바로 아래에 (예전엔 패널 맨 아래라 아래 고정 버튼에 가려 안 보였다) -->
-          <div id="card-sticker-hint" class="card-sticker-hint" hidden>스티커를 눌러 크기·회전 조절</div>
-          <div id="card-sticker-edit" class="card-sticker-edit" hidden>
-            <label class="card-sticker-slider">크기 <input type="range" id="card-sticker-size" min="6" max="100" step="1"></label>
-            <label class="card-sticker-slider">회전 <input type="range" id="card-sticker-rot" min="-180" max="180" step="5"></label>
-            <div class="card-sticker-actions">
-              <button type="button" class="btn btn-sm btn-secondary" id="card-sticker-behind" hidden>강아지 뒤로</button>
-              <button type="button" class="btn btn-sm btn-secondary" id="card-sticker-del">${App.icon('trash')} 이 스티커 삭제</button>
-              <button type="button" class="btn btn-sm btn-ghost" id="card-sticker-clear">모두 지우기</button>
-            </div>
-          </div>
         </div>
           <div class="card-tabs" role="tablist">
             <button type="button" class="card-tab active" data-tab="photo" role="tab">사진</button>
@@ -6872,6 +6911,19 @@ App.pages.records = {
             <button type="button" class="card-tab" data-tab="deco" role="tab">꾸미기</button>
             <button type="button" class="card-tab" data-tab="sticker" role="tab">스티커</button>
             <button type="button" class="card-tab" data-tab="text" role="tab">글자</button>
+          </div>
+          <!-- 스티커·글자를 고르면 크기·회전·삭제를 탭 바로 아래에 — 탭 줄은 늘 같은 자리 (예전엔 미리보기와 탭 사이에 끼어들어 탭이 밀렸다) -->
+          <div class="card-edit-slot">
+            <div id="card-sticker-hint" class="card-sticker-hint" hidden>스티커를 눌러 크기·회전 조절</div>
+            <div id="card-sticker-edit" class="card-sticker-edit" hidden>
+              <label class="card-sticker-slider">크기 <input type="range" id="card-sticker-size" min="6" max="100" step="1"></label>
+              <label class="card-sticker-slider">회전 <input type="range" id="card-sticker-rot" min="-180" max="180" step="5"></label>
+              <div class="card-sticker-actions">
+                <button type="button" class="btn btn-sm btn-secondary" id="card-sticker-behind" hidden>강아지 뒤로</button>
+                <button type="button" class="btn btn-sm btn-secondary" id="card-sticker-del">${App.icon('trash')} 이 스티커 삭제</button>
+                <button type="button" class="btn btn-sm btn-ghost" id="card-sticker-clear">모두 지우기</button>
+              </div>
+            </div>
           </div>
         </div>
         <div class="card-panels">
@@ -7146,6 +7198,8 @@ App.pages.records = {
           const plainOpts = document.getElementById('plain-options');
           if (plainOpts) plainOpts.style.display = k === 'plain' ? 'block' : 'none';
           App.bgLib?.onLayout(k === 'scene');
+          // 배경 그림을 직접 고르면 배경 목록까지 내려간다 (목록이 틀 버튼 아래라 화면 밖에 있었다)
+          if (e.isTrusted && k === 'scene') setTimeout(() => this._scrollCardPanelTo(document.getElementById('scene-options')), 80);
 
         });
       });

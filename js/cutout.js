@@ -358,7 +358,7 @@ App.cutout = {
         const p = fv && fv.places.find(q => fr[q.slot] && fr[q.slot].on);
         if (p) { R._frontEditSlot = p.slot; this.syncLineUI(); }
       });
-      stage.appendChild(lb);
+      (document.getElementById('card-live-tools') || stage).appendChild(lb); // 그림 아래 도구 줄에
     }
     let bar = document.getElementById('card-front-bar');
     if (!bar) {

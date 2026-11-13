@@ -3693,7 +3693,8 @@ a.stat-card { display: flex; }
 }
 /* 컴퓨터: 왼쪽 큰 미리보기, 오른쪽 탭 */
 @media (min-width: 769px) {
-  .card-maker { display: grid; grid-template-columns: minmax(0, 300px) minmax(0, 1fr); grid-template-areas: "live tabs" "live panels"; grid-template-rows: auto 1fr; column-gap: 20px; align-items: start; }
+  .card-maker { display: grid; grid-template-columns: minmax(0, 300px) minmax(0, 1fr); grid-template-areas: "live tabs" "live edit" "live panels"; grid-template-rows: auto auto 1fr; column-gap: 20px; align-items: start; }
+  .card-edit-slot { grid-area: edit; min-width: 0; }
   .card-head { display: contents; }
   .card-head .card-live { grid-area: live; position: sticky; top: 0; }
   .card-head .card-live img#card-live-img, .card-head .card-live.sticker-editing img#card-live-img { max-height: 60vh; }
@@ -4460,3 +4461,33 @@ tr.appt-flash td { background: var(--info-bg-soft); }
 }
 /* [미용 완료]가 카드 아래 한 줄이 되는 폭(600px 이하)에서만 주의 문구 다음으로 보낸다 */
 @media (max-width: 600px) { .appointment-item > .btn.dash-complete-btn { order: 2; } }
+
+/* ===== 사진 카드 화면 다듬기 (2026-11-13) ===== */
+/* 옮기기 버튼·몸통 선: 그림 위가 아니라 미리보기 바로 아래 한 줄 */
+.card-live-tools { display: flex; flex-wrap: wrap; justify-content: center; gap: 6px; align-self: stretch; line-height: normal; }
+.card-live-tools:not(:has(> :not([hidden]))) { display: none; }
+.card-live-tools .card-live-move, .card-live-tools .fx-linebtn { position: static; min-height: 40px; padding: 0 14px; border-radius: 18px; border: 1px solid var(--border); background: var(--bg-white); color: var(--text-primary); font: inherit; font-size: 13px; font-weight: 600; cursor: pointer; }
+.card-live-tools .card-live-move.on { background: var(--primary); border-color: var(--primary); color: #fff; }
+.card-live-tools .fx-linebtn[hidden] { display: none; }
+.card-live > .bgl-cut { align-self: stretch; margin: 0; padding: 6px 8px 6px 12px; line-height: 1.35; flex-wrap: nowrap; justify-content: space-between; font-size: max(0.82rem, 13px); }
+.card-live > .bgl-cut > span { flex: 1 1 auto; min-width: 0; }
+.card-live > .bgl-cut > .btn { flex: 0 0 auto; white-space: nowrap; }
+/* 스티커·글자 조절 칸: 탭 바로 아래 (탭 줄은 늘 같은 자리) */
+.card-edit-slot > .card-sticker-edit { margin: 8px 0 4px; }
+.card-edit-slot > .card-sticker-hint { margin: 6px 0 2px; }
+/* 휴대폰: 스티커를 골라도 미리보기 크기를 바꾸지 않는다 (탭이 밀리지 않게) */
+@media (max-width: 768px) {
+  .card-head .card-live.sticker-editing img#card-live-img { max-height: 30vh; }
+  .card-head .card-live.sticker-editing[data-shape="strip2"] img#card-live-img, .card-head .card-live.sticker-editing[data-shape="photobooth"] img#card-live-img { max-height: max(40vh, 340px); }
+}
+/* 고른 사진의 버튼 줄: 사진 칸 아래 한 줄 전체 */
+.card-slot-actions { grid-column: 1 / -1; }
+.card-slot-actions:not(:has(> :not([hidden]))) { display: none; }
+.card-slot-acts { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+.card-slot-acts[hidden] { display: none; }
+.card-slot-acts-label { flex: 1 1 100%; font-size: max(0.8rem, 13px); font-weight: 700; color: var(--text-secondary); }
+.card-slot-acts-label[hidden] { display: none; }
+.card-slot-acts .card-adjust-btn { width: auto; flex: 1 1 auto; margin-top: 0; min-height: 44px; padding: 0 12px; white-space: nowrap; border: 1px solid var(--border); border-radius: 10px; background: var(--bg-white); color: var(--text-secondary); font: inherit; font-size: max(0.82rem, 13px); font-weight: 600; cursor: pointer; }
+.card-slot-acts .card-front-off { color: var(--text-muted); font-weight: 500; }
+.card-slot-acts .card-adjust-btn.open { color: var(--primary); border-color: var(--primary); }
+.card-slot-tile.selected { border-color: var(--primary); box-shadow: 0 0 0 2px var(--primary-light); }
