@@ -1,4 +1,4 @@
-const CACHE_NAME = 'petsalon-offline-v216';
+const CACHE_NAME = 'petsalon-offline-v217';
 const FONT_CACHE = 'petsalon-fonts-v1';
 const ASSETS = [
   './',
@@ -21,6 +21,18 @@ const ASSETS = [
   './js/frame-maker.js',
   './js/cutout.js',
   './js/bg-library.js',
+  // 배경 그림(사진 카드 '배경 그림')은 스티커와 같은 오래 가는 보관함에 둔다 — 인터넷이 없어도, 앱이 바뀐 뒤에도 바로 나온다
+  './assets/backgrounds/bakery.webp',
+  './assets/backgrounds/bubbles.webp',
+  './assets/backgrounds/dryflower.webp',
+  './assets/backgrounds/envelope.webp',
+  './assets/backgrounds/flowerarch.webp',
+  './assets/backgrounds/giftbox.webp',
+  './assets/backgrounds/icecream.webp',
+  './assets/backgrounds/ribbonbox.webp',
+  './assets/backgrounds/taiyaki.webp',
+  './assets/backgrounds/torn.webp',
+  './assets/backgrounds/wreath.webp',
   './assets/backgrounds/thumbs/bakery.webp',
   './assets/backgrounds/thumbs/bubbles.webp',
   './assets/backgrounds/thumbs/dryflower.webp',
@@ -134,7 +146,9 @@ const ASSETS = [
 const STICKER_CACHE = 'petsalon-stickers-v1';
 // 버전 이름이 붙은 외부 도구(js/vendor/, 예: 아이폰 HEIC 변환기 3MB) — 처음 쓸 때 한 번 받아 두고 앱이 바뀌어도 지우지 않는다
 const VENDOR_CACHE = 'petsalon-vendor-v1';
-const isSticker = (u) => u.includes('/assets/stickers/');
+// 스티커·배경 그림: 파일이 바뀌지 않는 그림 — 버전이 바뀌어도 지우지 않는 보관함(STICKER_CACHE)에 둔다
+// (같은 이름으로 그림을 바꿀 일이 생기면 보관함 이름의 번호를 올린다)
+const isSticker = (u) => u.includes('/assets/stickers/') || u.includes('/assets/backgrounds/');
 const CORE_ASSETS = ASSETS.filter(u => !isSticker(u));
 const STICKER_ASSETS = ASSETS.filter(isSticker);
 
@@ -215,7 +229,8 @@ self.addEventListener('fetch', (e) => {
         const fetchPromise = fetch(e.request).then(response => {
           if (response.ok) cache.put(e.request, response.clone());
           return response;
-        }).catch(() => cached || caches.match('./index.html'));
+        // 인터넷이 없을 때 앱 화면 주소만 index.html 로 대신한다 — 그림·스크립트 요청에 HTML 을 돌려주면 조용히 깨진다
+        }).catch(() => cached || (e.request.mode === 'navigate' ? caches.match('./index.html') : Response.error()));
         return cached || fetchPromise;
       })
     )

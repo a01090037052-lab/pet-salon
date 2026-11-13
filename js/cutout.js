@@ -222,6 +222,13 @@ App.cutout = {
     try { const r = fn(); if (r && typeof r.then === 'function') return r.finally(done); done(); return r; }
     catch (e) { done(); throw e; }
   },
+  // 떼어내기 도구(모델)를 놓아 준다 — 다음에 쓸 때 다시 준비한다(1~2초). 준비하는 중이거나 손질 화면이 열려 있으면 그대로 둔다
+  releaseModel() {
+    if (!this._seg) return;
+    if (typeof document !== 'undefined' && document.querySelector('.cutout-ed')) return;
+    try { if (typeof this._seg.close === 'function') this._seg.close(); } catch (_) {}
+    this._seg = null; this._segP = null;
+  },
   loadSegmenter() {
     if (this._segP) return this._segP;
     const t0 = performance.now();

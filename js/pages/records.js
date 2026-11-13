@@ -6725,7 +6725,22 @@ App.pages.records = {
   },
 
   // ctx: { key, record, customer, pet, serviceNames, pool, poolLabel } — 만들기·미리보기·완성 화면이 같은 문맥을 쓴다
+  // 사진 카드 창을 닫고 1분 동안 다시 열지 않으면 큰 메모리를 놓아 준다 (아이폰이 앱을 다시 켜 버리지 않게).
+  // 바로 다시 열면('다시 꾸미기') 그대로 쓴다. 놓아 준 것은 다음에 쓸 때 다시 만들어진다
+  _scheduleCardRelease() {
+    clearTimeout(this._cardReleaseTimer);
+    this._cardReleaseTimer = setTimeout(() => this._releaseCardMemory(), 60000);
+    if (this._cardReleaseTimer && this._cardReleaseTimer.unref) this._cardReleaseTimer.unref(); // (시험 환경) 타이머가 프로그램 종료를 붙잡지 않게
+  },
+  _releaseCardMemory() {
+    if (typeof document !== 'undefined' && document.querySelector('.card-maker, .cutout-ed')) return; // 카드·손질 화면이 열려 있다
+    try { App.bgLib && App.bgLib.releaseMemory && App.bgLib.releaseMemory(); } catch (_) {}   // 색 입힌 배경 그림 (장당 약 6MB)
+    try { App.cutout && App.cutout.releaseModel && App.cutout.releaseModel(); } catch (_) {}   // 강아지 떼어내기 도구
+    this._cardFramesCache = null;                                                              // 프레임 원본 그림들
+  },
+
   async openPhotoCard(ctx, opts = {}) {
+    clearTimeout(this._cardReleaseTimer);
     // 다른 카드에서 고른 사진이 남지 않게 새 카드마다 비운다 ('다시 꾸미기'는 같은 사진으로 돌아온다)
     const keep = opts.keepPhotos && this._cardCtx && this._cardCtx.key === ctx.key;
     if (!keep) this._cardSession = (this._cardSession || 0) + 1; // 새 카드 번호 — 앞 카드에서 읽던 사진을 막는다 (_addCardPhotos)
@@ -6795,6 +6810,14 @@ App.pages.records = {
         await DB.setSetting('customFrames', all);
       } catch (e) { console.warn('프레임 칸 저장 실패:', e); }
     }
+    // 예전에 올린 프레임은 작은 그림이 없다 — 처음 한 번 만들어 저장한다 (그 뒤로는 버튼에 작은 그림만 쓴다)
+    try {
+      if (App.frameMaker && this._cardFramesCache.some(f => App.frameMaker.needsThumb(f)) && await App.frameMaker.ensureThumbs(this._cardFramesCache)) {
+        const all = (await DB.getSetting('customFrames')) || [];
+        all.forEach(f => { const d = this._cardFramesCache.find(x => x.id === f.id); if (d && d.thumb && !f.thumb && d.image === f.image) f.thumb = d.thumb; });
+        await DB.setSetting('customFrames', all);
+      }
+    } catch (e) { console.warn('프레임 작은 그림 만들기 실패:', e); }
     const userFrames = this._cardFramesCache.filter(f => f.enabled !== false && f.image);
     const selectedFrameId = saved.lastUsedFrameId || null;
     // 배경색 줄에서 켜 둘 칸: 프레임이면 없음, 더 꾸미기면 custom, 파스텔·자동이면 bg:키, 아니면 테마

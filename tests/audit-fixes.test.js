@@ -125,3 +125,48 @@ describe('그 밖', () => {
     assert.match(read('css/style.css'), /\.detail-topbar \{ padding-right: 52px; \}/);
   });
 });
+
+describe('오래 써도 느려지지 않게 (C)', () => {
+  test('올린 프레임에도 작은 그림을 만든다 · 예전 프레임은 한 번 채운다', () => {
+    assert.match(read('js/pages/settings.js'), /App\.frameMaker\.thumbFromImage\(image, image === frame\.image \? frame\.holeBg : undefined\)/);
+    assert.match(read('js/pages/settings.js'), /App\.frameMaker\.ensureThumbs\(frames\)/);
+    assert.match(read('js/pages/settings.js'), /d\.thumb && !f\.thumb && d\.image === f\.image/); // 다시 읽은 목록에 끼워 넣기
+    assert.match(read('js/pages/records.js'), /App\.frameMaker\.ensureThumbs\(this\._cardFramesCache\)/);
+  });
+  test('ensureThumbs: 그림은 있는데 작은 그림이 없는 것만 채운다', async () => {
+    const { App } = loadApp({ files: ['js/app.js', 'js/frame-maker.js'] });
+    const FM = App.frameMaker;
+    FM.thumbFromImage = async (img) => (img === 'bad' ? null : 'thumb:' + img);
+    const frames = [{ id: 1, image: 'a' }, { id: 2, image: 'b', thumb: 'keep' }, { id: 3 }, { id: 4, image: 'bad' }];
+    assert.equal(await FM.ensureThumbs(frames), true);
+    assert.deepEqual(plain(frames.map(f => f.thumb || null)), ['thumb:a', 'keep', null, null]);
+    assert.equal(await FM.ensureThumbs([{ id: 2, image: 'b', thumb: 'keep' }]), false);
+    // 못 만든 것은 다시 시도하지 않고, 한 번에 정한 개수까지만
+    assert.equal(FM.needsThumb({ id: 4, image: 'bad' }), false);
+    const many = Array.from({ length: 10 }, (_, i) => ({ id: 'm' + i, image: 'x' + i }));
+    await FM.ensureThumbs(many, 3);
+    assert.equal(many.filter(f => f.thumb).length, 3);
+  });
+  test('배경 그림 11장과 작은 그림은 오래 가는 보관함에 둔다', () => {
+    const sw = read('sw.js');
+    for (const n of ['bakery', 'bubbles', 'dryflower', 'envelope', 'flowerarch', 'giftbox', 'icecream', 'ribbonbox', 'taiyaki', 'torn', 'wreath']) {
+      assert.ok(sw.includes(`'./assets/backgrounds/${n}.webp'`), n);
+      assert.ok(sw.includes(`'./assets/backgrounds/thumbs/${n}.webp'`), n + ' thumb');
+      assert.ok(fs.existsSync(path.join(ROOT, `assets/backgrounds/${n}.webp`)), n + ' 파일');
+    }
+    assert.match(sw, /u\.includes\('\/assets\/stickers\/'\) \|\| u\.includes\('\/assets\/backgrounds\/'\)/);
+    assert.match(sw, /e\.request\.mode === 'navigate' \? caches\.match\('\.\/index\.html'\) : Response\.error\(\)/);
+  });
+  test('카드 창을 닫은 뒤 큰 메모리를 놓는다', () => {
+    const { App } = loadApp({ files: ['js/app.js', 'js/pages/records.js', 'js/bg-library.js', 'js/cutout.js'] });
+    const freed = []; const cv = (n) => ({ set width(v) { if (v === 0) freed.push(n); }, set height(v) {} });
+    App.bgLib._prep.set('a', cv('a')); App.bgLib._prep.set('b', cv('b'));
+    let closed = 0; App.cutout._seg = { close() { closed++; } }; App.cutout._segP = Promise.resolve();
+    App.pages.records._cardFramesCache = [{ id: 1 }];
+    App.pages.records._releaseCardMemory();
+    assert.deepEqual(freed, ['a', 'b']); assert.equal(App.bgLib._prep.size, 0);
+    assert.equal(closed, 1); assert.equal(App.cutout._seg, null); assert.equal(App.cutout._segP, null);
+    assert.equal(App.pages.records._cardFramesCache, null);
+    assert.match(read('js/app.js'), /_scheduleCardRelease\?\.\(\)/);
+  });
+});

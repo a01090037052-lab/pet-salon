@@ -507,6 +507,44 @@ App.frameMaker = {
     return url;
   },
 
+  // 올린 프레임 그림(dataURL) → 목록·카드 버튼용 작은 그림 (긴 쪽 240×480 안, JPG). 못 만들면 null
+  // 작은 그림이 없으면 70px 버튼 하나를 그리려고 원본(수 MB, 풀면 10MB 넘게)을 통째로 풀어야 해서 프레임이 쌓일수록 카드 창이 느려졌다
+  thumbFromImage(dataUrl, holeBg) {
+    return new Promise(resolve => {
+      if (!dataUrl) { resolve(null); return; }
+      const img = new Image();
+      img.onload = () => {
+        try {
+          const k = Math.min(240 / img.width, 480 / img.height, 1);
+          const c = document.createElement('canvas'); c.width = Math.max(1, Math.round(img.width * k)); c.height = Math.max(1, Math.round(img.height * k));
+          const x = c.getContext('2d');
+          x.fillStyle = holeBg || '#E5E7EB'; x.fillRect(0, 0, c.width, c.height); // 투명한 사진 칸이 검게 나오지 않게
+          x.drawImage(img, 0, 0, c.width, c.height);
+          const url = c.toDataURL('image/jpeg', 0.8);
+          c.width = c.height = 0;
+          resolve(url && url.length > 100 ? url : null);
+        } catch (_) { resolve(null); }
+      };
+      img.onerror = () => resolve(null);
+      img.src = dataUrl;
+    });
+  },
+  // 작은 그림이 없는 프레임(예전에 올린 것)에 한 번 만들어 넣는다. 하나라도 만들었으면 true (부른 쪽이 저장)
+  // 한 번에 max 개까지만 (큰 그림을 줄줄이 풀면 화면이 몇 초씩 멈춘다 — 나머지는 다음에 열 때 이어서).
+  // 못 만든 프레임은 이번에 앱을 켜 둔 동안 다시 시도하지 않는다 (열 때마다 같은 큰 그림을 또 풀지 않게)
+  _thumbFailed: new Set(),
+  needsThumb(f) { return !!(f && f.image && !f.thumb && !this._thumbFailed.has(f.id)); },
+  async ensureThumbs(frames, max = 6) {
+    let changed = false, n = 0;
+    for (const f of frames || []) {
+      if (!this.needsThumb(f)) continue;
+      if (n++ >= max) break;
+      const t = await this.thumbFromImage(f.image, f.holeBg);
+      if (t) { f.thumb = t; changed = true; } else this._thumbFailed.add(f.id);
+    }
+    return changed;
+  },
+
   // 만들기 창. frame 을 주면 그 프레임(만든 값 maker)을 고친다
   async open(frame) {
     const editing = !!(frame && frame.maker);

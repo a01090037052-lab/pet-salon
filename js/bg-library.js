@@ -293,6 +293,11 @@ App.bgLib = {
 
   // ---------- 그림 준비 (색 입히기는 색마다 한 번만 · 최근 6개 기억) ----------
   _prep: new Map(),
+  // 색 입힌 배경 그림을 놓아 준다 (카드 창을 닫고 한참 뒤 — records._releaseCardMemory). 다음에 쓰면 다시 만든다
+  releaseMemory() {
+    for (const c of this._prep.values()) { try { c.width = c.height = 0; } catch (_) {} }
+    this._prep.clear();
+  },
   _refs: new Map(),
   async prepared(def, color, part) {
     const R = App.pages.records;
@@ -330,7 +335,11 @@ App.bgLib = {
     await this.load();
     const def = this.def(sc && sc.id);
     const bg = def ? await this.prepared(def, sc.color, sc.part) : null;
-    if (!bg) { o.drawPhoto(0, 0, W, H); return; }
+    if (!bg) {
+      // 배경 그림을 못 받았다(인터넷 없음 등) — 사진만 그리고, 왜 배경이 없는지 한 번 알린다
+      if (def && (!this._warnAt || Date.now() - this._warnAt > 8000)) { this._warnAt = Date.now(); App.showToast(def.builtin ? '배경 그림을 불러오지 못했어요. 인터넷 연결을 확인해 주세요.' : '배경 그림을 읽지 못했어요. 다른 배경을 골라 주세요.', 'error'); }
+      o.drawPhoto(0, 0, W, H); return;
+    }
     const g = this.geom(bg.width, bg.height, W, H, sc);
     if (this.state && this.state.id === sc.id) { this.state.ox = g.ox; this.state.oy = g.oy; } // 끌다 끝에 닿으면 거기서 멈춤
     const img = o.img, st = o.front;

@@ -1640,6 +1640,15 @@ App.pages.settings = {
     const countEl = document.getElementById('frame-lib-count');
     const addBtn = document.getElementById('btn-add-frame');
     if (!listEl) return;
+    // 예전에 올린 프레임에 작은 그림을 한 번 만들어 둔다 (목록이 원본 수 MB 그림을 통째로 풀지 않게)
+    // 저장은 방금 다시 읽은 목록에 작은 그림만 끼워 넣는다 — 만드는 몇 초 사이에 새로 저장한 프레임을 옛 목록으로 덮지 않게
+    try {
+      if (App.frameMaker && frames.some(f => App.frameMaker.needsThumb(f)) && await App.frameMaker.ensureThumbs(frames)) {
+        const all = (await DB.getSetting('customFrames')) || [];
+        all.forEach(f => { const d = frames.find(x => x.id === f.id); if (d && d.thumb && !f.thumb && d.image === f.image) f.thumb = d.thumb; });
+        await DB.setSetting('customFrames', all);
+      }
+    } catch (e) { console.warn('프레임 작은 그림 만들기 실패:', e); }
     if (countEl) countEl.textContent = `${frames.length}/${this.MAX_FRAMES}`;
     if (addBtn) addBtn.disabled = frames.length >= this.MAX_FRAMES;
     const makeBtn = document.getElementById('btn-make-frame');
@@ -1802,10 +1811,13 @@ App.pages.settings = {
             holes = r.holes; fw = r.fw; fh = r.fh;
           }
         }
+        // 목록·카드 버튼용 작은 그림 — 그림을 바꿨거나 아직 없으면 새로 만든다
+        const thumb = (image === frame.image && frame.thumb) ? frame.thumb : (image ? await App.frameMaker.thumbFromImage(image, image === frame.image ? frame.holeBg : undefined) : null);
         const updated = {
           id: frame.id,
           name,
           image,
+          thumb: thumb || undefined,
           accentColor: document.getElementById('f-frame-accent').value,
           textColor: document.getElementById('f-frame-text').value,
           enabled: document.getElementById('f-frame-enabled').checked,
@@ -1816,7 +1828,7 @@ App.pages.settings = {
           guideLayout: document.getElementById('f-frame-guide-layout')?.value || frame.guideLayout || 'feed',
           createdAt: frame.createdAt || new Date().toISOString(),
           // 그림을 안 바꿨으면 만들기 값·글자 값·작은 그림을 지킨다 (내 프레임 만들기로 만든 프레임은 글자가 그림 밖에 있다)
-          ...(image === frame.image ? { maker: frame.maker, text: frame.text, thumb: frame.thumb, holeBg: frame.holeBg } : {})
+          ...(image === frame.image ? { maker: frame.maker, text: frame.text, holeBg: frame.holeBg } : {})
         };
         const all = (await DB.getSetting('customFrames')) || [];
         const idx = all.findIndex(f => f.id === updated.id);

@@ -966,6 +966,7 @@ const App = {
     modalBody.onclick = null;
     // 사진 카드용으로 풀어 둔 그림도 놓아 준다 (iOS 메모리)
     if (this.pages?.records?._imgCache) this.pages.records._imgCache.clear();
+    try { this.pages?.records?._scheduleCardRelease?.(); } catch (_) {} // 1분 뒤에도 카드 창이 닫혀 있으면 큰 메모리를 놓는다
     modalBody.innerHTML = '';
     document.getElementById('modal-save').onclick = null;
     document.querySelectorAll('#modal-footer .modal-extra-btn').forEach(b => b.remove());
